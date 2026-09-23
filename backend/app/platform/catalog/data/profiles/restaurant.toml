@@ -19,7 +19,3 @@ navigation = [
 [terminology.fr.catalog]
 item = "Produit"
 items = "Produits"
-
-[terminology.fr.sales]
-sale = "Commande"
-sales = "Commandes"

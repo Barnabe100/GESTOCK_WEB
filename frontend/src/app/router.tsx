@@ -1,8 +1,15 @@
 import { createBrowserRouter } from 'react-router';
 
-import { HomePage } from '@/pages/HomePage';
+import { ChangePasswordPage } from '@/pages/ChangePasswordPage';
+import { LoginPage } from '@/pages/LoginPage';
+import { SelectTenantPage } from '@/pages/SelectTenantPage';
 
-// Les routes métier seront générées depuis le registre des modules frontend
-// (voir docs/architecture/ARCHITECTURE.md, section 7), filtrées par les capacités
-// renvoyées par le backend.
-export const router = createBrowserRouter([{ path: '/', element: <HomePage /> }]);
+import { ProtectedApp } from './ProtectedApp';
+
+export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
+  { path: '/change-password', element: <ChangePasswordPage /> },
+  { path: '/select-tenant', element: <SelectTenantPage /> },
+  // Toutes les autres routes : application authentifiée, routes générées dynamiquement.
+  { path: '/*', element: <ProtectedApp /> },
+]);

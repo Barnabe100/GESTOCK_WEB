@@ -1,0 +1,10 @@
+{
+  "catalog": {
+    "item": "Article",
+    "items": "Articles"
+  },
+  "sales": {
+    "sale": "Vente",
+    "sales": "Ventes"
+  }
+}

@@ -1,0 +1,241 @@
+{
+  "app": {
+    "name": "StockManager",
+    "tagline": "Gestion commerciale"
+  },
+  "actions": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "confirm": "Confirmer",
+    "retry": "Réessayer",
+    "logout": "Se déconnecter",
+    "back": "Retour"
+  },
+  "common": {
+    "loading": "Chargement…",
+    "yes": "Oui",
+    "no": "Non",
+    "none": "Aucun",
+    "all": "Tous",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "comingSoon": "Bientôt disponible",
+    "noData": "Aucune donnée"
+  },
+  "auth": {
+    "loginTitle": "Connexion",
+    "email": "Adresse email",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "emailInvalid": "Adresse email invalide",
+    "passwordRequired": "Mot de passe requis",
+    "changePasswordTitle": "Changement du mot de passe",
+    "changePasswordIntro": "Pour sécuriser votre compte, choisissez un nouveau mot de passe.",
+    "currentPassword": "Mot de passe actuel",
+    "newPassword": "Nouveau mot de passe",
+    "confirmPassword": "Confirmation",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "passwordMin": "Au moins {{count}} caractères",
+    "passwordChanged": "Mot de passe modifié",
+    "selectTenantTitle": "Choisissez une entreprise",
+    "selectTenantIntro": "Votre compte donne accès à plusieurs entreprises.",
+    "noTenant": "Votre compte n'est rattaché à aucune entreprise active.",
+    "owner": "Propriétaire"
+  },
+  "layout": {
+    "site": "Site",
+    "allSites": "Tous les sites",
+    "switchTenant": "Changer d'entreprise",
+    "menu": "Menu"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "sites": "Sites",
+    "modules": "Modules",
+    "company": "Entreprise",
+    "members": "Utilisateurs",
+    "roles": "Rôles",
+    "audit": "Journal d'audit",
+    "subscription": "Abonnement"
+  },
+  "modules": {
+    "dashboard": "Tableau de bord",
+    "organization": "Organisation",
+    "users": "Utilisateurs",
+    "audit": "Audit",
+    "subscription": "Abonnement",
+    "catalog": "$t(terminology:catalog.items)",
+    "suppliers": "Fournisseurs",
+    "customers": "Clients",
+    "stock": "Stock",
+    "inventory_count": "Inventaires",
+    "sales": "$t(terminology:sales.sales)",
+    "payments": "Paiements",
+    "cash_register": "Caisse",
+    "pos": "Point de vente",
+    "reports": "Rapports",
+    "alerts": "Alertes",
+    "restaurant.menu": "Menu",
+    "restaurant.tables": "Tables",
+    "restaurant.orders": "Commandes",
+    "restaurant.kitchen": "Cuisine",
+    "restaurant.qr": "Menu QR",
+    "restaurant.recipes": "Recettes"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "welcome": "Bonjour {{name}}",
+    "profile": "Profil d'activité",
+    "plan": "Offre",
+    "subscription": "Abonnement",
+    "validUntil": "Échéance : {{date}}",
+    "currentSite": "Site actif",
+    "offer": "Modules de votre offre",
+    "restricted": "Votre abonnement limite certaines actions. Consultez la page Abonnement."
+  },
+  "subscriptionStatus": {
+    "trial": "Essai",
+    "active": "Actif",
+    "past_due": "Échéance dépassée",
+    "expired": "Expiré",
+    "suspended": "Suspendu",
+    "cancelled": "Résilié"
+  },
+  "billingPeriod": {
+    "monthly": "Mensuel",
+    "annual": "Annuel"
+  },
+  "access": {
+    "read": "Consultation",
+    "write": "Opérations",
+    "export": "Export",
+    "admin": "Administration",
+    "billing": "Abonnement"
+  },
+  "sites": {
+    "title": "Sites",
+    "new": "Nouveau site",
+    "edit": "Modifier le site",
+    "name": "Nom",
+    "code": "Code",
+    "kind": "Type",
+    "address": "Adresse",
+    "phone": "Téléphone",
+    "status": "Statut",
+    "kinds": {
+      "store": "Boutique",
+      "warehouse": "Dépôt",
+      "restaurant": "Restaurant",
+      "other": "Autre"
+    },
+    "created": "Site créé",
+    "updated": "Site modifié"
+  },
+  "company": {
+    "title": "Entreprise",
+    "name": "Raison sociale",
+    "slug": "Identifiant",
+    "currency": "Devise",
+    "timezone": "Fuseau horaire",
+    "locale": "Langue",
+    "saved": "Informations enregistrées"
+  },
+  "moduleAdmin": {
+    "title": "Modules",
+    "intro": "Activez les modules inclus dans votre profil et votre abonnement.",
+    "module": "Module",
+    "status": "État",
+    "enabled": "Activé",
+    "notInPlan": "Non inclus dans votre offre",
+    "core": "Socle",
+    "planned": "Bientôt",
+    "dependsOn": "Nécessite : {{modules}}",
+    "saved": "Modules mis à jour"
+  },
+  "members": {
+    "title": "Utilisateurs",
+    "new": "Ajouter un utilisateur",
+    "edit": "Modifier l'utilisateur",
+    "name": "Nom",
+    "email": "Email",
+    "roles": "Rôles",
+    "sites": "Sites autorisés",
+    "allSites": "Accès à tous les sites",
+    "status": "Statut",
+    "temporaryPassword": "Mot de passe provisoire",
+    "temporaryPasswordHelp": "Requis pour un nouveau compte. L'utilisateur devra le changer à la première connexion. Ignoré si l'email possède déjà un compte.",
+    "mustChange": "Mot de passe à changer",
+    "statuses": {
+      "active": "Actif",
+      "suspended": "Suspendu"
+    },
+    "created": "Utilisateur ajouté",
+    "updated": "Utilisateur modifié"
+  },
+  "roles": {
+    "title": "Rôles",
+    "new": "Nouveau rôle",
+    "edit": "Modifier le rôle",
+    "name": "Nom",
+    "description": "Description",
+    "permissions": "Permissions",
+    "system": "Système",
+    "created": "Rôle créé",
+    "updated": "Rôle modifié",
+    "deleted": "Rôle supprimé",
+    "confirmDelete": "Supprimer le rôle « {{name}} » ?"
+  },
+  "permissions": {
+    "organization.tenant.view": "Consulter les informations de l'entreprise",
+    "organization.tenant.update": "Modifier les informations de l'entreprise",
+    "organization.site.view": "Consulter les sites",
+    "organization.site.manage": "Gérer les sites",
+    "organization.module.view": "Consulter les modules",
+    "organization.module.manage": "Activer / désactiver les modules",
+    "users.member.view": "Consulter les utilisateurs",
+    "users.member.manage": "Gérer les utilisateurs",
+    "users.role.view": "Consulter les rôles",
+    "users.role.manage": "Gérer les rôles",
+    "audit.log.view": "Consulter le journal d'audit",
+    "subscription.subscription.view": "Consulter l'abonnement"
+  },
+  "audit": {
+    "title": "Journal d'audit",
+    "date": "Date",
+    "user": "Utilisateur",
+    "action": "Action",
+    "entity": "Objet",
+    "details": "Détails",
+    "system": "Système"
+  },
+  "subscriptionPage": {
+    "title": "Abonnement",
+    "plan": "Offre",
+    "billing": "Facturation",
+    "status": "Statut",
+    "period": "Période en cours",
+    "periodValue": "du {{start}} au {{end}}",
+    "grace": "Délai de grâce : {{count}} jours",
+    "limits": "Limites",
+    "usage": "Utilisation",
+    "sites": "Sites",
+    "users": "Utilisateurs",
+    "unlimited": "Illimité",
+    "allowed": "Accès autorisés",
+    "renewInfo": "Pour renouveler ou changer d'offre, contactez TechNova."
+  },
+  "errors": {
+    "pageNotFound": "Page introuvable",
+    "forbidden": "Vous n'avez pas accès à cette page.",
+    "generic": "Une erreur est survenue.",
+    "network": "Serveur injoignable. Vérifiez votre connexion."
+  },
+  "validation": {
+    "required": "Champ obligatoire",
+    "invalid": "Valeur invalide",
+    "email": "Adresse email invalide"
+  }
+}
