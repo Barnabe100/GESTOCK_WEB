@@ -36,6 +36,7 @@ class PlanDef:
     sort_order: int
     grace_days: int
     modules: tuple[str, ...]
+    features: tuple[str, ...]
     limits: dict[str, int]
 
 
@@ -116,6 +117,7 @@ def _load_plans(raw: dict[str, Any]) -> dict[str, PlanDef]:
             sort_order=int(data.get("sort_order", 0)),
             grace_days=int(data.get("grace_days", 0)),
             modules=tuple(data.get("modules", ())),
+            features=tuple(data.get("features", ())),
             limits={k: int(v) for k, v in data.get("limits", {}).items()},
         )
         for code, data in raw.get("plans", {}).items()
@@ -170,9 +172,17 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
                 errors.append(f"plan {plan.code} : module inconnu {code}")
             elif code in core:
                 errors.append(f"plan {plan.code} : {code} est un module core (implicite)")
-        for key in plan.limits:
-            if key not in {"max_sites", "max_users"}:
+        for key, value in plan.limits.items():
+            if registry.limit(key) is None:
                 errors.append(f"plan {plan.code} : limite inconnue {key}")
+            elif value < 0:
+                errors.append(f"plan {plan.code} : limite négative {key}")
+        for feature in plan.features:
+            module = registry.module_of_feature(feature)
+            if module is None:
+                errors.append(f"plan {plan.code} : fonctionnalité inconnue {feature}")
+            elif module not in plan.modules and module not in core:
+                errors.append(f"plan {plan.code} : {feature} exige le module {module}")
 
     statuses = {s.value for s in SubscriptionStatus}
     if set(catalog.policies) != statuses:

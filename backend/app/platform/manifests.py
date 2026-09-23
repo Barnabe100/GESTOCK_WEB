@@ -1,6 +1,27 @@
 """Modules du socle plateforme (toujours actifs)."""
 
-from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.platform.access.models import MembershipStatus, TenantMembership
+from app.platform.registry import AccessKind, LimitDef, ModuleManifest, PermissionDef
+from app.platform.tenancy.models import Site
+
+
+def _count_active_sites(db: Session) -> int:
+    return db.scalar(select(func.count()).select_from(Site).where(Site.is_active.is_(True))) or 0
+
+
+def _count_active_members(db: Session) -> int:
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(TenantMembership)
+            .where(TenantMembership.status == MembershipStatus.ACTIVE)
+        )
+        or 0
+    )
+
 
 R, A, B = AccessKind.READ, AccessKind.ADMIN, AccessKind.BILLING
 
@@ -17,6 +38,7 @@ PLATFORM_MODULES: tuple[ModuleManifest, ...] = (
             PermissionDef("organization.module.view", R),
             PermissionDef("organization.module.manage", A),
         ),
+        limits=(LimitDef("max_sites", _count_active_sites),),
     ),
     ModuleManifest(
         code="users",
@@ -27,6 +49,7 @@ PLATFORM_MODULES: tuple[ModuleManifest, ...] = (
             PermissionDef("users.role.view", R),
             PermissionDef("users.role.manage", A),
         ),
+        limits=(LimitDef("max_users", _count_active_members),),
     ),
     ModuleManifest(
         code="audit",

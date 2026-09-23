@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -9,18 +9,11 @@ from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.context import RequestContext
-from app.platform.registry import ModuleRegistry
-from app.platform.subscriptions.service import get_subscription, plan_limit
+from app.platform.registry import ModuleRegistry, get_registry
+from app.platform.subscriptions.plan_policy import PlanPolicy
+from app.platform.subscriptions.service import current_plan
 from app.platform.tenancy.models import Site, TenantModule
 from app.platform.tenancy.schemas import ModuleOut, SiteCreate, SiteUpdate, TenantUpdate
-
-
-def current_plan(db: Session) -> Plan:
-    subscription = get_subscription(db)
-    plan = db.get(Plan, subscription.plan_code) if subscription else None
-    if plan is None:
-        raise BusinessRuleError("Aucun plan actif", code="subscription_missing")
-    return plan
 
 
 class TenantService:
@@ -61,18 +54,7 @@ class SiteService:
         return site
 
     def _check_site_limit(self) -> None:
-        limit = plan_limit(current_plan(self.db), "max_sites")
-        if limit is None:
-            return
-        active = self.db.scalar(
-            select(func.count()).select_from(Site).where(Site.is_active.is_(True))
-        )
-        if (active or 0) >= limit:
-            raise BusinessRuleError(
-                "Nombre maximal de sites atteint pour votre abonnement",
-                code="plan_limit_reached",
-                extra={"limit": "max_sites", "value": limit},
-            )
+        PlanPolicy(self.db, current_plan(self.db), get_registry()).ensure_capacity("max_sites")
 
     def _flush(self) -> None:
         try:

@@ -1,11 +1,14 @@
 """Registre des modules.
 
-Un module se déclare par un ``ModuleManifest`` (code, dépendances, permissions). Le registre est
+Un module se déclare par un ``ModuleManifest`` : code, dépendances, permissions, et ce que les
+plans commerciaux peuvent paramétrer — **limites** (quantités comptées par le module, ex.
+``max_sites``) et **fonctionnalités** optionnelles (ex. ``stock.transfers``). Le registre est
 construit explicitement (pas de découverte automatique) et validé au démarrage : dépendances
-connues, absence de cycle, permissions préfixées par le code du module.
+connues, absence de cycle, codes préfixés par le code du module (permissions, fonctionnalités),
+aucun doublon.
 """
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import lru_cache
@@ -13,6 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
+    from sqlalchemy.orm import Session
 
 
 class AccessKind(StrEnum):
@@ -38,6 +42,15 @@ class PermissionDef:
 
 
 @dataclass(frozen=True)
+class LimitDef:
+    """Quantité plafonnable par un plan. ``counter`` compte l'usage courant du tenant actif
+    (la session est déjà dans le contexte du tenant)."""
+
+    code: str
+    counter: "Callable[[Session], int]" = field(compare=False, hash=False)
+
+
+@dataclass(frozen=True)
 class ModuleManifest:
     code: str
     status: ModuleStatus = ModuleStatus.AVAILABLE
@@ -45,6 +58,9 @@ class ModuleManifest:
     core: bool = False
     depends_on: tuple[str, ...] = ()
     permissions: tuple[PermissionDef, ...] = field(default_factory=tuple)
+    limits: tuple[LimitDef, ...] = field(default_factory=tuple)
+    # Fonctionnalités optionnelles activables par plan (codes préfixés par le module).
+    features: tuple[str, ...] = ()
     # Routeur HTTP du module (modules métier). Monté sous /api/v1/<code> et protégé par
     # require_module(code) : un module inactif pour le tenant répond 403 côté serveur.
     router: "APIRouter | None" = field(default=None, compare=False, hash=False)
@@ -62,6 +78,8 @@ class ModuleRegistry:
                 raise RegistryError(f"module en double : {manifest.code}")
             self._modules[manifest.code] = manifest
         self._permissions: dict[str, tuple[ModuleManifest, PermissionDef]] = {}
+        self._limits: dict[str, tuple[ModuleManifest, LimitDef]] = {}
+        self._features: dict[str, ModuleManifest] = {}
         self._validate()
 
     def _validate(self) -> None:
@@ -75,6 +93,16 @@ class ModuleRegistry:
                 if perm.code in self._permissions:
                     raise RegistryError(f"permission en double : {perm.code}")
                 self._permissions[perm.code] = (manifest, perm)
+            for limit in manifest.limits:
+                if limit.code in self._limits:
+                    raise RegistryError(f"limite en double : {limit.code}")
+                self._limits[limit.code] = (manifest, limit)
+            for feature in manifest.features:
+                if not feature.startswith(f"{manifest.code}."):
+                    raise RegistryError(f"{feature} doit être préfixée par {manifest.code}.")
+                if feature in self._features:
+                    raise RegistryError(f"fonctionnalité en double : {feature}")
+                self._features[feature] = manifest
         self._check_cycles()
 
     def _check_cycles(self) -> None:
@@ -121,6 +149,20 @@ class ModuleRegistry:
             for perm in self._modules[code].permissions:
                 result[perm.code] = perm
         return result
+
+    def limit(self, code: str) -> LimitDef | None:
+        entry = self._limits.get(code)
+        return entry[1] if entry else None
+
+    def limit_codes(self) -> set[str]:
+        return set(self._limits)
+
+    def feature_codes(self) -> set[str]:
+        return set(self._features)
+
+    def module_of_feature(self, code: str) -> str | None:
+        manifest = self._features.get(code)
+        return manifest.code if manifest else None
 
     def resolve_dependencies(self, candidates: Iterable[str]) -> set[str]:
         """Retire itérativement les modules dont une dépendance n'est pas présente."""

@@ -134,6 +134,9 @@ class RequestContext:
     def has_permission(self, code: str) -> bool:
         return code in self.capabilities.permissions
 
+    def has_feature(self, code: str) -> bool:
+        return code in self.capabilities.features
+
 
 def get_tenant_context(
     auth: ActiveUser,
@@ -229,6 +232,22 @@ def require_module(
             ModuleStatus.AVAILABLE
         ):
             raise ForbiddenError("Module non disponible", code="module_unavailable")
+        return ctx
+
+    return dependency
+
+
+def require_feature(code: str) -> Callable[[RequestContext], RequestContext]:
+    """Exige une fonctionnalité optionnelle du plan (ex. ``stock.transfers``)."""
+    registry = get_registry()
+    if registry.module_of_feature(code) is None:
+        raise ValueError(f"fonctionnalité inconnue du registre : {code}")
+
+    def dependency(ctx: TenantContext) -> RequestContext:
+        if code not in ctx.capabilities.features:
+            raise ForbiddenError(
+                "Fonctionnalité non incluse dans votre abonnement", code="feature_unavailable"
+            )
         return ctx
 
     return dependency

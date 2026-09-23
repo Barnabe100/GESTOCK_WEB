@@ -42,6 +42,8 @@ function capabilities(permissions: string[]): Capabilities {
     restricted_permissions: [],
     navigation: ['dashboard', 'restaurant.tables', ...CORE.slice(1)],
     terminology: {},
+    features: [],
+    limits: {},
   };
 }
 

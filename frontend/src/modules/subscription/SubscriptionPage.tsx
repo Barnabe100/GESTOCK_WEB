@@ -21,7 +21,6 @@ export default function SubscriptionPage() {
   }
   const s = subscription.data;
   if (!s) return null;
-  const limit = (key: string) => s.limits[key] ?? t('subscriptionPage.unlimited');
 
   return (
     <>
@@ -42,12 +41,12 @@ export default function SubscriptionPage() {
           <p className="sm-muted">{t('subscriptionPage.grace', { count: s.grace_days })}</p>
         </Card>
         <Card title={t('subscriptionPage.usage')}>
-          <p>
-            {t('subscriptionPage.sites')} : {s.usage.sites} / {limit('max_sites')}
-          </p>
-          <p>
-            {t('subscriptionPage.users')} : {s.usage.users} / {limit('max_users')}
-          </p>
+          {Object.entries(s.limits).map(([code, usage]) => (
+            <p key={code}>
+              {t(`subscriptionPage.limitNames.${code}`, code)} : {usage.used} /{' '}
+              {usage.limit ?? t('subscriptionPage.unlimited')}
+            </p>
+          ))}
         </Card>
       </div>
       <Card title={t('subscriptionPage.allowed')} className="sm-block">

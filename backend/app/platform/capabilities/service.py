@@ -17,6 +17,7 @@ from app.platform.access.models import RolePermission, TenantMembership
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
+from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import allowed_access, effective_status
 from app.platform.tenancy.models import Site, Tenant, TenantModule
 
@@ -33,6 +34,8 @@ class Capabilities:
     restricted_permissions: frozenset[str]
     navigation: tuple[str, ...]
     terminology: dict[str, Any]
+    # Fonctionnalités optionnelles du plan, pour les modules effectifs.
+    features: frozenset[str]
     accessible_site_ids: frozenset[uuid.UUID]
 
 
@@ -129,5 +132,6 @@ class CapabilityService:
             restricted_permissions=frozenset(candidates - permitted),
             navigation=navigation,
             terminology=profile.terminology,
+            features=PlanPolicy(self.session, plan, self.registry).features(modules),
             accessible_site_ids=self.accessible_site_ids(membership),
         )

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import BusinessRuleError
 from app.platform.catalog.models import Plan, SubscriptionAccessPolicy
 from app.platform.subscriptions.models import BillingPeriod, Subscription, SubscriptionStatus
 
@@ -50,6 +51,10 @@ def get_subscription(session: Session) -> Subscription | None:
     return session.scalars(select(Subscription)).one_or_none()
 
 
-def plan_limit(plan: Plan, key: str) -> int | None:
-    value = plan.limits.get(key)
-    return int(value) if value is not None else None
+def current_plan(session: Session) -> Plan:
+    """Plan de l'abonnement du tenant actif."""
+    subscription = get_subscription(session)
+    plan = session.get(Plan, subscription.plan_code) if subscription else None
+    if plan is None:
+        raise BusinessRuleError("Aucun plan actif", code="subscription_missing")
+    return plan

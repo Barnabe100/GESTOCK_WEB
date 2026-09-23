@@ -1,6 +1,6 @@
 # ADR-0010 — Authentification, sessions et tenant actif
 
-- **Statut** : Proposée (choix d'implémentation de la Phase 1, à valider)
+- **Statut** : Acceptée (validée par TechNova le 2026-09-23, avec précision ci-dessous)
 - **Date** : 2026-09-23
 
 ## Contexte
@@ -35,6 +35,14 @@ Un utilisateur peut appartenir à plusieurs tenants ; le tenant actif doit être
 - **Frontend** : jeton d'accès **en mémoire** uniquement ; tenant et site choisis sont des
   préférences d'onglet (`sessionStorage`), sans valeur de sécurité.
 
+## Précision de validation (TechNova, 2026-09-23)
+
+« Une entreprise active par onglet » est une **contrainte d'ergonomie de la V1**, pas une
+limite du modèle : le modèle `User → TenantMembership → Tenant` reste pleinement compatible
+avec un utilisateur membre de plusieurs tenants (déjà le cas : choix et changement
+d'entreprise, jeton lié au tenant choisi). Aucune évolution ne doit restreindre ce modèle à
+un seul tenant par utilisateur.
+
 ## Conséquences
 
 - Un onglet = un tenant ; plusieurs onglets peuvent travailler sur des tenants différents.
@@ -43,3 +51,7 @@ Un utilisateur peut appartenir à plusieurs tenants ; le tenant actif doit être
 - Mobile : le même mécanisme s'appliquera avec un jeton de rafraîchissement transmis dans
   le corps plutôt qu'en cookie (à ajouter à ce moment-là).
 - En production : `SM_JWT_SECRET` obligatoire (≥ 32 caractères), HTTPS obligatoire.
+- **Limitation de débit** : le verrouillage par compte est conservé ; il permet cependant à
+  un tiers de bloquer temporairement un compte. Une limitation de débit **par adresse IP**
+  sur `/api/v1/auth/*` devra être configurée au niveau du **reverse proxy** en production
+  (besoin documenté, non implémenté dans l'application).

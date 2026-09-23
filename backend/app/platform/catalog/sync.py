@@ -58,6 +58,7 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
         plan.sort_order = plan_def.sort_order
         plan.grace_days = plan_def.grace_days
         plan.limits = dict(plan_def.limits)
+        plan.features = list(plan_def.features)
         plan.modules = [PlanModule(module_code=c) for c in plan_def.modules]
         session.add(plan)
         session.flush()

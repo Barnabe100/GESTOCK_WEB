@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.context import DbSession, RegistryDep, TenantContext
 from app.platform.identity.schemas import UserOut
+from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import get_subscription
 from app.platform.tenancy.models import Site, SiteKind
 
@@ -49,6 +50,11 @@ class ModuleInfo(BaseModel):
     core: bool
 
 
+class LimitInfo(BaseModel):
+    limit: int | None
+    used: int
+
+
 class CapabilitiesOut(BaseModel):
     user: UserOut
     tenant: TenantInfo
@@ -63,6 +69,8 @@ class CapabilitiesOut(BaseModel):
     restricted_permissions: list[str]
     navigation: list[str]
     terminology: dict[str, Any]
+    features: list[str]
+    limits: dict[str, LimitInfo]
 
 
 @router.get("/me/capabilities", response_model=CapabilitiesOut)
@@ -106,4 +114,9 @@ def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -
         restricted_permissions=sorted(caps.restricted_permissions),
         navigation=list(caps.navigation),
         terminology=caps.terminology,
+        features=sorted(caps.features),
+        limits={
+            code: LimitInfo(limit=usage.limit, used=usage.used)
+            for code, usage in PlanPolicy(db, plan, registry).snapshot().items()
+        },
     )

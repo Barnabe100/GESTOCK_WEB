@@ -3,14 +3,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import func, select
 
 from app.core.errors import BusinessRuleError
-from app.platform.access.models import MembershipStatus, TenantMembership
-from app.platform.context import DbSession, RequestContext, require_permission
-from app.platform.subscriptions.service import get_subscription
-from app.platform.tenancy.models import Site
-from app.platform.tenancy.service import current_plan
+from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
+from app.platform.subscriptions.plan_policy import PlanPolicy
+from app.platform.subscriptions.service import current_plan, get_subscription
 
 router = APIRouter(tags=["subscription"])
 
@@ -19,9 +16,9 @@ SubscriptionView = Annotated[
 ]
 
 
-class UsageOut(BaseModel):
-    sites: int
-    users: int
+class LimitOut(BaseModel):
+    limit: int | None
+    used: int
 
 
 class SubscriptionOut(BaseModel):
@@ -34,23 +31,20 @@ class SubscriptionOut(BaseModel):
     current_period_start: datetime
     current_period_end: datetime
     grace_days: int
-    limits: dict[str, int]
+    limits: dict[str, LimitOut]
+    features: list[str]
     allowed_access: list[str]
-    usage: UsageOut
 
 
 @router.get("/subscription", response_model=SubscriptionOut)
-def get_subscription_details(ctx: SubscriptionView, db: DbSession) -> SubscriptionOut:
+def get_subscription_details(
+    ctx: SubscriptionView, db: DbSession, registry: RegistryDep
+) -> SubscriptionOut:
     subscription = get_subscription(db)
     if subscription is None:
         raise BusinessRuleError("Aucun abonnement", code="subscription_missing")
     plan = current_plan(db)
-    sites = db.scalar(select(func.count()).select_from(Site).where(Site.is_active.is_(True)))
-    users = db.scalar(
-        select(func.count())
-        .select_from(TenantMembership)
-        .where(TenantMembership.status == MembershipStatus.ACTIVE)
-    )
+    policy = PlanPolicy(db, plan, registry)
     return SubscriptionOut(
         plan_code=plan.code,
         plan_name=plan.name,
@@ -61,7 +55,10 @@ def get_subscription_details(ctx: SubscriptionView, db: DbSession) -> Subscripti
         current_period_start=subscription.current_period_start,
         current_period_end=subscription.current_period_end,
         grace_days=plan.grace_days,
-        limits={k: int(v) for k, v in plan.limits.items()},
+        limits={
+            code: LimitOut(limit=usage.limit, used=usage.used)
+            for code, usage in policy.snapshot().items()
+        },
+        features=sorted(ctx.capabilities.features),
         allowed_access=sorted(ctx.capabilities.allowed_access),
-        usage=UsageOut(sites=sites or 0, users=users or 0),
     )

@@ -16,7 +16,8 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0007](0007-utilisateurs-memberships-mot-de-passe-provisoire.md) | Utilisateurs multi-tenants, TenantMembership, mot de passe provisoire | Acceptée |
 | [0008](0008-sqlalchemy-synchrone.md) | SQLAlchemy 2 en mode synchrone | Acceptée |
 | [0009](0009-i18n-et-terminologie.md) | Internationalisation (react-i18next) et terminologie par profil | Acceptée |
-| [0010](0010-authentification-et-tenant-actif.md) | Authentification, sessions et tenant actif | Proposée |
-| [0011](0011-politique-abonnement.md) | Plans, statuts d'abonnement et politique d'accès | Proposée |
+| [0010](0010-authentification-et-tenant-actif.md) | Authentification, sessions et tenant actif | Acceptée |
+| [0011](0011-politique-abonnement.md) | Plans, statuts d'abonnement et politique d'accès | Acceptée |
+| [0012](0012-politiques-de-plan.md) | Plan : limites, modules, fonctionnalités, politiques | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

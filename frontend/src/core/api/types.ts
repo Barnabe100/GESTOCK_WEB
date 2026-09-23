@@ -60,4 +60,13 @@ export interface Capabilities {
   restricted_permissions: string[];
   navigation: string[];
   terminology: Record<string, Record<string, unknown>>;
+  /** Fonctionnalités optionnelles du plan (modules effectifs). */
+  features: string[];
+  /** Limites du plan : `limit` nul = illimité. */
+  limits: Record<string, LimitUsage>;
+}
+
+export interface LimitUsage {
+  limit: number | null;
+  used: number;
 }

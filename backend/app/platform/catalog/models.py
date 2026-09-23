@@ -45,8 +45,11 @@ class Plan(TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # Limites : {"max_sites": 1, "max_users": 5} ; absent ou null = illimité.
+    # Limites : {"max_sites": 1, "max_users": 5} ; absente = illimitée. Les codes sont déclarés
+    # par les modules (LimitDef) ; voir PlanPolicy.
     limits: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    # Fonctionnalités optionnelles incluses (codes déclarés par les modules).
+    features: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     # Jours de grâce après la fin de période avant l'état « expiré ».
     grace_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 

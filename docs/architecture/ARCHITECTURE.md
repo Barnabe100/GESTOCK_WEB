@@ -248,8 +248,12 @@ Aucune modification du Core ni de conditions dispersées.
 
 - Offres : **STANDARD** et **ENTREPRISE**, facturation **mensuelle** ou **annuelle**.
   Pas de licence perpétuelle.
-- Un plan définit les **modules autorisés**, des **limites** (`max_sites`, `max_users`)
-  et un **délai de grâce** — fichier `plans.toml` (valeurs **provisoires**, voir §14).
+- Structure ([ADR-0012](../adr/0012-politiques-de-plan.md)) : **Plan → limites → modules →
+  fonctionnalités → politiques**, entièrement en données (`plans.toml`). Les modules
+  déclarent les limites qu'ils comptent (`LimitDef`) et leurs fonctionnalités optionnelles ;
+  `PlanPolicy` est le seul point d'application (`ensure_capacity`, `require_feature`).
+- Valeurs validées : STANDARD = 1 site, 5 utilisateurs, sans `restaurant.qr` ;
+  ENTREPRISE = illimité.
 - L'abonnement a un statut (`trial`, `active`, `past_due`, `expired`, `suspended`,
   `cancelled`) ; le statut effectif est calculé à la lecture.
 - Une **politique centrale** (`subscription_policies.toml`) indique, par statut, les
@@ -260,8 +264,8 @@ Aucune modification du Core ni de conditions dispersées.
 
 Distincts des modules : bascules fines (ex. `pos.allow_partial_payment`), portées
 par le profil (valeur par défaut), le plan (autorisé ou non) et le tenant
-(paramètre). Lus via le même service de capacités. **Non implémentés en Phase 1** (aucun
-besoin concret encore) : ils arriveront avec le premier module qui en a besoin.
+(paramètre). Le mécanisme « fonctionnalité de plan » existe (déclaration dans le manifeste,
+`features` du plan, `require_feature`) ; aucune fonctionnalité n'est encore déclarée.
 
 ### 5.7 Workflows
 
@@ -301,6 +305,8 @@ Une transition invalide est refusée par le backend, quel que soit le client.
   de table signé, périmètre minimal en lecture + création de commande, limitation de débit.
 - **Validation** : toute entrée validée par Pydantic ; erreurs au format
   *Problem Details* (RFC 9457).
+- **Limitation de débit (production)** : à configurer au niveau du reverse proxy, par
+  adresse IP, sur `/api/v1/auth/*` (en complément du verrouillage par compte).
 
 ## 7. Architecture frontend
 
@@ -479,6 +485,8 @@ travail : une requête = une transaction, commit à la fin si succès).
   prouvant qu'un utilisateur du tenant B ne peut ni lire ni modifier les données du tenant A.
 - Tests d'intégration sur un **vrai PostgreSQL** (RLS, contraintes, verrous), l'API
   s'exécutant sous le rôle applicatif.
+- **Taille du bundle frontend** : surveillée à chaque build (paquet principal ≈ 168 kB gzip
+  en Phase 1) ; chaque module métier est chargé à la demande (lazy loading) pour la maîtriser.
 - **CI GitHub Actions** (`.github/workflows/ci.yml`) : backend (ruff, mypy strict,
   validation du catalogue, pytest avec PostgreSQL 16, `alembic check`, réversibilité des
   migrations), frontend (eslint, prettier, tsc, vitest, build), validation Compose.
@@ -502,14 +510,10 @@ Tranchées le 2026-09-23 : PrimeReact 10 MIT, multi-tenant RLS, TenantMembership
 CLI de provisioning, mot de passe provisoire, SQLAlchemy synchrone, react-i18next, XOF par
 défaut, français d'abord (voir ADR-0005 à 0009).
 
+Tranchées le 2026-09-23 (validation Phase 1) : ADR-0010, ADR-0011, valeurs des plans,
+structure des plans (ADR-0012).
+
 Restent ouvertes :
 
-1. **Contenu définitif des plans** STANDARD / ENTREPRISE : modules inclus, limites
-   (actuellement provisoires : STANDARD = 1 site, 5 utilisateurs, sans `restaurant.qr` ;
-   ENTREPRISE = illimité), délais de grâce (7 / 15 jours).
-2. **Règles de blocage après expiration** : la politique livrée (expiré = consultation,
-   export, abonnement) convient-elle ? ([ADR-0011](../adr/0011-politique-abonnement.md))
-3. **Authentification** : durées (jeton 15 min, session 30 jours), verrouillage (5 échecs,
-   15 min), longueur minimale du mot de passe (8) — [ADR-0010](../adr/0010-authentification-et-tenant-actif.md).
-4. **Hébergement cible** de la production.
-5. **Accès à `GESTOK_ENTREP`** en lecture pour les phases métier (règles détaillées).
+1. **Hébergement cible** de la production (et reverse proxy : TLS, limitation de débit).
+2. Questions de la Phase 2 : voir [`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md).

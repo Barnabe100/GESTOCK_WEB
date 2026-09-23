@@ -221,11 +221,13 @@
     "grace": "Délai de grâce : {{count}} jours",
     "limits": "Limites",
     "usage": "Utilisation",
-    "sites": "Sites",
-    "users": "Utilisateurs",
     "unlimited": "Illimité",
     "allowed": "Accès autorisés",
-    "renewInfo": "Pour renouveler ou changer d'offre, contactez TechNova."
+    "renewInfo": "Pour renouveler ou changer d'offre, contactez TechNova.",
+    "limitNames": {
+      "max_sites": "Sites",
+      "max_users": "Utilisateurs"
+    }
   },
   "errors": {
     "pageNotFound": "Page introuvable",

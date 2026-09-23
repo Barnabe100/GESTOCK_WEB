@@ -1,6 +1,6 @@
 # ADR-0011 — Plans, statuts d'abonnement et politique d'accès
 
-- **Statut** : Proposée (mise en œuvre des décisions TechNova du 2026-09-23, à valider)
+- **Statut** : Acceptée (validée par TechNova le 2026-09-23)
 - **Date** : 2026-09-23
 
 ## Contexte
@@ -30,6 +30,17 @@ restent possibles ; les règles de blocage sont centralisées et configurables.
   `restricted_permissions` ; une action bloquée répond `403 subscription_restricted`.
 - Aucune ligne n'est supprimée par un changement de statut ; le rôle SQL applicatif n'a
   d'ailleurs pas le droit `DELETE` sur les tenants ni les abonnements.
+
+## Règles validées (TechNova, 2026-09-23)
+
+| Statut | Consultation | Export | Renouvellement | Opérations métier / accès normal |
+|---|---|---|---|---|
+| Expiré | ✅ | ✅ | ✅ | ❌ bloquées |
+| Suspendu | ❌ | ❌ | ✅ | ❌ bloqués |
+
+Aucune donnée n'est supprimée automatiquement à l'expiration ou à la suspension. La
+politique reste centralisée (`subscription_policies.toml`) et configurable. La structure des
+plans (limites, modules, fonctionnalités) est précisée par l'ADR-0012.
 
 ## Conséquences
 

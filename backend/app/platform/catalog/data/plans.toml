@@ -1,8 +1,13 @@
 # Plans commerciaux (offres Web : facturation mensuelle ou annuelle, pas de licence perpétuelle).
 #
-# ⚠ Modules inclus et limites : valeurs PROVISOIRES, à arrêter par TechNova.
-# Ce fichier est la source de vérité, synchronisée en base par `stockmanager catalog sync`.
-# Les modules « core » (dashboard, organization, users, audit, subscription) sont toujours inclus.
+# Plan → limites → modules → fonctionnalités → politiques (ADR-0012).
+#   - modules        : modules inclus (les modules « core » le sont toujours) ;
+#   - features       : fonctionnalités optionnelles déclarées par les modules ;
+#   - [limits]       : plafonds ; une limite absente est illimitée. Codes déclarés par les
+#                      modules (max_sites : organization, max_users : users) ;
+#   - grace_days     : délai de grâce avant expiration ; politiques : subscription_policies.toml.
+# Valeurs validées par TechNova le 2026-09-23. Source de vérité : ce fichier, synchronisé en
+# base par `stockmanager catalog sync`.
 
 [plans.STANDARD]
 name = "Standard"
@@ -15,6 +20,7 @@ modules = [
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
   "restaurant.recipes",
 ]
+features = []
 
 [plans.STANDARD.limits]
 max_sites = 1
@@ -31,6 +37,7 @@ modules = [
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
   "restaurant.recipes", "restaurant.qr",
 ]
+features = []
 
 # Aucune limite déclarée = illimité.
 [plans.ENTREPRISE.limits]

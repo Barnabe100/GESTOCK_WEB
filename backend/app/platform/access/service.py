@@ -36,9 +36,9 @@ from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.registry import ModuleRegistry
-from app.platform.subscriptions.service import plan_limit
+from app.platform.subscriptions.plan_policy import PlanPolicy
+from app.platform.subscriptions.service import current_plan
 from app.platform.tenancy.models import Site
-from app.platform.tenancy.service import current_plan
 
 
 def member_out(membership: TenantMembership) -> MemberOut:
@@ -196,20 +196,7 @@ class MemberService(_AccessBase):
         return membership
 
     def _check_user_limit(self) -> None:
-        limit = plan_limit(current_plan(self.db), "max_users")
-        if limit is None:
-            return
-        active = self.db.scalar(
-            select(func.count())
-            .select_from(TenantMembership)
-            .where(TenantMembership.status == MembershipStatus.ACTIVE)
-        )
-        if (active or 0) >= limit:
-            raise BusinessRuleError(
-                "Nombre maximal d'utilisateurs atteint pour votre abonnement",
-                code="plan_limit_reached",
-                extra={"limit": "max_users", "value": limit},
-            )
+        PlanPolicy(self.db, current_plan(self.db), self.registry).ensure_capacity("max_users")
 
     def _validate_access(
         self, roles: list[RoleAssignment], site_ids: list[uuid.UUID], all_sites: bool

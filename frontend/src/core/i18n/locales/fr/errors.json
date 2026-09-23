@@ -38,5 +38,6 @@
   "module_has_dependents": "D'autres modules activés dépendent de celui-ci.",
   "validation_error": "Certaines données sont invalides.",
   "network_error": "Serveur injoignable. Vérifiez votre connexion.",
-  "unknown": "Une erreur est survenue."
+  "unknown": "Une erreur est survenue.",
+  "feature_unavailable": "Cette fonctionnalité n'est pas incluse dans votre abonnement."
 }
