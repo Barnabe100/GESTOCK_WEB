@@ -1,0 +1,9 @@
+:root {
+  font-family: var(--font-family, system-ui, sans-serif);
+}
+
+body {
+  margin: 0;
+  background: var(--surface-ground, #f8f9fa);
+  color: var(--text-color, #1f2937);
+}

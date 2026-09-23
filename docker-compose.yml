@@ -1,0 +1,55 @@
+# Environnement de développement local StockManager Web.
+# Usage : docker compose up --build
+name: stockmanager
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: stockmanager
+      POSTGRES_USER: stockmanager
+      POSTGRES_PASSWORD: stockmanager
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockmanager -d stockmanager"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      SM_ENVIRONMENT: development
+      SM_DEBUG: "true"
+      SM_DATABASE_URL: postgresql+psycopg://stockmanager:stockmanager@db:5432/stockmanager
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/tests:/app/tests
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+    depends_on:
+      - backend
+
+volumes:
+  db-data:
