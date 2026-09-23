@@ -1,6 +1,6 @@
 # ADR-0005 — Versions frontend : PrimeReact 10 (MIT), TypeScript 6.0
 
-- **Statut** : Proposée — **décision de licence à confirmer par TechNova**
+- **Statut** : Acceptée (validée le 2026-09-23 : PrimeReact 10.9 MIT conservé)
 - **Date** : 2026-09-23
 
 ## Contexte

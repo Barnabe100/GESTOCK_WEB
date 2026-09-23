@@ -209,3 +209,14 @@ def test_member_update_changes_roles(provision: Any, api_for: Any) -> None:
     assert [r["role_id"] for r in updated["roles"]] == [roles["administrator"]]
     actions = [i["action"] for i in owner.get("/audit-logs").json()["items"]]
     assert "member.updated" in actions and "member.created" in actions
+
+
+def test_tenant_update_validates_timezone(provision: Any, api_for: Any) -> None:
+    provision("alpha")
+    owner = api_for("owner@alpha.example.com")
+    assert owner.patch("/tenant", json={"timezone": "Mars/Olympus"}).status_code == 422
+    ok = owner.patch("/tenant", json={"name": "Alpha SARL", "timezone": "Africa/Abidjan"})
+    assert ok.status_code == 200
+    assert ok.json()["timezone"] == "Africa/Abidjan"
+    actions = [i["action"] for i in owner.get("/audit-logs").json()["items"]]
+    assert "tenant.updated" in actions

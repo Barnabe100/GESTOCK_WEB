@@ -7,13 +7,17 @@ boutique…) et des **modules spécialisés** : l'interface et les fonctionnalit
 s'adaptent au secteur, à l'abonnement, aux modules activés et aux droits de chaque
 utilisateur.
 
-> **État actuel : phase 0 — fondations.** Le dépôt contient la structure, des
-> squelettes techniques exécutables et la documentation d'architecture.
-> **Aucune fonctionnalité métier n'est implémentée.**
+> **État actuel : phase 1 — socle plateforme.** Multi-tenant (RLS PostgreSQL), multi-sites,
+> utilisateurs multi-entreprises, authentification, rôles et permissions, profils d'activité,
+> plans et abonnements, registre de modules, capacités et interface dynamique, audit,
+> provisioning par CLI, CI. **Aucun module métier (stock, ventes, caisse, restaurant…)
+> n'est encore implémenté.**
 
 ## Documentation
 
-- [Architecture initiale](docs/architecture/ARCHITECTURE.md)
+- [Architecture](docs/architecture/ARCHITECTURE.md)
+- [Modèle de données](docs/architecture/DATA_MODEL.md)
+- [API REST](docs/architecture/API.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)
 
@@ -23,7 +27,8 @@ utilisateur.
 GESTOCK_WEB/
 ├── backend/             # API FastAPI (Python 3.11+, uv)
 ├── frontend/            # SPA React + TypeScript (Vite)
-├── docker/              # Dockerfiles
+├── .github/workflows/   # Intégration continue
+├── docker/              # Dockerfiles, initialisation PostgreSQL
 ├── docs/
 │   ├── architecture/    # Architecture de référence
 │   └── adr/             # Décisions d'architecture
@@ -36,8 +41,8 @@ GESTOCK_WEB/
 
 | Couche | Technologies |
 |---|---|
-| Frontend | React 19, TypeScript, Vite, React Router, TanStack Query, React Hook Form, Zod, PrimeReact |
-| Backend | Python, FastAPI, Pydantic, SQLAlchemy 2, Alembic |
+| Frontend | React 19, TypeScript, Vite, React Router, TanStack Query, React Hook Form, Zod, PrimeReact 10, react-i18next |
+| Backend | Python, FastAPI, Pydantic, SQLAlchemy 2 (synchrone), Alembic, Argon2, JWT |
 | Base de données | PostgreSQL 16 |
 | API | REST (`/api/v1`, OpenAPI) |
 | Infrastructure | Docker, Docker Compose |
@@ -47,8 +52,16 @@ GESTOCK_WEB/
 ### Avec Docker
 
 ```bash
-docker compose up --build
+docker compose up --build        # base, migrations + catalogue, API, frontend
+
+# Créer une première entreprise (le mot de passe provisoire est demandé)
+docker compose run --rm -it backend stockmanager create-tenant \
+  --name "Maquis Le Baobab" --slug baobab --profile restaurant --plan STANDARD \
+  --owner-email gerant@example.com --owner-name "Awa Traoré"
 ```
+
+Profils disponibles : `alimentation`, `commerce_general`, `quincaillerie`, `restaurant`.
+Plans : `STANDARD`, `ENTREPRISE` (`--billing monthly|annual`, `--trial-days N`).
 
 - Frontend : http://localhost:5173
 - API : http://localhost:8000/api/v1/health
@@ -56,12 +69,18 @@ docker compose up --build
 
 ### Sans Docker
 
-Prérequis : Python ≥ 3.11 avec [uv](https://docs.astral.sh/uv/), Node.js ≥ 22.
+Prérequis : Python ≥ 3.11 avec [uv](https://docs.astral.sh/uv/), Node.js ≥ 22,
+PostgreSQL ≥ 15 avec deux rôles : propriétaire `stockmanager` et applicatif
+`stockmanager_app` (sans `BYPASSRLS`) — voir `docker/postgres/init/01-app-role.sh`.
 
 ```bash
 # Backend
 cd backend
 uv sync
+uv run alembic upgrade head
+uv run stockmanager catalog sync
+uv run stockmanager create-tenant --name "…" --slug … --profile alimentation \
+    --plan STANDARD --owner-email … --owner-name "…"
 uv run uvicorn app.main:app --reload --port 8000
 
 # Frontend (autre terminal)
@@ -75,7 +94,7 @@ Le serveur Vite relaie `/api` vers `http://localhost:8000`.
 ## Contrôles qualité
 
 ```bash
-# Backend
+# Backend (PostgreSQL requis pour les tests : voir backend/README.md)
 cd backend && uv run pytest && uv run ruff check . && uv run ruff format --check . && uv run mypy app
 
 # Frontend

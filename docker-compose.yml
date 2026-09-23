@@ -1,6 +1,19 @@
 # Environnement de développement local StockManager Web.
 # Usage : docker compose up --build
+#
+# Rôles PostgreSQL :
+#   - stockmanager      : propriétaire du schéma (migrations, synchronisation du catalogue)
+#   - stockmanager_app  : rôle de l'API, sans BYPASSRLS (créé par docker/postgres/init)
 name: stockmanager
+
+x-backend-env: &backend-env
+  SM_ENVIRONMENT: development
+  SM_DEBUG: "true"
+  SM_DATABASE_URL: postgresql+psycopg://stockmanager_app:stockmanager_app@db:5432/stockmanager
+  SM_MIGRATION_DATABASE_URL: postgresql+psycopg://stockmanager:stockmanager@db:5432/stockmanager
+  SM_DB_APP_ROLE: stockmanager_app
+  SM_JWT_SECRET: dev-only-change-me-in-production-0123456789abcdef
+  SM_REFRESH_COOKIE_SECURE: "false"
 
 services:
   db:
@@ -9,33 +22,45 @@ services:
       POSTGRES_DB: stockmanager
       POSTGRES_USER: stockmanager
       POSTGRES_PASSWORD: stockmanager
+      POSTGRES_APP_USER: stockmanager_app
+      POSTGRES_APP_PASSWORD: stockmanager_app
     ports:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U stockmanager -d stockmanager"]
       interval: 5s
       timeout: 3s
       retries: 10
 
+  # Migrations + catalogue (profils, plans, politiques), puis arrêt.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    command: ["sh", "-c", "alembic upgrade head && stockmanager catalog sync"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: .
       dockerfile: docker/backend/Dockerfile
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-    environment:
-      SM_ENVIRONMENT: development
-      SM_DEBUG: "true"
-      SM_DATABASE_URL: postgresql+psycopg://stockmanager:stockmanager@db:5432/stockmanager
+    environment: *backend-env
     ports:
       - "8000:8000"
     volumes:
       - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
       - ./backend/tests:/app/tests
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   frontend:
     build:

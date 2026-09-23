@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.platform.tenancy.models import SiteKind
 
@@ -21,6 +22,16 @@ class TenantOut(BaseModel):
 class TenantUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                raise ValueError("fuseau horaire inconnu (IANA attendu)") from exc
+        return value
 
 
 class SiteOut(BaseModel):

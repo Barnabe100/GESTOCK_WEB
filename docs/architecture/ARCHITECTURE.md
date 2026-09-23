@@ -1,8 +1,9 @@
-# StockManager Web — Architecture initiale
+# StockManager Web — Architecture
 
-> **Statut : PROPOSITION — en attente de validation.**
+> **Statut : architecture validée (Phase 0) — socle plateforme implémenté (Phase 1).**
 > Éditeur : TechNova · Produit : StockManager · Projet : GESTOCK_WEB
-> Les décisions structurantes sont détaillées dans [`docs/adr/`](../adr/README.md).
+> Décisions : [`docs/adr/`](../adr/README.md) · Modèle de données : [`DATA_MODEL.md`](DATA_MODEL.md)
+> · API : [`API.md`](API.md)
 
 ---
 
@@ -85,10 +86,22 @@ Plateforme (TechNova)
      systématiquement par `tenant_id` ; aucune requête tenant-scoped ne s'écrit à la main
      sans passer par ce mécanisme.
   3. **Row-Level Security PostgreSQL** : chaque transaction exécute
-     `SET LOCAL app.tenant_id = '<uuid>'` ; les politiques RLS rejettent toute ligne
+     `set_config('app.tenant_id', …, true)` ; les politiques RLS rejettent toute ligne
      d'un autre tenant. Le rôle SQL applicatif n'est ni propriétaire des tables ni
      `BYPASSRLS` (les migrations utilisent un rôle distinct).
 - Les identifiants de ressources sont des UUID (non énumérables).
+
+**Mise en œuvre (Phase 1)** — détail dans [`DATA_MODEL.md`](DATA_MODEL.md) :
+
+| Couche | Mécanisme |
+|---|---|
+| Contexte | `app/platform/context.py` : le `tenant_id` vient du jeton ; `set_db_context()` le pose sur la session ; un évènement `after_begin` l'applique à **chaque** transaction (`app/core/db.py`). |
+| ORM | Marqueur `TenantFiltered` : un hook `do_orm_execute` ajoute `WHERE tenant_id = <tenant actif>` à toute requête ORM sur ces entités. |
+| Base | RLS `ENABLE` + `FORCE` sur 10 tables ; fonctions `app_current_tenant_id()` / `app_current_user_id()` ; lecture de ses propres appartenances **uniquement sans tenant actif** (écran de choix). |
+| Droits | Rôle `stockmanager_app` : `SELECT` sur le catalogue, pas de `DELETE` sur tenants/abonnements, audit en `SELECT, INSERT` seulement. |
+
+Chaque couche est testée isolément (tests SQL directs sous le rôle applicatif, test du
+filtre ORM avec une connexion qui ignore la RLS, tests API inter-tenants).
 
 ### 4.3 Chaîne de contrôle d'une requête
 
@@ -100,15 +113,21 @@ User ──► Tenant ──► Site ──► Permission ──► Resource
  │ actif   │ + actif  │ vérifié   │ sur ce site  │ site autorisé
 ```
 
-Chaque étape est une **dépendance FastAPI** composable : `current_user` →
-`current_tenant` → `current_site` → `require_permission("stock.movement.create")`.
+Chaque étape est une **dépendance FastAPI** composable (`app/platform/context.py`) :
+`CurrentUser` (jeton, session non révoquée, compte actif) → `ActiveUser` (mot de passe à
+jour) → `TenantContext` (tenant du jeton, appartenance active, tenant actif, site
+`X-Site-Id` accessible, capacités résolues) → `require_permission("…")` /
+`require_module("…")`.
 Un échec à n'importe quelle étape interrompt la requête (401/403/404).
 Une ressource d'un autre tenant répond **404** (on ne révèle pas son existence).
 
 ### 4.4 Sites
 
-- `user_site_access` détermine sur quels sites un utilisateur peut agir.
-- Les rôles peuvent être attribués **globalement au tenant** ou **limités à un site**.
+- Un utilisateur (identité globale) appartient à un ou plusieurs tenants via
+  `tenant_memberships` ([ADR-0007](../adr/0007-utilisateurs-memberships-mot-de-passe-provisoire.md)).
+- `all_sites` ou `membership_sites` déterminent sur quels sites il peut agir.
+- Les rôles (`membership_roles`) sont attribués **globalement au tenant** (`site_id` nul)
+  ou **limités à un site** (appliqués seulement quand ce site est actif).
 - Le site actif est transmis par l'en-tête `X-Site-Id` et **revalidé côté serveur**.
 - La **consolidation** (rapports multi-sites) exige une permission dédiée
   (ex. `reports.consolidated.view`).
@@ -140,7 +159,10 @@ permissions_effectives(user, site) = permissions des rôles de l'utilisateur (te
 ```
 
 Ce calcul est fait **par le backend uniquement**, dans un service unique
-(`platform/capabilities`). Il sert à deux choses :
+(`app/platform/capabilities/service.py`). Les modules **core** (`dashboard`, `organization`,
+`users`, `audit`, `subscription`) sont toujours actifs. Les permissions sont ensuite
+filtrées par la politique d'abonnement ([ADR-0011](../adr/0011-politique-abonnement.md)) ;
+celles qui sont bloquées sont exposées dans `restricted_permissions`. Il sert à deux choses :
 
 1. **Application** : chaque routeur de module est protégé par `require_module("pos")`
    et chaque endpoint par `require_permission(...)`. Un module inactif répond 403/404
@@ -150,12 +172,14 @@ Ce calcul est fait **par le backend uniquement**, dans un service unique
 ```json
 {
   "tenant": { "id": "…", "name": "Entreprise ABC" },
-  "profile": { "code": "restaurant", "terminology": { "catalog.item": "Produit" } },
+  "profile": { "code": "restaurant", "name": "Restaurant / Maquis / Café / Bar / Fast-food" },
   "plan": { "code": "ENTREPRISE", "billing_period": "monthly", "status": "active" },
   "site": { "id": "…", "name": "Maquis Ouaga 2000" },
   "modules": ["dashboard", "catalog", "stock", "pos", "restaurant.tables", "restaurant.kitchen"],
-  "permissions": ["pos.sale.create", "restaurant.order.create", "…"],
-  "navigation": ["dashboard", "restaurant.tables", "restaurant.orders", "restaurant.kitchen", "pos", "…"]
+  "permissions": ["organization.site.view", "users.member.manage", "…"],
+  "restricted_permissions": [],
+  "navigation": ["dashboard", "restaurant.tables", "restaurant.orders", "restaurant.kitchen", "pos", "…"],
+  "terminology": { "fr": { "catalog": { "item": "Produit", "items": "Produits" } } }
 }
 ```
 
@@ -165,20 +189,24 @@ Chaque module déclare un manifeste ; un **registre** les collecte au démarrage
 (pas de découverte « magique » : liste explicite).
 
 ```python
-# app/modules/stock/manifest.py  (illustratif — non implémenté)
-MANIFEST = ModuleManifest(
+# Forme réelle (app/platform/registry.py). Exemple pour un futur module :
+ModuleManifest(
     code="stock",
-    name="Stock",
-    version="1.0",
-    depends_on=["catalog"],
-    permissions=[
-        Permission("stock.level.view", "Consulter les niveaux de stock"),
-        Permission("stock.movement.create", "Saisir des entrées / sorties"),
-        Permission("stock.transfer.create", "Créer un transfert inter-sites"),
-    ],
-    router=router,              # monté sous /api/v1/stock, protégé par require_module("stock")
+    depends_on=("catalog",),
+    permissions=(
+        PermissionDef("stock.level.view", AccessKind.READ),
+        PermissionDef("stock.movement.create", AccessKind.WRITE),
+        PermissionDef("stock.report.export", AccessKind.EXPORT),
+    ),
+    router=router,  # monté sous /api/v1/stock, protégé automatiquement par require_module
 )
 ```
+
+Le registre (`get_registry()`) regroupe les modules du socle (`app/platform/manifests.py`)
+et les modules métier (`app/modules/`). Il est validé au démarrage : dépendances connues,
+absence de cycle, permissions préfixées par le code du module. En Phase 1, les modules
+métier sont **déclarés sans implémentation** (statut `planned`, `app/modules/planned.py`)
+pour que profils et plans puissent les référencer ; ils ne sont ni routés ni affichés.
 
 Règles de dépendance :
 
@@ -189,33 +217,29 @@ Règles de dépendance :
 
 ### 5.4 Business Profiles
 
-Les profils sont des **données** (fichiers de configuration versionnés puis
-enregistrés en base), pas du code :
+Les profils sont des **données** : un fichier TOML par profil dans
+`backend/app/platform/catalog/data/profiles/`, validé contre le registre puis synchronisé en
+base (`stockmanager catalog sync`). Profils livrés : `alimentation`, `commerce_general`,
+`quincaillerie`, `restaurant`.
 
-```yaml
-# illustratif
-code: restaurant
-label: Restaurant / Maquis / Café / Bar / Fast-food
-modules: [dashboard, catalog, stock, customers, sales, payments, cash_register, pos,
-          reports, restaurant.menu, restaurant.tables, restaurant.orders,
-          restaurant.kitchen, restaurant.qr, restaurant.recipes]
-navigation: [dashboard, restaurant.tables, restaurant.orders, restaurant.kitchen,
-             pos, restaurant.menu, catalog, stock, restaurant.recipes, customers, reports]
-terminology:
-  catalog.item: Produit
-defaults:
-  pos.mode: table_service
+```toml
+# backend/app/platform/catalog/data/profiles/restaurant.toml (extrait)
+code = "restaurant"
+name = "Restaurant / Maquis / Café / Bar / Fast-food"
+modules = ["catalog", "stock", "sales", "payments", "cash_register", "pos",
+           "restaurant.menu", "restaurant.tables", "restaurant.orders",
+           "restaurant.kitchen", "restaurant.recipes", "..."]
+optional_modules = ["restaurant.qr"]   # proposé, désactivé à la création
+navigation = ["dashboard", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
+              "pos", "restaurant.menu", "..."]
+
+[terminology.fr.catalog]
+item = "Produit"
+items = "Produits"
 ```
 
-```yaml
-code: quincaillerie
-modules: [dashboard, catalog, stock, sales, pos, cash_register, customers,
-          suppliers, inventory_count, reports]
-navigation: [dashboard, catalog, stock, sales, pos, customers, suppliers,
-             inventory_count, reports]
-terminology:
-  catalog.item: Article
-```
+La validation refuse un module inconnu, une dépendance non proposée ou une entrée de
+navigation hors profil.
 
 **Ajouter un secteur** = ajouter un profil (et, si besoin, un nouveau module).
 Aucune modification du Core ni de conditions dispersées.
@@ -224,16 +248,20 @@ Aucune modification du Core ni de conditions dispersées.
 
 - Offres : **STANDARD** et **ENTREPRISE**, facturation **mensuelle** ou **annuelle**.
   Pas de licence perpétuelle.
-- Un plan définit les **modules autorisés** et des **limites** (nombre de sites,
-  d'utilisateurs, etc.). Contenu exact : **à définir par TechNova** (voir §14).
-- L'abonnement a un statut (`trial`, `active`, `past_due`, `suspended`, `cancelled`)
-  pris en compte par la résolution des capacités.
+- Un plan définit les **modules autorisés**, des **limites** (`max_sites`, `max_users`)
+  et un **délai de grâce** — fichier `plans.toml` (valeurs **provisoires**, voir §14).
+- L'abonnement a un statut (`trial`, `active`, `past_due`, `expired`, `suspended`,
+  `cancelled`) ; le statut effectif est calculé à la lecture.
+- Une **politique centrale** (`subscription_policies.toml`) indique, par statut, les
+  natures de permissions autorisées (`read`, `write`, `export`, `admin`, `billing`).
+  Voir [ADR-0011](../adr/0011-politique-abonnement.md).
 
 ### 5.6 Feature flags
 
 Distincts des modules : bascules fines (ex. `pos.allow_partial_payment`), portées
 par le profil (valeur par défaut), le plan (autorisé ou non) et le tenant
-(paramètre). Lus via le même service de capacités.
+(paramètre). Lus via le même service de capacités. **Non implémentés en Phase 1** (aucun
+besoin concret encore) : ils arriveront avec le premier module qui en a besoin.
 
 ### 5.7 Workflows
 
@@ -249,13 +277,21 @@ Une transition invalide est refusée par le backend, quel que soit le client.
 
 ## 6. Sécurité
 
-- **Authentification** : jeton d'accès JWT court (≈15 min) + jeton de rafraîchissement
-  opaque, stocké haché en base, rotatif et révocable (cookie `HttpOnly; Secure;
-  SameSite=Strict` pour le web, corps de réponse pour le mobile).
-  Mots de passe hachés en **Argon2id**.
+- **Authentification** ([ADR-0010](../adr/0010-authentification-et-tenant-actif.md)) :
+  jeton d'accès JWT court (15 min) **lié au tenant actif** + jeton de rafraîchissement
+  opaque, stocké haché, rotatif (fenêtre de grâce multi-onglets, détection de
+  réutilisation) et révocable (cookie `HttpOnly; Secure; SameSite=Strict`). Mots de passe
+  en **Argon2id**, verrouillage après échecs, changement obligatoire du mot de passe
+  provisoire.
+- **Provisioning** ([ADR-0006](../adr/0006-provisioning-des-tenants.md)) :
+  `TenantProvisioningService`, utilisé par la CLI `stockmanager create-tenant`, sans
+  `BYPASSRLS`.
 - **Autorisation** : RBAC ; permissions nommées `module.ressource.action`, déclarées
-  par les manifestes ; rôles définis **par tenant** (avec des modèles de rôles
-  fournis par défaut : Propriétaire, Gérant, Caissier, Magasinier, Serveur, Cuisine…).
+  par les manifestes avec leur nature ; rôles définis **par tenant**. Le propriétaire est
+  un attribut de l'appartenance (toutes les permissions des modules actifs). Modèles de
+  rôles système (`role_templates.toml`) : Administrateur, Consultation — les rôles métier
+  (Gérant, Caissier, Magasinier, Serveur, Cuisine…) viendront avec leurs modules.
+  **Anti-escalade** : un non-propriétaire ne peut accorder que ce qu'il détient.
 - **Administration plateforme** (TechNova) : espace et identités séparés des
   utilisateurs tenants.
 - **Audit** : journal `audit_log` (tenant, site, utilisateur, action, entité,
@@ -271,22 +307,28 @@ Une transition invalide est refusée par le backend, quel que soit le client.
 ### 7.1 Pile
 
 React · TypeScript · Vite · React Router · TanStack Query · React Hook Form · Zod · PrimeReact
-(version : voir [ADR-0005](../adr/0005-versions-frontend.md)).
+(version : voir [ADR-0005](../adr/0005-versions-frontend.md)) · react-i18next
+([ADR-0009](../adr/0009-i18n-et-terminologie.md)).
 
 ### 7.2 Structure
 
 ```text
 frontend/src/
-├── app/        # amorçage : providers, routeur, client de requêtes, layout racine
-├── core/       # transverse : client API, auth, capacités, registre de modules, i18n
-├── modules/    # un dossier par module fonctionnel (même code que le module backend)
+├── app/        # amorçage : App, routeur, ProtectedApp, registre des modules (modules.ts)
+├── core/
+│   ├── api/            # client HTTP (jeton en mémoire, rafraîchissement), types
+│   ├── auth/           # AuthProvider (session, tenant actif), préférences d'onglet
+│   ├── capabilities/   # CapabilitiesProvider : /me/capabilities, site actif, can()
+│   ├── i18n/           # i18next, ressources fr, application de la terminologie
+│   └── modules/        # types FrontendModule, buildNavigation / buildRoutes
+├── layouts/    # AppLayout (menu dynamique, sélecteur de site, changement de tenant)
+├── modules/    # un dossier par module (même code que le backend)
 │   └── <module>/
-│       ├── index.ts        # manifeste frontend (routes, navigation, permissions)
-│       ├── api.ts          # hooks TanStack Query de ce module
-│       ├── pages/ …        # écrans (chargés à la demande)
-│       └── components/ …
-├── shared/     # composants UI génériques, utilitaires sans logique métier
-└── pages/      # pages hors module (accueil, erreurs)
+│       ├── index.ts    # manifeste frontend (navigation, routes, permissions)
+│       ├── api.ts      # hooks TanStack Query
+│       └── *Page.tsx   # écrans chargés à la demande
+├── pages/      # hors module : connexion, changement de mot de passe, choix du tenant
+└── shared/     # UI générique (FormField, PageHeader, ErrorMessage…), utilitaires
 ```
 
 ### 7.3 Interface dynamique
@@ -300,7 +342,7 @@ export interface FrontendModule {
 }
 ```
 
-- Un **registre** liste explicitement les modules frontend.
+- Un **registre** liste explicitement les modules frontend (`src/app/modules.ts`).
 - Au démarrage de session, le client charge `/me/capabilities` ; routes et menu sont
   **générés** à partir du registre filtré par `modules` + `permissions`, ordonnés selon
   `navigation`, et libellés selon `terminology` du profil.
@@ -327,11 +369,21 @@ export interface FrontendModule {
 ```text
 backend/app/
 ├── main.py            # fabrique d'application (create_app)
-├── core/              # config, base de données, sécurité, logs, erreurs — aucune règle métier
-├── api/v1/            # agrégation des routeurs versionnés
-├── platform/          # SaaS : tenants, sites, users, auth, rbac, plans, profils,
-│                      #   registre de modules, capacités, audit, paramètres
-├── modules/           # modules métier (catalog, stock, sales, pos, restaurant.* …)
+├── cli.py             # commande `stockmanager` (adaptateur vers les services)
+├── models.py          # import de tous les modèles (métadonnées Alembic)
+├── core/              # config, db (sessions + contexte RLS + filtre ORM), security, errors
+├── api/v1/            # agrégation des routeurs, montage des routeurs de modules
+├── platform/
+│   ├── registry.py, manifests.py, context.py, models_base.py
+│   ├── identity/      # utilisateurs, sessions, authentification
+│   ├── tenancy/       # tenants, sites, activation des modules
+│   ├── access/        # appartenances, rôles, permissions, affectations aux sites
+│   ├── catalog/       # profils, plans, politiques (data/*.toml) + synchronisation
+│   ├── subscriptions/ # abonnement, statut effectif, limites
+│   ├── capabilities/  # résolution des capacités, /me/capabilities
+│   ├── audit/         # journal d'audit
+│   └── provisioning/  # TenantProvisioningService
+├── modules/           # modules métier (planned.py en Phase 1 ; paquets à venir)
 │   └── <module>/
 │       ├── manifest.py    # déclaration (code, dépendances, permissions, routeur)
 │       ├── router.py      # HTTP uniquement : validation, dépendances, appel du service
@@ -362,7 +414,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 
 | Sujet | Convention |
 |---|---|
-| Identifiants | UUID (v7 de préférence : triables, générables hors ligne — utile pour POS offline et mobile) |
+| Identifiants | UUIDv7 générés par l'application (`app/shared/ids.py`) : triables, générables hors ligne (POS offline, mobile) |
 | Colonnes communes | `id`, `tenant_id`, (`site_id`), `created_at`, `updated_at`, `created_by` |
 | Dates | `timestamptz` stockées en UTC ; fuseau d'affichage par tenant |
 | Montants | `NUMERIC(18,2)` ↔ `Decimal` ; devise par tenant (XOF par défaut, hypothèse à confirmer) |
@@ -408,8 +460,12 @@ travail : une requête = une transaction, commit à la fin si succès).
 
 ## 11. Infrastructure
 
-- **Développement** : `docker compose up --build` (PostgreSQL 16, backend avec
-  rechargement, frontend Vite). Sans Docker : `uv` pour le backend, `npm` pour le frontend.
+- **Développement** : `docker compose up --build` (PostgreSQL 16 avec création du rôle
+  applicatif, service `migrate` = migrations + catalogue, backend avec rechargement,
+  frontend Vite). Sans Docker : `uv` pour le backend, `npm` pour le frontend.
+- **Deux rôles PostgreSQL** : propriétaire (`SM_MIGRATION_DATABASE_URL` : migrations,
+  catalogue) et applicatif (`SM_DATABASE_URL` : API et CLI de provisioning, sans
+  `BYPASSRLS`). Le nom du rôle applicatif est configurable (`SM_DB_APP_ROLE`).
 - **Production (à définir)** : reverse proxy (TLS) servant la SPA statique et relayant
   `/api` vers FastAPI (Uvicorn/Gunicorn), PostgreSQL managé ou dédié avec sauvegardes,
   secrets par variables d'environnement.
@@ -421,15 +477,18 @@ travail : une requête = une transaction, commit à la fin si succès).
 - Frontend : `vitest`, `eslint`, `prettier`, `tsc`.
 - **Tests d'isolation tenant obligatoires** : tout endpoint tenant-scoped a un test
   prouvant qu'un utilisateur du tenant B ne peut ni lire ni modifier les données du tenant A.
-- Tests d'intégration sur un **vrai PostgreSQL** (RLS, contraintes, verrous).
-- CI GitHub Actions (prévue en phase 1) exécutant l'ensemble de ces contrôles.
+- Tests d'intégration sur un **vrai PostgreSQL** (RLS, contraintes, verrous), l'API
+  s'exécutant sous le rôle applicatif.
+- **CI GitHub Actions** (`.github/workflows/ci.yml`) : backend (ruff, mypy strict,
+  validation du catalogue, pytest avec PostgreSQL 16, `alembic check`, réversibilité des
+  migrations), frontend (eslint, prettier, tsc, vitest, build), validation Compose.
 
 ## 13. Feuille de route technique proposée
 
 | Phase | Contenu | Correspond à |
 |---|---|---|
-| **0 — Fondations** *(cette intervention)* | Structure du repo, squelettes, documentation, décisions | — |
-| **1 — Socle plateforme** | Base de données + Alembic, tenants, sites, utilisateurs, auth, RBAC, registre de modules, capacités, profils/plans (données), audit, shell frontend (login, layout, navigation dynamique), CI | V1 |
+| **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
+| **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue & stock** | Articles, catégories, fournisseurs, stock, entrées/sorties, mouvements, transferts, inventaires | V1 |
 | **3 — Ventes & encaissement** | Clients, ventes, paiements, caisse, POS | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
@@ -439,11 +498,18 @@ Chaque phase démarre **après validation explicite**.
 
 ## 14. Questions ouvertes (à trancher par TechNova)
 
-1. **PrimeReact** : rester sur la v10 (MIT) ou adopter la v11 (licence commerciale PrimeUI) ? — [ADR-0005](../adr/0005-versions-frontend.md)
-2. **Utilisateur ↔ tenant** : un utilisateur appartient-il à un seul tenant (proposé pour la V1) ou peut-il en rejoindre plusieurs (comptable, consultant) ?
-3. **Contenu des plans** STANDARD / ENTREPRISE : modules inclus, limites (sites, utilisateurs, caisses).
-4. **Abonnement expiré** : lecture seule, blocage, période de grâce ?
-5. **Devise(s)** : XOF uniquement au départ ? Multi-devise envisagée ?
-6. **Langues** : français seul au départ ? (l'i18n est prévue de toute façon pour la terminologie par profil)
-7. **Hébergement cible** de la production.
-8. **Accès à `GESTOK_ENTREP`** : il n'est pas attaché à cette session ; un accès en lecture sera utile en phase 2/3 pour extraire les règles métier détaillées.
+Tranchées le 2026-09-23 : PrimeReact 10 MIT, multi-tenant RLS, TenantMembership,
+CLI de provisioning, mot de passe provisoire, SQLAlchemy synchrone, react-i18next, XOF par
+défaut, français d'abord (voir ADR-0005 à 0009).
+
+Restent ouvertes :
+
+1. **Contenu définitif des plans** STANDARD / ENTREPRISE : modules inclus, limites
+   (actuellement provisoires : STANDARD = 1 site, 5 utilisateurs, sans `restaurant.qr` ;
+   ENTREPRISE = illimité), délais de grâce (7 / 15 jours).
+2. **Règles de blocage après expiration** : la politique livrée (expiré = consultation,
+   export, abonnement) convient-elle ? ([ADR-0011](../adr/0011-politique-abonnement.md))
+3. **Authentification** : durées (jeton 15 min, session 30 jours), verrouillage (5 échecs,
+   15 min), longueur minimale du mot de passe (8) — [ADR-0010](../adr/0010-authentification-et-tenant-actif.md).
+4. **Hébergement cible** de la production.
+5. **Accès à `GESTOK_ENTREP`** en lecture pour les phases métier (règles détaillées).

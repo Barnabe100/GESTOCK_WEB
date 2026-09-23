@@ -1,6 +1,6 @@
 # ADR-0004 — Stock : service central et journal de mouvements
 
-- **Statut** : Proposée
+- **Statut** : Acceptée (validée le 2026-09-23)
 - **Date** : 2026-09-23
 
 ## Contexte
