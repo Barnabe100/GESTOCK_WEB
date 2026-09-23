@@ -1,0 +1,18 @@
+code = "quincaillerie"
+name = "Quincaillerie"
+description = "Quincaillerie, matériaux, pièces : ventes au détail et au mètre/kg, dépôts."
+
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "cash_register", "pos", "reports", "alerts",
+]
+optional_modules = []
+
+navigation = [
+  "dashboard", "catalog", "stock", "sales", "pos", "customers", "suppliers", "inventory_count",
+  "reports", "organization", "users", "subscription", "audit",
+]
+
+[terminology.fr.catalog]
+item = "Article"
+items = "Articles"

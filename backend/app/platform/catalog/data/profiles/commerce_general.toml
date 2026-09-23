@@ -1,0 +1,18 @@
+code = "commerce_general"
+name = "Commerce général / Boutique"
+description = "Boutiques, vêtements, cosmétique, électronique, librairie…"
+
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "cash_register", "pos", "reports", "alerts",
+]
+optional_modules = []
+
+navigation = [
+  "dashboard", "sales", "pos", "catalog", "stock", "customers", "suppliers", "inventory_count",
+  "reports", "organization", "users", "subscription", "audit",
+]
+
+[terminology.fr.catalog]
+item = "Article"
+items = "Articles"

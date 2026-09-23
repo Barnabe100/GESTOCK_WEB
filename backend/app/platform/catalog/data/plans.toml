@@ -1,0 +1,36 @@
+# Plans commerciaux (offres Web : facturation mensuelle ou annuelle, pas de licence perpétuelle).
+#
+# ⚠ Modules inclus et limites : valeurs PROVISOIRES, à arrêter par TechNova.
+# Ce fichier est la source de vérité, synchronisée en base par `stockmanager catalog sync`.
+# Les modules « core » (dashboard, organization, users, audit, subscription) sont toujours inclus.
+
+[plans.STANDARD]
+name = "Standard"
+description = "Offre de base pour un commerce."
+sort_order = 10
+grace_days = 7
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "cash_register", "pos", "reports", "alerts",
+  "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
+  "restaurant.recipes",
+]
+
+[plans.STANDARD.limits]
+max_sites = 1
+max_users = 5
+
+[plans.ENTREPRISE]
+name = "Entreprise"
+description = "Multi-sites et fonctionnalités avancées."
+sort_order = 20
+grace_days = 15
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "cash_register", "pos", "reports", "alerts",
+  "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
+  "restaurant.recipes", "restaurant.qr",
+]
+
+# Aucune limite déclarée = illimité.
+[plans.ENTREPRISE.limits]

@@ -1,0 +1,29 @@
+# Politique d'accès par statut d'abonnement : natures de permissions autorisées.
+# Natures : read (consultation), write (opérations courantes), export, admin (paramétrage),
+# billing (abonnement / renouvellement).
+#
+# Règle : l'expiration ne supprime jamais de données. La connexion reste toujours possible.
+
+[policies.trial]
+description = "Période d'essai : accès complet."
+allowed_access = ["read", "write", "export", "admin", "billing"]
+
+[policies.active]
+description = "Abonnement actif : accès complet."
+allowed_access = ["read", "write", "export", "admin", "billing"]
+
+[policies.past_due]
+description = "Échéance dépassée, dans le délai de grâce du plan : accès complet."
+allowed_access = ["read", "write", "export", "admin", "billing"]
+
+[policies.expired]
+description = "Expiré : consultation, export et renouvellement uniquement."
+allowed_access = ["read", "export", "billing"]
+
+[policies.suspended]
+description = "Suspendu par la plateforme : renouvellement / régularisation uniquement."
+allowed_access = ["billing"]
+
+[policies.cancelled]
+description = "Résilié : consultation et export des données uniquement."
+allowed_access = ["read", "export"]

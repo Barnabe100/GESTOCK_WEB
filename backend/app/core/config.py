@@ -1,7 +1,10 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_JWT_SECRET = "dev-only-insecure-secret-change-me-0123456789"
 
 
 class Settings(BaseSettings):
@@ -16,7 +19,43 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     cors_origins: list[str] = ["http://localhost:5173"]
 
-    database_url: str = "postgresql+psycopg://stockmanager:stockmanager@localhost:5432/stockmanager"
+    # Connexion applicative : rôle SQL sans BYPASSRLS, soumis à la Row-Level Security.
+    database_url: str = (
+        "postgresql+psycopg://stockmanager_app:stockmanager_app@localhost:5432/stockmanager"
+    )
+    # Connexion propriétaire : migrations Alembic et synchronisation du catalogue.
+    migration_database_url: str = (
+        "postgresql+psycopg://stockmanager:stockmanager@localhost:5432/stockmanager"
+    )
+    # Rôle SQL applicatif auquel les migrations accordent les droits.
+    db_app_role: str = "stockmanager_app"
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+    db_pool_timeout_seconds: int = 30
+    db_echo: bool = False
+
+    jwt_secret: SecretStr = SecretStr(_DEV_JWT_SECRET)
+    jwt_algorithm: str = "HS256"
+    access_token_ttl_seconds: int = 900
+    refresh_token_ttl_days: int = 30
+    # Fenêtre pendant laquelle l'ancien jeton de rafraîchissement reste accepté
+    # (requêtes concurrentes de plusieurs onglets).
+    refresh_token_reuse_grace_seconds: int = 60
+
+    refresh_cookie_name: str = "sm_refresh"
+    refresh_cookie_secure: bool = True
+
+    password_min_length: int = 8
+    login_max_failures: int = 5
+    login_lockout_minutes: int = 15
+
+    @model_validator(mode="after")
+    def _check_production_secrets(self) -> "Settings":
+        if self.environment == "production":
+            secret = self.jwt_secret.get_secret_value()
+            if secret == _DEV_JWT_SECRET or len(secret) < 32:
+                raise ValueError("SM_JWT_SECRET doit être défini (≥ 32 caractères) en production")
+        return self
 
 
 @lru_cache

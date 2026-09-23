@@ -1,0 +1,146 @@
+"""Registre des modules.
+
+Un module se déclare par un ``ModuleManifest`` (code, dépendances, permissions). Le registre est
+construit explicitement (pas de découverte automatique) et validé au démarrage : dépendances
+connues, absence de cycle, permissions préfixées par le code du module.
+"""
+
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from enum import StrEnum
+from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
+
+
+class AccessKind(StrEnum):
+    """Nature d'une permission. La politique d'abonnement autorise ou non chaque nature
+    (ex. après expiration : lecture, export et facturation seulement)."""
+
+    READ = "read"
+    WRITE = "write"
+    EXPORT = "export"
+    ADMIN = "admin"
+    BILLING = "billing"
+
+
+class ModuleStatus(StrEnum):
+    AVAILABLE = "available"  # implémenté et exposé
+    PLANNED = "planned"  # déclaré (profils, plans) mais pas encore implémenté
+
+
+@dataclass(frozen=True)
+class PermissionDef:
+    code: str
+    access: AccessKind
+
+
+@dataclass(frozen=True)
+class ModuleManifest:
+    code: str
+    status: ModuleStatus = ModuleStatus.AVAILABLE
+    # Un module « core » est toujours actif, quels que soient profil, plan et activations.
+    core: bool = False
+    depends_on: tuple[str, ...] = ()
+    permissions: tuple[PermissionDef, ...] = field(default_factory=tuple)
+    # Routeur HTTP du module (modules métier). Monté sous /api/v1/<code> et protégé par
+    # require_module(code) : un module inactif pour le tenant répond 403 côté serveur.
+    router: "APIRouter | None" = field(default=None, compare=False, hash=False)
+
+
+class RegistryError(Exception):
+    pass
+
+
+class ModuleRegistry:
+    def __init__(self, manifests: Iterable[ModuleManifest]) -> None:
+        self._modules: dict[str, ModuleManifest] = {}
+        for manifest in manifests:
+            if manifest.code in self._modules:
+                raise RegistryError(f"module en double : {manifest.code}")
+            self._modules[manifest.code] = manifest
+        self._permissions: dict[str, tuple[ModuleManifest, PermissionDef]] = {}
+        self._validate()
+
+    def _validate(self) -> None:
+        for manifest in self._modules.values():
+            for dep in manifest.depends_on:
+                if dep not in self._modules:
+                    raise RegistryError(f"{manifest.code} dépend d'un module inconnu : {dep}")
+            for perm in manifest.permissions:
+                if not perm.code.startswith(f"{manifest.code}."):
+                    raise RegistryError(f"{perm.code} doit être préfixée par {manifest.code}.")
+                if perm.code in self._permissions:
+                    raise RegistryError(f"permission en double : {perm.code}")
+                self._permissions[perm.code] = (manifest, perm)
+        self._check_cycles()
+
+    def _check_cycles(self) -> None:
+        visiting: set[str] = set()
+        done: set[str] = set()
+
+        def visit(code: str, path: tuple[str, ...]) -> None:
+            if code in done:
+                return
+            if code in visiting:
+                raise RegistryError(f"dépendance circulaire : {' -> '.join((*path, code))}")
+            visiting.add(code)
+            for dep in self._modules[code].depends_on:
+                visit(dep, (*path, code))
+            visiting.discard(code)
+            done.add(code)
+
+        for code in self._modules:
+            visit(code, ())
+
+    def __contains__(self, code: object) -> bool:
+        return code in self._modules
+
+    def get(self, code: str) -> ModuleManifest:
+        return self._modules[code]
+
+    def all(self) -> list[ModuleManifest]:
+        return list(self._modules.values())
+
+    def core_codes(self) -> set[str]:
+        return {m.code for m in self._modules.values() if m.core}
+
+    def permission(self, code: str) -> PermissionDef | None:
+        entry = self._permissions.get(code)
+        return entry[1] if entry else None
+
+    def module_of_permission(self, code: str) -> str | None:
+        entry = self._permissions.get(code)
+        return entry[0].code if entry else None
+
+    def permissions_of(self, module_codes: Iterable[str]) -> dict[str, PermissionDef]:
+        result: dict[str, PermissionDef] = {}
+        for code in module_codes:
+            for perm in self._modules[code].permissions:
+                result[perm.code] = perm
+        return result
+
+    def resolve_dependencies(self, candidates: Iterable[str]) -> set[str]:
+        """Retire itérativement les modules dont une dépendance n'est pas présente."""
+        active = {c for c in candidates if c in self._modules}
+        changed = True
+        while changed:
+            changed = False
+            for code in list(active):
+                if any(dep not in active for dep in self._modules[code].depends_on):
+                    active.discard(code)
+                    changed = True
+        return active
+
+    def dependents_of(self, code: str) -> set[str]:
+        return {m.code for m in self._modules.values() if code in m.depends_on}
+
+
+@lru_cache
+def get_registry() -> ModuleRegistry:
+    from app.modules import BUSINESS_MODULES
+    from app.platform.manifests import PLATFORM_MODULES
+
+    return ModuleRegistry([*PLATFORM_MODULES, *BUSINESS_MODULES])

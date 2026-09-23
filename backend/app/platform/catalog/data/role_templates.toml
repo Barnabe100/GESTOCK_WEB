@@ -1,0 +1,14 @@
+# Modèles de rôles instanciés dans chaque nouveau tenant (rôles système, non modifiables).
+# Les permissions acceptent des motifs (`module.*`, `*.view`) résolus contre le registre de
+# modules au moment du provisioning.
+# Le propriétaire n'est pas un rôle : c'est un attribut de l'appartenance (is_owner).
+
+[roles.administrator]
+name = "Administrateur"
+description = "Paramétrage de l'entreprise, des sites, des utilisateurs et des rôles."
+permissions = ["organization.*", "users.*", "audit.*", "subscription.*"]
+
+[roles.viewer]
+name = "Consultation"
+description = "Accès en lecture seule."
+permissions = ["*.view"]
