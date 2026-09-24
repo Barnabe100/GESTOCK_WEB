@@ -22,5 +22,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0013](0013-roles-systeme-dynamiques.md) | Rôles système dynamiques | Acceptée |
 | [0014](0014-documents-et-mouvements-de-stock.md) | Documents de stock, mouvements et état des niveaux | Proposée |
 | [0015](0015-rbac-roles-de-base-et-personnalises.md) | RBAC : rôles de base, rôles personnalisés, portée et anti-escalade | Acceptée |
+| [0016](0016-recherche-trigrammes.md) | Recherche « contient » servie par des index trigrammes (pg_trgm) | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

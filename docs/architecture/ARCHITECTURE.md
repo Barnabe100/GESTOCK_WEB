@@ -207,7 +207,7 @@ et les modules métier (`app/modules/`). Il est validé au démarrage : dépenda
 absence de cycle, permissions préfixées par le code du module. Les modules métier non encore
 réalisés sont **déclarés sans implémentation** (statut `planned`, `app/modules/planned.py`)
 pour que profils et plans puissent les référencer ; ils ne sont ni routés ni affichés.
-Modules réalisés : `catalog`, `suppliers` (2.1), `stock`, `alerts` (2.2).
+Modules réalisés : `catalog`, `suppliers` (2.1), `stock`, `alerts` (2.2), `customers` (2.3).
 
 Règles de dépendance :
 
@@ -491,6 +491,9 @@ travail : une requête = une transaction, commit à la fin si succès).
   s'exécutant sous le rôle applicatif.
 - **Taille du bundle frontend** : surveillée à chaque build (paquet principal ≈ 168 kB gzip
   en Phase 1) ; chaque module métier est chargé à la demande (lazy loading) pour la maîtriser.
+- **Tests de bout en bout** : Playwright (`frontend/e2e/`, `npm run e2e`) contre la pile
+  réelle (backend, PostgreSQL avec RLS, frontend) — parcours métier, refus de permissions,
+  affichage mobile ; exécutés en local (voir `frontend/e2e/README.md`).
 - **CI GitHub Actions** (`.github/workflows/ci.yml`) : backend (ruff, mypy strict,
   validation du catalogue, pytest avec PostgreSQL 16, `alembic check`, réversibilité des
   migrations), frontend (eslint, prettier, tsc, vitest, build), validation Compose.
@@ -501,8 +504,8 @@ travail : une requête = une transaction, commit à la fin si succès).
 |---|---|---|
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
-| **2 — Catalogue & stock** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes · puis transferts, inventaires ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) | V1 |
-| **3 — Ventes & encaissement** | Clients, ventes, paiements, caisse, POS | V1 |
+| **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · puis transferts, inventaires | V1 |
+| **3 — Ventes & encaissement** | Ventes (sur le référentiel clients), créances, paiements, caisse, POS | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 

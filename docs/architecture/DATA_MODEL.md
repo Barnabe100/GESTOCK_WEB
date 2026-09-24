@@ -89,6 +89,15 @@ Toutes les FK sont composites `(tenant_id, …)` (site, article, fournisseur, mo
 Les motifs système sont créés au provisioning (`tenant_setup` du module) et par la migration
 `0004` pour les entreprises existantes.
 
+### Clients (Phase 2.3, isolés par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `customers` | `tenant_id`, `code` (20), `customer_type` (`INDIVIDUAL` \| `BUSINESS`), `name` (150), `legal_name` (200), `tax_id`, `phone`, `phone2` (normalisés), `email`, `address`, `city`, `country`, `notes` (1000), `credit_limit` (`NUMERIC(18,2)`, nullable), `is_active` | `UNIQUE (tenant_id, code)` ; `UNIQUE (tenant_id, id)` (cible des futures FK composites : ventes, créances) ; `CHECK credit_limit ≥ 0` ; téléphone et email **non uniques** ; index GIN trigrammes (`pg_trgm`) sur code, nom, raison sociale, téléphones et email ([ADR-0016](../adr/0016-recherche-trigrammes.md)) ; aucun `site_id` (client de l'entreprise) ; aucun solde stocké |
+
+Référence `CLI-000001` : séquence `customer` de `document_sequences`. Détails :
+[`CLIENTS.md`](CLIENTS.md).
+
 Les énumérations sont stockées en texte avec contrainte `CHECK` (évolution plus simple qu'un
 type PostgreSQL natif).
 
@@ -101,7 +110,7 @@ type PostgreSQL natif).
 
 | Table | Politiques |
 |---|---|
-| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, document_sequences, stock_* (7 tables) | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
+| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (7 tables) | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
 | tenant_memberships | + `own_memberships_read` : **sans tenant actif**, l'utilisateur lit ses propres appartenances |
 | tenants | `tenant_isolation` sur `id` + `member_tenants_read` (**sans tenant actif**) |
 | audit_logs | lecture : tenant actif ; insertion : tenant actif ou `tenant_id` nul |
@@ -111,7 +120,7 @@ type PostgreSQL natif).
 | Droits | Tables |
 |---|---|
 | `SELECT` | catalogue |
-| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits |
+| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits |
 | `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines (lignes de brouillon) |
 | `SELECT, INSERT` | audit_logs, stock_movements (append-only) |
 

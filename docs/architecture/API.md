@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1) et stock (2.2)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2) et clients (2.3)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -129,6 +129,24 @@ Codes d'erreur : `insufficient_stock` (422, `articles: [{article_id, reference, 
 `site_access_denied`, `site_mismatch` (403), `stock_entry_not_found`,
 `stock_exit_not_found`, `exit_reason_not_found` (404). Abonnement expiré : consultation
 possible, opérations refusées (`403 subscription_restricted`).
+
+### Clients (module `customers`) — Phase 2.3
+
+Mêmes conventions de liste. Règles métier : [`CLIENTS.md`](CLIENTS.md).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/customers` | `customers.customer.view` | Liste ; `search` (code, nom, raison sociale, téléphones — séparateurs ignorés —, email), `status` (`all` \| `active` \| `inactive`), `type` (`INDIVIDUAL` \| `BUSINESS`) ; tri `name` (défaut), `code`, `city`, `created_at` |
+| POST | `/customers` | `customers.customer.create` | Créer (code `CLI-000001` attribué par le serveur, client actif) |
+| GET | `/customers/{id}` | `customers.customer.view` | Détail (client inactif compris) |
+| PATCH | `/customers/{id}` | `customers.customer.update` | Modifier (champ absent : inchangé ; chaîne vide : effacé ; code immuable) |
+| POST | `/customers/{id}/activate` · `/deactivate` | `customers.customer.status` | Statut (jamais de suppression) |
+
+Corps : `customer_type`, `name` (obligatoires à la création), `legal_name`, `tax_id`,
+`phone`, `phone2`, `email`, `address`, `city`, `country`, `notes`, `credit_limit` (chaîne
+décimale, 2 décimales, ≥ 0). Codes : `validation_error` (422 ; 400 si un champ obligatoire
+est vidé en modification), `customer_not_found` (404, dont un client d'une autre entreprise),
+`invalid_sort` (400).
 
 ## Routes des modules métier
 

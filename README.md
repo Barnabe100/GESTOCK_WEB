@@ -14,8 +14,8 @@ utilisateur.
 > **Phase 2 en cours** : catalogue (catégories, articles) et fournisseurs (2.1) ; stock par
 > site, entrées, sorties, journal des mouvements, seuils par site et alertes (2.2).
 > RBAC consolidé : rôles de base (Administrateur, Gestionnaire, Vendeur, Consultant) et
-> rôles personnalisés par entreprise (ADR-0015).
-> Transferts, inventaires, ventes, caisse, POS et restaurant ne sont pas commencés.
+> rôles personnalisés par entreprise (ADR-0015). Référentiel clients (2.3).
+> Transferts, inventaires, ventes, créances, caisse, POS et restaurant ne sont pas commencés.
 
 ## Documentation
 
@@ -23,6 +23,7 @@ utilisateur.
 - [Modèle de données](docs/architecture/DATA_MODEL.md)
 - [API REST](docs/architecture/API.md)
 - [Catalogue et stock : règles métier](docs/architecture/CATALOGUE_STOCK.md)
+- [Clients : règles métier](docs/architecture/CLIENTS.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)
 
@@ -104,6 +105,9 @@ cd backend && uv run pytest && uv run ruff check . && uv run ruff format --check
 
 # Frontend
 cd frontend && npm run lint && npm run format:check && npm run typecheck && npm test && npm run build
+
+# Bout en bout (pile démarrée, données de test : frontend/e2e/README.md)
+cd frontend && npm run e2e
 ```
 
 ## Feuille de route produit

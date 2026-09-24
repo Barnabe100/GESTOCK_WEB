@@ -12,10 +12,12 @@ et [`docs/adr/`](docs/adr/README.md).
 
 **Phase actuelle : 2 — catalogue et stock.** Sous-phases livrées : 2.1 (modules `catalog` et
 `suppliers`), 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
-journal des mouvements, seuils par site — et `alerts`) et consolidation du RBAC (rôles de
-base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015). Transferts (fonctionnalité de plan
-`stock.transfers`, préparée), inventaires et autres modules métier (ventes, POS, caisse,
-restaurant…) : seulement déclarés `planned` (`backend/app/modules/planned.py`). Ne pas les
+journal des mouvements, seuils par site — et `alerts`), consolidation du RBAC (rôles de
+base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015)
+et 2.3 (module `customers` : référentiel clients, [`CLIENTS.md`](docs/architecture/CLIENTS.md)).
+Transferts (fonctionnalité de plan `stock.transfers`, préparée), inventaires et autres modules
+métier (ventes, créances, POS, caisse, restaurant…) : seulement déclarés `planned`
+(`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.
 
 Règles métier de référence (issues du Desktop, identifiants CAT/SUP/ART/STK/ENT/SOR/ALR) :
@@ -119,6 +121,7 @@ npm run lint && npm run format:check
 npm run typecheck
 npm test
 npm run build
+npm run e2e          # Playwright contre la pile démarrée (voir frontend/e2e/README.md)
 
 # Stack complète
 docker compose up --build
