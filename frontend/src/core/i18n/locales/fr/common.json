@@ -525,7 +525,8 @@
     "cancel": "Annuler le transfert",
     "cancelWarning": "Les quantités seront retirées du site destination et remises sur le site source par des mouvements inverses. Refusé si le stock du site destination ne suffit plus.",
     "cancelDraftInfo": "Le brouillon sera abandonné, sans effet sur le stock.",
-    "cancelled": "Transfert {{number}} annulé"
+    "cancelled": "Transfert {{number}} annulé",
+    "readOnlyPlan": "Consultation seule : la création, la validation et l'annulation des transferts nécessitent la fonctionnalité « Transferts inter-sites » (offre Entreprise)."
   },
   "exitReasons": {
     "title": "Motifs de sortie",

@@ -14,6 +14,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.db import create_session_factory, set_db_context
+from app.platform.subscriptions.service import change_plan
 from tests import stock_helpers as sh
 from tests.conftest import PASSWORD, Api, login
 from tests.stock_helpers import World
@@ -490,30 +491,105 @@ def test_levels_can_be_filtered_by_articles(world: World) -> None:
 # --- Plan, RBAC, périmètre des sites ---------------------------------------------------------
 
 
-def test_standard_plan_has_no_transfers(provision: Any, api_for: Any) -> None:
+OPERATION_PERMISSIONS = TRANSFER_PERMISSIONS - {"stock.transfer.view"}
+
+
+def test_standard_plan_allows_consultation_only(provision: Any, api_for: Any) -> None:
     provision("std", profile="quincaillerie", plan="STANDARD")
     owner: Api = api_for("owner@std.example.com")
     caps = owner.get("/me/capabilities").json()
     assert "stock.transfers" not in caps["features"]
-    assert not TRANSFER_PERMISSIONS & set(caps["permissions"])
+    # Consultation (historique) toujours accordée ; opérations liées à la fonctionnalité.
+    assert "stock.transfer.view" in caps["permissions"]
+    assert not OPERATION_PERMISSIONS & set(caps["permissions"])
     assert "stock.entry.create" in caps["permissions"]  # le reste du stock est disponible
-    # Ni proposées à l'édition des rôles, ni accordables à un rôle personnalisé.
+    # Opérations ni proposées à l'édition des rôles, ni accordables à un rôle personnalisé.
     available = {p["code"] for p in owner.get("/permissions").json()}
-    assert not TRANSFER_PERMISSIONS & available
+    assert "stock.transfer.view" in available and not OPERATION_PERMISSIONS & available
     role = owner.post(
-        "/roles", json={"name": "Logisticien", "permissions": ["stock.transfer.view"]}
+        "/roles", json={"name": "Logisticien", "permissions": ["stock.transfer.create"]}
     )
     assert role.status_code == 422 and role.json()["code"] == "unknown_permission"
+    assert owner.get("/stock/transfers").json()["total"] == 0
     site = owner.get("/sites").json()[0]["id"]
+    created = owner.post(
+        "/stock/transfers",
+        json={"source_site_id": site, "destination_site_id": site, "lines": []},
+    )
+    assert created.status_code == 403 and created.json()["code"] == "feature_unavailable"
+
+
+def test_downgrade_to_standard_keeps_history_read_only(
+    world: World,
+    client: Any,
+    provision: Any,
+    api_for: Any,
+    app_engine: Engine,
+    owner_db: Session,
+) -> None:
+    """ENTREPRISE → STANDARD : historique conservé et consultable ; plus aucune opération."""
+    sh.validated_entry(world, [(0, "10", "100")])
+    validated = _transfer(world, [(0, "3")])
+    assert _validate(world.owner, validated).status_code == 200
+    draft = _transfer(world, [(0, "1")])
+    viewer = sh.member(world, client, "consultant@example.com", "viewer", all_sites=True)
+    seller = sh.member(world, client, "vendeur@example.com", "seller", all_sites=True)
+    shop = sh.member(world, client, "boutique@example.com", "viewer", site_ids=[world.site2])
+    tenant_id = owner_db.execute(text("SELECT tenant_id FROM stock_transfers LIMIT 1")).scalar()
+
+    with create_session_factory(app_engine)() as db:
+        assert change_plan(db, tenant_id, "STANDARD", actor="test") == ("ENTREPRISE", "STANDARD")
+        db.commit()
+
+    caps = world.owner.get("/me/capabilities").json()
+    assert "stock.transfers" not in caps["features"]
+    assert "stock.transfer.view" in caps["permissions"]
+    assert not OPERATION_PERMISSIONS & set(caps["permissions"])
+
+    # Historique conservé et consultable (liste, détail, lignes, coûts, journal).
+    for api in (world.owner, viewer):
+        listed = api.get("/stock/transfers")
+        assert listed.status_code == 200 and listed.json()["total"] == 2
+        detail = api.get(f"/stock/transfers/{validated['id']}")
+        assert detail.status_code == 200
+        assert detail.json()["status"] == "VALIDATED"
+        assert detail.json()["lines"][0]["unit_cost"] == "100.0000"
+    journal = world.owner.get("/stock/movements", params={"search": validated["number"]})
+    assert journal.json()["total"] == 2
+
+    # Plus aucune opération, quel que soit le rôle.
+    url = f"/stock/transfers/{draft['id']}"
     for response in (
-        owner.get("/stock/transfers"),
-        owner.post(
-            "/stock/transfers",
-            json={"source_site_id": site, "destination_site_id": site, "lines": []},
+        world.owner.post("/stock/transfers", json=_body(world, [(0, "1")])),
+        world.owner.put(url, json=_body(world, [(0, "2")])),
+        _validate(world.owner, draft),
+        world.owner.post(f"{url}/cancel", json={"reason": "Tentative après rétrogradation"}),
+        world.owner.post(
+            f"/stock/transfers/{validated['id']}/cancel", json={"reason": "Annulation interdite"}
         ),
-        owner.get(f"/stock/transfers/{uuid.uuid4()}"),
     ):
         assert response.status_code == 403 and response.json()["code"] == "feature_unavailable"
+    assert sh.level(owner_db, world, 0)[0] == "7.000"
+    assert sh.level(owner_db, world, 0, world.site2)[0] == "3.000"
+    assert world.owner.get(url).json()["status"] == "DRAFT"
+
+    # RBAC et sites toujours appliqués : Vendeur sans consultation ; membre limité au dépôt :
+    # les transferts touchant un site inaccessible restent invisibles.
+    assert seller.get("/stock/transfers").json()["code"] == "permission_denied"
+    assert shop.get("/stock/transfers").json()["total"] == 0
+    assert shop.get(url).status_code == 404
+
+    # RLS : une autre entreprise ne voit toujours rien.
+    provision("beta", profile="quincaillerie", plan="STANDARD")
+    beta: Api = api_for("owner@beta.example.com")
+    assert beta.get("/stock/transfers").json()["total"] == 0
+    assert beta.get(url).status_code == 404
+
+    # Retour à ENTREPRISE : les opérations redeviennent possibles sur les mêmes données.
+    with create_session_factory(app_engine)() as db:
+        change_plan(db, tenant_id, "ENTREPRISE", actor="test")
+        db.commit()
+    assert _validate(world.owner, draft).status_code == 200
 
 
 def test_enterprise_plan_grants_transfers(world: World) -> None:

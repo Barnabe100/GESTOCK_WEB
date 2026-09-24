@@ -76,7 +76,9 @@ describe('liste des transferts', () => {
   it('propose la création avec la permission et filtre côté serveur', async () => {
     renderWithCapabilities(<TransfersPage />, {
       permissions: ['stock.transfer.view', 'stock.transfer.create'],
+      features: ['stock.transfers'],
     });
+    expect(screen.queryByText(/Consultation seule/)).toBeNull();
     expect(await screen.findByRole('button', { name: 'Nouveau transfert' })).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('N° de transfert…'), {
       target: { value: '000002' },
@@ -95,5 +97,13 @@ describe('liste des transferts', () => {
     const last = String(fetchMock.mock.calls.at(-1)?.[0]);
     expect(last).toContain('/api/v1/stock/transfers?');
     expect(last).toContain('sort=-number');
+  });
+  it('plan sans la fonctionnalité : historique consultable, création masquée', async () => {
+    renderWithCapabilities(<TransfersPage />, {
+      permissions: ['stock.transfer.view', 'stock.transfer.create'],
+    });
+    expect(await screen.findByText('TRF-000001')).toBeTruthy();
+    expect(screen.getByText(/Consultation seule/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Nouveau transfert' })).toBeNull();
   });
 });

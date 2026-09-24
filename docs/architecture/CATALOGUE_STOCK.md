@@ -291,8 +291,10 @@ des entrées et sorties, seuils par site, alertes ; **ni annulation ni gestion d
 ## 8. Transferts inter-sites (Phase 2.5)
 
 Décisions : [ADR-0018](../adr/0018-transferts-inter-sites.md). Fonctionnalité de plan
-`stock.transfers` (ENTREPRISE) : sans elle, ni routes (`403 feature_unavailable`), ni
-permissions, ni menu.
+`stock.transfers` (ENTREPRISE) : sans elle, aucune opération (création, modification,
+validation, annulation : `403 feature_unavailable`, permissions correspondantes ni accordées ni
+attribuables) ; la **consultation** de l'historique reste possible (entreprise rétrogradée
+d'ENTREPRISE à STANDARD : transferts conservés, lecture seule, bandeau d'information).
 
 | Id | Règle | Réalisation |
 |---|---|---|
@@ -307,7 +309,7 @@ permissions, ni menu.
 | TRF-09 | **Sites du membre** : accès aux deux sites ; site sélectionné = l'un des deux ; permission détenue sur les deux sites. | `site_access_denied`, `site_mismatch`, `site_permission_denied` ; transfert touchant un site inaccessible : `404` |
 
 Permissions (nature) : `stock.transfer.view` (R), `.create`, `.update`, `.validate`,
-`.cancel` (W), liées à la fonctionnalité `stock.transfers`. Rôles de base : Administrateur
+`.cancel` (W) — ces quatre dernières liées à la fonctionnalité `stock.transfers`. Rôles de base : Administrateur
 tout ; Gestionnaire tout sauf l'annulation ; Consultant consultation ; Vendeur aucun accès.
 Audit : `stock_transfer.created`, `.updated` (avant / après), `.validated` (statut précédent
 / nouveau, lignes, valeur), `.cancelled` (motif, `stock_restored`) — numéro, sites, lignes et

@@ -18,7 +18,8 @@ base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés
 et 2.4 (module `sales` : ventes simples au comptant, validation via `StockService`,
 [`SALES.md`](docs/architecture/SALES.md), ADR-0017 ; prix toujours lus dans le catalogue)
 et 2.5 (transferts inter-sites dans `stock`, fonctionnalité de plan `stock.transfers` :
-`StockService.transfer`, ADR-0018 ; une permission peut dépendre d'une fonctionnalité).
+`StockService.transfer`, ADR-0018 ; une permission peut dépendre d'une fonctionnalité ;
+sans la fonctionnalité, l'historique reste consultable en lecture seule).
 Inventaires et autres modules métier (paiements, créances, POS, caisse, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
@@ -112,6 +113,7 @@ uv run alembic upgrade head                 # rôle propriétaire (SM_MIGRATION_
 uv run stockmanager catalog sync            # profils, plans, politiques
 uv run stockmanager create-tenant --name "…" --slug … --profile restaurant \
     --plan STANDARD --owner-email … --owner-name "…"
+uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données conservées, audité
 uv run uvicorn app.main:app --reload --port 8000
 uv run pytest        # PostgreSQL requis : SM_TEST_DATABASE_URL / SM_TEST_MIGRATION_DATABASE_URL
 uv run ruff check . && uv run ruff format --check .

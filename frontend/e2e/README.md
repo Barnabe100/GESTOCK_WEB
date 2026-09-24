@@ -28,6 +28,18 @@ echo 'Provisoire-E2E-Std-1' | uv run stockmanager create-tenant --name "Démo E2
   --owner-password-stdin
 ```
 
+La rétrogradation ENTREPRISE → STANDARD utilise une troisième entreprise, basculée par le test
+avec `stockmanager change-plan` (exécutée dans `../backend`, ou `E2E_BACKEND_DIR`) puis remise
+en ENTREPRISE ; mot de passe définitif `E2e-Retrograde-2026` (ou `E2E_DOWNGRADE_EMAIL`,
+`E2E_DOWNGRADE_PASSWORD`, `E2E_DOWNGRADE_TENANT`) :
+
+```bash
+echo 'Provisoire-E2E-Retro-1' | uv run stockmanager create-tenant --name "Démo E2E Rétrogradé" \
+  --slug demo-e2e-downgrade --profile quincaillerie --plan ENTREPRISE \
+  --owner-email e2e-downgrade@example.com --owner-name "Propriétaire Rétrogradé" \
+  --owner-password-stdin
+```
+
 ## Exécution
 
 ```bash
@@ -51,4 +63,5 @@ la suite peut être rejouée sur la même base.
 - `transfers.e2e.ts` (Phase 2.5) : crée au besoin le site « Dépôt E2E » (l'entreprise de test
   devient multi-sites) et, par test, un article stocké sur les deux sites ; transfert complet
   (stock 100 → 70 et 20 → 50, CMUP 1 400, mouvements, audit), stock insuffisant, plan STANDARD
-  sans transferts, mobile.
+  en consultation seule, rétrogradation ENTREPRISE → STANDARD (historique conservé et
+  consultable, aucune opération), mobile.

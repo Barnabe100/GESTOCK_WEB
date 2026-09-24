@@ -7,6 +7,7 @@ import argparse
 import getpass
 import os
 import sys
+import uuid
 from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
@@ -19,6 +20,7 @@ from app.platform.catalog.sync import sync_catalog
 from app.platform.provisioning.service import ProvisionTenantCommand, TenantProvisioningService
 from app.platform.registry import get_registry
 from app.platform.subscriptions.models import BillingPeriod
+from app.platform.subscriptions.service import change_plan
 from app.platform.tenancy.models import SiteKind
 from app.shared.clock import utcnow
 
@@ -101,6 +103,17 @@ def cmd_create_tenant(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_change_plan(args: argparse.Namespace, settings: Settings) -> int:
+    with _session(settings.database_url, settings) as session:
+        previous, plan = change_plan(session, args.tenant_id, args.plan, actor="cli")
+        session.commit()
+    if previous == plan:
+        print(f"Plan inchangé : {plan}")
+    else:
+        print(f"Plan modifié : {previous} → {plan} (données conservées)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stockmanager", description="Administration TechNova")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -133,6 +146,11 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--site-kind", default="store", choices=[k.value for k in SiteKind])
     create.add_argument("--currency", default="XOF")
     create.set_defaults(func=cmd_create_tenant)
+
+    change = sub.add_parser("change-plan", help="Changer le plan d'une entreprise")
+    change.add_argument("--tenant-id", required=True, type=uuid.UUID)
+    change.add_argument("--plan", required=True, choices=["STANDARD", "ENTREPRISE"])
+    change.set_defaults(func=cmd_change_plan)
     return parser
 
 

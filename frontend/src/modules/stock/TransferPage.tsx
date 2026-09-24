@@ -27,6 +27,7 @@ import { useToast } from '@/shared/ui/toast';
 import type { DocumentLine } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
 import {
+  TRANSFERS_FEATURE,
   useAvailableStock,
   useTransfer,
   useTransferMutations,
@@ -456,10 +457,12 @@ function CancelDialog({ transfer, onClose }: { transfer: StockTransfer; onClose:
 export default function TransferPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { can } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const { id } = useParams();
   const isNew = id === undefined || id === 'new';
   const query = useTransfer(isNew ? undefined : id);
+  // Plan sans la fonctionnalité : consultation seule (le serveur refuse toute opération).
+  const featureActive = capabilities.features.includes(TRANSFERS_FEATURE);
   const [cancelling, setCancelling] = useState(false);
 
   if (!isNew && query.isPending) {
@@ -474,11 +477,15 @@ export default function TransferPage() {
   }
   const transfer = isNew ? undefined : query.data;
   const editable =
-    transfer === undefined
+    featureActive &&
+    (transfer === undefined
       ? can('stock.transfer.create')
-      : transfer.status === 'DRAFT' && can('stock.transfer.update');
+      : transfer.status === 'DRAFT' && can('stock.transfer.update'));
   const canCancel =
-    transfer !== undefined && transfer.status !== 'CANCELLED' && can('stock.transfer.cancel');
+    featureActive &&
+    transfer !== undefined &&
+    transfer.status !== 'CANCELLED' &&
+    can('stock.transfer.cancel');
 
   return (
     <>
@@ -499,6 +506,9 @@ export default function TransferPage() {
           </div>
         }
       />
+      {!featureActive && (
+        <Message severity="info" className="sm-block" text={t('transfers.readOnlyPlan')} />
+      )}
       {editable ? (
         <TransferForm key={transfer?.id ?? 'new'} transfer={transfer} />
       ) : transfer ? (

@@ -99,3 +99,6 @@ export function useTransferMutations() {
     }),
   };
 }
+
+/** Fonctionnalité de plan des opérations de transfert (création, validation, annulation). */
+export const TRANSFERS_FEATURE = 'stock.transfers';

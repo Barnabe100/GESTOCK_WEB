@@ -1,6 +1,6 @@
 # ADR-0018 — Transferts inter-sites : atomicité, CMUP, annulation, sites et fonctionnalité de plan
 
-- **Statut** : Proposée
+- **Statut** : Acceptée (validée par TechNova le 2026-09-24, point 6 amendé)
 - **Date** : 2026-09-24
 
 ## Contexte
@@ -44,10 +44,14 @@ façon dont une fonctionnalité de plan conditionne des permissions.
    le site B. Un transfert touchant un site inaccessible est introuvable (`404`).
 6. **Fonctionnalité de plan → permissions** : `PermissionDef` accepte `feature=` ; une telle
    permission n'est accordée (capacités), proposée à l'édition des rôles, ni attribuable que
-   si le plan inclut la fonctionnalité (`ModuleRegistry.available_permissions`). Les routes
-   exigent en plus `require_feature("stock.transfers")` (`403 feature_unavailable`) ;
-   l'interface filtre menus et routes par fonctionnalité **et** permission. Aucun test sur le
-   nom d'un plan.
+   si le plan inclut la fonctionnalité (`ModuleRegistry.available_permissions`). Seules les
+   **opérations** en dépendent (`stock.transfer.create`, `.update`, `.validate`, `.cancel`) et
+   leurs routes exigent en plus `require_feature("stock.transfers")` (`403
+   feature_unavailable`). La **consultation** (`stock.transfer.view`, liste et détail) n'en
+   dépend pas : une entreprise revenue à un plan sans la fonctionnalité (ENTREPRISE →
+   STANDARD) garde son historique, consultable en lecture seule (règle validée par
+   TechNova). L'interface masque les opérations sans la fonctionnalité et l'indique. Aucun test
+   sur le nom d'un plan : tout passe par les fonctionnalités et les capacités.
 7. **Pas d'état « en transit »** : la réception est immédiate à la validation (une seule
    transaction). Un transit (expédition puis réception) pourra s'ajouter plus tard sans
    remettre en cause ce modèle (statut intermédiaire, mouvements sur un site de transit).
@@ -57,8 +61,11 @@ façon dont une fonctionnalité de plan conditionne des permissions.
 - Les autres documents (entrées, sorties, ventes) profitent du même ordre global de
   verrouillage, sans changement de comportement.
 - Le détail `insufficient_stock` indique désormais le site (`site_id`) de chaque article.
-- Un changement de plan (ENTREPRISE → STANDARD) masque les transferts existants (lecture
-  comprise) ; les données et les mouvements sont conservés.
+- Un changement de plan (ENTREPRISE → STANDARD, commande TechNova `stockmanager change-plan`,
+  auditée `subscription.plan_changed`) conserve toutes les données : transferts et mouvements
+  restent consultables (RLS, rôles et périmètre des sites inchangés) ; création,
+  modification, validation et annulation sont refusées (`feature_unavailable`). Le retour à
+  ENTREPRISE rétablit les opérations sur les mêmes données.
 - Le retour arrière de la migration `0008` est destructif (comme `0007`) : il supprime les
   transferts et leurs mouvements, sans recalcul des niveaux — réservé au développement.
 

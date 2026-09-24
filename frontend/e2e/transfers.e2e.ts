@@ -1,6 +1,15 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, loginUi, OWNER, STANDARD_OWNER } from './support';
+import {
+  adminCli,
+  apiToken,
+  bearer,
+  DOWNGRADE_OWNER,
+  loginUi,
+  OWNER,
+  STANDARD_OWNER,
+  tenantOf,
+} from './support';
 
 /**
  * Phase 2.5 — Transferts inter-sites : parcours complet avec le vrai backend (StockService,
@@ -26,8 +35,8 @@ interface Site {
 }
 
 /** Article : 100 u sur le site principal (coût 1 000), 20 u sur le dépôt (coût 2 000). */
-async function setup(request: APIRequestContext): Promise<Setup> {
-  const token = await apiToken(request, OWNER.email, OWNER.password);
+async function setup(request: APIRequestContext, account = OWNER): Promise<Setup> {
+  const token = await apiToken(request, account.email, account.password);
   const headers = bearer(token);
   const post = async (path: string, data: unknown, status = 201) => {
     const response = await request.post(`/api/v1${path}`, { headers, data });
@@ -181,17 +190,99 @@ test.describe('Transferts inter-sites', () => {
     expect([after.source?.quantity, after.destination?.quantity]).toEqual(['100.000', '20.000']);
   });
 
-  test('plan STANDARD : fonctionnalité indisponible', async ({ page, request }) => {
+  test('plan STANDARD : consultation seule, aucune opération', async ({ page, request }) => {
     await loginUi(page, STANDARD_OWNER.email, STANDARD_OWNER.password, STANDARD_OWNER.tenant);
-    await expect(page.getByRole('link', { name: 'Entrées de stock' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Transferts' })).toHaveCount(0);
-    await page.goto('/stock/transfers');
-    await expect(page.getByRole('heading', { name: 'Transferts inter-sites' })).toHaveCount(0);
-    // Le backend refuse, quel que soit l'écran.
+    await page.getByRole('link', { name: 'Transferts' }).click();
+    await expect(page.getByRole('heading', { name: 'Transferts inter-sites' })).toBeVisible();
+    await expect(page.getByText(/Consultation seule/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Nouveau transfert' })).toHaveCount(0);
+    // Le backend refuse toute opération, quel que soit l'écran.
     const token = await apiToken(request, STANDARD_OWNER.email, STANDARD_OWNER.password);
-    const response = await request.get('/api/v1/stock/transfers', { headers: bearer(token) });
-    expect(response.status()).toBe(403);
-    expect(((await response.json()) as { code: string }).code).toBe('feature_unavailable');
+    const list = await request.get('/api/v1/stock/transfers', { headers: bearer(token) });
+    expect(list.status()).toBe(200);
+    const created = await request.post('/api/v1/stock/transfers', {
+      headers: bearer(token),
+      data: { destination_site_id: crypto.randomUUID(), lines: [] },
+    });
+    expect(created.status()).toBe(403);
+    expect(((await created.json()) as { code: string }).code).toBe('feature_unavailable');
+  });
+
+  test('rétrogradation ENTREPRISE → STANDARD : historique conservé, lecture seule', async ({
+    page,
+    request,
+  }) => {
+    const s = await setup(request, DOWNGRADE_OWNER);
+    const tenant = tenantOf(s.token);
+    const headers = bearer(s.token);
+    const create = async (quantity: string) => {
+      const response = await request.post('/api/v1/stock/transfers', {
+        headers,
+        data: {
+          source_site_id: s.sourceId,
+          destination_site_id: s.destinationId,
+          lines: [{ article_id: s.articleId, quantity }],
+        },
+      });
+      expect(response.status(), await response.text()).toBe(201);
+      return (await response.json()) as { id: string; number: string };
+    };
+    adminCli('change-plan', '--tenant-id', tenant, '--plan', 'ENTREPRISE');
+    const validated = await create('30');
+    const validation = await request.post(`/api/v1/stock/transfers/${validated.id}/validate`, {
+      headers,
+    });
+    expect(validation.status()).toBe(200);
+    const draft = await create('5');
+    try {
+      expect(adminCli('change-plan', '--tenant-id', tenant, '--plan', 'STANDARD')).toContain(
+        'ENTREPRISE → STANDARD',
+      );
+
+      // Historique consultable dans l'interface, en lecture seule.
+      await loginUi(page, DOWNGRADE_OWNER.email, DOWNGRADE_OWNER.password, DOWNGRADE_OWNER.tenant);
+      await page.getByRole('link', { name: 'Transferts' }).click();
+      await expect(page.getByText(/Consultation seule/)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Nouveau transfert' })).toHaveCount(0);
+      await expect(page.getByRole('row').filter({ hasText: validated.number })).toContainText(
+        'Validé',
+      );
+      await page.goto(`/stock/transfers/${validated.id}`);
+      await expect(
+        page.getByRole('heading', { name: `Transfert ${validated.number}` }),
+      ).toBeVisible();
+      await expect(page.getByText(s.reference)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Annuler le transfert' })).toHaveCount(0);
+      await page.goto(`/stock/transfers/${draft.id}`);
+      await expect(page.getByText('Brouillon', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Valider le transfert' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Enregistrer le brouillon' })).toHaveCount(0);
+
+      // Le backend refuse toute opération ; données et stock intacts.
+      const body = {
+        destination_site_id: s.destinationId,
+        lines: [{ article_id: s.articleId, quantity: '1' }],
+      };
+      for (const response of [
+        await request.post('/api/v1/stock/transfers', {
+          headers,
+          data: { ...body, source_site_id: s.sourceId },
+        }),
+        await request.put(`/api/v1/stock/transfers/${draft.id}`, { headers, data: body }),
+        await request.post(`/api/v1/stock/transfers/${draft.id}/validate`, { headers }),
+        await request.post(`/api/v1/stock/transfers/${validated.id}/cancel`, {
+          headers,
+          data: { reason: 'Tentative après rétrogradation' },
+        }),
+      ]) {
+        expect(response.status()).toBe(403);
+        expect(((await response.json()) as { code: string }).code).toBe('feature_unavailable');
+      }
+      const after = await levels(request, s);
+      expect([after.source?.quantity, after.destination?.quantity]).toEqual(['70.000', '50.000']);
+    } finally {
+      adminCli('change-plan', '--tenant-id', tenant, '--plan', 'ENTREPRISE');
+    }
   });
 
   test('affichage mobile sans débordement @mobile', async ({ page, request }) => {

@@ -1,12 +1,15 @@
 """Règles d'abonnement centralisées : statut effectif, politique d'accès, limites du plan."""
 
 import calendar
+import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError
+from app.core.db import set_db_context
+from app.core.errors import BusinessRuleError, NotFoundError
+from app.platform.audit.service import record_audit
 from app.platform.catalog.models import Plan, SubscriptionAccessPolicy
 from app.platform.subscriptions.models import BillingPeriod, Subscription, SubscriptionStatus
 
@@ -58,3 +61,32 @@ def current_plan(session: Session) -> Plan:
     if plan is None:
         raise BusinessRuleError("Aucun plan actif", code="subscription_missing")
     return plan
+
+
+def change_plan(
+    session: Session, tenant_id: uuid.UUID, plan_code: str, *, actor: str
+) -> tuple[str, str]:
+    """Change le plan de l'abonnement d'un tenant (opération TechNova), audité. Les données
+    sont conservées : ce que le nouveau plan n'inclut pas (modules, fonctionnalités) cesse
+    simplement d'être accordé par les capacités. Renvoie (ancien plan, nouveau plan)."""
+    set_db_context(session, tenant_id=tenant_id, user_id=None)
+    subscription = get_subscription(session)
+    if subscription is None:
+        raise NotFoundError("Abonnement introuvable", code="subscription_missing")
+    plan = session.get(Plan, plan_code)
+    if plan is None or not plan.is_active:
+        raise BusinessRuleError(f"Plan inconnu : {plan_code}", code="unknown_plan")
+    previous = subscription.plan_code
+    if previous != plan.code:
+        subscription.plan_code = plan.code
+        record_audit(
+            session,
+            action="subscription.plan_changed",
+            tenant_id=tenant_id,
+            user_id=None,
+            entity_type="subscription",
+            entity_id=subscription.id,
+            data={"actor": actor, "previous_plan": previous, "plan": plan.code},
+        )
+        session.flush()
+    return previous, plan.code

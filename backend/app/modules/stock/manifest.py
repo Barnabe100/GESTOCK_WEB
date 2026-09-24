@@ -25,9 +25,10 @@ MANIFEST = ModuleManifest(
         PermissionDef("stock.reason.view", R),
         # Motifs de sortie : réservés à l'administration (SOR-05).
         PermissionDef("stock.reason.manage", A),
-        # Transferts inter-sites (Phase 2.5) : accordés seulement si le plan inclut la
-        # fonctionnalité ``stock.transfers`` (ADR-0018).
-        PermissionDef("stock.transfer.view", R, feature=TRANSFERS),
+        # Transferts inter-sites (Phase 2.5, ADR-0018). Consultation toujours possible : un
+        # tenant revenu à un plan sans ``stock.transfers`` garde l'accès à son historique.
+        # Opérations : accordées seulement si le plan inclut la fonctionnalité.
+        PermissionDef("stock.transfer.view", R),
         PermissionDef("stock.transfer.create", W, feature=TRANSFERS),
         PermissionDef("stock.transfer.update", W, feature=TRANSFERS),
         PermissionDef("stock.transfer.validate", W, feature=TRANSFERS),

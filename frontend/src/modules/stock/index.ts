@@ -31,8 +31,8 @@ export const stockModule: FrontendModule = {
       labelKey: 'nav.stockTransfers',
       icon: 'pi pi-arrow-right-arrow-left',
       path: '/stock/transfers',
+      // Consultation de l'historique même sans la fonctionnalité (plan) : pas de `feature`.
       permission: 'stock.transfer.view',
-      feature: 'stock.transfers',
     },
     {
       key: 'stock-movements',
@@ -89,7 +89,6 @@ export const stockModule: FrontendModule = {
       path: 'stock/transfers',
       component: lazy(() => import('./TransfersPage')),
       permission: 'stock.transfer.view',
-      feature: 'stock.transfers',
     },
     {
       path: 'stock/transfers/new',
@@ -101,7 +100,6 @@ export const stockModule: FrontendModule = {
       path: 'stock/transfers/:id',
       component: lazy(() => import('./TransferPage')),
       permission: 'stock.transfer.view',
-      feature: 'stock.transfers',
     },
     {
       path: 'stock/movements',

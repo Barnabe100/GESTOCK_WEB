@@ -32,12 +32,15 @@ export function renderWithCapabilities(
     path = '/',
     route = '/',
     isOwner = false,
+    features = [],
   }: {
     permissions: string[];
     sites?: typeof SITES;
     path?: string;
     route?: string;
     isOwner?: boolean;
+    /** Fonctionnalités du plan (ex. `stock.transfers`). */
+    features?: string[];
   },
 ) {
   const caps = {
@@ -47,6 +50,7 @@ export function renderWithCapabilities(
     site: null,
     sites,
     modules: [],
+    features,
   } as unknown as Capabilities;
   const set = new Set(permissions);
   return render(

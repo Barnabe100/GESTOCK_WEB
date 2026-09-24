@@ -132,8 +132,10 @@ possible, opérations refusées (`403 subscription_restricted`).
 
 ### Transferts inter-sites (module `stock`, fonctionnalité `stock.transfers`) — Phase 2.5
 
-Toutes les routes exigent la fonctionnalité de plan `stock.transfers` (`403
-feature_unavailable` sinon) en plus de leur permission. Règles : [`CATALOGUE_STOCK.md`
+Création, modification, validation et annulation exigent la fonctionnalité de plan
+`stock.transfers` (`403 feature_unavailable` sinon) en plus de leur permission ; la
+consultation (liste, détail) n'exige que `stock.transfer.view` : l'historique d'une entreprise
+revenue à un plan sans la fonctionnalité reste consultable. Règles : [`CATALOGUE_STOCK.md`
 §8](CATALOGUE_STOCK.md#8-transferts-inter-sites-phase-25) ; décisions :
 [ADR-0018](../adr/0018-transferts-inter-sites.md).
 

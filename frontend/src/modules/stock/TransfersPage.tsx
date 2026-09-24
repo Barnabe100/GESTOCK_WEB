@@ -3,6 +3,7 @@ import { Column } from 'primereact/column';
 import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
+import { Message } from 'primereact/message';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -20,7 +21,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
 
 import type { DocumentStatus } from './api';
-import { useTransfers, type StockTransfer } from './transferApi';
+import { TRANSFERS_FEATURE, useTransfers, type StockTransfer } from './transferApi';
 import { DocumentStatusTag } from './ui';
 
 const STATUSES: DocumentStatus[] = ['DRAFT', 'VALIDATED', 'CANCELLED'];
@@ -52,6 +53,7 @@ export default function TransfersPage() {
     }),
   );
   const { locale } = capabilities.tenant;
+  const featureActive = capabilities.features.includes(TRANSFERS_FEATURE);
   const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
 
   const onPage = (e: DataTableStateEvent) =>
@@ -80,6 +82,7 @@ export default function TransfersPage() {
       <PageHeader
         title={t('transfers.title')}
         actions={
+          featureActive &&
           can('stock.transfer.create') && (
             <Button
               icon="pi pi-plus"
@@ -89,6 +92,9 @@ export default function TransfersPage() {
           )
         }
       />
+      {!featureActive && (
+        <Message severity="info" className="sm-block" text={t('transfers.readOnlyPlan')} />
+      )}
       <div className="sm-toolbar">
         <SearchInput
           value={search}

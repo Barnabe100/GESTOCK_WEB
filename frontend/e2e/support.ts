@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 
 /** Compte propriétaire d'une entreprise de test (voir e2e/README.md). */
@@ -12,6 +15,13 @@ export const STANDARD_OWNER = {
   email: process.env.E2E_STANDARD_EMAIL ?? 'e2e-standard@example.com',
   password: process.env.E2E_STANDARD_PASSWORD ?? 'E2e-Standard-2026',
   tenant: process.env.E2E_STANDARD_TENANT ?? 'Démo E2E Standard',
+};
+
+/** Entreprise ENTREPRISE rétrogradée en STANDARD par le test (voir e2e/README.md). */
+export const DOWNGRADE_OWNER = {
+  email: process.env.E2E_DOWNGRADE_EMAIL ?? 'e2e-downgrade@example.com',
+  password: process.env.E2E_DOWNGRADE_PASSWORD ?? 'E2e-Retrograde-2026',
+  tenant: process.env.E2E_DOWNGRADE_TENANT ?? 'Démo E2E Rétrogradé',
 };
 
 export const unique = (prefix: string) => `${prefix} ${Date.now().toString().slice(-7)}`;
@@ -56,6 +66,23 @@ export async function apiToken(
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/** Entreprise active d'un jeton (charge utile JWT, sans vérification : usage de test). */
+export function tenantOf(token: string): string {
+  const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as {
+    tid?: string;
+  };
+  return payload.tid ?? '';
+}
+
+/**
+ * Commande d'administration TechNova (`stockmanager`) exécutée dans le backend local :
+ * certaines opérations (changement de plan) n'existent pas dans l'API des entreprises.
+ */
+export function adminCli(...args: string[]): string {
+  const cwd = process.env.E2E_BACKEND_DIR ?? resolve(process.cwd(), '../backend');
+  return execFileSync('uv', ['run', 'stockmanager', ...args], { cwd, encoding: 'utf8' });
+}
 
 /** Crée un membre avec un rôle de base (tous sites) et fixe son mot de passe définitif. */
 export async function createMember(

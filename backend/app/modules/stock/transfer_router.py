@@ -1,7 +1,8 @@
 """Routes des transferts inter-sites : ``/api/v1/stock/transfers`` (Phase 2.5).
 
-Toutes exigent la fonctionnalité de plan ``stock.transfers`` (``403 feature_unavailable``
-sinon) en plus de la permission propre à l'opération."""
+Consultation (liste, détail) : permission seule — l'historique reste consultable si le plan
+n'inclut plus la fonctionnalité. Création, modification, validation, annulation : exigent en
+plus la fonctionnalité de plan ``stock.transfers`` (``403 feature_unavailable`` sinon)."""
 
 import uuid
 from datetime import date
@@ -22,7 +23,10 @@ from app.platform.context import (
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
 
-router = APIRouter(prefix="/transfers", dependencies=[Depends(require_feature("stock.transfers"))])
+router = APIRouter(prefix="/transfers")
+
+# Opérations : fonctionnalité du plan vérifiée avant la permission (message explicite).
+FEATURE = [Depends(require_feature("stock.transfers"))]
 
 View = Annotated[RequestContext, Depends(require_permission("stock.transfer.view"))]
 Create = Annotated[RequestContext, Depends(require_permission("stock.transfer.create"))]
@@ -59,7 +63,9 @@ def list_transfers(
     return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
 
 
-@router.post("", response_model=TransferOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=TransferOut, status_code=status.HTTP_201_CREATED, dependencies=FEATURE
+)
 def create_transfer(body: TransferCreate, ctx: Create, db: DbSession, now: NowDep) -> TransferOut:
     service = TransferService(db, ctx, now)
     transfer = service.create(body)
@@ -73,7 +79,7 @@ def get_transfer(transfer_id: uuid.UUID, ctx: View, db: DbSession, now: NowDep) 
     return service.to_out([service.get(transfer_id)], with_lines=True)[0]
 
 
-@router.put("/{transfer_id}", response_model=TransferOut)
+@router.put("/{transfer_id}", response_model=TransferOut, dependencies=FEATURE)
 def update_transfer(
     transfer_id: uuid.UUID, body: TransferInput, ctx: Update, db: DbSession, now: NowDep
 ) -> TransferOut:
@@ -83,7 +89,7 @@ def update_transfer(
     return service.to_out([transfer], with_lines=True)[0]
 
 
-@router.post("/{transfer_id}/validate", response_model=TransferOut)
+@router.post("/{transfer_id}/validate", response_model=TransferOut, dependencies=FEATURE)
 def validate_transfer(
     transfer_id: uuid.UUID, ctx: Validate, db: DbSession, now: NowDep
 ) -> TransferOut:
@@ -93,7 +99,7 @@ def validate_transfer(
     return service.to_out([transfer], with_lines=True)[0]
 
 
-@router.post("/{transfer_id}/cancel", response_model=TransferOut)
+@router.post("/{transfer_id}/cancel", response_model=TransferOut, dependencies=FEATURE)
 def cancel_transfer(
     transfer_id: uuid.UUID, body: CancelInput, ctx: Cancel, db: DbSession, now: NowDep
 ) -> TransferOut:

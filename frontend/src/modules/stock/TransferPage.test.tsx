@@ -75,6 +75,8 @@ const level = (articleId: string, quantity: string) => ({
   state: 'ok',
 });
 
+const FEATURES = ['stock.transfers'];
+
 const ALL = [
   'stock.transfer.view',
   'stock.transfer.create',
@@ -121,6 +123,7 @@ describe('saisie et consultation d’un transfert', () => {
   it('nouveau transfert : sites et articles obligatoires, aucun envoi sinon', async () => {
     fetchMock.mockImplementation(async () => pageOf([]));
     renderWithCapabilities(withToast(<TransferPage />, show), {
+      features: FEATURES,
       permissions: ['stock.transfer.view', 'stock.transfer.create'],
       path: '/stock/transfers/new',
       route: '/stock/transfers/new',
@@ -144,6 +147,7 @@ describe('saisie et consultation d’un transfert', () => {
       return init?.method === 'PUT' ? jsonResponse(draft) : jsonResponse(draft);
     });
     renderWithCapabilities(withToast(<TransferPage />, show), {
+      features: FEATURES,
       permissions: MANAGER,
       path: '/stock/transfers/:id',
       route: '/stock/transfers/t1',
@@ -195,6 +199,7 @@ describe('saisie et consultation d’un transfert', () => {
       return jsonResponse(draft);
     });
     renderWithCapabilities(withToast(<TransferPage />, show), {
+      features: FEATURES,
       permissions: MANAGER,
       path: '/stock/transfers/:id',
       route: '/stock/transfers/t1',
@@ -236,6 +241,7 @@ describe('saisie et consultation d’un transfert', () => {
       return jsonResponse(draft);
     });
     renderWithCapabilities(withToast(<TransferPage />, show), {
+      features: FEATURES,
       permissions: ALL,
       path: '/stock/transfers/:id',
       route: '/stock/transfers/t1',
@@ -258,6 +264,7 @@ describe('saisie et consultation d’un transfert', () => {
   it('transfert validé : lecture seule ; annulation réservée à la permission', async () => {
     fetchMock.mockImplementation(async () => jsonResponse(validated));
     const view = renderWithCapabilities(withToast(<TransferPage />, show), {
+      features: FEATURES,
       permissions: MANAGER,
       path: '/stock/transfers/:id',
       route: '/stock/transfers/t1',
@@ -271,6 +278,7 @@ describe('saisie et consultation d’un transfert', () => {
     view.unmount();
 
     renderWithCapabilities(withToast(<TransferPage />, show), {
+      features: FEATURES,
       permissions: ALL,
       path: '/stock/transfers/:id',
       route: '/stock/transfers/t1',
@@ -283,5 +291,21 @@ describe('saisie et consultation d’un transfert', () => {
       target: { value: 'Erreur de destination' },
     });
     expect((confirm as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('plan sans la fonctionnalité : consultation seule, même avec toutes les permissions', async () => {
+    fetchMock.mockImplementation(async (url) =>
+      String(url).includes('/stock/levels') ? pageOf([]) : jsonResponse(draft),
+    );
+    renderWithCapabilities(withToast(<TransferPage />, show), {
+      permissions: ALL,
+      path: '/stock/transfers/:id',
+      route: '/stock/transfers/t1',
+    });
+    expect(await screen.findByText(/Consultation seule/)).toBeTruthy();
+    // Brouillon historique : affiché en lecture seule, aucune opération proposée.
+    expect(screen.getByText('RIZ-25 — Riz 25 kg')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Enregistrer le brouillon' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Valider le transfert' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Annuler le transfert' })).toBeNull();
   });
 });

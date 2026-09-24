@@ -136,3 +136,37 @@ def test_cli_catalog_commands(
     assert main(["catalog", "check"], settings) == 0
     assert main(["catalog", "sync"], settings) == 0
     assert "Catalogue synchronisé : 4 profils, 2 plans" in capsys.readouterr().out
+
+
+def test_cli_change_plan_keeps_data_and_audits(
+    provision: Any, settings: Settings, capsys: pytest.CaptureFixture[str], owner_db: Session
+) -> None:
+    result = provision("alpha", plan="ENTREPRISE")
+    tenant = str(result.tenant_id)
+    assert main(["change-plan", "--tenant-id", tenant, "--plan", "STANDARD"], settings) == 0
+    assert "ENTREPRISE → STANDARD" in capsys.readouterr().out
+    plan = owner_db.execute(
+        text("SELECT plan_code FROM subscriptions WHERE tenant_id = :t"), {"t": tenant}
+    ).scalar_one()
+    assert plan == "STANDARD"
+    audit = owner_db.execute(
+        text(
+            "SELECT data FROM audit_logs WHERE tenant_id = :t "
+            "AND action = 'subscription.plan_changed'"
+        ),
+        {"t": tenant},
+    ).scalar_one()
+    assert audit == {"actor": "cli", "previous_plan": "ENTREPRISE", "plan": "STANDARD"}
+    assert main(["change-plan", "--tenant-id", tenant, "--plan", "STANDARD"], settings) == 0
+    assert "inchangé" in capsys.readouterr().out
+    unknown = main(
+        [
+            "change-plan",
+            "--tenant-id",
+            "00000000-0000-0000-0000-000000000000",
+            "--plan",
+            "STANDARD",
+        ],
+        settings,
+    )
+    assert unknown == 1

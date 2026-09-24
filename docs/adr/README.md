@@ -24,6 +24,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0015](0015-rbac-roles-de-base-et-personnalises.md) | RBAC : rôles de base, rôles personnalisés, portée et anti-escalade | Acceptée |
 | [0016](0016-recherche-trigrammes.md) | Recherche « contient » servie par des index trigrammes (pg_trgm) | Acceptée |
 | [0017](0017-ventes-prix-validation-annulation.md) | Ventes : prix du catalogue, validation et annulation | Acceptée |
-| [0018](0018-transferts-inter-sites.md) | Transferts inter-sites : atomicité, CMUP, annulation, sites, fonctionnalité de plan | Proposée |
+| [0018](0018-transferts-inter-sites.md) | Transferts inter-sites : atomicité, CMUP, annulation, sites, fonctionnalité de plan | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).
