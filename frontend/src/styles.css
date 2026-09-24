@@ -443,3 +443,12 @@ h1 {
     grid-column: 1 / -1;
   }
 }
+
+.sm-pre-line {
+  white-space: pre-line;
+  margin: 0;
+}
+
+.sm-nowrap {
+  white-space: nowrap;
+}

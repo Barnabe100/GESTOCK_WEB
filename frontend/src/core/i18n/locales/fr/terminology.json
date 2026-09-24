@@ -6,5 +6,9 @@
   "sales": {
     "sale": "Vente",
     "sales": "Ventes"
+  },
+  "customers": {
+    "customer": "Client",
+    "items": "Clients"
   }
 }

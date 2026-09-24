@@ -25,3 +25,7 @@ coverage/
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+# Playwright (tests de bout en bout)
+test-results/
+playwright-report/

@@ -72,7 +72,8 @@
     "stockExits": "Sorties de stock",
     "stockMovements": "Mouvements",
     "exitReasons": "Motifs de sortie",
-    "stockAlerts": "Alertes de stock"
+    "stockAlerts": "Alertes de stock",
+    "customers": "$t(terminology:customers.items)"
   },
   "modules": {
     "dashboard": "Tableau de bord",
@@ -82,7 +83,7 @@
     "subscription": "Abonnement",
     "catalog": "$t(terminology:catalog.items)",
     "suppliers": "Fournisseurs",
-    "customers": "Clients",
+    "customers": "$t(terminology:customers.items)",
     "stock": "Stock",
     "inventory_count": "Inventaires",
     "sales": "$t(terminology:sales.sales)",
@@ -274,7 +275,11 @@
     "stock.exit.cancel": "Annuler une sortie validée",
     "stock.reason.view": "Consulter les motifs de sortie",
     "stock.reason.manage": "Gérer les motifs de sortie",
-    "alerts.stock.view": "Consulter les alertes de stock"
+    "alerts.stock.view": "Consulter les alertes de stock",
+    "customers.customer.view": "Consulter les clients",
+    "customers.customer.create": "Créer un client",
+    "customers.customer.update": "Modifier un client",
+    "customers.customer.status": "Activer / désactiver un client"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -312,7 +317,8 @@
   "validation": {
     "required": "Champ obligatoire",
     "invalid": "Valeur invalide",
-    "email": "Adresse email invalide"
+    "email": "Adresse email invalide",
+    "tooLong": "Valeur trop longue"
   },
   "statusFilter": {
     "label": "Statut",
@@ -498,5 +504,44 @@
   "alerts": {
     "title": "Alertes de stock",
     "none": "Aucune alerte de stock"
+  },
+  "customers": {
+    "title": "$t(terminology:customers.items)",
+    "new": "Nouveau client",
+    "edit": "Modifier le client",
+    "view": "Voir la fiche",
+    "search": "Code, nom, téléphone, email…",
+    "code": "Code",
+    "type": "Type de client",
+    "allTypes": "Tous les types",
+    "types": {
+      "INDIVIDUAL": "Particulier",
+      "BUSINESS": "Entreprise"
+    },
+    "name": "Nom et prénom",
+    "businessName": "Nom usuel / enseigne",
+    "nameOrLegal": "Nom / raison sociale",
+    "legalName": "Raison sociale",
+    "tax_id": "Identifiant fiscal (IFU, NIF…)",
+    "phone": "Téléphone",
+    "phone2": "Téléphone secondaire",
+    "email": "Email",
+    "address": "Adresse",
+    "city": "Ville",
+    "country": "Pays",
+    "notes": "Observations",
+    "creditLimit": "Plafond de crédit",
+    "creditLimitHelp": "Facultatif. Utilisé par le futur module de vente à crédit.",
+    "status": "Statut",
+    "general": "Informations générales",
+    "tracking": "Suivi",
+    "createdAt": "Créé le",
+    "updatedAt": "Dernière modification",
+    "inactiveHelp": "Client désactivé : consultable, mais non proposé pour une nouvelle opération commerciale.",
+    "invalidPhone": "Numéro invalide (chiffres, « + » initial accepté)",
+    "created": "Client {{code}} créé",
+    "updated": "Client modifié",
+    "activated": "Client réactivé",
+    "deactivated": "Client désactivé"
   }
 }

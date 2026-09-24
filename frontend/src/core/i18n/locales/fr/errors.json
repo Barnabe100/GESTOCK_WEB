@@ -71,5 +71,6 @@
   "role_name_reserved": "Ce nom est réservé à un rôle de base.",
   "role_inactive": "Ce rôle est désactivé : il ne peut pas être attribué.",
   "role_protected": "Ce rôle est protégé : il ne peut être ni désactivé ni modifié.",
-  "site_escalation": "Vous ne pouvez pas accorder l'accès à des sites hors de votre périmètre."
+  "site_escalation": "Vous ne pouvez pas accorder l'accès à des sites hors de votre périmètre.",
+  "customer_not_found": "Client introuvable."
 }
