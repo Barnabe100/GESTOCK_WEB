@@ -13,7 +13,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.platform.access.models import RolePermission, TenantMembership
+from app.platform.access.models import Role, TenantMembership
+from app.platform.access.permissions import effective_role_permissions
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
@@ -76,11 +77,10 @@ class CapabilityService:
         }
         if not role_ids:
             return set()
-        return set(
-            self.session.scalars(
-                select(RolePermission.permission_code).where(RolePermission.role_id.in_(role_ids))
-            )
-        )
+        granted: set[str] = set()
+        for role in self.session.scalars(select(Role).where(Role.id.in_(role_ids))):
+            granted |= effective_role_permissions(role, self.registry)
+        return granted
 
     def accessible_site_ids(self, membership: TenantMembership) -> frozenset[uuid.UUID]:
         active = set(self.session.scalars(select(Site.id).where(Site.is_active.is_(True))))

@@ -3,6 +3,7 @@
 import fnmatch
 import tomllib
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -195,3 +196,9 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
 
     if errors:
         raise CatalogError("Catalogue invalide :\n- " + "\n- ".join(errors))
+
+
+@lru_cache
+def role_templates() -> dict[str, RoleTemplate]:
+    """Modèles de rôles système (lus une fois ; source : ``data/role_templates.toml``)."""
+    return _load_role_templates(_read(DATA_DIR / "role_templates.toml"))

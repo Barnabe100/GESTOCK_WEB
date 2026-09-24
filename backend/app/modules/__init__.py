@@ -5,7 +5,10 @@ permissions) et n'est exposé que si la capacité correspondante est active pour
 Voir docs/architecture/ARCHITECTURE.md (section 5).
 """
 
+from app.modules.catalog.manifest import MANIFEST as CATALOG
 from app.modules.planned import PLANNED_MODULES
+from app.modules.suppliers.manifest import MANIFEST as SUPPLIERS
 from app.platform.registry import ModuleManifest
 
-BUSINESS_MODULES: tuple[ModuleManifest, ...] = PLANNED_MODULES
+# Registre explicite : modules implémentés, puis modules seulement planifiés.
+BUSINESS_MODULES: tuple[ModuleManifest, ...] = (CATALOG, SUPPLIERS, *PLANNED_MODULES)

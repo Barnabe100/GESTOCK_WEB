@@ -1,10 +1,13 @@
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session
 
 from app.platform.audit.models import AuditLog
+
+if TYPE_CHECKING:
+    from app.platform.context import RequestContext
 
 
 @dataclass(frozen=True)
@@ -39,3 +42,40 @@ def record_audit(
     )
     session.add(entry)
     return entry
+
+
+def audit_action(
+    session: Session,
+    ctx: "RequestContext",
+    action: str,
+    *,
+    entity_type: str,
+    entity_id: uuid.UUID | str | None,
+    data: dict[str, Any] | None = None,
+) -> AuditLog:
+    """Raccourci pour une action faite dans un contexte tenant (utilisateur, site, requête)."""
+    return record_audit(
+        session,
+        action=action,
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user.id,
+        site_id=ctx.site.id if ctx.site else None,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        data=data,
+        meta=ctx.meta,
+    )
+
+
+def changes(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    """Différences avant/après, sérialisables en JSON, pour le journal d'audit."""
+
+    def plain(value: Any) -> Any:
+        if hasattr(value, "value"):
+            return value.value
+        if isinstance(value, (uuid.UUID,)) or type(value).__name__ == "Decimal":
+            return str(value)
+        return value
+
+    diff = {k: {"before": plain(before.get(k)), "after": plain(v)} for k, v in after.items()}
+    return {k: v for k, v in diff.items() if v["before"] != v["after"]}

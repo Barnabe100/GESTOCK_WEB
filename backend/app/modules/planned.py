@@ -14,8 +14,6 @@ def _planned(code: str, *depends_on: str) -> ModuleManifest:
 
 PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     # Core commercial (V1)
-    _planned("catalog"),
-    _planned("suppliers"),
     _planned("customers"),
     _planned("stock", "catalog"),
     _planned("inventory_count", "stock"),

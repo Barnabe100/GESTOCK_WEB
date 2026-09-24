@@ -201,10 +201,32 @@ def get_tenant_context(
 TenantContext = Annotated[RequestContext, Depends(get_tenant_context)]
 
 
+# Codes utilisés par les dépendances d'autorisation. Ils sont vérifiés contre le registre au
+# démarrage de l'application (``verify_declared_requirements``) : les routeurs de modules sont
+# importés pendant la construction du registre, on ne peut donc pas le consulter à ce moment.
+_DECLARED_PERMISSIONS: set[str] = set()
+_DECLARED_MODULES: set[str] = set()
+_DECLARED_FEATURES: set[str] = set()
+
+
+def verify_declared_requirements(registry: ModuleRegistry) -> None:
+    """Échec au démarrage si une route exige une permission, un module ou une fonctionnalité
+    inconnus du registre (faute de frappe, module retiré…)."""
+    errors = [
+        f"permission inconnue : {c}" for c in _DECLARED_PERMISSIONS if not registry.permission(c)
+    ]
+    errors += [f"module inconnu : {c}" for c in _DECLARED_MODULES if c not in registry]
+    errors += [
+        f"fonctionnalité inconnue : {c}"
+        for c in _DECLARED_FEATURES
+        if registry.module_of_feature(c) is None
+    ]
+    if errors:
+        raise ValueError("Exigences d'autorisation invalides : " + ", ".join(sorted(errors)))
+
+
 def require_permission(code: str) -> Callable[[RequestContext], RequestContext]:
-    registry = get_registry()
-    if registry.permission(code) is None:
-        raise ValueError(f"permission inconnue du registre : {code}")
+    _DECLARED_PERMISSIONS.add(code)
 
     def dependency(ctx: TenantContext) -> RequestContext:
         if code in ctx.capabilities.permissions:
@@ -223,13 +245,13 @@ def require_permission(code: str) -> Callable[[RequestContext], RequestContext]:
 def require_module(
     code: str, registry: ModuleRegistry | None = None
 ) -> Callable[[RequestContext], RequestContext]:
-    registry = registry or get_registry()
-    if code not in registry:
-        raise ValueError(f"module inconnu du registre : {code}")
+    _DECLARED_MODULES.add(code)
 
     def dependency(ctx: TenantContext) -> RequestContext:
-        if code not in ctx.capabilities.modules or registry.get(code).status != (
-            ModuleStatus.AVAILABLE
+        manifest_registry = registry or get_registry()
+        if (
+            code not in ctx.capabilities.modules
+            or manifest_registry.get(code).status != ModuleStatus.AVAILABLE
         ):
             raise ForbiddenError("Module non disponible", code="module_unavailable")
         return ctx
@@ -239,9 +261,7 @@ def require_module(
 
 def require_feature(code: str) -> Callable[[RequestContext], RequestContext]:
     """Exige une fonctionnalité optionnelle du plan (ex. ``stock.transfers``)."""
-    registry = get_registry()
-    if registry.module_of_feature(code) is None:
-        raise ValueError(f"fonctionnalité inconnue du registre : {code}")
+    _DECLARED_FEATURES.add(code)
 
     def dependency(ctx: TenantContext) -> RequestContext:
         if code not in ctx.capabilities.features:

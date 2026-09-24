@@ -55,6 +55,17 @@ class RoleOut(BaseModel):
     permission_codes: list[str]
 
 
+class RoleTemplateOut(BaseModel):
+    code: str
+    name: str
+    description: str | None
+    instantiated: bool
+
+
+class RoleFromTemplate(BaseModel):
+    template_code: str
+
+
 class RoleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)

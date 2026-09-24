@@ -22,6 +22,7 @@ from app.platform.access.models import (
     RolePermission,
     TenantMembership,
 )
+from app.platform.access.permissions import effective_role_permissions
 from app.platform.access.schemas import (
     MemberCreate,
     MemberOut,
@@ -29,9 +30,12 @@ from app.platform.access.schemas import (
     PermissionOut,
     RoleAssignment,
     RoleCreate,
+    RoleOut,
+    RoleTemplateOut,
     RoleUpdate,
 )
 from app.platform.audit.service import record_audit
+from app.platform.catalog.loader import role_templates
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
@@ -39,6 +43,17 @@ from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import current_plan
 from app.platform.tenancy.models import Site
+
+
+def role_out(role: Role, registry: ModuleRegistry) -> RoleOut:
+    return RoleOut(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        template_code=role.template_code,
+        is_system=role.is_system,
+        permission_codes=sorted(effective_role_permissions(role, registry)),
+    )
 
 
 def member_out(membership: TenantMembership) -> MemberOut:
@@ -138,7 +153,7 @@ class RoleService(_AccessBase):
         if role.is_system:
             raise ForbiddenError("Rôle système non modifiable", code="system_role")
         # Modifier un rôle revient à accorder ses permissions à ses titulaires.
-        self._ensure_grantable(role.permission_codes)
+        self._ensure_grantable(effective_role_permissions(role, self.registry))
 
     def update(self, role_id: uuid.UUID, data: RoleUpdate) -> Role:
         role = self.get(role_id)
@@ -156,6 +171,34 @@ class RoleService(_AccessBase):
         self._flush()
         after = {"name": role.name, "permissions": role.permission_codes}
         self._audit("role.updated", "role", role.id, {"before": before, "after": after})
+        return role
+
+    def templates(self) -> list[RoleTemplateOut]:
+        existing = {r.template_code for r in self.list_all() if r.template_code}
+        return [
+            RoleTemplateOut(
+                code=t.code, name=t.name, description=t.description, instantiated=t.code in existing
+            )
+            for t in role_templates().values()
+        ]
+
+    def create_from_template(self, template_code: str) -> Role:
+        """Ajoute au tenant un rôle système manquant (ex. modèle apparu après sa création)."""
+        template = role_templates().get(template_code)
+        if template is None:
+            raise NotFoundError("Modèle de rôle introuvable", code="role_template_not_found")
+        if any(r.template_code == template_code for r in self.list_all()):
+            raise ConflictError("Ce rôle existe déjà", code="role_template_exists")
+        role = Role(
+            tenant_id=self.ctx.tenant_id,
+            name=template.name,
+            description=template.description,
+            template_code=template.code,
+            is_system=True,
+        )
+        self.db.add(role)
+        self._flush()
+        self._audit("role.created", "role", role.id, {"template": template.code})
         return role
 
     def delete(self, role_id: uuid.UUID) -> None:
@@ -217,7 +260,7 @@ class MemberService(_AccessBase):
             role = role_map.get(assignment.role_id)
             if role is None:
                 raise BusinessRuleError("Rôle inconnu", code="role_not_found")
-            granted |= set(role.permission_codes)
+            granted |= effective_role_permissions(role, self.registry)
         self._ensure_grantable(granted)
 
     def _apply_access(

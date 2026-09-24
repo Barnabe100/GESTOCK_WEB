@@ -1,12 +1,27 @@
-# Modèles de rôles instanciés dans chaque nouveau tenant (rôles système, non modifiables).
-# Les permissions acceptent des motifs (`module.*`, `*.view`) résolus contre le registre de
-# modules au moment du provisioning.
+# Modèles de rôles système (non modifiables par le tenant), instanciés à la création d'un tenant
+# ou à la demande (POST /roles/from-template). Les permissions sont des motifs (`module.*`,
+# `*.view`) **résolus à l'exécution** contre le registre : un nouveau module enrichit
+# automatiquement les rôles système concernés, sans migration de données.
 # Le propriétaire n'est pas un rôle : c'est un attribut de l'appartenance (is_owner).
 
 [roles.administrator]
 name = "Administrateur"
-description = "Paramétrage de l'entreprise, des sites, des utilisateurs et des rôles."
-permissions = ["organization.*", "users.*", "audit.*", "subscription.*"]
+description = "Accès complet à l'entreprise (tous les modules actifs)."
+permissions = ["*"]
+
+[roles.stock_manager]
+name = "Gestionnaire de stock"
+description = "Catalogue, fournisseurs, entrées/sorties et inventaires (sans annulation ni motifs de sortie)."
+permissions = [
+  "catalog.*",
+  "suppliers.*",
+  "stock.level.view",
+  "stock.movement.view",
+  "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
+  "stock.exit.view", "stock.exit.create", "stock.exit.update", "stock.exit.validate",
+  "inventory_count.*",
+  "alerts.*",
+]
 
 [roles.viewer]
 name = "Consultation"

@@ -1,18 +1,12 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.v1 import mount_module_routers
-from app.core.config import Settings
-from app.main import create_app
-from app.modules.planned import PLANNED_MODULES
-from app.platform.context import get_registry_dep
-from app.platform.manifests import PLATFORM_MODULES
 from app.platform.registry import ModuleManifest, ModuleRegistry
-from tests.conftest import Api, login
 
 
 def _by_code(api: Any) -> dict[str, dict[str, Any]]:
@@ -62,41 +56,38 @@ def test_toggle_rules(provision: Any, api_for: Any) -> None:
 
 
 def test_module_routers_are_guarded_by_module_activation(
-    settings: Settings, provision: Any, owner_db: Session
+    provision: Any, api_for: Any, owner_db: Session, client: TestClient
 ) -> None:
     """Un routeur de module métier n'est joignable que si le module est effectif pour le
     tenant : la garde require_module est ajoutée automatiquement au montage."""
+    t = provision("alpha", profile="alimentation")
+    api = api_for("owner@alpha.example.com")
+    assert api.get("/catalog/categories").status_code == 200
+
+    owner_db.execute(
+        text(
+            "UPDATE tenant_modules SET enabled = false "
+            "WHERE tenant_id = :t AND module_code = 'catalog'"
+        ),
+        {"t": t.tenant_id},
+    )
+    owner_db.commit()
+    denied = api.get("/catalog/categories")
+    assert denied.status_code == 403
+    assert denied.json()["code"] == "module_unavailable"
+    assert client.get("/api/v1/catalog/categories").status_code == 401
+
+
+def test_mount_uses_given_registry() -> None:
     router = APIRouter()
 
     @router.get("/ping")
     def ping() -> dict[str, str]:
         return {"pong": "ok"}
 
-    catalog = ModuleManifest(code="catalog", router=router)  # « implémenté » pour le test
-    registry = ModuleRegistry(
-        [*PLATFORM_MODULES, *(catalog if m.code == "catalog" else m for m in PLANNED_MODULES)]
-    )
-    app = create_app(settings)
-    modules_router = APIRouter()
-    mount_module_routers(modules_router, registry)
-    app.include_router(modules_router, prefix=settings.api_v1_prefix)
-    app.dependency_overrides[get_registry_dep] = lambda: registry
-
-    t = provision("alpha", profile="alimentation")
-    with TestClient(app) as client:
-        token = login(client, "owner@alpha.example.com").json()["access_token"]
-        api = Api(client, token)
-        assert api.get("/catalog/ping").json() == {"pong": "ok"}
-
-        owner_db.execute(
-            text(
-                "UPDATE tenant_modules SET enabled = false "
-                "WHERE tenant_id = :t AND module_code = 'catalog'"
-            ),
-            {"t": t.tenant_id},
-        )
-        owner_db.commit()
-        denied = api.get("/catalog/ping")
-        assert denied.status_code == 403
-        assert denied.json()["code"] == "module_unavailable"
-        assert client.get("/api/v1/catalog/ping").status_code == 401
+    registry = ModuleRegistry([ModuleManifest(code="demo.sub", router=router)])
+    api = APIRouter()
+    mount_module_routers(api, registry)
+    app = FastAPI()
+    app.include_router(api)
+    assert "/demo/sub/ping" in app.openapi()["paths"]

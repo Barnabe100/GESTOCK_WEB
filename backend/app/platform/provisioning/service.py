@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.core.db import set_db_context
 from app.core.errors import BusinessRuleError, ConflictError
 from app.core.security import hash_password
-from app.platform.access.models import Role, RolePermission, TenantMembership
+from app.platform.access.models import Role, TenantMembership
 from app.platform.audit.service import RequestMeta, record_audit
 from app.platform.catalog.loader import RoleTemplate
 from app.platform.catalog.models import BusinessProfile, Plan
@@ -205,20 +205,17 @@ class TenantProvisioningService:
         return enabled
 
     def _create_roles(self, tenant_id: uuid.UUID) -> None:
-        available = {p.code for m in self.registry.all() for p in m.permissions}
+        # Rôles système : leurs permissions sont résolues à l'exécution depuis le modèle.
         for template in self.role_templates.values():
-            role = Role(
-                tenant_id=tenant_id,
-                name=template.name,
-                description=template.description,
-                template_code=template.code,
-                is_system=True,
+            self.db.add(
+                Role(
+                    tenant_id=tenant_id,
+                    name=template.name,
+                    description=template.description,
+                    template_code=template.code,
+                    is_system=True,
+                )
             )
-            role.permission_links = [
-                RolePermission(tenant_id=tenant_id, permission_code=code)
-                for code in template.resolve(available)
-            ]
-            self.db.add(role)
 
     def _get_or_create_owner(self, cmd: ProvisionTenantCommand) -> tuple[User, bool]:
         try:

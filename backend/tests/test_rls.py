@@ -56,6 +56,14 @@ def _add_role_assignments(owner_db: Session, *tenants: Any) -> None:
         )
         owner_db.execute(
             text(
+                "INSERT INTO role_permissions (tenant_id, role_id, permission_code) "
+                "SELECT r.tenant_id, r.id, 'audit.log.view' FROM roles r "
+                "WHERE r.tenant_id = :tenant AND r.template_code = 'viewer'"
+            ),
+            {"tenant": t.tenant_id},
+        )
+        owner_db.execute(
+            text(
                 "INSERT INTO membership_sites (tenant_id, membership_id, site_id) "
                 "SELECT m.tenant_id, m.id, :site FROM tenant_memberships m "
                 "WHERE m.tenant_id = :tenant"

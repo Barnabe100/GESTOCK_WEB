@@ -9,10 +9,12 @@ from app.platform.access.schemas import (
     MemberUpdate,
     PermissionOut,
     RoleCreate,
+    RoleFromTemplate,
     RoleOut,
+    RoleTemplateOut,
     RoleUpdate,
 )
-from app.platform.access.service import MemberService, RoleService, member_out
+from app.platform.access.service import MemberService, RoleService, member_out, role_out
 from app.platform.context import (
     DbSession,
     RegistryDep,
@@ -76,19 +78,19 @@ def update_member(
 
 @router.get("/roles", response_model=list[RoleOut])
 def list_roles(ctx: RoleView, db: DbSession, registry: RegistryDep) -> list[RoleOut]:
-    return [RoleOut.model_validate(r) for r in RoleService(db, ctx, registry).list_all()]
+    return [role_out(r, registry) for r in RoleService(db, ctx, registry).list_all()]
 
 
 @router.post("/roles", response_model=RoleOut, status_code=status.HTTP_201_CREATED)
 def create_role(body: RoleCreate, ctx: RoleManage, db: DbSession, registry: RegistryDep) -> RoleOut:
     role = RoleService(db, ctx, registry).create(body)
     db.commit()
-    return RoleOut.model_validate(role)
+    return role_out(role, registry)
 
 
 @router.get("/roles/{role_id}", response_model=RoleOut)
 def get_role(role_id: uuid.UUID, ctx: RoleView, db: DbSession, registry: RegistryDep) -> RoleOut:
-    return RoleOut.model_validate(RoleService(db, ctx, registry).get(role_id))
+    return role_out(RoleService(db, ctx, registry).get(role_id), registry)
 
 
 @router.patch("/roles/{role_id}", response_model=RoleOut)
@@ -97,7 +99,23 @@ def update_role(
 ) -> RoleOut:
     role = RoleService(db, ctx, registry).update(role_id, body)
     db.commit()
-    return RoleOut.model_validate(role)
+    return role_out(role, registry)
+
+
+@router.get("/role-templates", response_model=list[RoleTemplateOut])
+def list_role_templates(
+    ctx: RoleView, db: DbSession, registry: RegistryDep
+) -> list[RoleTemplateOut]:
+    return RoleService(db, ctx, registry).templates()
+
+
+@router.post("/roles/from-template", response_model=RoleOut, status_code=status.HTTP_201_CREATED)
+def create_role_from_template(
+    body: RoleFromTemplate, ctx: RoleManage, db: DbSession, registry: RegistryDep
+) -> RoleOut:
+    role = RoleService(db, ctx, registry).create_from_template(body.template_code)
+    db.commit()
+    return role_out(role, registry)
 
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)

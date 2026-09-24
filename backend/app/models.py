@@ -1,6 +1,8 @@
 """Import de tous les modèles : utilisé par Alembic (métadonnées complètes)."""
 
 from app.core.db import Base
+from app.modules.catalog.models import Article, Category
+from app.modules.suppliers.models import Supplier
 from app.platform.access.models import (
     MembershipRole,
     MembershipSite,
@@ -21,6 +23,9 @@ from app.platform.subscriptions.models import Subscription
 from app.platform.tenancy.models import Site, Tenant, TenantModule
 
 __all__ = [
+    "Article",
+    "Category",
+    "Supplier",
     "AuditLog",
     "AuthSession",
     "Base",

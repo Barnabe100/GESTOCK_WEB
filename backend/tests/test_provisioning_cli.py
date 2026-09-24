@@ -29,7 +29,7 @@ def test_provisioning_creates_complete_tenant(provision: Any, owner_db: Session)
         .scalars()
         .all()
     )
-    assert set(roles) == {"administrator", "viewer"}
+    assert set(roles) == {"administrator", "stock_manager", "viewer"}
     modules = dict(
         owner_db.execute(
             text("SELECT module_code, enabled FROM tenant_modules WHERE tenant_id = :t"),

@@ -6,6 +6,7 @@ from app.api.v1 import build_api_router
 from app.core.config import Settings, get_settings
 from app.core.db import create_db_engine, create_session_factory
 from app.core.errors import register_error_handlers
+from app.platform.context import verify_declared_requirements
 from app.platform.registry import get_registry
 
 
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     register_error_handlers(app)
     app.include_router(build_api_router(registry), prefix=settings.api_v1_prefix)
+    verify_declared_requirements(registry)
     return app
 
 
