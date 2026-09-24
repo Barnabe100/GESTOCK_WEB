@@ -23,8 +23,11 @@ sans la fonctionnalité, l'historique reste consultable en lecture seule)
 2.5-B (Design System de l'interface, [`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md) ;
 aucune règle métier modifiée) et 2.6 (module `inventory_count`, API `/inventories` : écart =
 physique − stock courant relu à la validation, ajustements `ADJUSTMENT` via `StockService`,
-[`INVENTORY.md`](docs/architecture/INVENTORY.md), ADR-0019).
-Autres modules métier (paiements, créances, POS, caisse, restaurant…) :
+[`INVENTORY.md`](docs/architecture/INVENTORY.md), ADR-0019) et 2.7 (paiements des ventes dans
+`sales` : encaissement indépendant de la validation, état d'encaissement **calculé**, aucun
+surpaiement sous verrou de la vente, annulation motivée, clé d'idempotence,
+[`PAYMENTS.md`](docs/architecture/PAYMENTS.md), ADR-0020).
+Autres modules métier (créances, POS, caisse, paiements électroniques, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

@@ -22,7 +22,15 @@ import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
 
-import { SALE_STATUSES, useSales, type Sale, type SaleStatus } from './api';
+import {
+  SALE_PAYMENT_STATUSES,
+  SALE_STATUSES,
+  useSales,
+  type Sale,
+  type SalePaymentStatus,
+  type SaleStatus,
+} from './api';
+import { SalePaymentBadge } from './ui';
 
 export default function SalesPage() {
   const { t } = useTranslation();
@@ -36,6 +44,7 @@ export default function SalesPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<SaleStatus | null>(null);
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<SalePaymentStatus | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const debounced = useDebouncedValue(search);
@@ -44,6 +53,7 @@ export default function SalesPage() {
       search: debounced,
       status,
       site_id: siteId,
+      payment_status: paymentStatus,
       date_from: dateFrom,
       date_to: dateTo,
     }),
@@ -53,11 +63,17 @@ export default function SalesPage() {
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
   const filtered =
-    search !== '' || status !== null || siteId !== null || dateFrom !== '' || dateTo !== '';
+    search !== '' ||
+    status !== null ||
+    siteId !== null ||
+    paymentStatus !== null ||
+    dateFrom !== '' ||
+    dateTo !== '';
   const resetFilters = () => {
     setSearch('');
     setStatus(null);
     setSiteId(null);
+    setPaymentStatus(null);
     setDateFrom('');
     setDateTo('');
     resetPage();
@@ -97,6 +113,20 @@ export default function SalesPage() {
           placeholder={t('sales.allStatuses')}
           showClear
           aria-label={t('sales.status')}
+        />
+        <Dropdown
+          value={paymentStatus}
+          onChange={(e) => {
+            setPaymentStatus((e.value as SalePaymentStatus | undefined) ?? null);
+            resetPage();
+          }}
+          options={SALE_PAYMENT_STATUSES.map((v) => ({
+            value: v,
+            label: t(`sales.paymentStatus.${v}`),
+          }))}
+          placeholder={t('sales.allPaymentStatuses')}
+          showClear
+          aria-label={t('sales.payment')}
         />
         {multiSite && (
           <Dropdown
@@ -166,6 +196,12 @@ export default function SalesPage() {
         <Column
           header={t('sales.status')}
           body={(s: Sale) => <DocumentStatusBadge labels="sales.statuses" status={s.status} />}
+        />
+        <Column
+          header={t('sales.payment')}
+          body={(s: Sale) =>
+            s.payment_status ? <SalePaymentBadge status={s.payment_status} /> : '—'
+          }
         />
         <Column field="created_by_name" header={t('sales.seller')} />
         <Column

@@ -14,6 +14,11 @@ MANIFEST = ModuleManifest(
         PermissionDef("sales.sale.validate", W),
         # Annulation (remise en stock d'une vente validée) : réservée à l'administration.
         PermissionDef("sales.sale.cancel", W),
+        # Paiements (Phase 2.7) : encaissement indépendant de la validation de la vente.
+        PermissionDef("sales.payment.view", R),
+        PermissionDef("sales.payment.create", W),
+        # Annulation d'un paiement (correction) : réservée à l'administration par défaut.
+        PermissionDef("sales.payment.cancel", W),
     ),
     router=router,
 )

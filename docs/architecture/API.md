@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) et inventaires (2.6)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6) et paiements des ventes (2.7)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -228,6 +228,27 @@ toute action sur un inventaire validé ou annulé), `article_in_open_inventory` 
 `duplicate_article_line`, `article_inactive`, `article_not_found`, `site_required` (422),
 `site_access_denied`, `site_mismatch` (403), `inventory_not_found` (404, dont un autre site ou
 une autre entreprise). Abonnement expiré : consultation seule (`403 subscription_restricted`).
+Paiements (2.7) : `SaleOut` expose `paid_amount`, `remaining_amount`, `payment_status`
+(`UNPAID` \| `PARTIALLY_PAID` \| `PAID`, vente validée seulement, calculés) ; `GET /sales` accepte
+le filtre `payment_status` ; annuler une vente encaissée → `409 sale_has_payments`.
+
+### Paiements des ventes (module `sales`) — Phase 2.7
+
+Règles : [`PAYMENTS.md`](PAYMENTS.md) ; décisions : [ADR-0020](../adr/0020-paiements-des-ventes.md).
+Mêmes contrôles d'accès que la vente (tenant, site accessible / sélectionné).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/sales/{sale_id}/payments` | `sales.payment.view` | Historique complet (annulés compris) + `summary` (`total`, `paid_amount`, `remaining_amount`, `payment_status` ; `null` si la vente n'est pas validée) |
+| POST | `/sales/{sale_id}/payments` | `sales.payment.create` | `{amount, method, provider?, reference?, idempotency_key?}` → paiement `COMPLETED` `PAY-000001` (201 ; 200 si même clé : réponse rejouée) |
+| GET | `/sales/{sale_id}/payments/{payment_id}` | `sales.payment.view` | Détail |
+| POST | `/sales/{sale_id}/payments/{payment_id}/cancel` | `sales.payment.cancel` | `{reason}` (5–500 car.) → `CANCELLED` ; vente et stock inchangés |
+
+`method` : `CASH` \| `MOBILE_MONEY` \| `CARD` \| `BANK_TRANSFER` \| `OTHER` ; montant > 0,
+2 décimales. Codes : `sale_not_payable` (409, `status`), `payment_exceeds_balance` (422,
+`remaining`), `sale_already_paid` (422), `payment_already_cancelled` (409),
+`idempotency_key_reused` (409), `payment_not_found`, `sale_not_found` (404), `site_mismatch`
+(403). Aucune route de modification ni de suppression. Abonnement expiré : consultation seule.
 
 ## Routes des modules métier
 

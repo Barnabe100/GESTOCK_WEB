@@ -1236,3 +1236,28 @@ a {
     overflow-wrap: anywhere;
   }
 }
+
+/* --- Paiements des ventes (Phase 2.7) --------------------------------------------------------- */
+
+.sm-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-3);
+  margin-bottom: var(--sm-gap);
+}
+
+.sm-section-header h2 {
+  margin: 0;
+  font-size: var(--sm-text-lg);
+}
+
+.sm-section-header .p-button {
+  margin-left: auto;
+}
+
+/* Montant d'un paiement annulé : barré (et statut « Annulé » affiché à côté). */
+.sm-struck {
+  text-decoration: line-through;
+  color: var(--sm-text-muted);
+}

@@ -4,6 +4,13 @@ import { api } from '@/core/api/client';
 import type { Page } from '@/shared/lib/serverTable';
 
 export type SaleStatus = 'DRAFT' | 'VALIDATED' | 'CANCELLED';
+/** État d'encaissement, indépendant du statut commercial de la vente. */
+export type SalePaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+export const SALE_PAYMENT_STATUSES: readonly SalePaymentStatus[] = [
+  'UNPAID',
+  'PARTIALLY_PAID',
+  'PAID',
+];
 export const SALE_STATUSES: readonly SaleStatus[] = ['DRAFT', 'VALIDATED', 'CANCELLED'];
 
 /** Montants et quantités : chaînes décimales calculées par le serveur (qui fait foi). */
@@ -41,6 +48,10 @@ export interface Sale {
   cancelled_at: string | null;
   cancelled_by_name: string | null;
   cancellation_reason: string | null;
+  /** Encaissement (vente validée seulement), calculé par le serveur. */
+  paid_amount: string | null;
+  remaining_amount: string | null;
+  payment_status: SalePaymentStatus | null;
   lines: SaleLine[];
 }
 
@@ -93,6 +104,86 @@ export function useSaleMutations() {
     cancel: useMutation({
       mutationFn: ({ id, reason }: { id: string; reason: string }) =>
         api.post<Sale>(`/sales/${id}/cancel`, { reason }),
+      onSuccess,
+    }),
+  };
+}
+
+// --- Paiements (Phase 2.7) ---------------------------------------------------------------------
+
+export type PaymentMethod = 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+export const PAYMENT_METHODS: readonly PaymentMethod[] = [
+  'CASH',
+  'MOBILE_MONEY',
+  'CARD',
+  'BANK_TRANSFER',
+  'OTHER',
+];
+export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
+
+export interface Payment {
+  id: string;
+  number: string;
+  sale_id: string;
+  sale_number: string;
+  site_id: string;
+  amount: string;
+  method: PaymentMethod;
+  provider: string | null;
+  status: PaymentStatus;
+  reference: string | null;
+  paid_at: string;
+  created_at: string;
+  created_by_name: string | null;
+  cancelled_at: string | null;
+  cancelled_by_name: string | null;
+  cancellation_reason: string | null;
+}
+
+export interface PaymentSummary {
+  total: string;
+  paid_amount: string;
+  remaining_amount: string;
+  payment_status: SalePaymentStatus;
+}
+
+export interface SalePayments {
+  sale_id: string;
+  sale_status: SaleStatus;
+  summary: PaymentSummary | null;
+  items: Payment[];
+}
+
+/** Aucun solde envoyé : le serveur le recalcule et refuse tout surpaiement. */
+export interface PaymentInput {
+  amount: string;
+  method: PaymentMethod;
+  provider: string | null;
+  reference: string | null;
+  /** Même clé pour une même saisie : une double soumission ne crée pas de doublon. */
+  idempotency_key: string;
+}
+
+export function useSalePayments(saleId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...saleKeys.all, 'payments', saleId],
+    queryFn: ({ signal }) => api.get<SalePayments>(`/sales/${saleId}/payments`, signal),
+    enabled,
+  });
+}
+
+/** Un encaissement ou son annulation change le solde : vente et historique rechargés. */
+export function usePaymentMutations(saleId: string) {
+  const qc = useQueryClient();
+  const onSuccess = () => void qc.invalidateQueries({ queryKey: saleKeys.all });
+  return {
+    create: useMutation({
+      mutationFn: (input: PaymentInput) => api.post<Payment>(`/sales/${saleId}/payments`, input),
+      onSuccess,
+    }),
+    cancel: useMutation({
+      mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+        api.post<Payment>(`/sales/${saleId}/payments/${id}/cancel`, { reason }),
       onSuccess,
     }),
   };

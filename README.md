@@ -28,6 +28,7 @@ utilisateur.
 - [Clients : règles métier](docs/architecture/CLIENTS.md)
 - [Ventes simples : cycle de vie et règles](docs/architecture/SALES.md)
 - [Inventaires : règles et cycle de vie](docs/architecture/INVENTORY.md)
+- [Paiements des ventes : règles et solde](docs/architecture/PAYMENTS.md)
 - [Design System (interface)](docs/architecture/DESIGN_SYSTEM.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)

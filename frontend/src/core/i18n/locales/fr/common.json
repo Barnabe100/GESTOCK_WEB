@@ -103,7 +103,7 @@
     "stock": "Stock",
     "inventory_count": "Inventaires",
     "sales": "$t(terminology:sales.sales)",
-    "payments": "Paiements",
+    "payments": "Paiements électroniques",
     "cash_register": "Caisse",
     "pos": "Point de vente",
     "reports": "Rapports",
@@ -331,7 +331,10 @@
     "inventory_count.inventory.update": "Modifier un inventaire en préparation",
     "inventory_count.inventory.count": "Saisir le comptage (démarrer, terminer, reprendre)",
     "inventory_count.inventory.validate": "Valider un inventaire (ajustement du stock)",
-    "inventory_count.inventory.cancel": "Annuler un inventaire non validé"
+    "inventory_count.inventory.cancel": "Annuler un inventaire non validé",
+    "sales.payment.view": "Consulter les paiements des ventes",
+    "sales.payment.create": "Enregistrer un paiement",
+    "sales.payment.cancel": "Annuler un paiement"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -700,7 +703,14 @@
     "cancelDraftInfo": "Le brouillon sera abandonné, sans effet sur le stock.",
     "cancelled": "Vente {{number}} annulée",
     "subtitle": "Ventes comptant : brouillons, ventes validées et annulées.",
-    "empty": "Aucune vente pour le moment."
+    "empty": "Aucune vente pour le moment.",
+    "payment": "Paiement",
+    "allPaymentStatuses": "Tous les encaissements",
+    "paymentStatus": {
+      "UNPAID": "Non payée",
+      "PARTIALLY_PAID": "Partiellement payée",
+      "PAID": "Payée"
+    }
   },
   "filters": {
     "reset": "Réinitialiser",
@@ -807,5 +817,48 @@
     "summaryNoVariance": "Sans écart",
     "summaryProjected": "Ajustement net si l'inventaire était validé maintenant (stock et CMUP courants) : {{value}}.",
     "summaryFinal": "Ajustement net appliqué au stock (valorisé au CMUP) : {{value}}."
+  },
+  "payment": {
+    "title": "Paiements",
+    "summary": "Résumé de l'encaissement",
+    "total": "Total vente",
+    "paid": "Total payé",
+    "remaining": "Solde dû",
+    "receivableHint": "Reste dû par le client",
+    "history": "Historique des paiements",
+    "empty": "Aucun paiement enregistré.",
+    "record": "Enregistrer un paiement",
+    "save": "Enregistrer le paiement",
+    "remainingToPay": "Solde à payer : {{amount}}",
+    "amount": "Montant",
+    "amountHelp": "Montant encaissé ({{currency}}), au plus le solde à payer.",
+    "invalidAmount": "Montant invalide (supérieur à 0, 2 décimales au plus)",
+    "methodLabel": "Moyen de paiement",
+    "provider": "Opérateur",
+    "providerPlaceholder": "Orange Money, Moov Money, Wave…",
+    "reference": "Référence",
+    "referenceHelp": "Facultatif : n° de transaction, de reçu ou de virement.",
+    "date": "Date",
+    "number": "N°",
+    "statusLabel": "Statut",
+    "recordedBy": "Enregistré par",
+    "recorded": "Paiement {{number}} enregistré : {{amount}}",
+    "cancel": "Annuler le paiement",
+    "cancelTitle": "Annuler ce paiement de {{amount}} ?",
+    "cancelWarning": "Le paiement restera dans l'historique mais ne comptera plus dans le montant payé. La vente reste validée et le stock n'est pas modifié.",
+    "cancelled": "Paiement {{number}} annulé",
+    "cancelledBy": "Annulé par {{name}} : {{reason}}",
+    "status": {
+      "PENDING": "En attente",
+      "COMPLETED": "Effectué",
+      "CANCELLED": "Annulé"
+    },
+    "method": {
+      "CASH": "Espèces",
+      "MOBILE_MONEY": "Mobile Money",
+      "CARD": "Carte bancaire",
+      "BANK_TRANSFER": "Virement bancaire",
+      "OTHER": "Autre"
+    }
   }
 }

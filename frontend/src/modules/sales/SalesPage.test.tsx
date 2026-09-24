@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { formatMoney } from '@/shared/lib/decimal';
@@ -40,7 +40,11 @@ describe('liste des ventes', () => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockImplementation(async () =>
       pageOf([
-        sale({}),
+        sale({
+          payment_status: 'PARTIALLY_PAID',
+          paid_amount: '1500.00',
+          remaining_amount: '3000.00',
+        }),
         sale({
           id: 'v2',
           number: 'VTE-000002',
@@ -95,5 +99,24 @@ describe('liste des ventes', () => {
     const last = String(fetchMock.mock.calls.at(-1)?.[0]);
     expect(last).toContain('/api/v1/sales?');
     expect(last).toContain('sort=-number');
+  });
+
+  it('état d’encaissement distinct du statut, filtre serveur par état', async () => {
+    renderWithCapabilities(<SalesPage />, { permissions: ['sales.sale.view'] });
+    const validated = (await screen.findByText('VTE-000001')).closest('tr') as HTMLElement;
+    expect(within(validated).getByText('Validée')).toBeTruthy();
+    expect(within(validated).getByText('Partiellement payée')).toBeTruthy();
+    const draft = screen.getByText('VTE-000002').closest('tr') as HTMLElement;
+    expect(within(draft).getByText('—')).toBeTruthy(); // brouillon : pas d'encaissement
+    const filter = screen.getByLabelText('Paiement', { selector: 'input, select, span, div' });
+    fireEvent.click(filter.closest('.p-dropdown') ?? filter);
+    fireEvent.click(
+      screen.getAllByRole('option', { name: 'Non payée', hidden: true }).at(-1) as Element,
+    );
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('payment_status=UNPAID'))).toBe(
+        true,
+      ),
+    );
   });
 });

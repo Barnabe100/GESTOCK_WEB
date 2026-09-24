@@ -133,6 +133,15 @@ Numéro : séquence `sale` de `document_sequences`. Le stock n'est jamais modifi
 tables : la validation passe par `StockService` (mouvements `SALE`, `source_type = 'sale'`).
 Détails : [`SALES.md`](SALES.md).
 
+### Paiements des ventes (Phase 2.7, isolés par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `payments` | `tenant_id`, `number` (`PAY-000001`), `sale_id`, `site_id`, `amount` (`NUMERIC(18,2)`), `method` (`CASH` \| `MOBILE_MONEY` \| `CARD` \| `BANK_TRANSFER` \| `OTHER`), `provider`, `status` (`PENDING` \| `COMPLETED` \| `CANCELLED`), `reference`, `paid_at`, `idempotency_key`, `created_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, idempotency_key)` ; FK composite `(tenant_id, sale_id, site_id)` → `sales (tenant_id, id, site_id)` (même tenant et même site) et vers `sites` ; `CHECK amount > 0` ; annulé ⇒ date et motif ; index `(tenant_id, sale_id)`, `(tenant_id, paid_at)` ; jamais supprimé |
+
+Numéro : séquence `payment`. Aucun état d'encaissement stocké sur `sales` : payé / reste /
+état sont calculés à partir des paiements `COMPLETED`. Détails : [`PAYMENTS.md`](PAYMENTS.md).
+
 Les énumérations sont stockées en texte avec contrainte `CHECK` (évolution plus simple qu'un
 type PostgreSQL natif).
 

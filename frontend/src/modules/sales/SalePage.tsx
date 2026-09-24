@@ -34,7 +34,8 @@ import { confirmAction } from '@/shared/ui/confirm';
 
 import { useSale, useSaleMutations, type Sale, type SaleInput, type SaleLine } from './api';
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
-import { saleError } from './ui';
+import { PaymentsPanel } from './PaymentsPanel';
+import { SalePaymentBadge, saleError } from './ui';
 
 const quantity = z.string().refine((v) => {
   const n = normalizeDecimal(v, 3);
@@ -477,6 +478,7 @@ export default function SalePage() {
         actions={
           <div className="sm-tags">
             {sale && <DocumentStatusBadge labels="sales.statuses" status={sale.status} />}
+            {sale?.payment_status && <SalePaymentBadge status={sale.payment_status} />}
             {canCancel && (
               <Button
                 icon="pi pi-undo"
@@ -494,6 +496,8 @@ export default function SalePage() {
       ) : sale ? (
         <>
           <SaleSummary sale={sale} />
+          {/* Encaissement : ventes validées (et historique d'une vente annulée). */}
+          {sale.status !== 'DRAFT' && can('sales.payment.view') && <PaymentsPanel sale={sale} />}
           <div className="sm-dialog-actions">
             <Button label={t('actions.back')} text onClick={() => void navigate('/sales')} />
           </div>

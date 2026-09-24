@@ -128,7 +128,11 @@ statut, site, période ; tri et pagination serveur. Saisie : site, client facult
 
 ## 10. Hors périmètre et suite
 
-Hors périmètre : paiements (espèces, Mobile Money, carte, partiel), crédit et créances,
+**Paiements** : réalisés en Phase 2.7 — [`PAYMENTS.md`](PAYMENTS.md) (encaissement
+indépendant de la validation, état d'encaissement calculé ; une vente encaissée ne peut être
+annulée qu'après annulation de ses paiements).
+
+Hors périmètre : crédit et gestion des créances,
 caisse, ticket / facture PDF, retours et avoirs, remises et promotions, fidélité, POS,
 restaurant. Le module Ventes ne dépend d'aucun module futur ; ceux-ci s'y rattacheront :
 

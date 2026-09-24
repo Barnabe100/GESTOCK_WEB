@@ -49,6 +49,7 @@ DATA_TABLES = (
     "inventories",
     "stock_transfer_lines",
     "stock_transfers",
+    "payments",
     "sale_lines",
     "sales",
     "stock_movements",

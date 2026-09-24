@@ -3,9 +3,14 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.modules.sales.models import SaleStatus
-from app.shared.schemas import Money, PositiveQuantity, Quantity
-from app.shared.text import Optional500
+from app.modules.sales.models import (
+    PaymentMethod,
+    PaymentStatus,
+    SalePaymentStatus,
+    SaleStatus,
+)
+from app.shared.schemas import Money, PositiveMoney, PositiveQuantity, Quantity
+from app.shared.text import Optional50, Optional100, Optional500
 
 
 class SaleLineInput(BaseModel):
@@ -75,4 +80,58 @@ class SaleOut(BaseModel):
     cancelled_at: datetime | None
     cancelled_by_name: str | None
     cancellation_reason: str | None
+    # Encaissement (vente validée seulement ; calculé à partir des paiements effectués).
+    paid_amount: Money | None = None
+    remaining_amount: Money | None = None
+    payment_status: SalePaymentStatus | None = None
     lines: list[SaleLineOut] = Field(default_factory=list)
+
+
+# --- Paiements (Phase 2.7) ---------------------------------------------------------------------
+
+
+class PaymentCreate(BaseModel):
+    """Montant > 0 (2 décimales) ; le serveur recalcule le solde et refuse tout surpaiement.
+    ``idempotency_key`` : identifiant généré par le client pour une saisie ; une seconde
+    soumission avec la même clé renvoie le paiement déjà créé (aucun doublon)."""
+
+    amount: PositiveMoney
+    method: PaymentMethod
+    provider: Optional50 = None
+    reference: Optional100 = None
+    idempotency_key: uuid.UUID | None = None
+
+
+class PaymentOut(BaseModel):
+    id: uuid.UUID
+    number: str
+    sale_id: uuid.UUID
+    sale_number: str
+    site_id: uuid.UUID
+    amount: Money
+    method: PaymentMethod
+    provider: str | None
+    status: PaymentStatus
+    reference: str | None
+    paid_at: datetime
+    created_at: datetime
+    created_by_name: str | None
+    cancelled_at: datetime | None
+    cancelled_by_name: str | None
+    cancellation_reason: str | None
+
+
+class PaymentSummary(BaseModel):
+    """Solde d'une vente validée : total, payé (paiements effectués), reste, état."""
+
+    total: Money
+    paid_amount: Money
+    remaining_amount: Money
+    payment_status: SalePaymentStatus
+
+
+class SalePaymentsOut(BaseModel):
+    sale_id: uuid.UUID
+    sale_status: SaleStatus
+    summary: PaymentSummary | None
+    items: list[PaymentOut]

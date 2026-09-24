@@ -4,7 +4,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.modules.sales.models import SaleStatus
+from app.modules.sales.models import SalePaymentStatus, SaleStatus
+from app.modules.sales.payment_router import router as payment_router
 from app.modules.sales.schemas import SaleCancel, SaleCreate, SaleInput, SaleOut
 from app.modules.sales.service import SaleService
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
@@ -33,6 +34,7 @@ def list_sales(
     customer_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    payment_status: SalePaymentStatus | None = None,
 ) -> Page[SaleOut]:
     service = SaleService(db, ctx, now)
     items, total = service.search(
@@ -43,6 +45,7 @@ def list_sales(
         customer_id=customer_id,
         date_from=date_from,
         date_to=date_to,
+        payment=payment_status,
     )
     return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
 
@@ -87,3 +90,7 @@ def cancel_sale(
     sale = service.cancel(sale_id, body.reason)
     db.commit()
     return service.to_out([sale], with_lines=True)[0]
+
+
+# Paiements : sous-ressource de la vente (/sales/{sale_id}/payments).
+router.include_router(payment_router)

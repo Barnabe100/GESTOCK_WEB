@@ -12,13 +12,22 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.modules.catalog.api import ArticleRef, get_article_refs
 from app.modules.customers.api import CustomerRef, customers_view, get_customer_refs
-from app.modules.sales.models import Sale, SaleLine, SaleStatus
+from app.modules.sales.models import (
+    Payment,
+    PaymentStatus,
+    Sale,
+    SaleLine,
+    SalePaymentStatus,
+    SaleStatus,
+)
+from app.modules.sales.payment_service import ZERO as MONEY_ZERO
+from app.modules.sales.payment_service import paid_amounts, paid_subquery, payment_status
 from app.modules.sales.schemas import SaleCreate, SaleInput, SaleLineOut, SaleOut
 from app.modules.stock.api import (
     MovementRequest,
@@ -69,6 +78,7 @@ class SaleService:
         customer_id: uuid.UUID | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
+        payment: SalePaymentStatus | None = None,
     ) -> tuple[list[Sale], int]:
         # Périmètre : ventes des sites visibles par le membre (site sélectionné ou ses sites).
         stmt: Select[tuple[Sale]] = select(Sale).where(Sale.site_id.in_(visible_site_ids(self.ctx)))
@@ -93,6 +103,20 @@ class SaleService:
         for condition in conditions:
             if condition is not None:
                 stmt = stmt.where(condition)
+        if payment is not None:
+            # État d'encaissement calculé (ventes validées) : une agrégation jointe, pas de N+1.
+            paid_sub = paid_subquery()
+            paid = func.coalesce(paid_sub.c.paid, MONEY_ZERO)
+            stmt = stmt.outerjoin(paid_sub, paid_sub.c.sale_id == Sale.id).where(
+                Sale.status == SaleStatus.VALIDATED
+            )
+            stmt = stmt.where(
+                {
+                    SalePaymentStatus.UNPAID: and_(paid <= 0, Sale.total > 0),
+                    SalePaymentStatus.PARTIALLY_PAID: and_(paid > 0, paid < Sale.total),
+                    SalePaymentStatus.PAID: paid >= Sale.total,
+                }[payment]
+            )
         stmt = apply_sort(stmt, params.sort, SORTABLE, "-number", Sale.id)
         return paginate(self.db, stmt, params)
 
@@ -307,6 +331,20 @@ class SaleService:
         if previous is SaleStatus.CANCELLED:
             raise ConflictError("Vente déjà annulée", code="sale_already_cancelled")
         if previous is SaleStatus.VALIDATED:
+            # Une vente encaissée ne s'annule pas : annuler d'abord ses paiements (le
+            # remboursement est hors périmètre). Verrou de la vente : aucun paiement concurrent.
+            active = self.db.scalar(
+                select(func.count()).where(
+                    Payment.sale_id == sale.id,
+                    Payment.status.in_((PaymentStatus.COMPLETED, PaymentStatus.PENDING)),
+                )
+            )
+            if active:
+                raise ConflictError(
+                    "Annulez d'abord les paiements de cette vente",
+                    code="sale_has_payments",
+                    extra={"payments": int(active)},
+                )
             origins = self._stock().movements_of(sale.id, MovementType.SALE)
             self._stock().apply(
                 sale.site_id,
@@ -356,9 +394,13 @@ class SaleService:
             if with_lines
             else {}
         )
+        # Montants payés des ventes validées : une seule agrégation pour toute la page.
+        paid = paid_amounts(self.db, {s.id for s in sales if s.status is SaleStatus.VALIDATED})
         result = []
         for sale in sales:
             customer = customers.get(sale.customer_id) if sale.customer_id else None
+            validated = sale.status is SaleStatus.VALIDATED
+            sale_paid = paid.get(sale.id, MONEY_ZERO)
             result.append(
                 SaleOut(
                     id=sale.id,
@@ -382,6 +424,9 @@ class SaleService:
                     cancelled_at=sale.cancelled_at,
                     cancelled_by_name=user_names.get(sale.cancelled_by),
                     cancellation_reason=sale.cancellation_reason,
+                    paid_amount=sale_paid if validated else None,
+                    remaining_amount=max(sale.total - sale_paid, MONEY_ZERO) if validated else None,
+                    payment_status=payment_status(sale.total, sale_paid) if validated else None,
                     lines=[_line_out(line, refs) for line in sale.lines] if with_lines else [],
                 )
             )

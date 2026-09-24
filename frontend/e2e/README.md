@@ -69,6 +69,10 @@ la suite peut être rejouée sur la même base.
   (création ciblée, démarrage, saisie 17, vente de 2 pendant le comptage, fin du comptage,
   validation confirmée → écart −1 sur le stock courant, stock 17, mouvement d'ajustement),
   Vendeur en consultation seule, isolation site et entreprise, plan STANDARD, mobile.
+- `payments.e2e.ts` (Phase 2.7) : prépare par l'API un article vendu 10 000 (stock 50) et une
+  vente de 100 000 ; paiement complet après validation depuis la fiche (stock diminué, « Payée »,
+  solde 0), paiement partiel puis successif et mixte, annulation d'un paiement (« Non payée »,
+  stock inchangé), surpaiement refusé, mobile.
 - `ui.e2e.ts` (Phase 2.5-B, Design System) : navigation groupée, tableau de bord (indicateurs,
   actions rapides), liste standard (recherche, « Aucun résultat », réinitialisation),
   désactivation confirmée (annuler puis confirmer), entrée de stock saisie et validée par

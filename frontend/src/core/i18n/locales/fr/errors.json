@@ -90,5 +90,12 @@
   "inventory_full_articles_fixed": "Un inventaire complet reprend tous les articles du site : la liste n'est pas modifiable.",
   "inventory_line_not_found": "Ligne d'inventaire introuvable.",
   "duplicate_count_line": "Une ligne apparaît plusieurs fois dans la saisie.",
-  "article_in_open_inventory": "Articles déjà présents dans un inventaire en cours sur ce site : {{articles}} ({{inventories}})."
+  "article_in_open_inventory": "Articles déjà présents dans un inventaire en cours sur ce site : {{articles}} ({{inventories}}).",
+  "sale_not_payable": "Seule une vente validée peut recevoir un paiement.",
+  "sale_already_paid": "Cette vente est déjà entièrement payée.",
+  "payment_exceeds_balance": "Le montant dépasse le solde à payer ({{remaining}}).",
+  "payment_not_found": "Paiement introuvable.",
+  "payment_already_cancelled": "Ce paiement est déjà annulé.",
+  "idempotency_key_reused": "Cette saisie a déjà servi pour un autre paiement : rouvrez le formulaire.",
+  "sale_has_payments": "Cette vente a des paiements : annulez-les d'abord."
 }
