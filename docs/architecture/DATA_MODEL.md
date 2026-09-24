@@ -72,6 +72,23 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 Pas de colonne de stock sur l'article : le stock est tenu par site (Phase 2.2). Droits du rôle
 applicatif : `SELECT, INSERT, UPDATE` (jamais de suppression physique).
 
+### Stock (Phase 2.2, isolés par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `document_sequences` | `tenant_id`, `sequence_key`, `next_value` | PK `(tenant_id, sequence_key)` ; incrément atomique `INSERT … ON CONFLICT DO UPDATE … RETURNING` (plateforme, réutilisable) |
+| `stock_levels` | `tenant_id`, `site_id`, `article_id`, `quantity` (`NUMERIC(18,3)`), `average_cost` (CMUP, `NUMERIC(18,4)`), `min_stock`, `max_stock` (surcharges du site, nullables) | unique `(tenant_id, site_id, article_id)` ; `CHECK quantity ≥ 0`, `average_cost ≥ 0`, `max ≥ min` ; modifié uniquement par `StockService` (quantité, CMUP) et le service des seuils |
+| `stock_movements` | `tenant_id`, `site_id`, `article_id`, `movement_type`, `quantity` (signée), `quantity_before/after`, `unit_cost`, `average_cost_before/after`, `source_type`, `source_id`, `source_line_id`, `origin_movement_id`, `user_id`, `comment`, `occurred_at` | **append-only** ; `CHECK quantity ≠ 0`, `quantity_after = quantity_before + quantity`, `quantity_after ≥ 0` ; unique `(tenant_id, source_line_id, movement_type)` (anti double application) ; source polymorphe sans FK (ADR-0014) |
+| `stock_exit_reasons` | `tenant_id`, `code` (motifs système), `label`, `description`, `is_system`, `is_active` | unique `(tenant_id, lower(label))` et `(tenant_id, code)` |
+| `stock_entries` | `tenant_id`, `number`, `site_id`, `kind` (`PURCHASE` \| `INITIAL_STOCK`), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `operation_date`, `supplier_id`, `document_reference`, `comment`, auteurs et dates de création / validation / annulation, `cancellation_reason` | numéro unique par tenant ; `CHECK` fournisseur obligatoire pour un achat ; motif obligatoire si annulée |
+| `stock_entry_lines` | `tenant_id`, `entry_id`, `line_no`, `article_id`, `quantity` (> 0), `unit_cost` (`NUMERIC(18,2)`), `amount` | article unique par document |
+| `stock_exits` | idem entrées avec `reason_id`, `beneficiary`, `reference` | FK composite vers le motif |
+| `stock_exit_lines` | `tenant_id`, `exit_id`, `line_no`, `article_id`, `quantity` (> 0), `unit_cost` (`NUMERIC(18,4)`), `amount` | coût (CMUP du site) et montant **figés à la validation** |
+
+Toutes les FK sont composites `(tenant_id, …)` (site, article, fournisseur, motif, document).
+Les motifs système sont créés au provisioning (`tenant_setup` du module) et par la migration
+`0004` pour les entreprises existantes.
+
 Les énumérations sont stockées en texte avec contrainte `CHECK` (évolution plus simple qu'un
 type PostgreSQL natif).
 
@@ -84,7 +101,7 @@ type PostgreSQL natif).
 
 | Table | Politiques |
 |---|---|
-| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
+| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, document_sequences, stock_* (7 tables) | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
 | tenant_memberships | + `own_memberships_read` : **sans tenant actif**, l'utilisateur lit ses propres appartenances |
 | tenants | `tenant_isolation` sur `id` + `member_tenants_read` (**sans tenant actif**) |
 | audit_logs | lecture : tenant actif ; insertion : tenant actif ou `tenant_id` nul |
@@ -94,9 +111,9 @@ type PostgreSQL natif).
 | Droits | Tables |
 |---|---|
 | `SELECT` | catalogue |
-| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, catalog_categories, suppliers, catalog_articles |
-| `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, roles, role_permissions, membership_sites, membership_roles |
-| `SELECT, INSERT` | audit_logs (append-only) |
+| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, catalog_categories, suppliers, catalog_articles, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits |
+| `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, roles, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines (lignes de brouillon) |
+| `SELECT, INSERT` | audit_logs, stock_movements (append-only) |
 
 Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais de données.
 

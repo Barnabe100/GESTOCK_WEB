@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1) et catalogue (Phase 2.1)
+# API REST — socle plateforme (Phase 1), catalogue (2.1) et stock (2.2)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -81,6 +81,43 @@ Montants (`purchase_price`, `sale_price`) : chaînes décimales à 2 décimales 
 `category_name_taken`, `article_reference_taken`, `article_barcode_taken` (409),
 `category_inactive`, `supplier_inactive`, `category_not_found`, `supplier_not_found`,
 `invalid_stock_thresholds`, `module_unavailable` (422), `invalid_sort` (400).
+
+### Stock (module `stock`) et alertes (module `alerts`) — Phase 2.2
+
+Mêmes conventions de liste. **Site** : avec un site sélectionné (`X-Site-Id`), lectures et
+opérations portent sur ce site ; sinon sur les sites accessibles au membre (filtre
+`site_id` facultatif, restreint à ces sites). Un document d'un site non accessible est
+introuvable (`404`) ; d'un autre site que le site sélectionné, refusé (`403 site_mismatch`).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/stock/levels` | `stock.level.view` | Articles × sites : `quantity`, `average_cost` (CMUP, 4 déc.), `stock_value`, seuils effectifs `min_stock`/`max_stock` (surcharge du site sinon article), `min_override`/`max_override`, `state` = `ok` \| `low` \| `out` \| `not_stocked`. Filtres `site_id`, `category_id`, `search`, `state` (`all`, `alerts`, `out`, `low`, `ok`, `not_stocked`), `include_inactive` ; tri `reference`, `designation`, `category`, `quantity`, `site` |
+| PUT | `/stock/levels/{site_id}/{article_id}/thresholds` | `stock.threshold.manage` | Surcharges du site `{min_stock, max_stock}` (`null` = seuil de l'article) ; audité ; ne modifie ni quantité ni CMUP |
+| GET | `/stock/movements` | `stock.movement.view` | Journal : filtres `site_id`, `article_id`, `movement_type`, `user_id`, `date_from`, `date_to` (jour du fuseau du tenant), `search` (référence, désignation, numéro de document) ; tri `occurred_at` (défaut décroissant) |
+| GET | `/stock/exit-reasons` | `stock.reason.view` ou `stock.exit.create` / `.update` | Motifs (filtre `status`, tri `label`) |
+| POST · PATCH | `/stock/exit-reasons` · `/{id}` | `stock.reason.manage` | Créer · renommer (motif système : `403 system_exit_reason`) |
+| POST | `/stock/exit-reasons/{id}/activate` · `/deactivate` | `stock.reason.manage` | Statut (y compris motifs système) |
+| GET · POST | `/stock/entries` | `stock.entry.view` · `.create` | Liste (filtres `status`, `kind`, `supplier_id`, `site_id`, `date_from`, `date_to`, `search` numéro / référence de pièce ; tri `number`, `operation_date`, `created_at`) · créer un **brouillon** (numéro `ENT-000001` attribué) |
+| GET · PUT | `/stock/entries/{id}` | `…view` · `…update` | Détail · remplacer en-tête et lignes d'un brouillon |
+| POST | `/stock/entries/{id}/validate` | `stock.entry.validate` | Applique les mouvements `ENTRY` (stock + CMUP du site) |
+| POST | `/stock/entries/{id}/cancel` | `stock.entry.cancel` | `{reason}` (5–500 car.) : mouvements inverses `CANCELLATION`, CMUP inchangé |
+| GET · POST · GET · PUT | `/stock/exits`, `/stock/exits/{id}` | `stock.exit.*` | Idem (filtre `reason_id`) ; numéro `SOR-000001` |
+| POST | `/stock/exits/{id}/validate` · `/cancel` | `stock.exit.validate` · `.cancel` | Mouvements `EXIT` au CMUP du site (coût et montant figés sur les lignes) · annulation |
+| GET | `/alerts/stock` | `alerts.stock.view` | Articles actifs en rupture (`out` : géré sur le site, stock nul) ou stock faible (`low` : 0 < stock ≤ minimum effectif) ; filtre `state` = `alerts` \| `out` \| `low` |
+| GET | `/alerts/stock/summary` | `alerts.stock.view` | `{out, low}` (filtre `site_id`) |
+
+Entrée : `{site_id?, kind: PURCHASE|INITIAL_STOCK, operation_date?, supplier_id, document_reference?,
+comment?, lines: [{article_id, quantity, unit_cost}]}` ; sortie : `{site_id?, operation_date?,
+reason_id, beneficiary?, reference?, comment?, lines: [{article_id, quantity}]}`. Quantités
+`> 0` (3 déc.), coûts d'entrée 2 déc. ; au plus 500 lignes ; un article une seule fois.
+Codes d'erreur : `insufficient_stock` (422, `articles: [{article_id, reference, available}]`),
+`document_not_draft`, `document_not_validated` (409), `document_empty`,
+`duplicate_article_line`, `article_inactive`, `article_not_found`, `future_operation_date`,
+`supplier_required`, `supplier_inactive`, `exit_reason_inactive`, `site_required`,
+`invalid_stock_thresholds` (422), `exit_reason_taken` (409), `system_exit_reason`,
+`site_access_denied`, `site_mismatch` (403), `stock_entry_not_found`,
+`stock_exit_not_found`, `exit_reason_not_found` (404). Abonnement expiré : consultation
+possible, opérations refusées (`403 subscription_restricted`).
 
 ## Routes des modules métier
 

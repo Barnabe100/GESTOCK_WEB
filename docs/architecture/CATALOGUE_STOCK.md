@@ -250,3 +250,37 @@ Tests : formule CMUP ; concurrence (validations simultanées sur un même articl
 parallèle) ; idempotence ; rollback complet ; immutabilité SQL des mouvements ; règles
 ENT/SOR ; stock initial ; seuils ; alertes ; permissions par rôle ; abonnement expiré ;
 isolation SQL et API ; restriction par site.
+
+## 7. Réalisation de la sous-phase 2.2 (2026-09-24)
+
+Plan du §6 réalisé en cinq étapes (A : plan ; B : séquences, niveaux, `StockService` ;
+C : motifs, entrées, sorties ; D : niveaux, seuils par site, journal, alertes ; E : écrans).
+Choix de conception : [ADR-0014](../adr/0014-documents-et-mouvements-de-stock.md).
+
+| Règle | Réalisation |
+|---|---|
+| STK-01 / Q1 | Stock et CMUP par (site, article) dans `stock_levels` ; `CHECK quantity ≥ 0` + contrôle du service (`insufficient_stock` détaillant les articles et le stock disponible) |
+| STK-05 / Q6 | CMUP recalculé uniquement sur une entrée, 4 décimales (demi supérieur) ; sortie au CMUP du site, figé sur la ligne |
+| STK-06 | Annulation par mouvements inverses, CMUP inchangé ; refusée si le stock deviendrait négatif |
+| STK-07 | Journal append-only (droits `SELECT, INSERT` seulement), consultable et filtrable |
+| ENT-* / Q5 | Entrées `PURCHASE` (fournisseur obligatoire) et `INITIAL_STOCK` ; brouillon → validée → annulée (motif obligatoire) |
+| SOR-* / Q7 | Sorties avec motif actif ; six motifs système protégés (activables / désactivables, non renommables) ; motifs du tenant gérés par l'administration (`stock.reason.manage`) |
+| Q2 | Surcharges par site (`PUT /stock/levels/{site}/{article}/thresholds`), prioritaires sur l'article |
+| Q3 | `ENT-000001`, `SOR-000001` par entreprise (`document_sequences`, atomique, sans trou sur échec) |
+| Q4 | Aucun transfert ; fonctionnalité `stock.transfers` déclarée (plan ENTREPRISE), types de mouvement réservés |
+| ALR-01 / ALR-02 | Module `alerts` : rupture (`out`) et stock faible (`low`) des articles actifs, par site, compteurs |
+
+Rôle modèle **Gestionnaire de stock** : consultation, saisie et validation des entrées et
+sorties, seuils par site, alertes ; **ni annulation ni gestion des motifs** (administrateur).
+
+### Points soumis à validation
+
+1. Motifs système : désactivables mais non renommables (Q7 dit « protégés »).
+2. Alertes : seulement pour les couples (site, article) déjà gérés (niveau existant) ;
+   définir un seuil crée le niveau (rupture tant que non approvisionné) — ADR-0014 §5.
+3. Un article au plus une fois par document.
+4. Article inactif : refusé à la saisie et à la validation ; motif désactivé après la saisie
+   d'un brouillon : validation acceptée.
+5. `stock.threshold.manage` accordé au Gestionnaire de stock.
+6. Source polymorphe des mouvements sans clé étrangère (ADR-0014, Proposée) ; ADR-0013
+   (rôles système dynamiques) toujours Proposée.

@@ -11,8 +11,9 @@ utilisateur.
 > utilisateurs multi-entreprises, authentification, rôles et permissions, profils d'activité,
 > plans et abonnements, registre de modules, capacités et interface dynamique, audit,
 > provisioning par CLI, CI.
-> **Phase 2 en cours** : catalogue (catégories, articles) et fournisseurs livrés (2.1) ;
-> stock par site à venir (2.2). Ventes, caisse, POS et restaurant ne sont pas commencés.
+> **Phase 2 en cours** : catalogue (catégories, articles) et fournisseurs (2.1) ; stock par
+> site, entrées, sorties, journal des mouvements, seuils par site et alertes (2.2).
+> Transferts, inventaires, ventes, caisse, POS et restaurant ne sont pas commencés.
 
 ## Documentation
 

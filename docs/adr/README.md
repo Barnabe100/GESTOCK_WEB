@@ -20,5 +20,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0011](0011-politique-abonnement.md) | Plans, statuts d'abonnement et politique d'accès | Acceptée |
 | [0012](0012-politiques-de-plan.md) | Plan : limites, modules, fonctionnalités, politiques | Acceptée |
 | [0013](0013-roles-systeme-dynamiques.md) | Rôles système dynamiques | Proposée |
+| [0014](0014-documents-et-mouvements-de-stock.md) | Documents de stock, mouvements et état des niveaux | Proposée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

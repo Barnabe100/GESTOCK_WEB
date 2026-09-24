@@ -204,9 +204,10 @@ ModuleManifest(
 
 Le registre (`get_registry()`) regroupe les modules du socle (`app/platform/manifests.py`)
 et les modules métier (`app/modules/`). Il est validé au démarrage : dépendances connues,
-absence de cycle, permissions préfixées par le code du module. En Phase 1, les modules
-métier sont **déclarés sans implémentation** (statut `planned`, `app/modules/planned.py`)
+absence de cycle, permissions préfixées par le code du module. Les modules métier non encore
+réalisés sont **déclarés sans implémentation** (statut `planned`, `app/modules/planned.py`)
 pour que profils et plans puissent les référencer ; ils ne sont ni routés ni affichés.
+Modules réalisés : `catalog`, `suppliers` (2.1), `stock`, `alerts` (2.2).
 
 Règles de dépendance :
 
@@ -497,7 +498,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 |---|---|---|
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
-| **2 — Catalogue & stock** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 stock par site, entrées/sorties, mouvements, alertes · puis transferts, inventaires ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) | V1 |
+| **2 — Catalogue & stock** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes · puis transferts, inventaires ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) | V1 |
 | **3 — Ventes & encaissement** | Clients, ventes, paiements, caisse, POS | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |

@@ -10,9 +10,11 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 2 — catalogue et stock.** Sous-phase 2.1 livrée : modules `catalog`
-(catégories, articles) et `suppliers`. Les autres modules métier (stock, POS, caisse,
-restaurant…) sont seulement déclarés `planned` (`backend/app/modules/planned.py`). Ne pas les
+**Phase actuelle : 2 — catalogue et stock.** Sous-phases livrées : 2.1 (modules `catalog` et
+`suppliers`) et 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
+journal des mouvements, seuils par site — et `alerts`). Transferts (fonctionnalité de plan
+`stock.transfers`, préparée), inventaires et autres modules métier (ventes, POS, caisse,
+restaurant…) : seulement déclarés `planned` (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.
 
 Règles métier de référence (issues du Desktop, identifiants CAT/SUP/ART/STK/ENT/SOR/ALR) :
