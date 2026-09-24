@@ -31,7 +31,7 @@ def list_movements(
 ) -> tuple[list[Any], int]:
     articles = articles_view()
     movement = StockMovement
-    document_number = func.coalesce(StockEntry.number, StockExit.number)
+    document_number = func.coalesce(movement.source_number, StockEntry.number, StockExit.number)
     local_date = cast(func.timezone(timezone, movement.occurred_at), Date)
     stmt = (
         select(

@@ -20,6 +20,7 @@ class ArticleRef:
     is_active: bool
     min_stock: Decimal
     max_stock: Decimal | None
+    sale_price: Decimal
 
 
 def get_article_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
@@ -35,6 +36,7 @@ def get_article_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, Articl
             is_active=a.is_active,
             min_stock=a.min_stock,
             max_stock=a.max_stock,
+            sale_price=a.sale_price,
         )
         for a in db.scalars(select(Article).where(Article.id.in_(ids)))
     }

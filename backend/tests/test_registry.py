@@ -42,7 +42,9 @@ def test_resolve_dependencies_drops_modules_with_missing_dependencies() -> None:
     registry = get_registry()
     # pos exige sales, payments et cash_register.
     assert "pos" not in registry.resolve_dependencies({"pos", "sales", "payments", "catalog"})
-    full = {"pos", "sales", "payments", "cash_register", "catalog"}
+    # sales exige catalog, stock et customers.
+    full = {"pos", "sales", "payments", "cash_register", "catalog", "stock", "customers"}
     assert registry.resolve_dependencies(full) == full
-    # La suppression se propage : sans catalog, sales puis payments… tombent.
-    assert registry.resolve_dependencies(full - {"catalog"}) == set()
+    # La suppression se propage : sans catalog, stock, sales puis payments… tombent ;
+    # customers (sans dépendance) reste.
+    assert registry.resolve_dependencies(full - {"catalog"}) == {"customers"}

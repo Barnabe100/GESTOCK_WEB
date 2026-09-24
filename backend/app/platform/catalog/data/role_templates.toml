@@ -15,11 +15,12 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue, fournisseurs, clients, stock (entrées, sorties, seuils) et alertes, sans annulation ni gestion des motifs de sortie."
+description = "Catalogue, fournisseurs, clients, ventes, stock (entrées, sorties, seuils) et alertes, sans annulation ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
   "customers.*",
+  "sales.sale.view", "sales.sale.create", "sales.sale.update", "sales.sale.validate",
   "stock.level.view", "stock.threshold.manage",
   "stock.movement.view",
   "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
@@ -29,11 +30,12 @@ permissions = [
 
 [roles.seller]
 name = "Vendeur"
-description = "Consultation des articles, du stock, des alertes et des clients (droits de vente ajoutés avec le module Ventes)."
+description = "Vente comptant (création, modification et validation des ventes), consultation des articles, du stock, des alertes et des clients ; sans annulation."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
   "customers.customer.view",
+  "sales.sale.view", "sales.sale.create", "sales.sale.update", "sales.sale.validate",
   "stock.level.view",
   "alerts.stock.view",
 ]

@@ -197,6 +197,7 @@ class _DocumentService(Generic[Doc]):
                     source_type=self.source_type,
                     source_id=document.id,
                     source_line_id=line.id,
+                    source_number=document.number,
                     origin_movement_id=origins[line.id].id if line.id in origins else None,
                     comment=f"Annulation {document.number}",
                 )
@@ -351,6 +352,7 @@ class EntryService(_DocumentService[StockEntry]):
                     source_type=self.source_type,
                     source_id=entry.id,
                     source_line_id=line.id,
+                    source_number=entry.number,
                     comment=entry.number,
                 )
                 for line in entry.lines
@@ -471,6 +473,7 @@ class ExitService(_DocumentService[StockExit]):
                     source_type=self.source_type,
                     source_id=document.id,
                     source_line_id=line.id,
+                    source_number=document.number,
                     comment=document.number,
                 )
                 for line in document.lines

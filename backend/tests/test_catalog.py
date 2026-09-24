@@ -70,8 +70,8 @@ def test_role_templates_resolve_patterns() -> None:
     assert templates["administrator"].resolve(available) == sorted(available)
     assert templates["administrator"].protected is True
     assert not any(t.protected for c, t in templates.items() if c != "administrator")
-    # Vendeur : aucune permission de module non développé n'est déclarée.
-    assert templates["seller"].resolve(available) == []
+    # Vendeur : vente comptant, sans annulation (permissions explicites, pas de motif).
+    assert templates["seller"].resolve(available) == ["sales.sale.create", "sales.sale.view"]
 
 
 def test_sync_deactivates_removed_profiles(

@@ -57,6 +57,15 @@ class MovementRequest:
     unit_cost: Decimal | None = None  # obligatoire pour une ENTRÉE
     origin_movement_id: uuid.UUID | None = None
     comment: str | None = None
+    source_number: str | None = None
+
+
+@dataclass(frozen=True)
+class MovementRef:
+    """Mouvement d'origine d'une ligne (pour une annulation par mouvement inverse)."""
+
+    id: uuid.UUID
+    unit_cost: Decimal | None
 
 
 class StockService:
@@ -139,6 +148,7 @@ class StockService:
                 source_type=request.source_type,
                 source_id=request.source_id,
                 source_line_id=request.source_line_id,
+                source_number=request.source_number,
                 origin_movement_id=request.origin_movement_id,
                 user_id=self.user_id,
                 comment=request.comment,
@@ -148,6 +158,18 @@ class StockService:
             movements.append(movement)
         self.db.flush()
         return movements
+
+    def movements_of(
+        self, source_id: uuid.UUID, movement_type: MovementType
+    ) -> dict[uuid.UUID, MovementRef]:
+        """Mouvements d'un type donné d'un document source, par ligne source (lecture seule)."""
+        rows = self.db.scalars(
+            select(StockMovement).where(
+                StockMovement.source_id == source_id,
+                StockMovement.movement_type == movement_type,
+            )
+        )
+        return {m.source_line_id: MovementRef(id=m.id, unit_cost=m.unit_cost) for m in rows}
 
     def _ensure_non_negative(self, planned: list[tuple[MovementRequest, StockLevel]]) -> None:
         """Contrôle global avant toute écriture : refus de l'opération entière (STK-03)."""

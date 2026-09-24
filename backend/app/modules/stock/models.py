@@ -120,6 +120,9 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
     source_type: Mapped[str] = mapped_column(String(30), nullable=False)
     source_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     source_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    # Numéro lisible du document source (ENT-…, SOR-…, VTE-…) : le journal l'affiche sans
+    # connaître les modules sources. Nul pour les mouvements antérieurs (résolus par jointure).
+    source_number: Mapped[str | None] = mapped_column(String(30))
     origin_movement_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("stock_movements.id", ondelete="RESTRICT")
     )

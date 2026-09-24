@@ -78,6 +78,10 @@ def test_base_roles(owner: Api) -> None:
         "catalog.article.view",
         "catalog.category.view",
         "customers.customer.view",
+        "sales.sale.view",
+        "sales.sale.create",
+        "sales.sale.update",
+        "sales.sale.validate",
         "stock.level.view",
         "alerts.stock.view",
     }
