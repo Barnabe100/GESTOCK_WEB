@@ -59,7 +59,8 @@ façon dont une fonctionnalité de plan conditionne des permissions.
 - Le détail `insufficient_stock` indique désormais le site (`site_id`) de chaque article.
 - Un changement de plan (ENTREPRISE → STANDARD) masque les transferts existants (lecture
   comprise) ; les données et les mouvements sont conservés.
-- Le retour arrière de la migration `0008` est refusé si des transferts existent.
+- Le retour arrière de la migration `0008` est destructif (comme `0007`) : il supprime les
+  transferts et leurs mouvements, sans recalcul des niveaux — réservé au développement.
 
 ## Alternatives écartées
 

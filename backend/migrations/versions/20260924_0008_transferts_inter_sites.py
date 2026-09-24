@@ -9,8 +9,9 @@
   (ligne source, type, **site**) — l'annulation d'un transfert inverse un mouvement sur chacun
   des deux sites. Toujours un seul mouvement d'un type donné par ligne et par site.
 
-Retour arrière refusé si des transferts existent : leurs mouvements (append-only) resteraient
-dans le journal sans document et l'ancienne contrainte ne pourrait pas être rétablie.
+Retour arrière **destructif** (comme celui de ``0007``) : supprime les transferts et leurs
+mouvements de stock — l'ancienne contrainte d'unicité ne tolère pas les deux annulations d'une
+même ligne ; les niveaux de stock ne sont pas recalculés. Réservé au développement.
 
 Revision ID: 0008
 Revises: 0007
@@ -225,15 +226,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Propriétaire de la table : la politique RLS ne s'applique pas à cette vérification
-    # (FORCE désactivé le temps de la lecture).
-    op.execute("ALTER TABLE stock_transfers NO FORCE ROW LEVEL SECURITY")
-    existing = op.get_bind().execute(sa.text("SELECT count(*) FROM stock_transfers")).scalar()
-    if existing:
-        raise RuntimeError(
-            f"Retour arrière impossible : {existing} transfert(s) enregistré(s) "
-            "(mouvements de stock append-only)."
+    # Mouvements des transferts (annulations d'abord : clé d'origine). FORCE RLS suspendu le
+    # temps de la suppression : le propriétaire agit sur tous les tenants.
+    op.execute("ALTER TABLE stock_movements NO FORCE ROW LEVEL SECURITY")
+    for condition in ("movement_type = 'CANCELLATION'", "TRUE"):
+        op.execute(
+            f"DELETE FROM stock_movements WHERE source_type = 'stock_transfer' AND {condition}"
         )
+    op.execute("ALTER TABLE stock_movements FORCE ROW LEVEL SECURITY")
     op.execute(f"REVOKE ALL ON {', '.join(TABLES)} FROM {_app_role()}")
     for table in TABLES:
         op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {table}")
