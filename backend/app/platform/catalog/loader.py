@@ -54,12 +54,19 @@ class RoleTemplate:
     name: str
     description: str | None
     permission_patterns: tuple[str, ...]
+    # Motifs retirés du résultat (ex. Consultant : ``*.view`` sauf ``users.*``).
+    exclude_patterns: tuple[str, ...] = ()
+    # Rôle protégé : ni désactivable, ni modifiable, ni renommable par le tenant.
+    protected: bool = False
 
     def resolve(self, available_permissions: set[str]) -> list[str]:
+        def matches(code: str, patterns: tuple[str, ...]) -> bool:
+            return any(fnmatch.fnmatchcase(code, pattern) for pattern in patterns)
+
         return sorted(
             code
             for code in available_permissions
-            if any(fnmatch.fnmatchcase(code, pattern) for pattern in self.permission_patterns)
+            if matches(code, self.permission_patterns) and not matches(code, self.exclude_patterns)
         )
 
 
@@ -143,6 +150,8 @@ def _load_role_templates(raw: dict[str, Any]) -> dict[str, RoleTemplate]:
             name=data["name"],
             description=data.get("description"),
             permission_patterns=tuple(data.get("permissions", ())),
+            exclude_patterns=tuple(data.get("exclude", ())),
+            protected=bool(data.get("protected", False)),
         )
         for code, data in raw.get("roles", {}).items()
     }
@@ -193,6 +202,15 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
         unknown = set(policy.allowed_access) - kinds
         if unknown:
             errors.append(f"politique {policy.status} : natures inconnues {sorted(unknown)}")
+
+    names = [t.name.strip().lower() for t in catalog.role_templates.values()]
+    if len(names) != len(set(names)):
+        errors.append("modèles de rôles : noms en double (casse ignorée)")
+    if not any(t.protected for t in catalog.role_templates.values()):
+        errors.append("modèles de rôles : aucun rôle protégé (administration du tenant)")
+    for template in catalog.role_templates.values():
+        if not template.permission_patterns:
+            errors.append(f"modèle de rôle {template.code} : aucune permission")
 
     if errors:
         raise CatalogError("Catalogue invalide :\n- " + "\n- ".join(errors))

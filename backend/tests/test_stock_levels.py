@@ -189,9 +189,7 @@ def test_permissions_and_site_restriction(world: World, client: TestClient) -> N
     )
     assert denied.status_code == 403 and denied.json()["code"] == "permission_denied"
 
-    depot_only = sh.member(
-        world, client, "depot@example.com", "stock_manager", site_ids=[world.site2]
-    )
+    depot_only = sh.member(world, client, "depot@example.com", "manager", site_ids=[world.site2])
     assert {i["site_id"] for i in _levels(depot_only).values()} == {world.site2}
     assert _levels(depot_only, site_id=world.site) == {}
     assert depot_only.get("/stock/movements").json()["total"] == 0

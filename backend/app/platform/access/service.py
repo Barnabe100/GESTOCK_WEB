@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Iterable
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import func, select
@@ -30,6 +31,9 @@ from app.platform.access.schemas import (
     PermissionOut,
     RoleAssignment,
     RoleCreate,
+    RoleDeactivate,
+    RoleDuplicate,
+    RoleMemberOut,
     RoleOut,
     RoleTemplateOut,
     RoleUpdate,
@@ -44,15 +48,27 @@ from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import current_plan
 from app.platform.tenancy.models import Site
+from app.shared.schemas import StatusFilter
 
 
-def role_out(role: Role, registry: ModuleRegistry) -> RoleOut:
+class RoleKind(StrEnum):
+    SYSTEM = "system"
+    CUSTOM = "custom"
+
+
+def role_out(role: Role, registry: ModuleRegistry, member_count: int = 0) -> RoleOut:
+    template = (
+        role_templates().get(role.template_code) if role.is_system and role.template_code else None
+    )
     return RoleOut(
         id=role.id,
-        name=role.name,
-        description=role.description,
+        name=template.name if template else role.name,
+        description=template.description if template else role.description,
         template_code=role.template_code,
         is_system=role.is_system,
+        is_active=role.is_active,
+        protected=bool(template and template.protected),
+        member_count=member_count,
         permission_codes=sorted(effective_role_permissions(role, registry)),
     )
 
@@ -138,21 +154,76 @@ class _AccessBase:
 
 
 class RoleService(_AccessBase):
+    """Rôles de base (système, non modifiables) et rôles personnalisés du tenant. Aucun rôle
+    n'est supprimé : il est désactivé, ses attributions sont conservées (ADR-0015)."""
+
+    # --- Lecture ------------------------------------------------------------------------------
+
     def available_permissions(self) -> list[PermissionOut]:
         result = []
         for module in sorted(self.ctx.capabilities.modules):
             for perm in self.registry.get(module).permissions:
-                result.append(PermissionOut(code=perm.code, module=module, access=perm.access))
+                resource, _, action = perm.code[len(module) + 1 :].rpartition(".")
+                result.append(
+                    PermissionOut(
+                        code=perm.code,
+                        module=module,
+                        access=perm.access,
+                        resource=resource,
+                        action=action,
+                    )
+                )
         return result
 
-    def list_all(self) -> list[Role]:
-        return list(self.db.scalars(select(Role).order_by(Role.is_system.desc(), Role.name)))
+    def list_all(
+        self, kind: RoleKind | None = None, status: StatusFilter = StatusFilter.ALL
+    ) -> list[Role]:
+        stmt = select(Role).order_by(Role.is_system.desc(), Role.name)
+        if kind is not None:
+            stmt = stmt.where(Role.is_system.is_(kind is RoleKind.SYSTEM))
+        if status is not StatusFilter.ALL:
+            stmt = stmt.where(Role.is_active.is_(status is StatusFilter.ACTIVE))
+        return list(self.db.scalars(stmt))
+
+    def member_counts(self) -> dict[uuid.UUID, int]:
+        rows = self.db.execute(
+            select(
+                MembershipRole.role_id, func.count(func.distinct(MembershipRole.membership_id))
+            ).group_by(MembershipRole.role_id)
+        ).tuples()
+        return {role_id: int(count) for role_id, count in rows}
+
+    def out(self, role: Role) -> RoleOut:
+        return role_out(role, self.registry, self.member_counts().get(role.id, 0))
 
     def get(self, role_id: uuid.UUID) -> Role:
         role = self.db.get(Role, role_id)
         if role is None:
             raise NotFoundError("Rôle introuvable", code="role_not_found")
         return role
+
+    def members(self, role_id: uuid.UUID) -> list[RoleMemberOut]:
+        role = self.get(role_id)
+        rows = self.db.execute(
+            select(MembershipRole.site_id, TenantMembership)
+            .join(TenantMembership, TenantMembership.id == MembershipRole.membership_id)
+            .join(User, User.id == TenantMembership.user_id)
+            .where(MembershipRole.role_id == role.id)
+            .order_by(User.full_name, MembershipRole.site_id)
+        ).tuples()
+        return [
+            RoleMemberOut(
+                membership_id=membership.id,
+                user_id=membership.user_id,
+                full_name=membership.user.full_name,
+                email=membership.user.email,
+                status=membership.status,
+                site_id=site_id,
+            )
+            for site_id, membership in rows
+        ]
+
+    # --- Règles ---------------------------------------------------------------------------------
 
     def _validate_permissions(self, codes: list[str]) -> list[str]:
         available = {p.code for p in self.available_permissions()}
@@ -161,48 +232,172 @@ class RoleService(_AccessBase):
             raise BusinessRuleError(
                 "Permissions inconnues", code="unknown_permission", extra={"permissions": unknown}
             )
+        # Un rôle n'a pas de portée : il faut détenir ses permissions sur tout le tenant.
         self._ensure_grantable(codes)
         return sorted(set(codes))
+
+    def _check_name(self, name: str, exclude_id: uuid.UUID | None = None) -> None:
+        """Nom unique par tenant (casse ignorée) et distinct des noms des rôles de base."""
+        lowered = name.strip().lower()
+        if any(t.name.strip().lower() == lowered for t in role_templates().values()):
+            raise ConflictError("Ce nom est réservé à un rôle de base", code="role_name_reserved")
+        stmt = select(Role.id).where(func.lower(Role.name) == lowered, Role.is_system.is_(False))
+        if exclude_id is not None:
+            stmt = stmt.where(Role.id != exclude_id)
+        if self.db.scalars(stmt).first() is not None:
+            raise ConflictError("Un rôle porte déjà ce nom", code="role_name_taken")
 
     def _flush(self) -> None:
         try:
             self.db.flush()
-        except IntegrityError as exc:
+        except IntegrityError as exc:  # concurrence : l'index unique fait foi
             raise ConflictError("Un rôle porte déjà ce nom", code="role_name_taken") from exc
 
-    def create(self, data: RoleCreate) -> Role:
+    def _ensure_editable(self, role: Role) -> None:
+        if role.is_system:
+            raise ForbiddenError("Rôle de base non modifiable", code="system_role")
+        # Modifier un rôle revient à accorder ses permissions à ses titulaires.
+        self._ensure_grantable(effective_role_permissions(role, self.registry))
+
+    def _is_protected(self, role: Role) -> bool:
+        template = role_templates().get(role.template_code or "")
+        return bool(role.is_system and template and template.protected)
+
+    # --- Écritures -------------------------------------------------------------------------------
+
+    def create(self, data: RoleCreate, *, copied_from: Role | None = None) -> Role:
+        self._check_name(data.name)
         codes = self._validate_permissions(data.permissions)
-        role = Role(tenant_id=self.ctx.tenant_id, name=data.name, description=data.description)
+        role = Role(
+            tenant_id=self.ctx.tenant_id,
+            name=data.name,
+            description=data.description or None,
+        )
         role.permission_links = [
             RolePermission(tenant_id=self.ctx.tenant_id, permission_code=c) for c in codes
         ]
         self.db.add(role)
         self._flush()
-        self._audit("role.created", "role", role.id, {"name": role.name, "permissions": codes})
+        audit: dict[str, Any] = {"name": role.name, "permissions": codes}
+        if copied_from is not None:
+            audit["copied_from"] = {"id": str(copied_from.id), "name": copied_from.name}
+        self._audit("role.created", "role", role.id, audit)
         return role
 
-    def _ensure_editable(self, role: Role) -> None:
-        if role.is_system:
-            raise ForbiddenError("Rôle système non modifiable", code="system_role")
-        # Modifier un rôle revient à accorder ses permissions à ses titulaires.
-        self._ensure_grantable(effective_role_permissions(role, self.registry))
+    def duplicate(self, role_id: uuid.UUID, data: RoleDuplicate) -> Role:
+        """Rôle personnalisé reprenant les permissions (disponibles dans l'offre) d'un rôle."""
+        source = self.get(role_id)
+        available = {p.code for p in self.available_permissions()}
+        codes = sorted(effective_role_permissions(source, self.registry) & available)
+        description = data.description if data.description is not None else None
+        return self.create(
+            RoleCreate(name=data.name, description=description, permissions=codes),
+            copied_from=source,
+        )
 
     def update(self, role_id: uuid.UUID, data: RoleUpdate) -> Role:
         role = self.get(role_id)
         self._ensure_editable(role)
-        before = {"name": role.name, "permissions": role.permission_codes}
-        if data.name is not None:
+        before = {
+            "name": role.name,
+            "description": role.description,
+            "permissions": role.permission_codes,
+        }
+        if data.name is not None and data.name != role.name:
+            self._check_name(data.name, exclude_id=role.id)
             role.name = data.name
         if data.description is not None:
-            role.description = data.description
+            role.description = data.description or None
         if data.permissions is not None:
             codes = self._validate_permissions(data.permissions)
-            role.permission_links = [
-                RolePermission(tenant_id=self.ctx.tenant_id, permission_code=c) for c in codes
-            ]
+            wanted = set(codes)
+            # Mise à jour différentielle (pas de conflit de clé primaire au remplacement).
+            for link in list(role.permission_links):
+                if link.permission_code not in wanted:
+                    role.permission_links.remove(link)
+            existing = {link.permission_code for link in role.permission_links}
+            for code in sorted(wanted - existing):
+                role.permission_links.append(
+                    RolePermission(tenant_id=self.ctx.tenant_id, permission_code=code)
+                )
         self._flush()
-        after = {"name": role.name, "permissions": role.permission_codes}
-        self._audit("role.updated", "role", role.id, {"before": before, "after": after})
+        after = {
+            "name": role.name,
+            "description": role.description,
+            "permissions": role.permission_codes,
+        }
+        if before != after:
+            self._audit(
+                "role.updated",
+                "role",
+                role.id,
+                {
+                    "before": before,
+                    "after": after,
+                    "permissions_added": sorted(
+                        set(after["permissions"] or []) - set(before["permissions"] or [])
+                    ),
+                    "permissions_removed": sorted(
+                        set(before["permissions"] or []) - set(after["permissions"] or [])
+                    ),
+                },
+            )
+        return role
+
+    def activate(self, role_id: uuid.UUID) -> Role:
+        role = self.get(role_id)
+        if role.is_active:
+            return role
+        # Réactiver rend ses permissions à tous ses titulaires.
+        self._ensure_grantable(effective_role_permissions(role, self.registry))
+        role.is_active = True
+        self.db.flush()
+        members = self.members(role.id)
+        self._audit(
+            "role.activated",
+            "role",
+            role.id,
+            {"name": role.name, "members": sorted({str(m.membership_id) for m in members})},
+        )
+        return role
+
+    def deactivate(self, role_id: uuid.UUID, data: RoleDeactivate) -> Role:
+        role = self.get(role_id)
+        if self._is_protected(role):
+            raise ForbiddenError("Ce rôle est protégé", code="role_protected")
+        if not role.is_active:
+            return role
+        self._ensure_grantable(effective_role_permissions(role, self.registry))
+        members = self.members(role.id)
+        if members and not data.confirm:
+            raise ConflictError(
+                "Rôle attribué à des membres : confirmation requise",
+                code="role_in_use",
+                extra={
+                    "count": len({m.membership_id for m in members}),
+                    "members": [
+                        {
+                            "membership_id": str(m.membership_id),
+                            "full_name": m.full_name,
+                            "site_id": str(m.site_id) if m.site_id else None,
+                        }
+                        for m in members
+                    ],
+                },
+            )
+        # Les attributions sont conservées : la réactivation rétablit les droits.
+        role.is_active = False
+        self.db.flush()
+        self._audit(
+            "role.deactivated",
+            "role",
+            role.id,
+            {
+                "name": role.name,
+                "members": sorted({str(m.membership_id) for m in members}),
+                "confirmed": data.confirm,
+            },
+        )
         return role
 
     def templates(self) -> list[RoleTemplateOut]:
@@ -215,12 +410,15 @@ class RoleService(_AccessBase):
         ]
 
     def create_from_template(self, template_code: str) -> Role:
-        """Ajoute au tenant un rôle système manquant (ex. modèle apparu après sa création)."""
+        """Ajoute au tenant un rôle de base manquant (ex. modèle apparu après sa création)."""
         template = role_templates().get(template_code)
         if template is None:
             raise NotFoundError("Modèle de rôle introuvable", code="role_template_not_found")
         if any(r.template_code == template_code for r in self.list_all()):
             raise ConflictError("Ce rôle existe déjà", code="role_template_exists")
+        self._ensure_grantable(
+            template.resolve(set(self.registry.permissions_of(set(self.ctx.capabilities.modules))))
+        )
         role = Role(
             tenant_id=self.ctx.tenant_id,
             name=template.name,
@@ -232,20 +430,6 @@ class RoleService(_AccessBase):
         self._flush()
         self._audit("role.created", "role", role.id, {"template": template.code})
         return role
-
-    def delete(self, role_id: uuid.UUID) -> None:
-        role = self.get(role_id)
-        self._ensure_editable(role)
-        in_use = self.db.scalar(
-            select(func.count())
-            .select_from(MembershipRole)
-            .where(MembershipRole.role_id == role.id)
-        )
-        if in_use:
-            raise ConflictError("Rôle attribué à des membres", code="role_in_use")
-        self._audit("role.deleted", "role", role.id, {"name": role.name})
-        self.db.delete(role)
-        self.db.flush()
 
 
 class MemberService(_AccessBase):
@@ -274,8 +458,15 @@ class MemberService(_AccessBase):
         PlanPolicy(self.db, current_plan(self.db), self.registry).ensure_capacity("max_users")
 
     def _validate_access(
-        self, roles: list[RoleAssignment], site_ids: list[uuid.UUID], all_sites: bool
+        self,
+        roles: list[RoleAssignment],
+        site_ids: list[uuid.UUID],
+        all_sites: bool,
+        existing: set[tuple[uuid.UUID, uuid.UUID | None]] | None = None,
     ) -> None:
+        """Rôles et sites accordés : connus du tenant, dans le périmètre de l'acteur (portée et
+        sites), rôles actifs pour toute **nouvelle** attribution (``existing`` : attributions
+        déjà détenues, conservées même si leur rôle a été désactivé)."""
         tenant_sites = set(self.db.scalars(select(Site.id)))  # RLS : sites du tenant uniquement
         unknown_sites = {s for s in site_ids if s not in tenant_sites}
         unknown_sites |= {r.site_id for r in roles if r.site_id and r.site_id not in tenant_sites}
@@ -292,6 +483,11 @@ class MemberService(_AccessBase):
             role = role_map.get(assignment.role_id)
             if role is None:
                 raise BusinessRuleError("Rôle inconnu", code="role_not_found")
+            is_new = existing is None or (assignment.role_id, assignment.site_id) not in existing
+            if is_new and not role.is_active:
+                raise BusinessRuleError(
+                    "Ce rôle est désactivé", code="role_inactive", extra={"role_id": str(role.id)}
+                )
             self._ensure_grantable(
                 effective_role_permissions(role, self.registry), assignment.site_id
             )
@@ -300,14 +496,18 @@ class MemberService(_AccessBase):
         self, membership: TenantMembership, roles: list[RoleAssignment], site_ids: list[uuid.UUID]
     ) -> None:
         """Mise à jour différentielle des rôles et sites (évite les conflits d'unicité que
-        provoquerait un remplacement complet : SQLAlchemy insère avant de supprimer)."""
+        provoquerait un remplacement complet : SQLAlchemy insère avant de supprimer). Chaque
+        attribution et chaque retrait de rôle est audité."""
         tenant_id = self.ctx.tenant_id
         wanted_roles = {(r.role_id, r.site_id) for r in roles}
+        removed = []
         for link in list(membership.role_links):
             if (link.role_id, link.site_id) not in wanted_roles:
+                removed.append((link.role_id, link.site_id))
                 membership.role_links.remove(link)
         existing_roles = {(link.role_id, link.site_id) for link in membership.role_links}
-        for role_id, site_id in sorted(wanted_roles - existing_roles, key=str):
+        added = sorted(wanted_roles - existing_roles, key=str)
+        for role_id, site_id in added:
             membership.role_links.append(
                 MembershipRole(tenant_id=tenant_id, role_id=role_id, site_id=site_id)
             )
@@ -320,6 +520,21 @@ class MemberService(_AccessBase):
         for site_id in sorted(wanted_sites - existing_sites):
             membership.site_links.append(MembershipSite(tenant_id=tenant_id, site_id=site_id))
         self.db.flush()
+
+        names = {r.id: r.name for r in self.db.scalars(select(Role))}
+        for action, changes in (("member.role_removed", removed), ("member.role_assigned", added)):
+            for role_id, site_id in changes:
+                self._audit(
+                    action,
+                    "membership",
+                    membership.id,
+                    {
+                        "user_id": str(membership.user_id),
+                        "role_id": str(role_id),
+                        "role_name": names.get(role_id),
+                        "site_id": str(site_id) if site_id else None,
+                    },
+                )
 
     def create(self, data: MemberCreate) -> TenantMembership:
         self._check_user_limit()
@@ -394,10 +609,11 @@ class MemberService(_AccessBase):
         )
         all_sites = data.all_sites if data.all_sites is not None else membership.all_sites
         # … et que son accès actuel (rôles, sites) soit dans le périmètre de l'acteur.
-        self._validate_access(
-            current_roles, [s.site_id for s in membership.site_links], membership.all_sites
-        )
-        self._validate_access(roles, site_ids, all_sites)
+        current_sites = [s.site_id for s in membership.site_links]
+        existing = {(r.role_id, r.site_id) for r in current_roles}
+        self._validate_access(current_roles, current_sites, membership.all_sites, existing)
+        self._validate_access(roles, site_ids, all_sites, existing)
+        before = self._access_snapshot(membership)
         if data.status == MembershipStatus.ACTIVE and membership.status != MembershipStatus.ACTIVE:
             self._check_user_limit()
 
@@ -406,15 +622,24 @@ class MemberService(_AccessBase):
             membership.status = data.status
         self._apply_access(membership, roles, site_ids)
         self.db.flush()
-        self._audit(
-            "member.updated",
-            "membership",
-            membership.id,
-            {
-                "roles": [r.model_dump(mode="json") for r in roles],
-                "site_ids": [str(s) for s in site_ids],
-                "all_sites": all_sites,
-                "status": membership.status.value,
-            },
-        )
+        after = self._access_snapshot(membership)
+        if before != after:
+            self._audit(
+                "member.updated", "membership", membership.id, {"before": before, "after": after}
+            )
         return membership
+
+    @staticmethod
+    def _access_snapshot(membership: TenantMembership) -> dict[str, Any]:
+        return {
+            "roles": sorted(
+                (
+                    {"role_id": str(r.role_id), "site_id": str(r.site_id) if r.site_id else None}
+                    for r in membership.role_links
+                ),
+                key=lambda r: (r["role_id"], r["site_id"] or ""),
+            ),
+            "site_ids": sorted(str(s.site_id) for s in membership.site_links),
+            "all_sites": membership.all_sites,
+            "status": membership.status.value,
+        }

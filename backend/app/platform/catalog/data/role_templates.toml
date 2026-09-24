@@ -1,17 +1,21 @@
-# Modèles de rôles système (non modifiables par le tenant), instanciés à la création d'un tenant
-# ou à la demande (POST /roles/from-template). Les permissions sont des motifs (`module.*`,
-# `*.view`) **résolus à l'exécution** contre le registre : un nouveau module enrichit
-# automatiquement les rôles système concernés, sans migration de données.
+# Rôles de base (rôles système) proposés à chaque entreprise, instanciés à sa création ou à la
+# demande (POST /roles/from-template). Les permissions sont des motifs (`module.*`, `*.view`)
+# **résolus à l'exécution** contre le registre (ADR-0013) : un nouveau module enrichit
+# automatiquement les rôles concernés, sans migration de données. `exclude` retire des motifs
+# du résultat ; `protected` interdit toute désactivation ou modification par le tenant.
+# Aucune permission de module non développé : les modèles sont complétés quand le module existe.
 # Le propriétaire n'est pas un rôle : c'est un attribut de l'appartenance (is_owner).
+# Les codes sont stables (référencés en base par roles.template_code) ; les noms sont affichés.
 
 [roles.administrator]
 name = "Administrateur"
-description = "Accès complet à l'entreprise (tous les modules actifs)."
+description = "Administration complète de l'entreprise (tous les modules de l'offre)."
 permissions = ["*"]
+protected = true
 
-[roles.stock_manager]
-name = "Gestionnaire de stock"
-description = "Catalogue, fournisseurs, entrées/sorties et inventaires (sans annulation ni motifs de sortie)."
+[roles.manager]
+name = "Gestionnaire"
+description = "Catalogue, fournisseurs, stock (entrées, sorties, seuils) et alertes, sans annulation ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -19,11 +23,21 @@ permissions = [
   "stock.movement.view",
   "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
   "stock.exit.view", "stock.exit.create", "stock.exit.update", "stock.exit.validate",
-  "inventory_count.*",
   "alerts.*",
 ]
 
+[roles.seller]
+name = "Vendeur"
+description = "Consultation des articles, du stock et des alertes (droits de vente ajoutés avec le module Ventes)."
+permissions = [
+  "catalog.article.view",
+  "catalog.category.view",
+  "stock.level.view",
+  "alerts.stock.view",
+]
+
 [roles.viewer]
-name = "Consultation"
-description = "Accès en lecture seule."
+name = "Consultant"
+description = "Consultation, sans accès aux utilisateurs, aux rôles, au journal d'audit ni aux modules."
 permissions = ["*.view"]
+exclude = ["users.*", "audit.*", "organization.module.*"]

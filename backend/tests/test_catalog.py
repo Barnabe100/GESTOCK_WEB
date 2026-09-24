@@ -52,12 +52,26 @@ def test_missing_subscription_policy_is_rejected(tmp_path: Path) -> None:
 
 
 def test_role_templates_resolve_patterns() -> None:
-    catalog = load_catalog(get_registry())
-    available = {"users.member.view", "users.member.manage", "audit.log.view"}
-    assert catalog.role_templates["viewer"].resolve(available) == [
-        "audit.log.view",
+    templates = load_catalog(get_registry()).role_templates
+    assert set(templates) == {"administrator", "manager", "seller", "viewer"}
+    available = {
         "users.member.view",
-    ]
+        "users.member.manage",
+        "audit.log.view",
+        "organization.site.view",
+        "organization.module.view",
+        # Permission d'un module futur : les motifs l'incluent sans migration (ADR-0013).
+        "sales.sale.view",
+        "sales.sale.create",
+    }
+    # Consultant : *.view sauf utilisateurs, audit et modules.
+    assert templates["viewer"].resolve(available) == ["organization.site.view", "sales.sale.view"]
+    # Administrateur : tout, y compris un module apparu après la création du tenant.
+    assert templates["administrator"].resolve(available) == sorted(available)
+    assert templates["administrator"].protected is True
+    assert not any(t.protected for c, t in templates.items() if c != "administrator")
+    # Vendeur : aucune permission de module non développé n'est déclarée.
+    assert templates["seller"].resolve(available) == []
 
 
 def test_sync_deactivates_removed_profiles(

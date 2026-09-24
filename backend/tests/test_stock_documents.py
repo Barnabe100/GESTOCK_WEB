@@ -269,7 +269,7 @@ def test_concurrent_double_validation_applies_once(
 
 def test_permissions_by_role(world: World, client: Any) -> None:
     entry = sh.validated_entry(world, [(0, "10", "100")])
-    manager = sh.member(world, client, "stock@example.com", "stock_manager", all_sites=True)
+    manager = sh.member(world, client, "stock@example.com", "manager", all_sites=True)
     viewer = sh.member(world, client, "lecteur@example.com", "viewer", all_sites=True)
 
     draft = manager.post(
@@ -301,9 +301,7 @@ def test_documents_are_restricted_to_accessible_sites(world: World, client: Any)
             "supplier_id": world.supplier,
         },
     ).json()
-    shop_only = sh.member(
-        world, client, "boutique@example.com", "stock_manager", site_ids=[world.site]
-    )
+    shop_only = sh.member(world, client, "boutique@example.com", "manager", site_ids=[world.site])
     listing = shop_only.get("/stock/entries").json()
     assert listing["total"] == 0
     assert shop_only.get(f"/stock/entries/{depot_entry['id']}").status_code == 404

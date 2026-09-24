@@ -78,7 +78,9 @@ class CapabilityService:
         if not role_ids:
             return set()
         granted: set[str] = set()
-        for role in self.session.scalars(select(Role).where(Role.id.in_(role_ids))):
+        # Un rôle inactif n'accorde rien ; ses attributions sont conservées (ADR-0015).
+        active_roles = select(Role).where(Role.id.in_(role_ids), Role.is_active.is_(True))
+        for role in self.session.scalars(active_roles):
             granted |= effective_role_permissions(role, self.registry)
         return granted
 

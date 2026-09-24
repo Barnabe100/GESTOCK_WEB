@@ -328,7 +328,7 @@ def _member(owner: Api, client: Any, email: str, template: str) -> Api:
 def test_permissions_by_system_role(owner: Api, client: Any) -> None:
     category = _category(owner)
     viewer = _member(owner, client, "lecteur@example.com", "viewer")
-    manager = _member(owner, client, "stock@example.com", "stock_manager")
+    manager = _member(owner, client, "stock@example.com", "manager")
     admin = _member(owner, client, "admin@example.com", "administrator")
 
     assert viewer.get("/catalog/articles").status_code == 200
@@ -352,14 +352,14 @@ def test_expired_subscription_blocks_catalog_writes(owner: Api, owner_db: Sessio
 
 
 def test_missing_system_role_can_be_added_from_template(owner: Api, owner_db: Session) -> None:
-    owner_db.execute(text("DELETE FROM roles WHERE template_code = 'stock_manager'"))
+    owner_db.execute(text("DELETE FROM roles WHERE template_code = 'manager'"))
     owner_db.commit()
     templates = {t["code"]: t for t in owner.get("/role-templates").json()}
-    assert templates["stock_manager"]["instantiated"] is False
-    created = owner.post("/roles/from-template", json={"template_code": "stock_manager"})
+    assert templates["manager"]["instantiated"] is False
+    created = owner.post("/roles/from-template", json={"template_code": "manager"})
     assert created.status_code == 201
     assert "catalog.article.create" in created.json()["permission_codes"]
-    again = owner.post("/roles/from-template", json={"template_code": "stock_manager"})
+    again = owner.post("/roles/from-template", json={"template_code": "manager"})
     assert again.json()["code"] == "role_template_exists"
 
 

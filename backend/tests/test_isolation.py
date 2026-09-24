@@ -89,7 +89,9 @@ def test_tenant_endpoint_returns_own_tenant(world: World) -> None:
         ("patch", "/sites/{site}", {"name": "piraté"}),
         ("get", "/roles/{role}", None),
         ("patch", "/roles/{role}", {"name": "piraté"}),
-        ("delete", "/roles/{role}", None),
+        ("post", "/roles/{role}/deactivate", {"confirm": True}),
+        ("post", "/roles/{role}/duplicate", {"name": "Copie pirate"}),
+        ("get", "/roles/{role}/members", None),
         ("get", "/members/{member}", None),
         ("patch", "/members/{member}", {"status": "suspended"}),
     ],
@@ -105,7 +107,8 @@ def test_other_tenant_resources_are_not_found(
     assert response.status_code == 404, response.text
     # Et rien n'a changé côté B.
     assert world.api_b.get("/sites/" + world.b_extra_site_id).json()["name"] == "Dépôt B"
-    assert world.api_b.get("/roles/" + world.b_role_id).json()["name"] == "Secret B"
+    role_b = world.api_b.get("/roles/" + world.b_role_id).json()
+    assert role_b["name"] == "Secret B" and role_b["is_active"] is True
     assert world.api_b.get("/members/" + world.b_member_id).json()["status"] == "active"
 
 

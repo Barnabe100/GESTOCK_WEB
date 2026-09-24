@@ -3,12 +3,16 @@ from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     String,
     Text,
     UniqueConstraint,
     Uuid,
+    func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,20 +59,42 @@ class TenantMembership(IdMixin, TenantScopedMixin, TimestampMixin, Base):
 
 
 class Role(IdMixin, TenantScopedMixin, TimestampMixin, Base):
-    """Rôle défini par tenant (éventuellement issu d'un modèle système)."""
+    """Rôle d'un tenant : rôle de base (système, issu d'un modèle) ou rôle personnalisé.
+    Un rôle n'est qu'un regroupement de permissions ; il n'est jamais supprimé (ADR-0015)."""
 
     __tablename__ = "roles"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name"),
         UniqueConstraint("tenant_id", "id"),
+        # Noms des rôles personnalisés uniques par tenant, casse ignorée.
+        Index(
+            "uq_roles_tenant_custom_name",
+            "tenant_id",
+            func.lower(text("name")),
+            unique=True,
+            postgresql_where=text("NOT is_system"),
+        ),
+        # Un seul exemplaire de chaque rôle de base par tenant.
+        Index(
+            "uq_roles_tenant_template",
+            "tenant_id",
+            "template_code",
+            unique=True,
+            postgresql_where=text("template_code IS NOT NULL"),
+        ),
+        CheckConstraint("is_system = (template_code IS NOT NULL)", name="system_has_template"),
     )
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     # Code du modèle dont le rôle est issu (ex. "administrator"), null pour un rôle personnalisé.
     template_code: Mapped[str | None] = mapped_column(String(50))
-    # Rôle système : ni modifiable ni supprimable par le tenant.
+    # Rôle système (de base) : permissions, nom et description issus du modèle ; non modifiable.
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Rôle inactif : n'accorde plus rien, ne peut plus être attribué ; ses attributions sont
+    # conservées (la réactivation les rétablit).
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
 
     permission_links: Mapped[list["RolePermission"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"

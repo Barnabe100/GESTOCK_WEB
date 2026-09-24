@@ -183,11 +183,17 @@ def test_role_rules(provision: Any, api_for: Any) -> None:
             "roles": [{"role_id": role["id"]}],
         },
     )
-    assert owner.delete(f"/roles/{role['id']}").json()["code"] == "role_in_use"
-    free = owner.post("/roles", json={"name": "Libre"}).json()
-    assert owner.delete(f"/roles/{free['id']}").status_code == 204
+    # Aucun rôle n'est supprimé (ADR-0015) : désactivation, avec confirmation s'il est attribué.
+    assert owner.delete(f"/roles/{role['id']}").status_code == 405
+    assert owner.post(f"/roles/{role['id']}/deactivate").json()["code"] == "role_in_use"
     perms = owner.get("/permissions").json()
-    assert {"code": "audit.log.view", "module": "audit", "access": "read"} in perms
+    assert {
+        "code": "audit.log.view",
+        "module": "audit",
+        "access": "read",
+        "resource": "log",
+        "action": "view",
+    } in perms
 
 
 def test_member_update_changes_roles(provision: Any, api_for: Any) -> None:

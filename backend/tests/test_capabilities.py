@@ -109,7 +109,10 @@ def test_role_based_permissions_and_site_scoped_roles(provision: Any, api_for: A
     )
 
     caps = _caps(member)
-    assert "users.member.view" in caps["permissions"]
+    # Consultant : consultation, sans les utilisateurs ni le journal d'audit (exclusions).
+    assert "organization.site.view" in caps["permissions"]
+    assert "users.member.view" not in caps["permissions"]
+    assert "audit.log.view" not in caps["permissions"]
     assert "users.member.manage" not in caps["permissions"]
     assert {s["id"] for s in caps["sites"]} == {str(t.site_id), second_site.json()["id"]}
 

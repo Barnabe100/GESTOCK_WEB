@@ -147,6 +147,14 @@ def test_tenant_cannot_be_deleted_by_app_role(db: Session, provision: Any) -> No
         db.execute(text("DELETE FROM tenants"))
 
 
+def test_roles_cannot_be_deleted_by_app_role(db: Session, provision: Any) -> None:
+    """Un rôle n'est jamais supprimé (désactivation, ADR-0015) : droit DELETE révoqué."""
+    a = provision("alpha")
+    set_db_context(db, tenant_id=a.tenant_id)
+    with pytest.raises(DBAPIError, match="permission denied"):
+        db.execute(text("DELETE FROM roles"))
+
+
 def test_active_tenant_hides_own_memberships_elsewhere(db: Session, provision: Any) -> None:
     """Avec un tenant actif, l'utilisateur ne voit plus ses appartenances aux autres tenants."""
     a = provision("alpha", owner_email="multi@example.com")

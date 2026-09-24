@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.platform.access.schemas import (
     MemberCreate,
@@ -9,12 +9,21 @@ from app.platform.access.schemas import (
     MemberUpdate,
     PermissionOut,
     RoleCreate,
+    RoleDeactivate,
+    RoleDuplicate,
     RoleFromTemplate,
+    RoleMemberOut,
     RoleOut,
     RoleTemplateOut,
     RoleUpdate,
 )
-from app.platform.access.service import MemberService, RoleService, member_out, role_out
+from app.platform.access.service import (
+    MemberService,
+    RoleKind,
+    RoleService,
+    member_out,
+    role_out,
+)
 from app.platform.context import (
     DbSession,
     RegistryDep,
@@ -22,6 +31,7 @@ from app.platform.context import (
     SettingsDep,
     require_permission,
 )
+from app.shared.schemas import StatusFilter
 
 router = APIRouter(tags=["users"])
 
@@ -77,29 +87,89 @@ def update_member(
 
 
 @router.get("/roles", response_model=list[RoleOut])
-def list_roles(ctx: RoleView, db: DbSession, registry: RegistryDep) -> list[RoleOut]:
-    return [role_out(r, registry) for r in RoleService(db, ctx, registry).list_all()]
+def list_roles(
+    ctx: RoleView,
+    db: DbSession,
+    registry: RegistryDep,
+    kind: RoleKind | None = None,
+    status_filter: Annotated[StatusFilter, Query(alias="status")] = StatusFilter.ALL,
+) -> list[RoleOut]:
+    service = RoleService(db, ctx, registry)
+    counts = service.member_counts()
+    return [
+        role_out(r, registry, counts.get(r.id, 0)) for r in service.list_all(kind, status_filter)
+    ]
 
 
 @router.post("/roles", response_model=RoleOut, status_code=status.HTTP_201_CREATED)
 def create_role(body: RoleCreate, ctx: RoleManage, db: DbSession, registry: RegistryDep) -> RoleOut:
-    role = RoleService(db, ctx, registry).create(body)
+    service = RoleService(db, ctx, registry)
+    role = service.create(body)
     db.commit()
-    return role_out(role, registry)
+    return service.out(role)
 
 
 @router.get("/roles/{role_id}", response_model=RoleOut)
 def get_role(role_id: uuid.UUID, ctx: RoleView, db: DbSession, registry: RegistryDep) -> RoleOut:
-    return role_out(RoleService(db, ctx, registry).get(role_id), registry)
+    service = RoleService(db, ctx, registry)
+    return service.out(service.get(role_id))
 
 
 @router.patch("/roles/{role_id}", response_model=RoleOut)
 def update_role(
     role_id: uuid.UUID, body: RoleUpdate, ctx: RoleManage, db: DbSession, registry: RegistryDep
 ) -> RoleOut:
-    role = RoleService(db, ctx, registry).update(role_id, body)
+    service = RoleService(db, ctx, registry)
+    role = service.update(role_id, body)
     db.commit()
-    return role_out(role, registry)
+    return service.out(role)
+
+
+@router.post(
+    "/roles/{role_id}/duplicate", response_model=RoleOut, status_code=status.HTTP_201_CREATED
+)
+def duplicate_role(
+    role_id: uuid.UUID, body: RoleDuplicate, ctx: RoleManage, db: DbSession, registry: RegistryDep
+) -> RoleOut:
+    service = RoleService(db, ctx, registry)
+    role = service.duplicate(role_id, body)
+    db.commit()
+    return service.out(role)
+
+
+@router.post("/roles/{role_id}/activate", response_model=RoleOut)
+def activate_role(
+    role_id: uuid.UUID, ctx: RoleManage, db: DbSession, registry: RegistryDep
+) -> RoleOut:
+    service = RoleService(db, ctx, registry)
+    role = service.activate(role_id)
+    db.commit()
+    return service.out(role)
+
+
+@router.post("/roles/{role_id}/deactivate", response_model=RoleOut)
+def deactivate_role(
+    role_id: uuid.UUID,
+    ctx: RoleManage,
+    db: DbSession,
+    registry: RegistryDep,
+    body: RoleDeactivate | None = None,
+) -> RoleOut:
+    service = RoleService(db, ctx, registry)
+    role = service.deactivate(role_id, body or RoleDeactivate())
+    db.commit()
+    return service.out(role)
+
+
+@router.get("/roles/{role_id}/members", response_model=list[RoleMemberOut])
+def list_role_members(
+    role_id: uuid.UUID,
+    ctx: RoleView,
+    _members: MemberView,
+    db: DbSession,
+    registry: RegistryDep,
+) -> list[RoleMemberOut]:
+    return RoleService(db, ctx, registry).members(role_id)
 
 
 @router.get("/role-templates", response_model=list[RoleTemplateOut])
@@ -113,15 +183,13 @@ def list_role_templates(
 def create_role_from_template(
     body: RoleFromTemplate, ctx: RoleManage, db: DbSession, registry: RegistryDep
 ) -> RoleOut:
-    role = RoleService(db, ctx, registry).create_from_template(body.template_code)
+    service = RoleService(db, ctx, registry)
+    role = service.create_from_template(body.template_code)
     db.commit()
-    return role_out(role, registry)
+    return service.out(role)
 
 
-@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_role(role_id: uuid.UUID, ctx: RoleManage, db: DbSession, registry: RegistryDep) -> None:
-    RoleService(db, ctx, registry).delete(role_id)
-    db.commit()
+# Aucun DELETE /roles/{id} : un rôle n'est jamais supprimé, il est désactivé (ADR-0015).
 
 
 @router.get("/permissions", response_model=list[PermissionOut])
