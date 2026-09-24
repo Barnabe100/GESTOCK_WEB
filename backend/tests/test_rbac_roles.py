@@ -77,6 +77,7 @@ def test_base_roles(owner: Api) -> None:
     assert set(roles["seller"]["permission_codes"]) == {
         "catalog.article.view",
         "catalog.category.view",
+        "customers.customer.view",
         "stock.level.view",
         "alerts.stock.view",
     }

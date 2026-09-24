@@ -56,6 +56,7 @@ DATA_TABLES = (
     "catalog_articles",
     "catalog_categories",
     "suppliers",
+    "customers",
     "audit_logs",
     "membership_roles",
     "membership_sites",
