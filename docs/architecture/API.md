@@ -40,19 +40,30 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | GET | `/members` | `users.member.view` | Membres du tenant |
 | POST | `/members` | `users.member.manage` | Ajouter (nouveau compte + mot de passe provisoire, ou compte existant) |
 | GET | `/members/{id}` | `users.member.view` | Détail |
-| PATCH | `/members/{id}` | `users.member.manage` | Rôles, sites, statut |
-| GET | `/roles` | `users.role.view` | Rôles du tenant |
-| POST | `/roles` | `users.role.manage` | Créer un rôle |
-| GET | `/roles/{id}` | `users.role.view` | Détail |
-| PATCH | `/roles/{id}` | `users.role.manage` | Modifier (rôles système exclus) |
-| DELETE | `/roles/{id}` | `users.role.manage` | Supprimer (si non attribué) |
-| GET | `/permissions` | `users.role.view` | Permissions des modules effectifs |
-| GET | `/role-templates` | `users.role.view` | Modèles de rôles système (instanciés ou non) |
-| POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle système manquant |
+| PATCH | `/members/{id}` | `users.member.manage` | Rôles (tenant ou site), sites, statut |
+| GET | `/roles` | `users.role.view` | Rôles du tenant ; filtres `kind` (`system` \| `custom`), `status` ; `is_active`, `protected`, `member_count` |
+| POST | `/roles` | `users.role.manage` | Créer un rôle personnalisé |
+| GET | `/roles/{id}` | `users.role.view` | Détail (rôle de base : nom, description et permissions issus du modèle) |
+| PATCH | `/roles/{id}` | `users.role.manage` | Modifier un rôle personnalisé (rôles de base : `403 system_role`) |
+| POST | `/roles/{id}/duplicate` | `users.role.manage` | `{name, description?}` : nouveau rôle personnalisé reprenant les permissions (de l'offre) |
+| POST | `/roles/{id}/activate` | `users.role.manage` | Réactiver (rétablit les droits des titulaires) |
+| POST | `/roles/{id}/deactivate` | `users.role.manage` | `{confirm}` ; rôle attribué sans confirmation : `409 role_in_use` (membres listés) ; rôle protégé : `403 role_protected` |
+| GET | `/roles/{id}/members` | `users.role.view` **et** `users.member.view` | Titulaires (membre, portée : tenant ou site) |
+| GET | `/permissions` | `users.role.view` | Permissions des modules effectifs (`code`, `module`, `access`, `resource`, `action`) |
+| GET | `/role-templates` | `users.role.view` | Modèles de rôles de base (instanciés ou non) |
+| POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle de base manquant |
 | GET | `/subscription` | `subscription.subscription.view` | Offre, statut effectif, période, limites, utilisation |
 | GET | `/audit-logs` | `audit.log.view` | Journal d'audit paginé (`limit`, `offset`, `action`, `user_id`) |
 
 « tenant » = jeton lié à un tenant, appartenance active, tenant actif, mot de passe à jour.
+
+Aucun `DELETE /roles` : un rôle est désactivé, jamais supprimé (ADR-0015). Règles RBAC
+(non-propriétaire) : un rôle, son activation ou son attribution **sur tout le tenant** exige de
+détenir ses permissions sur tout le tenant ; une attribution **pour un site**, de les détenir
+sur ce site (`403 permission_escalation`) ; les sites accordés restent dans ceux de l'acteur
+(`403 site_escalation`). Autres codes : `role_name_taken`, `role_name_reserved` (409, nom
+d'un rôle de base, casse ignorée), `role_inactive` (422, attribution d'un rôle désactivé),
+`unknown_permission` (422, permission hors des modules de l'offre).
 
 ### Catalogue (module `catalog`) et fournisseurs (module `suppliers`) — Phase 2.1
 

@@ -147,14 +147,16 @@ effectif (lien optionnel, via le service public de `suppliers`).
 RLS `ENABLE` + `FORCE`, droits `SELECT, INSERT, UPDATE` (pas de `DELETE` : jamais de
 suppression physique).
 
-## 4. Rôles système dynamiques
+## 4. Rôles de base et rôles personnalisés
 
-Les rôles système (Administrateur, Consultation, et désormais **Gestionnaire de stock**) sont
-définis par des **modèles à motifs** (`role_templates.toml`). Leurs permissions sont
-désormais **résolues à l'exécution** à partir du modèle : quand un module ajoute des
-permissions (ex. `catalog.*`), l'Administrateur les obtient sans migration de données.
-Un rôle modèle absent d'un tenant existant peut être ajouté par le tenant
-(`POST /roles/from-template`).
+Les rôles de base (**Administrateur**, **Gestionnaire**, **Vendeur**, **Consultant**) sont
+définis par des **modèles à motifs** (`role_templates.toml`) dont les permissions sont
+**résolues à l'exécution** (ADR-0013) : quand un module ajoute des permissions, les rôles
+concernés les obtiennent sans migration de données. Le Gestionnaire reprend la matrice du
+Desktop pour le stock (ni annulation, ni gestion des motifs de sortie) ; le Vendeur ne reçoit
+que des consultations tant que le module Ventes n'existe pas. Chaque entreprise crée ses
+propres rôles personnalisés (ADR-0015). Un rôle de base absent d'un tenant peut être ajouté
+par le tenant (`POST /roles/from-template`).
 
 ## 5. Décisions validées pour la sous-phase 2.2 (TechNova, 2026-09-24)
 
@@ -270,8 +272,9 @@ Choix de conception : [ADR-0014](../adr/0014-documents-et-mouvements-de-stock.md
 | Q4 | Aucun transfert ; fonctionnalité `stock.transfers` déclarée (plan ENTREPRISE), types de mouvement réservés |
 | ALR-01 / ALR-02 | Module `alerts` : rupture (`out`) et stock faible (`low`) des articles actifs, par site, compteurs |
 
-Rôle modèle **Gestionnaire de stock** : consultation, saisie et validation des entrées et
-sorties, seuils par site, alertes ; **ni annulation ni gestion des motifs** (administrateur).
+Rôle de base **Gestionnaire** (ex-Gestionnaire de stock) : consultation, saisie et validation
+des entrées et sorties, seuils par site, alertes ; **ni annulation ni gestion des motifs**
+(administrateur).
 
 ### Points soumis à validation
 
@@ -281,6 +284,6 @@ sorties, seuils par site, alertes ; **ni annulation ni gestion des motifs** (adm
 3. Un article au plus une fois par document.
 4. Article inactif : refusé à la saisie et à la validation ; motif désactivé après la saisie
    d'un brouillon : validation acceptée.
-5. `stock.threshold.manage` accordé au Gestionnaire de stock.
-6. Source polymorphe des mouvements sans clé étrangère (ADR-0014, Proposée) ; ADR-0013
-   (rôles système dynamiques) toujours Proposée.
+5. `stock.threshold.manage` accordé au Gestionnaire.
+6. Source polymorphe des mouvements sans clé étrangère (ADR-0014, Proposée). ADR-0013
+   (rôles système dynamiques) : Acceptée le 2026-09-24 avec l'ADR-0015.

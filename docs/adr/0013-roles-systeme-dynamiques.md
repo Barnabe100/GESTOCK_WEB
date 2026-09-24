@@ -1,6 +1,6 @@
 # ADR-0013 — Rôles système dynamiques
 
-- **Statut** : Proposée (Phase 2.1, à valider)
+- **Statut** : Acceptée (validée le 2026-09-24 ; complétée par l'[ADR-0015](0015-rbac-roles-de-base-et-personnalises.md))
 - **Date** : 2026-09-24
 
 ## Contexte
@@ -17,9 +17,8 @@ privilège de contournement de la RLS (refusé, ADR-0006).
   l'exécution** en appliquant les motifs de son modèle (`role_templates.toml` : `*`,
   `*.view`, `catalog.*`…) aux permissions déclarées par le registre.
 - Les rôles personnalisés gardent leurs permissions enregistrées (`role_permissions`).
-- Modèles livrés : **Administrateur** (`*`), **Consultation** (`*.view`),
-  **Gestionnaire de stock** (catalogue, fournisseurs, entrées/sorties sans annulation,
-  inventaires, alertes — matrice du Desktop).
+- Modèles livrés : voir l'ADR-0015 (Administrateur, Gestionnaire, Vendeur, Consultant). Les
+  motifs peuvent exclure des permissions (`exclude`) ; un modèle peut être `protected`.
 - Un modèle absent d'un tenant existant peut être ajouté par le tenant lui-même
   (`POST /roles/from-template`), sans opération plateforme.
 - L'anti-escalade et la résolution des capacités utilisent la même fonction
@@ -33,3 +32,10 @@ privilège de contournement de la RLS (refusé, ADR-0006).
   produit TechNova, versionnée dans le dépôt.
 - Les rôles système restent non modifiables par les tenants ; un besoin spécifique passe par
   un rôle personnalisé.
+
+## Avenant (2026-09-24, ADR-0015)
+
+- Nom et description d'un rôle de base sont eux aussi lus depuis son modèle à l'exécution.
+- Les modèles ne déclarent **aucune** permission de module non développé : ils sont complétés
+  quand le module existe (modification du fichier, sans migration).
+- Rôles de base désactivables par le tenant, sauf un rôle `protected` (Administrateur).

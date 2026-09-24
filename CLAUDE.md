@@ -11,8 +11,9 @@ Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/
 et [`docs/adr/`](docs/adr/README.md).
 
 **Phase actuelle : 2 — catalogue et stock.** Sous-phases livrées : 2.1 (modules `catalog` et
-`suppliers`) et 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
-journal des mouvements, seuils par site — et `alerts`). Transferts (fonctionnalité de plan
+`suppliers`), 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
+journal des mouvements, seuils par site — et `alerts`) et consolidation du RBAC (rôles de
+base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015). Transferts (fonctionnalité de plan
 `stock.transfers`, préparée), inventaires et autres modules métier (ventes, POS, caisse,
 restaurant…) : seulement déclarés `planned` (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.
@@ -43,9 +44,13 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
    (`ENABLE` + `FORCE`). Toute nouvelle table tenant-scoped : `TenantScopedMixin`,
    politique RLS + droits minimaux dans sa migration, FK composites `(tenant_id, …)`, tests
    d'isolation SQL **et** API. Jamais de `BYPASSRLS` pour le rôle applicatif.
-3. Chaîne de contrôle : **User → Tenant → Site → Permission → Resource**, via les
-   dépendances de `app/platform/context.py` (`TenantContext`, `require_permission`,
-   `require_module`). Chaque endpoint tenant-scoped exige une permission.
+3. Chaîne de contrôle : **User → Tenant → Membership → Rôle(s) → Permission → Site →
+   Resource**, via les dépendances de `app/platform/context.py` (`TenantContext`,
+   `require_permission`, `require_module`). Chaque endpoint tenant-scoped exige une permission.
+   **RBAC** ([ADR-0015](docs/adr/0015-rbac-roles-de-base-et-personnalises.md)) : les rôles ne
+   sont que des regroupements de permissions ; **jamais** de test sur un nom ou un code de rôle.
+   Rôles de base (données : `role_templates.toml`) + rôles personnalisés du tenant ; aucun
+   rôle supprimé (désactivation) ; anti-escalade par portée (tenant / site) et par sites.
 4. **Jamais de `if business_type == "…"`** (ni backend, ni frontend). Tester une
    capacité : `require_module(...)`, `require_permission(...)`, `can(...)` côté client.
    Profils, plans et politiques d'abonnement sont des **données**

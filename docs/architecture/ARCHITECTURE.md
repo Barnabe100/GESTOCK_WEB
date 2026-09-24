@@ -154,7 +154,7 @@ modules_effectifs(tenant) = profil.modules_disponibles
                           ∩ tenant.modules_activés
                           (+ fermeture sur les dépendances ; module requis absent ⇒ module inactif)
 
-permissions_effectives(user, site) = permissions des rôles de l'utilisateur (tenant + site)
+permissions_effectives(user, site) = permissions des rôles ACTIFS de l'utilisateur (tenant + site)
                                    ∩ permissions déclarées par les modules_effectifs
 ```
 
@@ -293,10 +293,13 @@ Une transition invalide est refusée par le backend, quel que soit le client.
   `BYPASSRLS`.
 - **Autorisation** : RBAC ; permissions nommées `module.ressource.action`, déclarées
   par les manifestes avec leur nature ; rôles définis **par tenant**. Le propriétaire est
-  un attribut de l'appartenance (toutes les permissions des modules actifs). Modèles de
-  rôles système (`role_templates.toml`) : Administrateur, Consultation — les rôles métier
-  (Gérant, Caissier, Magasinier, Serveur, Cuisine…) viendront avec leurs modules.
-  **Anti-escalade** : un non-propriétaire ne peut accorder que ce qu'il détient.
+  un attribut de l'appartenance (toutes les permissions des modules actifs). Rôles de
+  base (`role_templates.toml`, résolus à l'exécution) : Administrateur (protégé),
+  Gestionnaire, Vendeur, Consultant ; chaque entreprise crée ses **rôles personnalisés**
+  (Caissier, Magasinier, Serveuse…), duplique, active / désactive — jamais de suppression.
+  **Anti-escalade par portée** : un non-propriétaire n'accorde que ce qu'il détient sur la
+  même portée (tenant ou site) et seulement sur ses sites
+  ([ADR-0015](../adr/0015-rbac-roles-de-base-et-personnalises.md)).
 - **Administration plateforme** (TechNova) : espace et identités séparés des
   utilisateurs tenants.
 - **Audit** : journal `audit_log` (tenant, site, utilisateur, action, entité,

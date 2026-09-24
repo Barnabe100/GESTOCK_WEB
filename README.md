@@ -13,6 +13,8 @@ utilisateur.
 > provisioning par CLI, CI.
 > **Phase 2 en cours** : catalogue (catégories, articles) et fournisseurs (2.1) ; stock par
 > site, entrées, sorties, journal des mouvements, seuils par site et alertes (2.2).
+> RBAC consolidé : rôles de base (Administrateur, Gestionnaire, Vendeur, Consultant) et
+> rôles personnalisés par entreprise (ADR-0015).
 > Transferts, inventaires, ventes, caisse, POS et restaurant ne sont pas commencés.
 
 ## Documentation

@@ -55,7 +55,7 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 | `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
 | `subscriptions` | `tenant_id` (unique), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at` | |
 | `tenant_memberships` | `tenant_id`, `user_id`, `status`, `is_owner`, `all_sites` | `UNIQUE(tenant_id, user_id)` |
-| `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system` | `UNIQUE(tenant_id, name)` ; rôle système : permissions résolues depuis son modèle (ADR-0013) |
+| `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system`, `is_active` | nom des rôles personnalisés unique par tenant, casse ignorée (index partiel `lower(name)`) ; un exemplaire par modèle (`(tenant_id, template_code)`) ; `CHECK is_system = (template_code IS NOT NULL)` ; rôle de base : nom, description et permissions résolus depuis son modèle (ADR-0013, ADR-0015) ; jamais supprimé (désactivé) |
 | `role_permissions` | `tenant_id`, `role_id`, `permission_code` | FK `(tenant_id, role_id)` |
 | `membership_roles` | `tenant_id`, `membership_id`, `role_id`, `site_id` (nullable) | FK composites vers membre, rôle et site du **même tenant** ; unicité `NULLS NOT DISTINCT` |
 | `membership_sites` | `tenant_id`, `membership_id`, `site_id` | FK composites |
@@ -111,8 +111,8 @@ type PostgreSQL natif).
 | Droits | Tables |
 |---|---|
 | `SELECT` | catalogue |
-| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, catalog_categories, suppliers, catalog_articles, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits |
-| `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, roles, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines (lignes de brouillon) |
+| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits |
+| `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines (lignes de brouillon) |
 | `SELECT, INSERT` | audit_logs, stock_movements (append-only) |
 
 Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais de données.
