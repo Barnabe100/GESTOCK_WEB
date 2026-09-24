@@ -166,7 +166,12 @@ def test_insufficient_stock_leaves_everything_unchanged(world: World, owner_db: 
     refused = _validate(world.owner, sale)
     assert refused.status_code == 422 and refused.json()["code"] == "insufficient_stock"
     assert refused.json()["articles"] == [
-        {"article_id": world.articles[0], "reference": "A-0", "available": "2.000"}
+        {
+            "article_id": world.articles[0],
+            "site_id": world.site,
+            "reference": "A-0",
+            "available": "2.000",
+        }
     ]
     assert world.owner.get(f"/sales/{sale['id']}").json()["status"] == "DRAFT"
     assert sh.level(owner_db, world, 0)[0] == "2.000"

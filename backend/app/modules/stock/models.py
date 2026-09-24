@@ -82,11 +82,11 @@ class MovementType(StrEnum):
     ENTRY = "ENTRY"
     EXIT = "EXIT"
     CANCELLATION = "CANCELLATION"
-    # Réservés aux sous-phases suivantes (inventaire, transferts, ventes).
+    TRANSFER_OUT = "TRANSFER_OUT"  # transfert inter-sites : sortie du site source (2.5)
+    TRANSFER_IN = "TRANSFER_IN"  # transfert inter-sites : entrée sur le site destination (2.5)
+    SALE = "SALE"  # vente validée (2.4)
+    # Réservé à l'inventaire (sous-phase suivante).
     ADJUSTMENT = "ADJUSTMENT"
-    TRANSFER_OUT = "TRANSFER_OUT"
-    TRANSFER_IN = "TRANSFER_IN"
-    SALE = "SALE"
 
 
 class StockMovement(IdMixin, TenantScopedMixin, Base):
@@ -96,8 +96,15 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
     __table_args__ = (
         _site_fk(),
         _article_fk(),
-        # Garde anti double application : un seul mouvement d'un type donné par ligne source.
-        UniqueConstraint("tenant_id", "source_line_id", "movement_type"),
+        # Garde anti double application : un seul mouvement d'un type donné par ligne source et
+        # par site (un transfert touche deux sites : son annulation en inverse un sur chacun).
+        UniqueConstraint(
+            "tenant_id",
+            "source_line_id",
+            "movement_type",
+            "site_id",
+            name="uq_stock_movements_line_type_site",
+        ),
         CheckConstraint("quantity <> 0", name="quantity_not_zero"),
         CheckConstraint("quantity_after = quantity_before + quantity", name="balance"),
         CheckConstraint("quantity_after >= 0", name="never_negative"),
@@ -284,5 +291,80 @@ class StockExitLine(IdMixin, TenantScopedMixin, Base):
     article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
     # Figés à la validation : CMUP du site et montant (SOR-03).
+    unit_cost: Mapped[Decimal | None] = mapped_column(UNIT_COST)
+    amount: Mapped[Decimal | None] = mapped_column(MONEY)
+
+
+# --- Transferts inter-sites (Phase 2.5, fonctionnalité de plan ``stock.transfers``) -----------
+
+
+class StockTransfer(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Transfert d'articles d'un site source vers un site destination du même tenant. Le stock
+    ne change qu'à la validation (et à l'annulation d'un transfert validé), via ``StockService``."""
+
+    __tablename__ = "stock_transfers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number"),
+        UniqueConstraint("tenant_id", "id"),
+        # FK composites : les deux sites appartiennent forcément au tenant du transfert.
+        ForeignKeyConstraint(
+            ["tenant_id", "source_site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "destination_site_id"],
+            ["sites.tenant_id", "sites.id"],
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("source_site_id <> destination_site_id", name="distinct_sites"),
+        CheckConstraint(
+            "status <> 'VALIDATED' OR validated_at IS NOT NULL", name="validated_has_date"
+        ),
+        CheckConstraint(
+            "status <> 'CANCELLED' OR (cancelled_at IS NOT NULL "
+            "AND cancellation_reason IS NOT NULL)",
+            name="cancelled_has_reason",
+        ),
+        Index("ix_stock_transfers_tenant_date", "tenant_id", "operation_date"),
+    )
+
+    number: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    destination_site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    status: Mapped[DocumentStatus] = mapped_column(
+        str_enum(DocumentStatus, "document_status"), default=DocumentStatus.DRAFT, nullable=False
+    )
+    operation_date: Mapped[date] = mapped_column(Date, nullable=False)
+    comment: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    validated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    cancellation_reason: Mapped[str | None] = mapped_column(String(500))
+
+    lines: Mapped[list["StockTransferLine"]] = relationship(
+        cascade="all, delete-orphan", order_by="StockTransferLine.line_no", lazy="selectin"
+    )
+
+
+class StockTransferLine(IdMixin, TenantScopedMixin, Base):
+    __tablename__ = "stock_transfer_lines"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "transfer_id"],
+            ["stock_transfers.tenant_id", "stock_transfers.id"],
+            ondelete="CASCADE",
+        ),
+        _article_fk(),
+        UniqueConstraint("transfer_id", "article_id"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="unit_cost_non_negative"),
+    )
+
+    transfer_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
+    # Figés à la validation : CMUP du site source (coût de sortie ET d'entrée) et valeur.
     unit_cost: Mapped[Decimal | None] = mapped_column(UNIT_COST)
     amount: Mapped[Decimal | None] = mapped_column(MONEY)

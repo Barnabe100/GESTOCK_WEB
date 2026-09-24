@@ -3,6 +3,7 @@ from app.modules.stock.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
+TRANSFERS = "stock.transfers"
 
 MANIFEST = ModuleManifest(
     code="stock",
@@ -24,9 +25,16 @@ MANIFEST = ModuleManifest(
         PermissionDef("stock.reason.view", R),
         # Motifs de sortie : réservés à l'administration (SOR-05).
         PermissionDef("stock.reason.manage", A),
+        # Transferts inter-sites (Phase 2.5) : accordés seulement si le plan inclut la
+        # fonctionnalité ``stock.transfers`` (ADR-0018).
+        PermissionDef("stock.transfer.view", R, feature=TRANSFERS),
+        PermissionDef("stock.transfer.create", W, feature=TRANSFERS),
+        PermissionDef("stock.transfer.update", W, feature=TRANSFERS),
+        PermissionDef("stock.transfer.validate", W, feature=TRANSFERS),
+        PermissionDef("stock.transfer.cancel", W, feature=TRANSFERS),
     ),
-    # Transferts inter-sites : préparés, non implémentés (Q4). Activables par plan.
-    features=("stock.transfers",),
+    # Fonctionnalités activables par plan (données : plans.toml).
+    features=(TRANSFERS,),
     tenant_setup=ensure_system_exit_reasons,
     router=router,
 )

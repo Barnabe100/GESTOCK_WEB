@@ -129,6 +129,51 @@ class ExitOut(DocumentOut):
     lines: list[LineOut] = Field(default_factory=list)
 
 
+# --- Transferts inter-sites (Phase 2.5) -------------------------------------------------------
+
+
+class TransferLineInput(BaseModel):
+    article_id: uuid.UUID
+    quantity: PositiveQuantity
+
+
+class TransferInput(BaseModel):
+    """Brouillon : destination, date, commentaire et lignes (le site source est fixé à la
+    création). Aucun coût : il est lu au CMUP du site source à la validation."""
+
+    destination_site_id: uuid.UUID
+    operation_date: date | None = None  # défaut : aujourd'hui (fuseau du tenant)
+    comment: Optional500 = None
+    lines: list[TransferLineInput] = Field(min_length=1, max_length=500)
+
+
+class TransferCreate(TransferInput):
+    # Facultatif si un site est sélectionné (X-Site-Id) : c'est alors lui.
+    source_site_id: uuid.UUID | None = None
+
+
+class TransferOut(BaseModel):
+    id: uuid.UUID
+    number: str
+    source_site_id: uuid.UUID
+    source_site_name: str
+    destination_site_id: uuid.UUID
+    destination_site_name: str
+    status: DocumentStatus
+    operation_date: date
+    comment: str | None
+    total_amount: Money | None  # valeur au CMUP du site source, connue après validation
+    line_count: int
+    created_at: datetime
+    created_by_name: str | None
+    validated_at: datetime | None
+    validated_by_name: str | None
+    cancelled_at: datetime | None
+    cancelled_by_name: str | None
+    cancellation_reason: str | None
+    lines: list[LineOut] = Field(default_factory=list)
+
+
 class MovementOut(BaseModel):
     id: uuid.UUID
     occurred_at: datetime

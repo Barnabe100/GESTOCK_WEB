@@ -37,7 +37,7 @@ modules = [
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
   "restaurant.recipes", "restaurant.qr",
 ]
-# Transferts inter-sites (préparés ; implémentés dans une sous-phase suivante).
+# Transferts inter-sites (Phase 2.5) : permissions stock.transfer.* accordées seulement ici.
 features = ["stock.transfers"]
 
 # Aucune limite déclarée = illimité.

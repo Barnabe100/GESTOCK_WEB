@@ -15,7 +15,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue, fournisseurs, clients, ventes, stock (entrées, sorties, seuils) et alertes, sans annulation ni gestion des motifs de sortie."
+description = "Catalogue, fournisseurs, clients, ventes, stock (entrées, sorties, transferts, seuils) et alertes, sans annulation ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -25,6 +25,8 @@ permissions = [
   "stock.movement.view",
   "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
   "stock.exit.view", "stock.exit.create", "stock.exit.update", "stock.exit.validate",
+  "stock.transfer.view", "stock.transfer.create", "stock.transfer.update",
+  "stock.transfer.validate",
   "alerts.*",
 ]
 

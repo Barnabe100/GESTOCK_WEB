@@ -88,12 +88,13 @@ class CapabilityService:
         self,
         membership: TenantMembership,
         site_id: uuid.UUID | None,
-        modules: set[str],
+        modules: set[str] | frozenset[str],
+        features: set[str] | frozenset[str],
     ) -> set[str]:
         """Permissions détenues sur une portée (tout le tenant si ``site_id`` est nul), limitées
-        aux modules effectifs, avant filtrage par le statut d'abonnement. Sert à la fois au
-        calcul des capacités et au contrôle anti-escalade."""
-        module_permissions = self.registry.permissions_of(modules)
+        aux modules effectifs et aux fonctionnalités du plan, avant filtrage par le statut
+        d'abonnement. Sert au calcul des capacités et au contrôle anti-escalade."""
+        module_permissions = self.registry.available_permissions(modules, features)
         granted = self.granted_permissions(membership, site_id)
         if granted is None:
             return set(module_permissions)
@@ -125,8 +126,9 @@ class CapabilityService:
         access = allowed_access(self.session, status)
 
         modules = self.effective_modules(profile, plan)
-        module_permissions = self.registry.permissions_of(modules)
-        candidates = self.held_permissions(membership, site_id, modules)
+        features = PlanPolicy(self.session, plan, self.registry).features(modules)
+        module_permissions = self.registry.available_permissions(modules, features)
+        candidates = self.held_permissions(membership, site_id, modules, features)
         permitted = {c for c in candidates if module_permissions[c].access.value in access}
 
         navigation = tuple(code for code in profile.navigation if code in modules)
@@ -144,6 +146,6 @@ class CapabilityService:
             restricted_permissions=frozenset(candidates - permitted),
             navigation=navigation,
             terminology=profile.terminology,
-            features=PlanPolicy(self.session, plan, self.registry).features(modules),
+            features=features,
             accessible_site_ids=self.accessible_site_ids(membership),
         )

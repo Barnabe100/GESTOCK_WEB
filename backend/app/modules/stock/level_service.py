@@ -156,11 +156,14 @@ def list_levels(
     category_id: uuid.UUID | None = None,
     state: StateFilter = StateFilter.ALL,
     include_inactive: bool = False,
+    article_ids: set[uuid.UUID] | None = None,
 ) -> tuple[list[LevelRow], int]:
     stmt, cols = _levels_query(site_ids, tenant_id)
     articles = cols["articles"]
     conditions = [
         search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
+        # Articles précis (ex. stock disponible des lignes d'un transfert en saisie).
+        articles.c.id.in_(article_ids) if article_ids else None,
         articles.c.category_id == category_id if category_id else None,
         None if include_inactive else articles.c.is_active.is_(True),
         _state_condition(cols["state"], state),

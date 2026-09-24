@@ -45,6 +45,8 @@ OWNER_URL = os.environ.get(
 PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
+    "stock_transfer_lines",
+    "stock_transfers",
     "sale_lines",
     "sales",
     "stock_movements",

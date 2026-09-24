@@ -40,6 +40,9 @@ class ModuleStatus(StrEnum):
 class PermissionDef:
     code: str
     access: AccessKind
+    # Fonctionnalité de plan dont dépend la permission (ex. ``stock.transfers``) : sans elle,
+    # la permission n'est ni accordée ni proposée à l'édition des rôles.
+    feature: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +112,11 @@ class ModuleRegistry:
                 if feature in self._features:
                     raise RegistryError(f"fonctionnalité en double : {feature}")
                 self._features[feature] = manifest
+            for perm in manifest.permissions:
+                if perm.feature is not None and perm.feature not in manifest.features:
+                    raise RegistryError(
+                        f"{perm.code} dépend d'une fonctionnalité non déclarée : {perm.feature}"
+                    )
         self._check_cycles()
 
     def _check_cycles(self) -> None:
@@ -155,6 +163,18 @@ class ModuleRegistry:
             for perm in self._modules[code].permissions:
                 result[perm.code] = perm
         return result
+
+    def available_permissions(
+        self, module_codes: Iterable[str], features: Iterable[str]
+    ) -> dict[str, PermissionDef]:
+        """Permissions utilisables par un tenant : celles de ses modules effectifs, sauf celles
+        d'une fonctionnalité que son plan n'inclut pas."""
+        enabled = set(features)
+        return {
+            code: perm
+            for code, perm in self.permissions_of(module_codes).items()
+            if perm.feature is None or perm.feature in enabled
+        }
 
     def limit(self, code: str) -> LimitDef | None:
         entry = self._limits.get(code)

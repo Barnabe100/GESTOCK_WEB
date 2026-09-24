@@ -103,7 +103,10 @@ class _AccessBase:
     def _held(self, site_id: uuid.UUID | None) -> set[str]:
         if site_id not in self._held_cache:
             self._held_cache[site_id] = CapabilityService(self.db, self.registry).held_permissions(
-                self.ctx.membership, site_id, set(self.ctx.capabilities.modules)
+                self.ctx.membership,
+                site_id,
+                self.ctx.capabilities.modules,
+                self.ctx.capabilities.features,
             )
         return self._held_cache[site_id]
 
@@ -161,8 +164,11 @@ class RoleService(_AccessBase):
 
     def available_permissions(self) -> list[PermissionOut]:
         result = []
+        features = self.ctx.capabilities.features
         for module in sorted(self.ctx.capabilities.modules):
             for perm in self.registry.get(module).permissions:
+                if perm.feature is not None and perm.feature not in features:
+                    continue  # fonctionnalité absente du plan : permission non attribuable
                 resource, _, action = perm.code[len(module) + 1 :].rpartition(".")
                 result.append(
                     PermissionOut(
@@ -417,7 +423,13 @@ class RoleService(_AccessBase):
         if any(r.template_code == template_code for r in self.list_all()):
             raise ConflictError("Ce rôle existe déjà", code="role_template_exists")
         self._ensure_grantable(
-            template.resolve(set(self.registry.permissions_of(set(self.ctx.capabilities.modules))))
+            template.resolve(
+                set(
+                    self.registry.available_permissions(
+                        self.ctx.capabilities.modules, self.ctx.capabilities.features
+                    )
+                )
+            )
         )
         role = Role(
             tenant_id=self.ctx.tenant_id,

@@ -38,6 +38,32 @@ def test_permission_must_be_prefixed_by_module() -> None:
         )
 
 
+def test_feature_permission_requires_a_declared_feature() -> None:
+    with pytest.raises(RegistryError, match="fonctionnalité non déclarée"):
+        ModuleRegistry(
+            [
+                ModuleManifest(
+                    code="a",
+                    permissions=(PermissionDef("a.x.view", AccessKind.READ, feature="a.extra"),),
+                )
+            ]
+        )
+
+
+def test_feature_permissions_are_available_only_with_the_feature() -> None:
+    registry = get_registry()
+    without = registry.available_permissions({"catalog", "stock"}, set())
+    with_feature = registry.available_permissions({"catalog", "stock"}, {"stock.transfers"})
+    assert "stock.entry.create" in without and "stock.transfer.create" not in without
+    assert {c for c in with_feature if c.startswith("stock.transfer.")} == {
+        "stock.transfer.view",
+        "stock.transfer.create",
+        "stock.transfer.update",
+        "stock.transfer.validate",
+        "stock.transfer.cancel",
+    }
+
+
 def test_resolve_dependencies_drops_modules_with_missing_dependencies() -> None:
     registry = get_registry()
     # pos exige sales, payments et cash_register.

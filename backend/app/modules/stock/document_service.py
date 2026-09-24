@@ -64,6 +64,26 @@ def _names(db: Session, model: Any, ids: set[uuid.UUID | None], column: Any) -> 
     }
 
 
+def check_articles(db: Session, article_ids: list[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
+    """Articles des lignes d'un document : existants, actifs (ART-13), sans doublon."""
+    if len(set(article_ids)) != len(article_ids):
+        raise BusinessRuleError(
+            "Un article apparaît sur plusieurs lignes", code="duplicate_article_line"
+        )
+    refs = get_article_refs(db, set(article_ids))
+    missing = [str(a) for a in article_ids if a not in refs]
+    if missing:
+        raise BusinessRuleError(
+            "Article introuvable", code="article_not_found", extra={"articles": missing}
+        )
+    inactive = [refs[a].reference for a in article_ids if not refs[a].is_active]
+    if inactive:
+        raise BusinessRuleError(
+            "Article inactif", code="article_inactive", extra={"articles": inactive}
+        )
+    return refs
+
+
 class _DocumentService(Generic[Doc]):
     model: type[Doc]
     source_type: str
@@ -136,23 +156,7 @@ class _DocumentService(Generic[Doc]):
         return chosen
 
     def _articles(self, article_ids: list[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
-        """Articles des lignes : existants, actifs (ART-13), sans doublon."""
-        if len(set(article_ids)) != len(article_ids):
-            raise BusinessRuleError(
-                "Un article apparaît sur plusieurs lignes", code="duplicate_article_line"
-            )
-        refs = get_article_refs(self.db, set(article_ids))
-        missing = [str(a) for a in article_ids if a not in refs]
-        if missing:
-            raise BusinessRuleError(
-                "Article introuvable", code="article_not_found", extra={"articles": missing}
-            )
-        inactive = [refs[a].reference for a in article_ids if not refs[a].is_active]
-        if inactive:
-            raise BusinessRuleError(
-                "Article inactif", code="article_inactive", extra={"articles": inactive}
-            )
-        return refs
+        return check_articles(self.db, article_ids)
 
     def _require_status(self, document: Doc, expected: DocumentStatus, code: str) -> None:
         if document.status is not expected:

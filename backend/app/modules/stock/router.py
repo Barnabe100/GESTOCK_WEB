@@ -36,6 +36,7 @@ from app.modules.stock.schemas import (
 )
 from app.modules.stock.sites import filter_site_ids, operation_site
 from app.modules.stock.stock_service import StockService
+from app.modules.stock.transfer_router import router as transfer_router
 from app.platform.context import (
     DbSession,
     NowDep,
@@ -47,6 +48,7 @@ from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page, StatusFilter
 
 router = APIRouter(tags=["stock"])
+router.include_router(transfer_router)
 
 
 ReasonPick = Annotated[
@@ -285,6 +287,7 @@ def list_stock_levels(
     category_id: uuid.UUID | None = None,
     state: StateFilter = StateFilter.ALL,
     include_inactive: bool = False,
+    article_id: Annotated[list[uuid.UUID] | None, Query()] = None,
 ) -> Page[LevelOut]:
     rows, total = list_levels(
         db,
@@ -295,6 +298,7 @@ def list_stock_levels(
         category_id=category_id,
         state=state,
         include_inactive=include_inactive,
+        article_ids=set(article_id) if article_id else None,
     )
     return Page(
         items=[LevelOut.model_validate(r) for r in rows],
