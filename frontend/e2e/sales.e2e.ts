@@ -11,6 +11,8 @@ interface Stocked {
   reference: string;
   customer: string;
   token: string;
+  siteId: string;
+  siteName: string;
 }
 
 /** Article vendu 1 500, 10 unités en stock sur le site principal, un client actif. */
@@ -35,6 +37,7 @@ async function stockedArticle(request: APIRequestContext): Promise<Stocked> {
   });
   const sites = (await (await request.get('/api/v1/sites', { headers })).json()) as {
     id: string;
+    name: string;
   }[];
   const entry = await post('/stock/entries', {
     site_id: sites[0]?.id,
@@ -44,11 +47,19 @@ async function stockedArticle(request: APIRequestContext): Promise<Stocked> {
   await post(`/stock/entries/${entry.id}/validate`, {}, 200);
   const customer = unique('Client Vente');
   await post('/customers', { customer_type: 'INDIVIDUAL', name: customer });
-  return { reference, customer, token };
+  return {
+    reference,
+    customer,
+    token,
+    siteId: sites[0]?.id ?? '',
+    siteName: sites[0]?.name ?? '',
+  };
 }
 
-async function stockOf(request: APIRequestContext, token: string, reference: string) {
-  const response = await request.get(`/api/v1/stock/levels?search=${reference}`, {
+/** Stock de l'article sur le site où il a été préparé (l'entreprise peut avoir plusieurs sites). */
+async function stockOf(request: APIRequestContext, stocked: Stocked) {
+  const { token, reference, siteId } = stocked;
+  const response = await request.get(`/api/v1/stock/levels?search=${reference}&site_id=${siteId}`, {
     headers: bearer(token),
   });
   const page = (await response.json()) as { items: { quantity: string }[] };
@@ -65,11 +76,21 @@ async function pick(page: Page, inputId: string, text: string) {
 }
 
 /** Saisie d'une vente d'un article (quantité 3), client facultatif ; renvoie son numéro. */
-async function enterSale(page: Page, reference: string, customer?: string) {
+async function enterSale(page: Page, stocked: Stocked, customer?: string) {
+  const { reference } = stocked;
   await page.getByRole('link', { name: 'Ventes' }).click();
   await expect(page.getByRole('heading', { name: 'Ventes' })).toBeVisible();
   await page.getByRole('button', { name: 'Nouvelle vente' }).click();
   await expect(page.getByRole('heading', { name: 'Nouvelle vente' })).toBeVisible();
+  // Entreprise multi-sites (site créé par les tests de transferts) : site du stock préparé.
+  if (await page.locator('#sale-site').count()) {
+    await page.locator('.p-dropdown', { has: page.locator('#sale-site') }).click();
+    await page
+      .locator('.p-dropdown-panel')
+      .last()
+      .locator('.p-dropdown-item', { hasText: stocked.siteName })
+      .click();
+  }
   if (customer) await pick(page, 'sale-customer', customer);
   await page.getByRole('button', { name: 'Ajouter une ligne' }).click();
   await pick(page, 'line-0-article', reference);
@@ -95,21 +116,24 @@ test.describe('Ventes', () => {
     page,
     request,
   }) => {
-    const { reference, customer, token } = await stockedArticle(request);
+    const stocked = await stockedArticle(request);
+    const { reference, customer, token } = stocked;
     await loginUi(page, OWNER.email, OWNER.password);
 
-    const number = await enterSale(page, reference, customer);
-    expect(await stockOf(request, token, reference)).toBe('10.000'); // brouillon : aucun effet
+    const number = await enterSale(page, stocked, customer);
+    expect(await stockOf(request, stocked)).toBe('10.000'); // brouillon : aucun effet
     await validateSale(page, number);
     await expect(page.getByText(new RegExp(customer))).toBeVisible();
     // Vente validée : plus de saisie possible.
     await expect(page.getByRole('button', { name: 'Enregistrer le brouillon' })).toHaveCount(0);
 
     // Stock : 10 − 3 = 7 (API et écran).
-    expect(await stockOf(request, token, reference)).toBe('7.000');
+    expect(await stockOf(request, stocked)).toBe('7.000');
     await page.getByRole('link', { name: 'Stock par site' }).click();
     await page.getByRole('searchbox').fill(reference);
-    await expect(page.getByRole('row').filter({ hasText: reference })).toContainText('7');
+    await expect(
+      page.getByRole('row').filter({ hasText: reference }).filter({ hasText: stocked.siteName }),
+    ).toContainText('7');
 
     // Journal des mouvements : sortie de type Vente, rattachée au numéro de la vente.
     await page.getByRole('link', { name: 'Mouvements' }).click();
@@ -134,20 +158,21 @@ test.describe('Ventes', () => {
     });
     expect(again.status()).toBe(409);
     expect(((await again.json()) as { code: string }).code).toBe('sale_not_draft');
-    expect(await stockOf(request, token, reference)).toBe('7.000');
+    expect(await stockOf(request, stocked)).toBe('7.000');
   });
 
   test('le Vendeur vend sans pouvoir annuler ; l’Administrateur annule', async ({
     page,
     request,
   }) => {
-    const { reference, token } = await stockedArticle(request);
+    const stocked = await stockedArticle(request);
+    const { token } = stocked;
     const password = 'Vendeur-Ventes-E2E-2026';
     const email = await createMember(request, token, 'seller', password);
 
     // Vente comptant (sans client) saisie et validée par le Vendeur.
     await loginUi(page, email, password);
-    const number = await enterSale(page, reference);
+    const number = await enterSale(page, stocked);
     await validateSale(page, number);
     await expect(page.getByText('Sans client')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Annuler la vente' })).toHaveCount(0);
@@ -162,7 +187,7 @@ test.describe('Ventes', () => {
     });
     expect(forbidden.status()).toBe(403);
     expect(((await forbidden.json()) as { code: string }).code).toBe('permission_denied');
-    expect(await stockOf(request, token, reference)).toBe('7.000');
+    expect(await stockOf(request, stocked)).toBe('7.000');
 
     // L'Administrateur annule : quantités remises en stock par mouvement d'annulation.
     await page.context().clearCookies();
@@ -174,7 +199,7 @@ test.describe('Ventes', () => {
     await dialog.getByRole('button', { name: 'Annuler la vente' }).click();
     await expect(page.getByText(`Vente ${number} annulée`)).toBeVisible();
     await expect(page.getByText('Annulée', { exact: true })).toBeVisible();
-    expect(await stockOf(request, token, reference)).toBe('10.000');
+    expect(await stockOf(request, stocked)).toBe('10.000');
   });
 
   test('affichage mobile sans débordement @mobile', async ({ page, request }) => {

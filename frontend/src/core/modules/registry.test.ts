@@ -41,8 +41,26 @@ const modules: FrontendModule[] = [
   },
   {
     code: 'stock',
-    navigation: [{ key: 'stock', labelKey: 'nav.stock', icon: '', path: '/stock' }],
-    routes: [{ path: 'stock', component: Page }],
+    navigation: [
+      { key: 'stock', labelKey: 'nav.stock', icon: '', path: '/stock' },
+      {
+        key: 'transfers',
+        labelKey: 'nav.stockTransfers',
+        icon: '',
+        path: '/stock/transfers',
+        permission: 'stock.transfer.view',
+        feature: 'stock.transfers',
+      },
+    ],
+    routes: [
+      { path: 'stock', component: Page },
+      {
+        path: 'stock/transfers',
+        component: Page,
+        permission: 'stock.transfer.view',
+        feature: 'stock.transfers',
+      },
+    ],
   },
 ];
 
@@ -99,6 +117,27 @@ describe('buildNavigation', () => {
       'home',
       'members',
     ]);
+  });
+});
+
+describe('fonctionnalités de plan', () => {
+  const stock = { code: 'stock', status: 'available' as const };
+  const withPermission = caps({
+    modules: [stock],
+    navigation: ['stock'],
+    permissions: ['stock.transfer.view'],
+  });
+
+  it('masque une entrée dont la fonctionnalité est absente, même avec la permission', () => {
+    expect(keys(buildNavigation(modules, withPermission))).toEqual(['stock']);
+    expect(buildRoutes(modules, withPermission).map((r) => r.path)).toEqual(['stock']);
+  });
+
+  it('affiche l’entrée avec la fonctionnalité ET la permission', () => {
+    const enabled = { ...withPermission, features: ['stock.transfers'] };
+    expect(keys(buildNavigation(modules, enabled))).toEqual(['stock', 'transfers']);
+    const noPermission = { ...enabled, permissions: [] };
+    expect(keys(buildNavigation(modules, noPermission))).toEqual(['stock']);
   });
 });
 

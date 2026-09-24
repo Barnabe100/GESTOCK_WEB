@@ -78,5 +78,9 @@
   "sale_empty": "Une vente doit comporter au moins un article.",
   "sale_prices_changed": "Des prix ont changé depuis l'enregistrement : {{articles}}. Enregistrez à nouveau la vente pour appliquer les prix actuels.",
   "sale_already_cancelled": "Cette vente est déjà annulée.",
-  "customer_inactive": "Ce client est désactivé : il ne peut pas être associé à une vente."
+  "customer_inactive": "Ce client est désactivé : il ne peut pas être associé à une vente.",
+  "same_site_transfer": "Le site destination doit être différent du site source.",
+  "site_permission_denied": "Vous n'avez pas cette permission sur l'autre site du transfert.",
+  "transfer_already_cancelled": "Ce transfert est déjà annulé.",
+  "stock_transfer_not_found": "Transfert introuvable."
 }

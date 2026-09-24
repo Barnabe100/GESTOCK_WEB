@@ -21,7 +21,14 @@ import { SearchInput } from '@/shared/ui/SearchInput';
 import { useMovements, type Movement, type MovementType } from './api';
 
 /** Types présents dans cette version (les autres sont réservés aux sous-phases suivantes). */
-const TYPES: MovementType[] = ['ENTRY', 'EXIT', 'SALE', 'CANCELLATION'];
+const TYPES: MovementType[] = [
+  'ENTRY',
+  'EXIT',
+  'SALE',
+  'TRANSFER_OUT',
+  'TRANSFER_IN',
+  'CANCELLATION',
+];
 
 export default function MovementsPage() {
   const { t } = useTranslation();

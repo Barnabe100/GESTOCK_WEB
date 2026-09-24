@@ -7,6 +7,13 @@ export const OWNER = {
   tenant: process.env.E2E_TENANT_NAME ?? 'Démo E2E',
 };
 
+/** Propriétaire d'une entreprise au plan STANDARD (sans transferts ; voir e2e/README.md). */
+export const STANDARD_OWNER = {
+  email: process.env.E2E_STANDARD_EMAIL ?? 'e2e-standard@example.com',
+  password: process.env.E2E_STANDARD_PASSWORD ?? 'E2e-Standard-2026',
+  tenant: process.env.E2E_STANDARD_TENANT ?? 'Démo E2E Standard',
+};
+
 export const unique = (prefix: string) => `${prefix} ${Date.now().toString().slice(-7)}`;
 
 /** Connexion par l'interface ; choisit l'entreprise si le compte en a plusieurs. */

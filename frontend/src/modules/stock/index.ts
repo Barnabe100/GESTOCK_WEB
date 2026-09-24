@@ -27,6 +27,14 @@ export const stockModule: FrontendModule = {
       permission: 'stock.exit.view',
     },
     {
+      key: 'stock-transfers',
+      labelKey: 'nav.stockTransfers',
+      icon: 'pi pi-arrow-right-arrow-left',
+      path: '/stock/transfers',
+      permission: 'stock.transfer.view',
+      feature: 'stock.transfers',
+    },
+    {
       key: 'stock-movements',
       labelKey: 'nav.stockMovements',
       icon: 'pi pi-history',
@@ -76,6 +84,24 @@ export const stockModule: FrontendModule = {
       path: 'stock/exits/:id',
       component: lazy(() => import('./DocumentPage').then((m) => ({ default: m.ExitPage }))),
       permission: 'stock.exit.view',
+    },
+    {
+      path: 'stock/transfers',
+      component: lazy(() => import('./TransfersPage')),
+      permission: 'stock.transfer.view',
+      feature: 'stock.transfers',
+    },
+    {
+      path: 'stock/transfers/new',
+      component: lazy(() => import('./TransferPage')),
+      permission: 'stock.transfer.create',
+      feature: 'stock.transfers',
+    },
+    {
+      path: 'stock/transfers/:id',
+      component: lazy(() => import('./TransferPage')),
+      permission: 'stock.transfer.view',
+      feature: 'stock.transfers',
     },
     {
       path: 'stock/movements',

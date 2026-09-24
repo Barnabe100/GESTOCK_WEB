@@ -70,6 +70,7 @@
     "stockLevels": "Stock par site",
     "stockEntries": "Entrées de stock",
     "stockExits": "Sorties de stock",
+    "stockTransfers": "Transferts",
     "stockMovements": "Mouvements",
     "exitReasons": "Motifs de sortie",
     "stockAlerts": "Alertes de stock",
@@ -285,7 +286,12 @@
     "sales.sale.create": "Créer une vente (brouillon)",
     "sales.sale.update": "Modifier une vente en brouillon",
     "sales.sale.validate": "Valider une vente (sortie de stock)",
-    "sales.sale.cancel": "Annuler une vente"
+    "sales.sale.cancel": "Annuler une vente",
+    "stock.transfer.view": "Consulter les transferts inter-sites",
+    "stock.transfer.create": "Créer un transfert (brouillon)",
+    "stock.transfer.update": "Modifier un transfert en brouillon",
+    "stock.transfer.validate": "Valider un transfert (mouvement de stock entre sites)",
+    "stock.transfer.cancel": "Annuler un transfert"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -495,6 +501,31 @@
     "reference": "Référence",
     "costHelp": "Le coût des lignes est le CMUP du site au moment de la validation.",
     "confirmValidate": "Valider cette sortie ? Le stock du site sera diminué ; le document ne sera plus modifiable."
+  },
+  "transfers": {
+    "title": "Transferts inter-sites",
+    "one": "Transfert",
+    "new": "Nouveau transfert",
+    "open": "Ouvrir le transfert",
+    "search": "N° de transfert…",
+    "source": "Site source",
+    "destination": "Site destination",
+    "allSources": "Tous les sites sources",
+    "allDestinations": "Toutes les destinations",
+    "articleCount": "Articles",
+    "lines": "Articles transférés",
+    "noLines": "Ajoutez au moins un article.",
+    "available": "Stock disponible : {{quantity}} {{unit}}",
+    "unitCost": "Coût (CMUP source)",
+    "value": "Valeur transférée",
+    "costHelp": "Le coût est le CMUP du site source au moment de la validation ; il alimente le CMUP du site destination. Le stock affiché est indicatif : il est contrôlé à la validation.",
+    "validate": "Valider le transfert",
+    "confirmValidate": "Valider ce transfert ? Le stock sortira du site source et entrera sur le site destination en une seule opération ; le transfert ne sera plus modifiable.",
+    "validated": "Transfert {{number}} validé",
+    "cancel": "Annuler le transfert",
+    "cancelWarning": "Les quantités seront retirées du site destination et remises sur le site source par des mouvements inverses. Refusé si le stock du site destination ne suffit plus.",
+    "cancelDraftInfo": "Le brouillon sera abandonné, sans effet sur le stock.",
+    "cancelled": "Transfert {{number}} annulé"
   },
   "exitReasons": {
     "title": "Motifs de sortie",
