@@ -126,6 +126,10 @@ class TenantProvisioningService:
             TenantMembership(tenant_id=tenant_id, user_id=owner.id, is_owner=True, all_sites=True)
         )
         self.db.flush()
+        for manifest in self.registry.all():
+            if manifest.tenant_setup is not None:
+                manifest.tenant_setup(self.db, tenant_id)
+        self.db.flush()
 
         record_audit(
             self.db,

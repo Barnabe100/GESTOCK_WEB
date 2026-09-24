@@ -156,14 +156,97 @@ permissions (ex. `catalog.*`), l'Administrateur les obtient sans migration de do
 Un rôle modèle absent d'un tenant existant peut être ajouté par le tenant
 (`POST /roles/from-template`).
 
-## 5. Questions à trancher avant la sous-phase 2.2 (stock)
+## 5. Décisions validées pour la sous-phase 2.2 (TechNova, 2026-09-24)
 
-| # | Question | Recommandation |
+| # | Décision |
+|---|---|
+| Q1 | **CMUP par site.** Une sortie utilise le CMUP du site au moment de la sortie et ne le recalcule jamais. Le futur transfert sortira au CMUP du site source. |
+| Q2 | Seuils min/max de l'article = valeurs par défaut ; **surcharge par site** prioritaire si elle existe. |
+| Q3 | Numérotation **par entreprise** (`ENT-000001`, `SOR-000001`), sûre en concurrence. |
+| Q4 | Transferts **non implémentés** ; préparés (fonctionnalité de plan `stock.transfers`, ENTREPRISE), sans condition commerciale dans le code. |
+| Q5 | Stock initial = **entrée de stock normale** de type `INITIAL_STOCK` ; pas de champ sur l'article. |
+| Q6 | CMUP calculé et stocké avec **4 décimales** ; montants à 2 décimales ; `Decimal` uniquement. |
+| Q7 | Motifs système créés pour chaque entreprise : `CONSOMMATION_INTERNE`, `DOTATION`, `PERTE`, `CASSE`, `ECHANTILLON`, `AUTRE` (`is_system`, `is_active`), protégés. |
+
+## 6. Plan de la sous-phase 2.2 — stock par site, entrées, sorties, mouvements, alertes
+
+### 6.1 Modules
+
+- `stock` devient **disponible** (dépend de `catalog`) : niveaux par site, seuils par site,
+  motifs de sortie, entrées, sorties, journal des mouvements. Déclare la fonctionnalité
+  `stock.transfers` (préparée, non implémentée ; incluse dans le plan ENTREPRISE).
+- `alerts` devient **disponible** (dépend de `stock`) : alertes de stock faible / rupture.
+- Le stock accède au catalogue et aux fournisseurs uniquement par leurs API publiques
+  (`catalog/api.py`, `suppliers/api.py`).
+
+### 6.2 Tables (toutes tenant-scoped : RLS `ENABLE` + `FORCE`, FK composites `(tenant_id, …)`)
+
+| Table | Rôle | Colonnes / contraintes clés |
 |---|---|---|
-| Q1 | **CMUP par site ou par tenant ?** | **Par site** (valorisation propre à chaque dépôt/boutique ; un transfert sort au CMUP du site source et entre à ce coût dans le site cible). |
-| Q2 | **Seuils min/max par site ?** | Seuils par défaut sur l'article (livré en 2.1) + **surcharge optionnelle par site** (une boutique n'a pas les seuils du dépôt central). |
-| Q3 | **Numérotation des documents** : par tenant ou par site ? | Par tenant et par type (`ENT-000001`), avec le code du site affiché à côté ; séquence en base, sûre en concurrence. |
-| Q4 | **Transferts inter-sites** en 2.2 ou plus tard ? | Juste après entrées/sorties (2.3), réservés au plan ENTREPRISE via une **fonctionnalité** `stock.transfers` (ADR-0012). |
-| Q5 | **Stock initial** (ART-12) : comment le saisir ? | Par une **entrée de stock** « Stock initial » (ou un ajustement tracé) sur le site choisi. |
-| Q6 | **Précision du CMUP** : le Desktop l'arrondit à 2 décimales à chaque entrée. | Conserver 4 décimales pour le CMUP (`NUMERIC(18,4)`), montants toujours à 2 : évite la dérive des arrondis successifs. |
-| Q7 | **Motifs de sortie par défaut** à la création d'un tenant ? | Oui : consommation interne, dotation, perte, casse, échantillon, autre (modifiables). |
+| `document_sequences` | Compteurs de numérotation par entreprise | PK `(tenant_id, sequence_key)`, `next_value` ; plateforme (réutilisable : ventes…) |
+| `stock_levels` | Stock et CMUP par (site, article) + surcharges de seuils | unique `(tenant_id, site_id, article_id)` ; `quantity NUMERIC(18,3) CHECK ≥ 0` ; `average_cost NUMERIC(18,4) CHECK ≥ 0` ; `min_stock`/`max_stock` surcharges nullables, `CHECK max ≥ min` |
+| `stock_movements` | Journal **append-only** | type (`ENTRY`, `EXIT`, `CANCELLATION` ; réservés : `ADJUSTMENT`, `TRANSFER_OUT`, `TRANSFER_IN`, `SALE`) ; `quantity` signée ≠ 0 ; `quantity_before/after` avec `CHECK after = before + quantity AND after ≥ 0` ; `unit_cost`, `average_cost_before/after` (4 déc.) ; `source_type`, `source_id`, `source_line_id` ; `origin_movement_id` (annulation) ; utilisateur ; **unique `(tenant_id, source_line_id, movement_type)`** = garde anti double application |
+| `stock_exit_reasons` | Motifs de sortie | `code` (système), `label` unique par tenant (casse ignorée), `is_system`, `is_active` |
+| `stock_entries` / `stock_entry_lines` | Entrées | numéro unique par tenant ; `kind` `PURCHASE` \| `INITIAL_STOCK` ; `status` `DRAFT` → `VALIDATED` → `CANCELLED` ; site ; date ; fournisseur (obligatoire pour `PURCHASE`, `CHECK`) ; motif d'annulation obligatoire si annulée (`CHECK`) ; lignes : article unique par document, `quantity > 0`, `unit_cost ≥ 0` (2 déc.), `amount` |
+| `stock_exits` / `stock_exit_lines` | Sorties | idem ; motif ; bénéficiaire ; lignes : `unit_cost` (4 déc.) et `amount` **figés à la validation** (CMUP du site) |
+
+Droits du rôle applicatif : `stock_movements` en `SELECT, INSERT` seulement (immuable) ;
+autres tables `SELECT, INSERT, UPDATE` (lignes de brouillon : `DELETE` autorisé pour le
+remplacement des lignes d'un document **en brouillon**).
+
+### 6.3 Stratégie transactionnelle et concurrence
+
+1. Une requête = une transaction ; le service ne valide pas, l'endpoint appelle `commit()`.
+2. Validation / annulation : **verrou du document** (`SELECT … FOR UPDATE`) puis contrôle du
+   statut → une double validation concurrente échoue proprement (`409`).
+3. `StockService.apply()` : crée au besoin les lignes `stock_levels` (`INSERT … ON CONFLICT DO
+   NOTHING`), puis les **verrouille** (`SELECT … FOR UPDATE`) **dans l'ordre des identifiants
+   d'article** (pas d'interblocage), contrôle la non-négativité, met à jour stock et CMUP,
+   insère les mouvements — tout ou rien.
+4. Garde en base : `CHECK quantity ≥ 0`, `CHECK after = before + quantity`, unicité
+   `(source_line_id, movement_type)`.
+5. Toute erreur annule tout : ni stock, ni mouvement, ni audit.
+
+### 6.4 CMUP (par site, 4 décimales)
+
+`CMUP = ((stock_avant × CMUP_avant) + (q × coût)) / (stock_avant + q)`, arrondi au
+dix-millième (demi supérieur), **uniquement sur une ENTRÉE**. Sortie : coût unitaire = CMUP
+du site, figé sur la ligne ; montant = `q × coût` arrondi à 2 décimales. Annulations :
+mouvement inverse, CMUP inchangé (STK-06, pas de reconstruction rétroactive).
+
+### 6.5 Numérotation
+
+`document_sequences` : `INSERT … ON CONFLICT DO UPDATE SET next_value = next_value + 1
+RETURNING` — atomique, sérialisé par verrou de ligne, annulé avec la transaction (pas de
+numéro perdu sur échec). Format `ENT-000001`, `SOR-000001`, attribué à la création du
+brouillon.
+
+### 6.6 Site de l'opération
+
+Si un site actif est sélectionné (`X-Site-Id`), l'opération porte sur ce site ; sinon le
+`site_id` fourni doit être actif et accessible au membre. Un document d'un site non
+accessible est introuvable (`404`) ; un document d'un autre site que le site sélectionné est
+refusé (`403 site_mismatch`) — les rôles limités à un site ne s'appliquent que sur ce site.
+
+### 6.7 Permissions (nature)
+
+`stock.level.view` (R), `stock.threshold.manage` (W), `stock.movement.view` (R),
+`stock.entry.view` (R) · `.create` · `.update` · `.validate` · `.cancel` (W),
+`stock.exit.view` (R) · `.create` · `.update` · `.validate` · `.cancel` (W),
+`stock.reason.view` (R), `stock.reason.manage` (A — administrateur), `alerts.stock.view` (R).
+Gestionnaire de stock : tout sauf annulations et motifs (matrice Desktop).
+
+### 6.8 Audit
+
+`stock_entry.created|updated|validated|cancelled`, `stock_exit.*` (avec numéro, site,
+totaux, motif d'annulation), `stock_threshold.updated`, `exit_reason.*` — dans la transaction
+de l'opération (jamais d'audit d'une opération annulée par erreur).
+
+### 6.9 Migrations et tests
+
+Migration `0004` (tables, contraintes, RLS, droits) ; motifs système créés au provisioning et
+ajoutés aux tenants existants par la migration (dans le contexte RLS de chaque tenant).
+Tests : formule CMUP ; concurrence (validations simultanées sur un même article, numérotation
+parallèle) ; idempotence ; rollback complet ; immutabilité SQL des mouvements ; règles
+ENT/SOR ; stock initial ; seuils ; alertes ; permissions par rôle ; abonnement expiré ;
+isolation SQL et API ; restriction par site.

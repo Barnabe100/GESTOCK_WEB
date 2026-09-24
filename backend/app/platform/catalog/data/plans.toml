@@ -37,7 +37,8 @@ modules = [
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
   "restaurant.recipes", "restaurant.qr",
 ]
-features = []
+# Transferts inter-sites (préparés ; implémentés dans une sous-phase suivante).
+features = ["stock.transfers"]
 
 # Aucune limite déclarée = illimité.
 [plans.ENTREPRISE.limits]

@@ -8,6 +8,7 @@ connues, absence de cycle, codes préfixés par le code du module (permissions, 
 aucun doublon.
 """
 
+import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -61,6 +62,11 @@ class ModuleManifest:
     limits: tuple[LimitDef, ...] = field(default_factory=tuple)
     # Fonctionnalités optionnelles activables par plan (codes préfixés par le module).
     features: tuple[str, ...] = ()
+    # Initialisation des données du module pour un nouveau tenant (appelée au provisioning,
+    # dans le contexte RLS du tenant). Ex. : motifs de sortie système du module stock.
+    tenant_setup: "Callable[[Session, uuid.UUID], None] | None" = field(
+        default=None, compare=False, hash=False
+    )
     # Routeur HTTP du module (modules métier). Monté sous /api/v1/<code> et protégé par
     # require_module(code) : un module inactif pour le tenant répond 403 côté serveur.
     router: "APIRouter | None" = field(default=None, compare=False, hash=False)

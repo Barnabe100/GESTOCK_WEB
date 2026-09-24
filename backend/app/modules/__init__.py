@@ -7,8 +7,9 @@ Voir docs/architecture/ARCHITECTURE.md (section 5).
 
 from app.modules.catalog.manifest import MANIFEST as CATALOG
 from app.modules.planned import PLANNED_MODULES
+from app.modules.stock.manifest import MANIFEST as STOCK
 from app.modules.suppliers.manifest import MANIFEST as SUPPLIERS
 from app.platform.registry import ModuleManifest
 
 # Registre explicite : modules implémentés, puis modules seulement planifiés.
-BUSINESS_MODULES: tuple[ModuleManifest, ...] = (CATALOG, SUPPLIERS, *PLANNED_MODULES)
+BUSINESS_MODULES: tuple[ModuleManifest, ...] = (CATALOG, SUPPLIERS, STOCK, *PLANNED_MODULES)
