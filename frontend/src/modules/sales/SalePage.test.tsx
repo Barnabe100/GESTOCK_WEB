@@ -216,6 +216,78 @@ describe('saisie et consultation d’une vente', () => {
     expect(methodCalls(fetchMock, 'POST')).toHaveLength(1);
   });
 
+  it('validation avec encaissement immédiat : paiements envoyés dans la même requête', async () => {
+    fetchMock.mockImplementation(async (url, init) =>
+      init?.method === 'POST' && String(url).endsWith('/validate')
+        ? jsonResponse(validated)
+        : jsonResponse(draft),
+    );
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: [...SELLER, 'sales.payment.create'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider la vente' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('dans la limite de son crédit');
+    fireEvent.click(within(dialog).getByLabelText('Encaisser un paiement maintenant'));
+    // Montant proposé : le total ; le serveur recalcule et contrôle.
+    const amount = within(dialog).getByLabelText(/^Montant/) as HTMLInputElement;
+    expect(amount.value).toBe('3000');
+    fireEvent.change(amount, { target: { value: '1 000' } });
+    await act(async () => {
+      within(dialog).getByRole('button', { name: 'Valider la vente' }).click();
+    });
+    await waitFor(() => expect(methodCalls(fetchMock, 'POST')).toHaveLength(1));
+    const [url, init] = methodCalls(fetchMock, 'POST')[0] ?? [];
+    expect(String(url)).toContain('/api/v1/sales/v1/validate');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      payments: [{ amount: '1000', method: 'CASH' }],
+    });
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' })),
+    );
+  });
+
+  it('limite de crédit dépassée : message détaillé, dialogue conservé', async () => {
+    fetchMock.mockImplementation(async (url, init) =>
+      init?.method === 'POST' && String(url).endsWith('/validate')
+        ? jsonResponse(
+            {
+              code: 'credit_limit_exceeded',
+              title: 'Limite',
+              status: 422,
+              credit_limit: '100000.00',
+              sale_exposure: '3000.00',
+            },
+            422,
+          )
+        : jsonResponse(draft),
+    );
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: SELLER,
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider la vente' }));
+    const dialog = await screen.findByRole('dialog');
+    // Sans droit d'encaisser : pas d'encaissement immédiat proposé.
+    expect(within(dialog).queryByLabelText('Encaisser un paiement maintenant')).toBeNull();
+    await act(async () => {
+      within(dialog).getByRole('button', { name: 'Valider la vente' }).click();
+    });
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'error',
+          summary: expect.stringMatching(/^Limite de crédit du client dépassée/) as string,
+        }),
+      ),
+    );
+    expect(JSON.parse(String(methodCalls(fetchMock, 'POST')[0]?.[1]?.body ?? 'null'))).toBeNull();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
   it('vente validée : lecture seule ; annulation réservée à la permission', async () => {
     fetchMock.mockImplementation(async () => jsonResponse(validated));
     const view = renderWithCapabilities(withToast(<SalePage />, show), {

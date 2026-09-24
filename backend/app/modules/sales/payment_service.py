@@ -118,6 +118,11 @@ class PaymentService:
         )
         return sale, payments
 
+    def history_out(self, sale_id: uuid.UUID) -> list[PaymentOut]:
+        """Historique complet des paiements d'une vente (annulés compris), pour l'API."""
+        sale, payments = self.history(sale_id)
+        return self.to_out(sale, payments)
+
     def summary(self, sale: Sale) -> PaymentSummary | None:
         """Solde d'une vente validée (``None`` pour un brouillon ou une vente annulée)."""
         if sale.status is not SaleStatus.VALIDATED:

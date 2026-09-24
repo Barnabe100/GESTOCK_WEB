@@ -89,3 +89,21 @@ def test_route_prefix_defaults_to_code_and_must_be_unique() -> None:
                 ModuleManifest(code="b", router=APIRouter(), route_prefix="/shared"),
             ]
         )
+
+
+def test_extra_routers_mount_sub_resources_of_another_module() -> None:
+    from fastapi import APIRouter
+
+    receivables = get_registry().get("receivables")
+    assert receivables.url_prefix == "/receivables"
+    assert [prefix for prefix, _ in receivables.extra_routers] == ["/customers"]
+    assert receivables.depends_on == ("sales", "customers", "stock")
+    for invalid in ("customers", "/customers/"):
+        with pytest.raises(RegistryError, match="préfixe"):
+            ModuleRegistry(
+                [
+                    ModuleManifest(
+                        code="a", router=APIRouter(), extra_routers=((invalid, APIRouter()),)
+                    )
+                ]
+            )

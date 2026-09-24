@@ -4,9 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
+from app.core.errors import ForbiddenError
 from app.modules.sales.models import SalePaymentStatus, SaleStatus
 from app.modules.sales.payment_router import router as payment_router
-from app.modules.sales.schemas import SaleCancel, SaleCreate, SaleInput, SaleOut
+from app.modules.sales.schemas import SaleCancel, SaleCreate, SaleInput, SaleOut, SaleValidate
 from app.modules.sales.service import SaleService
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
 from app.shared.pagination import PageParams, page_params
@@ -75,9 +76,19 @@ def update_sale(
 
 
 @router.post("/{sale_id}/validate", response_model=SaleOut)
-def validate_sale(sale_id: uuid.UUID, ctx: Validate, db: DbSession, now: NowDep) -> SaleOut:
+def validate_sale(
+    sale_id: uuid.UUID,
+    ctx: Validate,
+    db: DbSession,
+    now: NowDep,
+    body: SaleValidate | None = None,
+) -> SaleOut:
+    payments = body.payments if body else []
+    # Encaisser à la validation exige aussi le droit d'encaisser.
+    if payments and not ctx.has_permission("sales.payment.create"):
+        raise ForbiddenError("Permission insuffisante", code="permission_denied")
     service = SaleService(db, ctx, now)
-    sale = service.validate(sale_id)
+    sale = service.validate(sale_id, payments)
     db.commit()
     return service.to_out([sale], with_lines=True)[0]
 

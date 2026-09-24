@@ -31,6 +31,13 @@ def visible_site_ids(ctx: RequestContext) -> set[uuid.UUID]:
     return set(ctx.capabilities.accessible_site_ids)
 
 
+def sees_all_sites(ctx: RequestContext) -> bool:
+    """Vue consolidée de tous les sites du tenant : membre sans restriction de site (propriétaire
+    ou « tous les sites ») et aucun site sélectionné. Sinon, les données se limitent aux sites
+    visibles (``visible_site_ids``)."""
+    return ctx.site is None and (ctx.membership.is_owner or ctx.membership.all_sites)
+
+
 def filter_site_ids(ctx: RequestContext, site_id: uuid.UUID | None) -> set[uuid.UUID]:
     """Sites visibles, restreints au site demandé en filtre (vide s'il n'est pas visible)."""
     visible = visible_site_ids(ctx)

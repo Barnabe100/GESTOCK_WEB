@@ -1,6 +1,6 @@
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 
@@ -16,15 +16,18 @@ import { useCustomer } from './api';
 import { CustomerDialog } from './CustomerDialog';
 import { useCustomerStatus } from './useCustomerStatus';
 
+// Compte client (module Créances), chargé seulement si le module est actif et autorisé.
+const CustomerCreditPanel = lazy(() => import('@/modules/receivables/CustomerCreditPanel'));
+
 /**
- * Fiche client. Les indicateurs commerciaux (achats, montant dû, dernière vente…) seront
- * ajoutés par les modules Ventes / Créances quand ces données existeront : aucun chiffre fictif.
+ * Fiche client : informations, suivi et, avec le module Créances, compte client (limite de
+ * crédit, exposition, crédit disponible, créances ouvertes) — chiffres calculés par le serveur.
  */
 export default function CustomerDetailPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { id } = useParams();
-  const { can, capabilities } = useCapabilities();
+  const { can, capabilities, hasModule } = useCapabilities();
   const customer = useCustomer(id);
   const { toggle, pending } = useCustomerStatus();
   const [editing, setEditing] = useState(false);
@@ -114,6 +117,11 @@ export default function CustomerDetailPage() {
           {!c.is_active && <p className="sm-help">{t('customers.inactiveHelp')}</p>}
         </Card>
       </div>
+      {hasModule('receivables') && can('receivables.receivable.view') && (
+        <Suspense fallback={<LoadingState />}>
+          <CustomerCreditPanel customerId={c.id} />
+        </Suspense>
+      )}
       {c.notes && (
         <Card title={t('customers.notes')} className="sm-block">
           <p className="sm-pre-line">{c.notes}</p>

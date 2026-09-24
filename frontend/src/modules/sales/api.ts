@@ -82,7 +82,13 @@ export function useSale(id: string | undefined) {
   });
 }
 
-/** Toute opération peut modifier le stock : ventes, niveaux, mouvements et alertes rechargés. */
+/** Encaissements immédiats à la validation (paiement comptant) : aucun solde envoyé. */
+export type ImmediatePayment = Pick<PaymentInput, 'amount' | 'method'>;
+
+/**
+ * Toute opération peut modifier le stock et les créances : ventes, niveaux, mouvements,
+ * alertes et créances rechargés.
+ */
 export function useSaleMutations() {
   const qc = useQueryClient();
   const onSuccess = (sale: Sale) => {
@@ -90,6 +96,7 @@ export function useSaleMutations() {
     void qc.invalidateQueries({ queryKey: saleKeys.all });
     void qc.invalidateQueries({ queryKey: ['stock'] });
     void qc.invalidateQueries({ queryKey: ['alerts'] });
+    void qc.invalidateQueries({ queryKey: ['receivables'] });
   };
   return {
     save: useMutation({
@@ -98,7 +105,8 @@ export function useSaleMutations() {
       onSuccess,
     }),
     validate: useMutation({
-      mutationFn: (id: string) => api.post<Sale>(`/sales/${id}/validate`),
+      mutationFn: ({ id, payments = [] }: { id: string; payments?: ImmediatePayment[] }) =>
+        api.post<Sale>(`/sales/${id}/validate`, payments.length > 0 ? { payments } : undefined),
       onSuccess,
     }),
     cancel: useMutation({
@@ -172,10 +180,13 @@ export function useSalePayments(saleId: string, enabled: boolean) {
   });
 }
 
-/** Un encaissement ou son annulation change le solde : vente et historique rechargés. */
+/** Un encaissement ou son annulation change le solde : vente, historique et créances rechargés. */
 export function usePaymentMutations(saleId: string) {
   const qc = useQueryClient();
-  const onSuccess = () => void qc.invalidateQueries({ queryKey: saleKeys.all });
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: saleKeys.all });
+    void qc.invalidateQueries({ queryKey: ['receivables'] });
+  };
   return {
     create: useMutation({
       mutationFn: (input: PaymentInput) => api.post<Payment>(`/sales/${saleId}/payments`, input),

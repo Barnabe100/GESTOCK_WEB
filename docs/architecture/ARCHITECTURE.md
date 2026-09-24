@@ -461,7 +461,11 @@ travail : une requête = une transaction, commit à la fin si succès).
 - Le prix vient du catalogue et le total est recalculé côté serveur (jamais envoyé par le
   client) ; la somme des paiements est contrôlée sous le verrou de la vente (paiement
   mixte, partiel, successifs ; aucun surpaiement) — **réalisé en Phase 2.7**
-  ([`PAYMENTS.md`](PAYMENTS.md)) ; crédit client : phase Créances.
+  ([`PAYMENTS.md`](PAYMENTS.md)).
+- Créances et crédit client — **réalisés en Phase 2.8** ([`RECEIVABLES.md`](RECEIVABLES.md),
+  ADR-0021) : créance = vente validée dont le reste dû (total − paiements `COMPLETED`) est
+  positif, calculée sans table ; limite de crédit (`NULL` = non configurée) contrôlée à la
+  validation sous le verrou du client ; encaissement immédiat possible à la validation.
 - Caisse : sessions (ouverture / fond de caisse / mouvements / fermeture /
   rapprochement) — module dédié en V1.
 
@@ -515,7 +519,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · 2.5-B ✅ Design System de l'interface ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)) · 2.6 ✅ inventaires ([`INVENTORY.md`](INVENTORY.md), ADR-0019) | V1 |
-| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · puis créances et ventes à crédit, caisse, POS (sur le module `sales` de la 2.4) | V1 |
+| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · puis caisse, POS (sur le module `sales` de la 2.4) | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 

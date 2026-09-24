@@ -1,9 +1,11 @@
 """Ventes comptant : brouillon → validée (sortie de stock) → annulée.
 
 La validation s'exécute dans UNE transaction (celle de la requête) : verrou de la vente,
-contrôles, ``StockService.apply`` (verrou des niveaux, contrôle global du stock, mouvements
-``SALE``), changement de statut, audit. Toute erreur annule tout : ni stock, ni mouvement, ni
-statut, ni audit. Le service ne valide jamais la transaction (ADR-0008).
+contrôles, verrou du client et contrôle de sa limite de crédit (ADR-0021),
+``StockService.apply`` (verrou des niveaux, contrôle global du stock, mouvements ``SALE``),
+changement de statut, audit, encaissements immédiats éventuels. Toute erreur annule tout : ni
+stock, ni mouvement, ni statut, ni paiement, ni audit. Le service ne valide jamais la
+transaction (ADR-0008).
 """
 
 import uuid
@@ -17,7 +19,13 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.modules.catalog.api import ArticleRef, get_article_refs
-from app.modules.customers.api import CustomerRef, customers_view, get_customer_refs
+from app.modules.customers.api import (
+    CustomerRef,
+    customers_view,
+    get_customer_credit,
+    get_customer_refs,
+)
+from app.modules.sales.credit import customer_exposure
 from app.modules.sales.models import (
     Payment,
     PaymentStatus,
@@ -28,7 +36,13 @@ from app.modules.sales.models import (
 )
 from app.modules.sales.payment_service import ZERO as MONEY_ZERO
 from app.modules.sales.payment_service import paid_amounts, paid_subquery, payment_status
-from app.modules.sales.schemas import SaleCreate, SaleInput, SaleLineOut, SaleOut
+from app.modules.sales.schemas import (
+    PaymentCreate,
+    SaleCreate,
+    SaleInput,
+    SaleLineOut,
+    SaleOut,
+)
 from app.modules.stock.api import (
     MovementRequest,
     MovementType,
@@ -36,6 +50,7 @@ from app.modules.stock.api import (
     ensure_document_site,
     operation_site,
     round_money,
+    sees_all_sites,
     tenant_today,
     visible_site_ids,
 )
@@ -235,6 +250,39 @@ class SaleService:
             data={"number": sale.number, **data},
         )
 
+    def _check_credit(self, sale: Sale, prepaid: Decimal) -> None:
+        """Limite de crédit (ADR-0021) : la validation crée une exposition égale au reste dû de
+        la vente (total − encaissements immédiats). Refusée si l'exposition projetée du client
+        (restes dus de ses ventes validées, tous sites) dépasse sa limite. Limite nulle = non
+        configurée : aucun contrôle ; vente entièrement payée : aucune exposition, aucun
+        contrôle. Verrou du client (après celui de la vente, ordre constant) : deux validations
+        simultanées pour le même client s'exécutent l'une après l'autre et la seconde voit
+        l'exposition créée par la première."""
+        if sale.customer_id is None:
+            return  # vente sans client : aucune exposition client
+        credit = get_customer_credit(self.db, sale.customer_id, lock=True)
+        if credit is None or credit.credit_limit is None:
+            return
+        new_exposure = max(sale.total - prepaid, MONEY_ZERO)
+        if new_exposure <= 0:
+            return
+        current, _ = customer_exposure(self.db, sale.customer_id)
+        if current + new_exposure <= credit.credit_limit:
+            return
+        extra: dict[str, Any] = {
+            "credit_limit": format(credit.credit_limit, "f"),
+            "sale_exposure": format(new_exposure, "f"),
+        }
+        # Exposition consolidée (tous sites) : seulement pour qui voit tous les sites.
+        if sees_all_sites(self.ctx):
+            extra["current_exposure"] = format(current, "f")
+            extra["available_credit"] = format(max(credit.credit_limit - current, MONEY_ZERO), "f")
+        raise BusinessRuleError(
+            "La limite de crédit du client serait dépassée",
+            code="credit_limit_exceeded",
+            extra=extra,
+        )
+
     def _stock(self) -> StockService:
         return StockService(self.db, self.ctx.tenant_id, self.ctx.user.id, self.now)
 
@@ -269,7 +317,10 @@ class SaleService:
             self._audit("updated", sale, {"before": before, "after": after})
         return sale
 
-    def validate(self, sale_id: uuid.UUID) -> Sale:
+    def validate(self, sale_id: uuid.UUID, payments: Sequence[PaymentCreate] = ()) -> Sale:
+        """Validation (sortie de stock) et, facultativement, encaissements immédiats dans la
+        même transaction : une vente payée comptant à la validation ne crée aucune exposition
+        de crédit. Les paiements passent par ``PaymentService`` (mêmes règles qu'en 2.7)."""
         sale = self.get(sale_id, lock=True)
         self._require_status(sale, SaleStatus.DRAFT, "sale_not_draft")
         if not sale.lines:
@@ -289,6 +340,7 @@ class SaleService:
                 code="sale_prices_changed",
                 extra={"articles": changed},
             )
+        self._check_credit(sale, sum((p.amount for p in payments), MONEY_ZERO))
         # Sortie de stock : exclusivement via le moteur central (verrous, tout ou rien).
         self._stock().apply(
             sale.site_id,
@@ -320,6 +372,12 @@ class SaleService:
                 "customer_id": str(sale.customer_id) if sale.customer_id else None,
             },
         )
+        if payments:
+            from app.modules.sales.payment_service import PaymentService
+
+            payment_service = PaymentService(self.db, self.ctx, self.now)
+            for payment in payments:
+                payment_service.create(sale.id, payment)
         return sale
 
     def cancel(self, sale_id: uuid.UUID, reason: str) -> Sale:

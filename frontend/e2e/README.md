@@ -73,6 +73,12 @@ la suite peut être rejouée sur la même base.
   vente de 100 000 ; paiement complet après validation depuis la fiche (stock diminué, « Payée »,
   solde 0), paiement partiel puis successif et mixte, annulation d'un paiement (« Non payée »,
   stock inchangé), surpaiement refusé, mobile.
+- `receivables.e2e.ts` (Phase 2.8) : active le module Créances (entreprise créée avant la 2.8),
+  prépare un article vendu 10 000 (100 u en boutique, 20 u au dépôt) ; vente à crédit validée
+  par l'interface, créance listée, paiement partiel (créance diminuée), paiement final (créance
+  disparue), annulation d'un paiement (créance réapparue) ; limite de crédit (refus au-delà,
+  encaissement immédiat accepté, compte client) ; limite non configurée ; vendeur limité à un
+  site (créances de son site seulement) et autre entreprise (introuvable) ; mobile.
 - `ui.e2e.ts` (Phase 2.5-B, Design System) : navigation groupée, tableau de bord (indicateurs,
   actions rapides), liste standard (recherche, « Aucun résultat », réinitialisation),
   désactivation confirmée (annuler puis confirmer), entrée de stock saisie et validée par

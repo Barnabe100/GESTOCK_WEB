@@ -102,6 +102,14 @@ class PaymentCreate(BaseModel):
     idempotency_key: uuid.UUID | None = None
 
 
+class SaleValidate(BaseModel):
+    """Corps facultatif de la validation : encaissements immédiats (paiement comptant), créés
+    dans la même transaction que la validation. Le reste dû devient une créance soumise à la
+    limite de crédit du client (ADR-0021)."""
+
+    payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
+
+
 class PaymentOut(BaseModel):
     id: uuid.UUID
     number: str

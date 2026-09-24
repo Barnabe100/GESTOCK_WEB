@@ -142,6 +142,14 @@ Détails : [`SALES.md`](SALES.md).
 Numéro : séquence `payment`. Aucun état d'encaissement stocké sur `sales` : payé / reste /
 état sont calculés à partir des paiements `COMPLETED`. Détails : [`PAYMENTS.md`](PAYMENTS.md).
 
+### Créances (Phase 2.8) : aucune table
+
+Une créance ouverte est une vente `VALIDATED` dont le reste dû (`total` − paiements
+`COMPLETED`) est positif ; l'exposition d'un client est la somme de ces restes. Tout est
+calculé à la lecture (`sales/credit.py`) : aucune table, aucune colonne, aucune migration.
+`customers.credit_limit` (`NULL` = non configurée) est contrôlée à la validation d'une vente.
+Détails : [`RECEIVABLES.md`](RECEIVABLES.md).
+
 Les énumérations sont stockées en texte avec contrainte `CHECK` (évolution plus simple qu'un
 type PostgreSQL natif).
 

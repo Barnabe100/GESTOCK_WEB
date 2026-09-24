@@ -132,13 +132,18 @@ statut, site, période ; tri et pagination serveur. Saisie : site, client facult
 indépendant de la validation, état d'encaissement calculé ; une vente encaissée ne peut être
 annulée qu'après annulation de ses paiements).
 
-Hors périmètre : crédit et gestion des créances,
+**Créances et limite de crédit** : réalisées en Phase 2.8 — [`RECEIVABLES.md`](RECEIVABLES.md).
+La validation contrôle la limite de crédit du client (exposition projetée = restes dus de ses
+ventes validées + reste dû de la vente) sous le verrou du client, et accepte des
+encaissements immédiats (`{payments: […]}`) dans la même transaction.
+
+Hors périmètre : échéances et relances,
 caisse, ticket / facture PDF, retours et avoirs, remises et promotions, fidélité, POS,
 restaurant. Le module Ventes ne dépend d'aucun module futur ; ceux-ci s'y rattacheront :
 
 ```text
 Paiements  : Vente VALIDATED ─► Paiement(s) (FK composite sales(tenant_id, id))
-Crédit     : Vente ─► Créance (plafond customers.credit_limit) ─► Paiements
+Crédit     : Vente VALIDATED + reste dû > 0 = créance (2.8, limite customers.credit_limit)
 Remises    : colonnes de remise ligne / pied ; total = subtotal − remises (+ taxes)
 Retours    : document de retour ─► mouvements RETURN via StockService
 POS        : saisie rapide ─► même SaleService (création + validation en une étape)

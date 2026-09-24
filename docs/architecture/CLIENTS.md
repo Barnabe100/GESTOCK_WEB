@@ -17,7 +17,7 @@ plans avant cette phase ; identifiants en anglais, libellés « Clients » via i
 | `phone`, `phone2` | Normalisés : séparateurs (espaces, points, tirets, parenthèses, `/`) retirés, `+` initial conservé, 4 à 20 chiffres. `+226 70 11 22 33` → `+22670112233`. |
 | `email` | Validé et normalisé (domaine en minuscules). |
 | `address`, `city`, `country`, `notes` | Facultatifs ; chaîne vide = champ effacé. |
-| `credit_limit` | Plafond de crédit facultatif (`NUMERIC(18,2)`, ≥ 0). **Préparatoire** : aucune règle ne l'applique avant le module de vente à crédit. |
+| `credit_limit` | Limite de crédit facultative (`NUMERIC(18,2)`, ≥ 0) : `NULL` = non configurée (aucune limite), `0` = aucun crédit. Contrôlée à la validation des ventes depuis la Phase 2.8 ([`RECEIVABLES.md`](RECEIVABLES.md)). |
 | `is_active` | Vrai à la création ; désactivation logique. |
 
 **Aucun solde n'est stocké sur le client** : le montant dû sera calculé à partir des créances
@@ -68,15 +68,16 @@ actif exigé à l'enregistrement et à la validation. Les autres restent à veni
 
 ```text
 Ventes     : Client ─► Vente (site_id, customer_id FK composite) ─► Lignes ─► StockService
-Crédit     : Client ─► Vente à crédit ─► Créance ─► Paiements   (plafond : credit_limit)
+Crédit     : Client ─► Vente validée non soldée = créance ─► Paiements (limite : credit_limit, 2.8)
 POS        : Client (recherche rapide, facultatif) ─► Panier ─► Encaissement
 Restaurant : Client facultatif sur une commande
 ```
 
 Les modules futurs référencent `customers(tenant_id, id)` par clé étrangère composite
 (contrainte `UNIQUE (tenant_id, id)` déjà en place) et passent par `customers/api.py` ; le
-module Clients ne dépend d'aucun d'eux. La fiche client affichera les indicateurs (achats,
-montant dû, dernière vente…) quand ces données existeront — aucun chiffre fictif d'ici là.
+module Clients ne dépend d'aucun d'eux. Depuis la Phase 2.8, la fiche client affiche le
+compte client (limite, exposition, crédit disponible, créances ouvertes) fourni par le module
+Créances, s'il est actif et autorisé ; aucun chiffre fictif.
 
 **Hors périmètre de cette phase** : ventes, caisse, POS, paiements, créances, fidélité,
 restaurant, import Excel, export PDF, comptabilité.

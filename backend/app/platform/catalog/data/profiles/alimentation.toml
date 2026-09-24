@@ -3,14 +3,14 @@ name = "Alimentation / Supérette"
 description = "Commerce alimentaire : caisse rapide, stock, fournisseurs, inventaires."
 
 modules = [
-  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables", "payments",
   "cash_register", "pos", "reports", "alerts",
 ]
 # Proposés mais désactivés par défaut à la création du tenant.
 optional_modules = []
 
 navigation = [
-  "dashboard", "pos", "sales", "catalog", "stock", "alerts", "suppliers", "customers", "inventory_count",
+  "dashboard", "pos", "sales", "catalog", "stock", "alerts", "suppliers", "customers", "receivables", "inventory_count",
   "reports", "organization", "users", "subscription", "audit",
 ]
 

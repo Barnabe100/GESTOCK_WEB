@@ -20,8 +20,9 @@ class CustomerType(StrEnum):
 
 
 class Customer(IdMixin, TenantScopedMixin, TimestampMixin, Base):
-    """Client du tenant (pas de site : les futures ventes portent le leur). Jamais supprimé :
-    désactivé. Aucun solde stocké : le montant dû sera calculé par le futur module Créances."""
+    """Client du tenant (pas de site : les ventes portent le leur). Jamais supprimé :
+    désactivé. Aucun solde stocké : le montant dû est calculé par le module Créances à partir
+    des ventes et des paiements (ADR-0021)."""
 
     __tablename__ = "customers"
     __table_args__ = (
@@ -58,7 +59,8 @@ class Customer(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     city: Mapped[str | None] = mapped_column(String(100))
     country: Mapped[str | None] = mapped_column(String(100))
     notes: Mapped[str | None] = mapped_column(String(1000))
-    # Plafond de crédit (préparation des ventes à crédit) ; nul = non défini. Aucune règle ne
-    # l'applique dans cette phase.
+    # Limite de crédit : exposition maximale (reste dû des ventes validées) autorisée ; nul =
+    # non configurée (aucune limite), 0 = aucun crédit. Appliquée à la validation d'une vente
+    # (Phase 2.8, ADR-0021).
     credit_limit: Mapped[Decimal | None] = mapped_column(MONEY)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

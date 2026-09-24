@@ -16,11 +16,12 @@ def mount_module_routers(api_router: APIRouter, registry: ModuleRegistry) -> Non
     for manifest in registry.all():
         if manifest.core or manifest.router is None or manifest.status != ModuleStatus.AVAILABLE:
             continue
+        module_required = [Depends(require_module(manifest.code, registry))]
         api_router.include_router(
-            manifest.router,
-            prefix=manifest.url_prefix,
-            dependencies=[Depends(require_module(manifest.code, registry))],
+            manifest.router, prefix=manifest.url_prefix, dependencies=module_required
         )
+        for prefix, extra_router in manifest.extra_routers:
+            api_router.include_router(extra_router, prefix=prefix, dependencies=module_required)
 
 
 def build_api_router(registry: ModuleRegistry | None = None) -> APIRouter:

@@ -10,7 +10,7 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 2 — catalogue et stock.** Sous-phases livrées : 2.1 (modules `catalog` et
+**Phase actuelle : 2 — catalogue, stock et ventes.** Sous-phases livrées : 2.1 (modules `catalog` et
 `suppliers`), 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
 journal des mouvements, seuils par site — et `alerts`), consolidation du RBAC (rôles de
 base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015),
@@ -26,8 +26,12 @@ physique − stock courant relu à la validation, ajustements `ADJUSTMENT` via `
 [`INVENTORY.md`](docs/architecture/INVENTORY.md), ADR-0019) et 2.7 (paiements des ventes dans
 `sales` : encaissement indépendant de la validation, état d'encaissement **calculé**, aucun
 surpaiement sous verrou de la vente, annulation motivée, clé d'idempotence,
-[`PAYMENTS.md`](docs/architecture/PAYMENTS.md), ADR-0020).
-Autres modules métier (créances, POS, caisse, paiements électroniques, restaurant…) :
+[`PAYMENTS.md`](docs/architecture/PAYMENTS.md), ADR-0020) et 2.8 (module `receivables`, lecture seule :
+créance = vente validée dont le reste dû — total − paiements `COMPLETED` — est positif,
+**calculée sans table** ; limite de crédit contrôlée à la validation de la vente sous verrou du
+client, `credit_limit NULL` = non configurée ; encaissement immédiat à la validation,
+[`RECEIVABLES.md`](docs/architecture/RECEIVABLES.md), ADR-0021).
+Autres modules métier (POS, caisse, paiements électroniques, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

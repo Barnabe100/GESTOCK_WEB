@@ -8,11 +8,26 @@ import { StatusBadge, type Tone } from '@/shared/ui/StatusBadge';
 
 import type { PaymentStatus, SalePaymentStatus } from './api';
 
-/** Messages d'erreur : stock insuffisant détaillé, prix modifiés listés. */
-export function saleError(t: TFunction, error: unknown, locale = 'fr'): string {
+/**
+ * Messages d'erreur : stock insuffisant détaillé, prix modifiés listés, limite de crédit
+ * (montants renvoyés par le serveur, formatés dans la devise du tenant).
+ */
+export function saleError(t: TFunction, error: unknown, locale = 'fr', currency = 'XOF'): string {
   if (error instanceof ApiError && error.code === 'sale_prices_changed') {
     const articles = Array.isArray(error.extra.articles) ? error.extra.articles.join(', ') : '';
     return t('errors:sale_prices_changed', { articles });
+  }
+  if (error instanceof ApiError && error.code === 'credit_limit_exceeded') {
+    const money = (key: string) => {
+      const value = error.extra[key];
+      return typeof value === 'string' ? formatMoney(value, currency, locale) : null;
+    };
+    const available = money('available_credit');
+    const params = { limit: money('credit_limit') ?? '', amount: money('sale_exposure') ?? '' };
+    // Crédit disponible communiqué seulement à qui voit l'exposition consolidée.
+    return available === null
+      ? t('errors:credit_limit_exceeded', params)
+      : t('errors:credit_limit_exceeded_available', { ...params, available });
   }
   return stockError(t, error, locale);
 }
@@ -55,5 +70,5 @@ export function paymentError(
       remaining: formatMoney(remaining, currency, locale),
     });
   }
-  return saleError(t, error, locale);
+  return saleError(t, error, locale, currency);
 }

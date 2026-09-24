@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import frCommon from '@/core/i18n/locales/fr/common.json';
 
+import { buildNavigation, groupNavigation } from '@/core/modules/registry';
+
 import { FRONTEND_MODULES } from './modules';
 
 function lookup(path: string): unknown {
@@ -42,5 +44,27 @@ describe('registre des modules frontend', () => {
         expect(route?.permission).toBe(item.permission);
       }
     }
+  });
+
+  it('Créances : rubrique « Ventes et clients », après Clients, selon la permission', () => {
+    const caps = {
+      modules: ['sales', 'customers', 'receivables'].map((code) => ({ code, status: 'available' })),
+      navigation: ['sales', 'customers', 'receivables'],
+      permissions: ['sales.sale.view', 'customers.customer.view', 'receivables.receivable.view'],
+    };
+    const sales = groupNavigation(buildNavigation(FRONTEND_MODULES, caps)).find(
+      (section) => section.group === 'sales',
+    );
+    expect(sales?.items.map((item) => item.key)).toEqual(['sales', 'customers', 'receivables']);
+    const withoutPermission = buildNavigation(FRONTEND_MODULES, {
+      ...caps,
+      permissions: caps.permissions.filter((p) => !p.startsWith('receivables.')),
+    });
+    expect(withoutPermission.map((item) => item.key)).not.toContain('receivables');
+    const withoutModule = buildNavigation(FRONTEND_MODULES, {
+      ...caps,
+      modules: caps.modules.filter((m) => m.code !== 'receivables'),
+    });
+    expect(withoutModule.map((item) => item.key)).not.toContain('receivables');
   });
 });

@@ -16,6 +16,7 @@ from app.modules.stock.sites import (
     ensure_document_site,
     filter_site_ids,
     operation_site,
+    sees_all_sites,
     tenant_today,
     visible_site_ids,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "filter_site_ids",
     "operation_site",
     "round_money",
+    "sees_all_sites",
     "tenant_today",
     "visible_site_ids",
     "LevelRow",

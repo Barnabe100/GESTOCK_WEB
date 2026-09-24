@@ -610,6 +610,18 @@ a {
   width: 100%;
 }
 
+/* Filtres de liste à saisie (client, montant) : largeur d'un filtre, pas de toute la barre.
+   :where() garde la spécificité basse : la règle des petits écrans reste prioritaire. */
+.sm-filterbar > :where(.sm-filter-picker) {
+  flex: 0 1 18rem;
+  width: auto;
+}
+
+.sm-filterbar > :where(.sm-filter-amount) {
+  flex: 0 1 12rem;
+  min-width: 0;
+}
+
 .sm-daterange {
   display: flex;
   gap: var(--sm-space-2);

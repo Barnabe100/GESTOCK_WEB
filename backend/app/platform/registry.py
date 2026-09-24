@@ -76,6 +76,12 @@ class ModuleManifest:
     # Préfixe d'URL du routeur (ex. ``/inventories``) ; par défaut dérivé du code du module
     # (``/sales``, ``/restaurant/menu``). Ne change ni le code du module ni ses permissions.
     route_prefix: str | None = None
+    # Routeurs supplémentaires ``(préfixe, routeur)`` : sous-ressources d'une ressource d'un
+    # autre module (ex. ``/customers/{id}/receivables`` du module ``receivables``). Protégés
+    # par CE module (require_module) ; aucune route n'est ajoutée au module propriétaire.
+    extra_routers: "tuple[tuple[str, APIRouter], ...]" = field(
+        default=(), compare=False, hash=False
+    )
 
     @property
     def url_prefix(self) -> str:
@@ -132,6 +138,10 @@ class ModuleRegistry:
             if not prefix.startswith("/") or prefix in prefixes:
                 raise RegistryError(f"préfixe d'URL invalide ou en double : {prefix}")
             prefixes[prefix] = manifest.code
+        for manifest in self._modules.values():
+            for extra_prefix, _ in manifest.extra_routers:
+                if not extra_prefix.startswith("/") or extra_prefix.endswith("/"):
+                    raise RegistryError(f"préfixe d'URL invalide : {extra_prefix}")
         self._check_cycles()
 
     def _check_cycles(self) -> None:

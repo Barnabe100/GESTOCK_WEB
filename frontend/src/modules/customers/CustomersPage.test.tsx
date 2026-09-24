@@ -121,7 +121,7 @@ describe('page Clients', () => {
     });
     fireEvent.change(within(dialog).getByLabelText('Email'), { target: { value: 'moussa@' } });
     fireEvent.change(within(dialog).getByLabelText('Téléphone'), { target: { value: 'abc' } });
-    fireEvent.change(within(dialog).getByLabelText('Plafond de crédit'), {
+    fireEvent.change(within(dialog).getByLabelText('Limite de crédit'), {
       target: { value: '1,234' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
@@ -136,7 +136,7 @@ describe('page Clients', () => {
     fireEvent.change(within(dialog).getByLabelText('Téléphone'), {
       target: { value: '70 00 00 00' },
     });
-    fireEvent.change(within(dialog).getByLabelText('Plafond de crédit'), {
+    fireEvent.change(within(dialog).getByLabelText('Limite de crédit'), {
       target: { value: '150 000,5' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));

@@ -27,5 +27,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0018](0018-transferts-inter-sites.md) | Transferts inter-sites : atomicité, CMUP, annulation, sites, fonctionnalité de plan | Acceptée |
 | [0019](0019-inventaires.md) | Inventaires : écart sur le stock courant, ajustements via StockService, module `inventory_count` | Proposée |
 | [0020](0020-paiements-des-ventes.md) | Paiements des ventes : module `sales`, solde calculé, verrou de la vente, clé d'idempotence | Proposée |
+| [0021](0021-creances-comptes-clients.md) | Créances / comptes clients : calculées sans table, limite de crédit à la validation sous verrou du client | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

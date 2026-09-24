@@ -17,22 +17,37 @@ export function toCustomerOption(c: { id: string; code: string; name: string }):
   return { id: c.id, code: c.code, name: c.name, label: `${c.name} (${c.code})` };
 }
 
-/** Recherche serveur des clients ACTIFS (code, nom, téléphone) ; vide = vente anonyme. */
+/**
+ * Recherche serveur des clients ACTIFS (code, nom, téléphone) ; vide = vente anonyme.
+ * `includeInactive` : clients désactivés compris (filtres de consultation, ex. créances).
+ */
 export function CustomerPicker({
   id,
   value,
   onChange,
+  includeInactive = false,
+  placeholder,
+  ariaLabel,
+  className = 'sm-article-picker',
 }: {
   id: string;
   value: CustomerOption | null;
   onChange: (value: CustomerOption | null) => void;
+  includeInactive?: boolean;
+  placeholder?: string;
+  ariaLabel?: string;
+  className?: string;
 }) {
   const { t } = useTranslation();
   const [suggestions, setSuggestions] = useState<CustomerOption[]>([]);
   const [text, setText] = useState<string | null>(null);
 
   const complete = async (query: string) => {
-    const params = new URLSearchParams({ search: query, status: 'active', limit: '20' });
+    const params = new URLSearchParams({
+      search: query,
+      status: includeInactive ? 'all' : 'active',
+      limit: '20',
+    });
     try {
       const page = await api.get<Page<Customer>>(`/customers?${params.toString()}`);
       setSuggestions(page.items.map(toCustomerOption));
@@ -57,10 +72,11 @@ export function CustomerPicker({
           onChange((e.value as CustomerOption | null) ?? null);
         }
       }}
-      placeholder={t('sales.anonymous')}
+      placeholder={placeholder ?? t('sales.anonymous')}
+      aria-label={ariaLabel}
       forceSelection
       dropdown
-      className="sm-article-picker"
+      className={className}
     />
   );
 }

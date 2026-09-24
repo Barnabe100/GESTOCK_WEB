@@ -3,13 +3,13 @@ name = "Quincaillerie"
 description = "Quincaillerie, matériaux, pièces : ventes au détail et au mètre/kg, dépôts."
 
 modules = [
-  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables", "payments",
   "cash_register", "pos", "reports", "alerts",
 ]
 optional_modules = []
 
 navigation = [
-  "dashboard", "catalog", "stock", "alerts", "sales", "pos", "customers", "suppliers", "inventory_count",
+  "dashboard", "catalog", "stock", "alerts", "sales", "pos", "customers", "receivables", "suppliers", "inventory_count",
   "reports", "organization", "users", "subscription", "audit",
 ]
 

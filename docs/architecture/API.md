@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6) et paiements des ventes (2.7)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7) et créances (2.8)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -184,7 +184,7 @@ vie : [`SALES.md`](SALES.md) ; décisions : [ADR-0017](../adr/0017-ventes-prix-v
 | POST | `/sales` | `sales.sale.create` | Créer un **brouillon** (numéro `VTE-000001` attribué, prix copiés du catalogue, totaux calculés) |
 | GET | `/sales/{id}` | `sales.sale.view` | Détail avec lignes |
 | PUT | `/sales/{id}` | `sales.sale.update` | Remplacer date, client, observations et lignes d'un brouillon (prix relus) ; site non modifiable |
-| POST | `/sales/{id}/validate` | `sales.sale.validate` | Mouvements `SALE` via `StockService` (tout ou rien) ; statut `VALIDATED` |
+| POST | `/sales/{id}/validate` | `sales.sale.validate` | Mouvements `SALE` via `StockService` (tout ou rien) ; statut `VALIDATED` ; corps facultatif `{payments: [{amount, method, …}]}` : encaissements immédiats (exige aussi `sales.payment.create`) ; limite de crédit du client contrôlée (2.8) |
 | POST | `/sales/{id}/cancel` | `sales.sale.cancel` | `{reason}` (5–500 car.) ; brouillon : abandon ; validée : mouvements `CANCELLATION` (remise en stock, CMUP inchangé) |
 
 Corps : `{site_id?, sale_date?, customer_id?, notes?, lines: [{article_id, quantity}]}` —
@@ -250,10 +250,33 @@ Mêmes contrôles d'accès que la vente (tenant, site accessible / sélectionné
 `idempotency_key_reused` (409), `payment_not_found`, `sale_not_found` (404), `site_mismatch`
 (403). Aucune route de modification ni de suppression. Abonnement expiré : consultation seule.
 
+### Créances / comptes clients (module `receivables`) — Phase 2.8
+
+Règles : [`RECEIVABLES.md`](RECEIVABLES.md) ; décisions :
+[ADR-0021](../adr/0021-creances-comptes-clients.md). Lecture seule, permission
+`receivables.receivable.view` ; créances calculées (vente validée, reste dû > 0), sites
+visibles du membre.
+
+| Méthode | Chemin | Rôle |
+|---|---|---|
+| GET | `/receivables` | Créances ouvertes : `search`, `customer_id`, `site_id`, `date_from`, `date_to`, `min_amount`, `max_amount`, `status` (`UNPAID` \| `PARTIALLY_PAID`) ; tri `sale_date` (défaut), `sale_number`, `total`, `paid_amount`, `remaining_amount`, `customer_name` |
+| GET | `/receivables/summary` | `total_receivables`, `receivables_count`, `debtor_customers_count` (mêmes filtres) |
+| GET | `/receivables/{sale_id}` | Solde d'une vente validée et historique de ses paiements (`is_open`) |
+| GET | `/customers/{id}/receivables` | Créances ouvertes du client |
+| GET | `/customers/{id}/credit-exposure` | `credit_limit` (nul : non configurée), `limit_configured`, `current_exposure`, `available_credit`, `over_limit`, `open_receivables_count`, `consolidated` |
+
+Codes : `receivable_not_found`, `customer_not_found` (404), `site_mismatch` (403). À la
+validation d'une vente : `credit_limit_exceeded` (422 ; `credit_limit`, `sale_exposure`, et
+`current_exposure` / `available_credit` pour un membre voyant tous les sites). Aucune route
+d'écriture (405). Abonnement expiré : consultation normale.
+
 ## Routes des modules métier
 
 Les routeurs des modules métier sont montés sous `/api/v1/<code du module>` (points
 remplacés par `/`, ex. `/api/v1/restaurant/tables`) — ou sous le préfixe déclaré par le
 manifeste (`route_prefix`, ex. `/api/v1/inventories` pour `inventory_count`) — et **automatiquement protégés** par
+`require_module(code)` ; un module peut aussi déclarer des sous-ressources d'un autre module
+(`extra_routers`, ex. `/api/v1/customers/{id}/receivables` du module `receivables`), protégées
+par
 `require_module(code)` : un module non effectif pour le tenant répond
 `403 module_unavailable`, quel que soit le client.

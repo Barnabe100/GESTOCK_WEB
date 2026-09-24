@@ -97,5 +97,8 @@
   "payment_not_found": "Paiement introuvable.",
   "payment_already_cancelled": "Ce paiement est déjà annulé.",
   "idempotency_key_reused": "Cette saisie a déjà servi pour un autre paiement : rouvrez le formulaire.",
-  "sale_has_payments": "Cette vente a des paiements : annulez-les d'abord."
+  "sale_has_payments": "Cette vente a des paiements : annulez-les d'abord.",
+  "credit_limit_exceeded": "Limite de crédit du client dépassée : cette vente laisserait {{amount}} à crédit (limite : {{limit}}). Encaissez tout ou partie de la vente à la validation.",
+  "credit_limit_exceeded_available": "Limite de crédit du client dépassée : cette vente laisserait {{amount}} à crédit pour {{available}} de crédit disponible (limite : {{limit}}). Encaissez tout ou partie de la vente à la validation.",
+  "receivable_not_found": "Créance introuvable."
 }

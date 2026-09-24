@@ -30,12 +30,19 @@ import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
-import { confirmAction } from '@/shared/ui/confirm';
 
-import { useSale, useSaleMutations, type Sale, type SaleInput, type SaleLine } from './api';
+import {
+  useSale,
+  useSaleMutations,
+  type ImmediatePayment,
+  type Sale,
+  type SaleInput,
+  type SaleLine,
+} from './api';
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
 import { PaymentsPanel } from './PaymentsPanel';
 import { SalePaymentBadge, saleError } from './ui';
+import { ValidateSaleDialog } from './ValidateSaleDialog';
 
 const quantity = z.string().refine((v) => {
   const n = normalizeDecimal(v, 3);
@@ -154,22 +161,20 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
     }
   });
 
-  const onValidate = form.handleSubmit((values) =>
-    confirmAction(t, {
-      header: t('sales.validate'),
-      message: t('sales.confirmValidate', { total: formatMoney(displayTotal, currency, locale) }),
-      acceptLabel: t('sales.validate'),
-      onAccept: async () => {
-        try {
-          const saved = form.formState.isDirty || !sale ? await persist(values) : sale;
-          const validated = await validate.mutateAsync(saved.id);
-          toast.success(t('sales.validated', { number: validated.number }));
-        } catch (error) {
-          toast.error(saleError(t, error, locale));
-        }
-      },
-    }),
-  );
+  // Validation : confirmation, encaissement immédiat facultatif (le reste dû est une créance).
+  const [validating, setValidating] = useState<FormValues | null>(null);
+  const onValidate = form.handleSubmit((values) => setValidating(values));
+  const confirmValidation = async (values: FormValues, payments: ImmediatePayment[]) => {
+    try {
+      const saved = form.formState.isDirty || !sale ? await persist(values) : sale;
+      const validated = await validate.mutateAsync({ id: saved.id, payments });
+      setValidating(null);
+      toast.success(t('sales.validated', { number: validated.number }));
+    } catch (error) {
+      // Refus (stock, prix, limite de crédit…) : dialogue conservé pour corriger ou encaisser.
+      toast.error(saleError(t, error, locale, currency));
+    }
+  };
 
   return (
     <form onSubmit={onSave} className="sm-form" noValidate>
@@ -324,6 +329,14 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
           />
         )}
       </div>
+      {validating && (
+        <ValidateSaleDialog
+          total={displayTotal}
+          pending={save.isPending || validate.isPending}
+          onConfirm={(payments) => void confirmValidation(validating, payments)}
+          onClose={() => setValidating(null)}
+        />
+      )}
     </form>
   );
 }

@@ -101,8 +101,8 @@ montant, moyen, date. Aucune donnée sensible (pas de numéro de carte).
 
 ## 8. Évolutions prévues (hors périmètre 2.7)
 
-- **Créances** : le reste dû des ventes validées avec client (`remaining_amount`,
-  `customer_id`, filtre `payment_status`) est directement exploitable.
+- **Créances** : réalisées en Phase 2.8 ([`RECEIVABLES.md`](RECEIVABLES.md)) à partir du même
+  « payé » (paiements `COMPLETED`), sans modifier les règles de paiement.
 - **Caisse** : `method`, `site_id`, `paid_at`, `amount` suffisent à rattacher les
   encaissements en espèces à une session de caisse (aucun mouvement de caisse créé en 2.7).
 - **Encaissements asynchrones** (Mobile Money par API, TPE) : statut `PENDING` réservé, déjà

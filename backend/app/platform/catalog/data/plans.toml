@@ -15,7 +15,7 @@ description = "Offre de base pour un commerce."
 sort_order = 10
 grace_days = 7
 modules = [
-  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables", "payments",
   "cash_register", "pos", "reports", "alerts",
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
   "restaurant.recipes",
@@ -32,7 +32,7 @@ description = "Multi-sites et fonctionnalités avancées."
 sort_order = 20
 grace_days = 15
 modules = [
-  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "payments",
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables", "payments",
   "cash_register", "pos", "reports", "alerts",
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
   "restaurant.recipes", "restaurant.qr",

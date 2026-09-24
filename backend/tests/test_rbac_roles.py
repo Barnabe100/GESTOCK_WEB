@@ -87,6 +87,7 @@ def test_base_roles(owner: Api) -> None:
         "inventory_count.inventory.view",  # inventaires : consultation seule (Phase 2.6)
         "sales.payment.view",  # encaissement des ventes, sans annulation (Phase 2.7)
         "sales.payment.create",
+        "receivables.receivable.view",  # créances : consultation (Phase 2.8)
     }
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer

@@ -83,7 +83,8 @@
     "stockAlerts": "Alertes de stock",
     "customers": "$t(terminology:customers.items)",
     "sales": "$t(terminology:sales.sales)",
-    "inventories": "Inventaires"
+    "inventories": "Inventaires",
+    "receivables": "Créances"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -113,7 +114,8 @@
     "restaurant.orders": "Commandes",
     "restaurant.kitchen": "Cuisine",
     "restaurant.qr": "Menu QR",
-    "restaurant.recipes": "Recettes"
+    "restaurant.recipes": "Recettes",
+    "receivables": "Créances"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -334,7 +336,8 @@
     "inventory_count.inventory.cancel": "Annuler un inventaire non validé",
     "sales.payment.view": "Consulter les paiements des ventes",
     "sales.payment.create": "Enregistrer un paiement",
-    "sales.payment.cancel": "Annuler un paiement"
+    "sales.payment.cancel": "Annuler un paiement",
+    "receivables.receivable.view": "Consulter les créances clients"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -648,8 +651,8 @@
     "city": "Ville",
     "country": "Pays",
     "notes": "Observations",
-    "creditLimit": "Plafond de crédit",
-    "creditLimitHelp": "Facultatif. Utilisé par le futur module de vente à crédit.",
+    "creditLimit": "Limite de crédit",
+    "creditLimitHelp": "Facultatif. Vide : aucune limite configurée ; 0 : aucune vente à crédit. Contrôlée à la validation des ventes.",
     "status": "Statut",
     "general": "Informations générales",
     "tracking": "Suivi",
@@ -710,7 +713,10 @@
       "UNPAID": "Non payée",
       "PARTIALLY_PAID": "Partiellement payée",
       "PAID": "Payée"
-    }
+    },
+    "payNow": "Encaisser un paiement maintenant",
+    "payNowHelp": "Montant encaissé à la validation ({{currency}}), au plus le total de la vente.",
+    "creditNotice": "Le montant non payé devient une créance du client, dans la limite de son crédit."
   },
   "filters": {
     "reset": "Réinitialiser",
@@ -860,5 +866,40 @@
       "BANK_TRANSFER": "Virement bancaire",
       "OTHER": "Autre"
     }
+  },
+  "receivables": {
+    "title": "Créances",
+    "subtitle": "Ventes validées restant à encaisser, calculées à partir des paiements effectués.",
+    "indicators": "Indicateurs des créances",
+    "totalDue": "Total dû",
+    "openCount": "Créances ouvertes",
+    "debtors": "Clients débiteurs",
+    "search": "Vente, client (code, nom, téléphone)…",
+    "customer": "Client",
+    "allCustomers": "Tous les clients",
+    "noCustomer": "Sans client",
+    "allStates": "Tous les états",
+    "state": "État",
+    "minAmountLabel": "Solde dû minimal",
+    "minAmount": "Solde minimal ({{currency}})",
+    "sale": "Vente",
+    "saleDate": "Date de vente",
+    "total": "Total",
+    "paid": "Payé",
+    "remaining": "Solde dû",
+    "empty": "Aucune créance ouverte : toutes les ventes validées sont payées.",
+    "account": "Compte client",
+    "creditSummary": "Crédit du client",
+    "creditLimit": "Limite de crédit",
+    "notConfigured": "Non configurée",
+    "notConfiguredHint": "Aucune limite : ventes à crédit non plafonnées.",
+    "exposure": "Exposition actuelle",
+    "openReceivables_one": "{{count}} créance ouverte",
+    "openReceivables_other": "{{count}} créances ouvertes",
+    "available": "Crédit disponible",
+    "overLimit": "L'exposition dépasse la limite de crédit : toute nouvelle vente à crédit sera refusée.",
+    "partialView": "Exposition limitée à vos sites : le crédit disponible (tous sites) n'est pas affiché.",
+    "customerReceivables": "Créances ouvertes",
+    "customerEmpty": "Aucune créance ouverte pour ce client."
   }
 }
