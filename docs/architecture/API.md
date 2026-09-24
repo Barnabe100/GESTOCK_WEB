@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4) et transferts (2.5)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) et inventaires (2.6)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -200,9 +200,39 @@ l'enregistrement), `sale_already_cancelled` (409), `sale_empty`, `duplicate_arti
 `site_mismatch` (403), `sale_not_found` (404, dont une vente d'un autre site ou d'une autre
 entreprise). Abonnement expiré : consultation seule (`403 subscription_restricted`).
 
+### Inventaires (module `inventory_count`) — Phase 2.6
+
+Monté sous `/inventories` (préfixe d'URL du module, ADR-0019). Règles et cycle de vie :
+[`INVENTORY.md`](INVENTORY.md) ; décisions : [ADR-0019](../adr/0019-inventaires.md).
+Permissions : `inventory_count.inventory.{view,create,update,count,validate,cancel}`.
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/inventories` | `view` | Inventaires des sites visibles ; `search` (numéro), `status`, `inventory_type`, `site_id`, `date_from`, `date_to` (création, fuseau du tenant) ; tri `number` (défaut décroissant), `created_at`, `status` ; `line_count`, `counted_count`, `variance_count` |
+| GET | `/inventories/candidates` | `create` ou `update` | Articles actifs proposables pour un site (`site_id`, `search`, `stocked_only`) avec leur stock courant |
+| POST | `/inventories` | `create` | `{site_id?, inventory_type: FULL\|TARGETED, article_ids?, comment?}` → brouillon `INV-000001` ; complet : articles actifs gérés sur le site (liste fixée par le serveur) |
+| GET | `/inventories/{id}` | `view` | Détail + `summary` (avant validation : sur le stock courant ; après : figé) |
+| PUT | `/inventories/{id}` | `update` | Brouillon : `{comment?, add_article_ids?, remove_article_ids?}` (ciblé seulement) |
+| GET | `/inventories/{id}/lines` | `view` | Lignes paginées : `search`, `state` (`counted`, `uncounted`, `surplus`, `shortage`, `no_variance`), tri `reference`, `designation`, `category`, `variance`, `counted_at` |
+| PATCH | `/inventories/{id}/lines` | `count` | Comptage par lot : `{counts: [{line_id, quantity_physical}]}` (≥ 0, 3 déc. ; `null` efface), 1 à 500 lignes → lignes mises à jour + résumé |
+| POST | `/inventories/{id}/start` | `count` | `DRAFT → COUNTING` (liste recalée pour un complet, stock théorique initial relevé) |
+| POST | `/inventories/{id}/complete-counting` | `count` | `COUNTING → READY_TO_VALIDATE` (toutes les lignes comptées) |
+| POST | `/inventories/{id}/reopen-counting` | `count` | `READY_TO_VALIDATE → COUNTING` |
+| POST | `/inventories/{id}/validate` | `validate` | Écarts sur le stock courant, mouvements `ADJUSTMENT` via `StockService` (tout ou rien) → `VALIDATED` |
+| POST | `/inventories/{id}/cancel` | `cancel` | `{reason}` (5–500 car.), avant validation seulement, sans effet sur le stock |
+
+Codes : `inventory_invalid_transition` (409, `status`, `action` — dont double validation et
+toute action sur un inventaire validé ou annulé), `article_in_open_inventory` (409, `articles`,
+`inventories`), `inventory_empty`, `inventory_not_fully_counted` (`remaining`),
+`inventory_full_articles_fixed`, `inventory_line_not_found`, `duplicate_count_line`,
+`duplicate_article_line`, `article_inactive`, `article_not_found`, `site_required` (422),
+`site_access_denied`, `site_mismatch` (403), `inventory_not_found` (404, dont un autre site ou
+une autre entreprise). Abonnement expiré : consultation seule (`403 subscription_restricted`).
+
 ## Routes des modules métier
 
-Les routeurs des modules métier seront montés sous `/api/v1/<code du module>` (points
-remplacés par `/`, ex. `/api/v1/restaurant/tables`) et **automatiquement protégés** par
+Les routeurs des modules métier sont montés sous `/api/v1/<code du module>` (points
+remplacés par `/`, ex. `/api/v1/restaurant/tables`) — ou sous le préfixe déclaré par le
+manifeste (`route_prefix`, ex. `/api/v1/inventories` pour `inventory_count`) — et **automatiquement protégés** par
 `require_module(code)` : un module non effectif pour le tenant répond
 `403 module_unavailable`, quel que soit le client.

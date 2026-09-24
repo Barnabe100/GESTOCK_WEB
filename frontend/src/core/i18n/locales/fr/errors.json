@@ -82,5 +82,13 @@
   "same_site_transfer": "Le site destination doit être différent du site source.",
   "site_permission_denied": "Vous n'avez pas cette permission sur l'autre site du transfert.",
   "transfer_already_cancelled": "Ce transfert est déjà annulé.",
-  "stock_transfer_not_found": "Transfert introuvable."
+  "stock_transfer_not_found": "Transfert introuvable.",
+  "inventory_not_found": "Inventaire introuvable.",
+  "inventory_invalid_transition": "Opération impossible dans l'état actuel de l'inventaire.",
+  "inventory_empty": "L'inventaire doit comporter au moins un article (aucun article géré sur ce site pour un inventaire complet).",
+  "inventory_not_fully_counted": "Toutes les lignes doivent être comptées ({{remaining}} restante(s)).",
+  "inventory_full_articles_fixed": "Un inventaire complet reprend tous les articles du site : la liste n'est pas modifiable.",
+  "inventory_line_not_found": "Ligne d'inventaire introuvable.",
+  "duplicate_count_line": "Une ligne apparaît plusieurs fois dans la saisie.",
+  "article_in_open_inventory": "Articles déjà présents dans un inventaire en cours sur ce site : {{articles}} ({{inventories}})."
 }

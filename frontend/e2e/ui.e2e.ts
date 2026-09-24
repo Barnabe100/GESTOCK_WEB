@@ -112,6 +112,10 @@ test.describe('Design System', () => {
     // Le niveau de stock reflète l'entrée.
     await menu.getByRole('link', { name: 'Stock par site', exact: true }).click();
     await page.getByLabel('Rechercher…').fill(reference);
-    await expect(page.getByRole('row').filter({ hasText: reference }).first()).toContainText('4 u');
+    // Une ligne par site (entreprise multi-sites, ordre non garanti) : celle du site choisi.
+    const levelRow = page.getByRole('row').filter({ hasText: reference });
+    const stocked =
+      sites.length > 1 ? levelRow.filter({ hasText: sites[0]?.name ?? '' }) : levelRow;
+    await expect(stocked.first()).toContainText('4 u');
   });
 });

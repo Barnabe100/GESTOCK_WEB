@@ -74,3 +74,18 @@ def test_resolve_dependencies_drops_modules_with_missing_dependencies() -> None:
     # La suppression se propage : sans catalog, stock, sales puis payments… tombent ;
     # customers (sans dépendance) reste.
     assert registry.resolve_dependencies(full - {"catalog"}) == {"customers"}
+
+
+def test_route_prefix_defaults_to_code_and_must_be_unique() -> None:
+    from fastapi import APIRouter
+
+    assert ModuleManifest(code="restaurant.menu").url_prefix == "/restaurant/menu"
+    inventory = get_registry().get("inventory_count")
+    assert inventory.url_prefix == "/inventories"  # code inchangé, URL lisible
+    with pytest.raises(RegistryError, match="préfixe"):
+        ModuleRegistry(
+            [
+                ModuleManifest(code="a", router=APIRouter(), route_prefix="/shared"),
+                ModuleManifest(code="b", router=APIRouter(), route_prefix="/shared"),
+            ]
+        )

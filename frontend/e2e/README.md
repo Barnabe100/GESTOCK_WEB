@@ -65,6 +65,10 @@ la suite peut être rejouée sur la même base.
   (stock 100 → 70 et 20 → 50, CMUP 1 400, mouvements, audit), stock insuffisant, plan STANDARD
   en consultation seule, rétrogradation ENTREPRISE → STANDARD (historique conservé et
   consultable, aucune opération), mobile.
+- `inventories.e2e.ts` (Phase 2.6) : prépare par l'API un article (20 u) ; parcours complet
+  (création ciblée, démarrage, saisie 17, vente de 2 pendant le comptage, fin du comptage,
+  validation confirmée → écart −1 sur le stock courant, stock 17, mouvement d'ajustement),
+  Vendeur en consultation seule, isolation site et entreprise, plan STANDARD, mobile.
 - `ui.e2e.ts` (Phase 2.5-B, Design System) : navigation groupée, tableau de bord (indicateurs,
   actions rapides), liste standard (recherche, « Aucun résultat », réinitialisation),
   désactivation confirmée (annuler puis confirmer), entrée de stock saisie et validée par

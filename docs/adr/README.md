@@ -25,5 +25,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0016](0016-recherche-trigrammes.md) | Recherche « contient » servie par des index trigrammes (pg_trgm) | Acceptée |
 | [0017](0017-ventes-prix-validation-annulation.md) | Ventes : prix du catalogue, validation et annulation | Acceptée |
 | [0018](0018-transferts-inter-sites.md) | Transferts inter-sites : atomicité, CMUP, annulation, sites, fonctionnalité de plan | Acceptée |
+| [0019](0019-inventaires.md) | Inventaires : écart sur le stock courant, ajustements via StockService, module `inventory_count` | Proposée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

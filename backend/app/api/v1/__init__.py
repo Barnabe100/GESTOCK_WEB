@@ -18,7 +18,7 @@ def mount_module_routers(api_router: APIRouter, registry: ModuleRegistry) -> Non
             continue
         api_router.include_router(
             manifest.router,
-            prefix="/" + manifest.code.replace(".", "/"),
+            prefix=manifest.url_prefix,
             dependencies=[Depends(require_module(manifest.code, registry))],
         )
 

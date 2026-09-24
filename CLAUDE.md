@@ -20,9 +20,11 @@ base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés
 2.5 (transferts inter-sites dans `stock`, fonctionnalité de plan `stock.transfers` :
 `StockService.transfer`, ADR-0018 ; une permission peut dépendre d'une fonctionnalité ;
 sans la fonctionnalité, l'historique reste consultable en lecture seule)
-et 2.5-B (Design System de l'interface, [`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md) ;
-aucune règle métier modifiée).
-Inventaires et autres modules métier (paiements, créances, POS, caisse, restaurant…) :
+2.5-B (Design System de l'interface, [`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md) ;
+aucune règle métier modifiée) et 2.6 (module `inventory_count`, API `/inventories` : écart =
+physique − stock courant relu à la validation, ajustements `ADJUSTMENT` via `StockService`,
+[`INVENTORY.md`](docs/architecture/INVENTORY.md), ADR-0019).
+Autres modules métier (paiements, créances, POS, caisse, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

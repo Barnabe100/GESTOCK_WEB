@@ -2,6 +2,7 @@ import { Column } from 'primereact/column';
 import { Dropdown } from 'primereact/dropdown';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatCost, formatQuantity } from '@/shared/lib/decimal';
@@ -38,7 +39,9 @@ export default function MovementsPage() {
     sortField: 'occurred_at',
     sortOrder: -1,
   });
-  const [search, setSearch] = useState('');
+  // Lien direct depuis un document (ex. inventaire : ?search=INV-000001).
+  const [params] = useSearchParams();
+  const [search, setSearch] = useState(() => params.get('search') ?? '');
   const [type, setType] = useState<MovementType | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');

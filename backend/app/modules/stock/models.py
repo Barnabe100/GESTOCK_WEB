@@ -85,7 +85,7 @@ class MovementType(StrEnum):
     TRANSFER_OUT = "TRANSFER_OUT"  # transfert inter-sites : sortie du site source (2.5)
     TRANSFER_IN = "TRANSFER_IN"  # transfert inter-sites : entrée sur le site destination (2.5)
     SALE = "SALE"  # vente validée (2.4)
-    # Réservé à l'inventaire (sous-phase suivante).
+    # Ajustement d'inventaire (2.6) : + excédent, − manquant, au CMUP courant (sans recalcul).
     ADJUSTMENT = "ADJUSTMENT"
 
 

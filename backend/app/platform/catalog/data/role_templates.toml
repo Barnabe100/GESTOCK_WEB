@@ -15,7 +15,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue, fournisseurs, clients, ventes, stock (entrées, sorties, transferts, seuils) et alertes, sans annulation ni gestion des motifs de sortie."
+description = "Catalogue, fournisseurs, clients, ventes, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -28,11 +28,12 @@ permissions = [
   "stock.transfer.view", "stock.transfer.create", "stock.transfer.update",
   "stock.transfer.validate",
   "alerts.*",
+  "inventory_count.*",
 ]
 
 [roles.seller]
 name = "Vendeur"
-description = "Vente comptant (création, modification et validation des ventes), consultation des articles, du stock, des alertes et des clients ; sans annulation."
+description = "Vente comptant (création, modification et validation des ventes), consultation des articles, du stock, des alertes, des inventaires et des clients ; sans annulation."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
@@ -40,6 +41,7 @@ permissions = [
   "sales.sale.view", "sales.sale.create", "sales.sale.update", "sales.sale.validate",
   "stock.level.view",
   "alerts.stock.view",
+  "inventory_count.inventory.view",
 ]
 
 [roles.viewer]

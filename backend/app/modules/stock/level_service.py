@@ -66,6 +66,20 @@ class LevelRow:
     state: LevelState
 
 
+def levels_view() -> Any:
+    """Vue en lecture des niveaux de stock (quantité, CMUP par site et article) pour les
+    jointures d'autres modules (inventaires). Filtrage par tenant : RLS et condition de
+    l'appelant. Aucune écriture : seul ``StockService`` modifie les niveaux."""
+    level = StockLevel.__table__
+    return select(
+        level.c.tenant_id,
+        level.c.site_id,
+        level.c.article_id,
+        level.c.quantity,
+        level.c.average_cost,
+    ).subquery("stock_levels_view")
+
+
 def _levels_query(site_ids: set[uuid.UUID], tenant_id: uuid.UUID) -> tuple[Any, dict[str, Any]]:
     articles = articles_view()
     sites = select(Site.id, Site.name).where(Site.id.in_(site_ids)).subquery("s")

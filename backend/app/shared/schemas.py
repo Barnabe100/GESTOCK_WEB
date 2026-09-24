@@ -37,6 +37,12 @@ PositiveQuantity = Annotated[
     Field(gt=0, max_digits=18, decimal_places=3),
     PlainSerializer(lambda v: format(v, "f"), return_type=str, when_used="json"),
 ]
+# Montant signé (ajustements d'inventaire : + excédent, − manquant).
+SignedMoney = Annotated[
+    Decimal,
+    Field(max_digits=18, decimal_places=2),
+    PlainSerializer(lambda v: format(v, "f"), return_type=str, when_used="json"),
+]
 UnitCost = Annotated[
     Decimal,
     Field(ge=0, max_digits=18, decimal_places=4),

@@ -102,6 +102,17 @@ Numéro : séquence `stock_transfer`. Le stock n'est modifié que par `StockServ
 (mouvements `TRANSFER_OUT` / `TRANSFER_IN`, `source_type = 'stock_transfer'`). Détails :
 [`CATALOGUE_STOCK.md` §8](CATALOGUE_STOCK.md#8-transferts-inter-sites-phase-25).
 
+### Inventaires (Phase 2.6, isolés par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `inventories` | `tenant_id`, `number` (`INV-000001`), `site_id`, `status` (`DRAFT` \| `COUNTING` \| `READY_TO_VALIDATE` \| `VALIDATED` \| `CANCELLED`), `inventory_type` (`FULL` \| `TARGETED`), `comment`, `created_by`, `started_at`/`_by`, `completed_at`/`_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, id)` ; FK composite vers `sites` ; dates obligatoires selon le statut ; annulé ⇒ motif ; index `(tenant_id, created_at)` ; jamais supprimé (pas de `DELETE` pour le rôle applicatif) |
+| `inventory_lines` | `tenant_id`, `inventory_id`, `article_id`, `stock_theoretical_initial`, `stock_theoretical_at_validation`, `quantity_physical`, `quantity_variance` (`NUMERIC(18,3)`), `unit_cost` (`NUMERIC(18,4)`, CMUP figé), `adjustment_value` (`NUMERIC(18,2)`, signé), `counted_at`/`_by` | FK composites vers l'inventaire (`ON DELETE CASCADE`) et l'article ; `UNIQUE (inventory_id, article_id)` ; quantités ≥ 0 ; `quantity_variance = quantity_physical − stock_theoretical_at_validation` ; compté ⇒ `counted_at` |
+
+Numéro : séquence `inventory`. Le stock n'est modifié qu'à la validation, par `StockService`
+(mouvements `ADJUSTMENT`, `source_type = 'inventory_count'`). Détails :
+[`INVENTORY.md`](INVENTORY.md).
+
 ### Clients (Phase 2.3, isolés par RLS)
 
 | Table | Colonnes principales | Contraintes notables |

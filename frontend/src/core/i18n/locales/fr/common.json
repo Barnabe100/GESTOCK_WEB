@@ -82,7 +82,8 @@
     "exitReasons": "Motifs de sortie",
     "stockAlerts": "Alertes de stock",
     "customers": "$t(terminology:customers.items)",
-    "sales": "$t(terminology:sales.sales)"
+    "sales": "$t(terminology:sales.sales)",
+    "inventories": "Inventaires"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -324,7 +325,13 @@
     "stock.transfer.create": "Créer un transfert (brouillon)",
     "stock.transfer.update": "Modifier un transfert en brouillon",
     "stock.transfer.validate": "Valider un transfert (mouvement de stock entre sites)",
-    "stock.transfer.cancel": "Annuler un transfert"
+    "stock.transfer.cancel": "Annuler un transfert",
+    "inventory_count.inventory.view": "Consulter les inventaires",
+    "inventory_count.inventory.create": "Créer un inventaire",
+    "inventory_count.inventory.update": "Modifier un inventaire en préparation",
+    "inventory_count.inventory.count": "Saisir le comptage (démarrer, terminer, reprendre)",
+    "inventory_count.inventory.validate": "Valider un inventaire (ajustement du stock)",
+    "inventory_count.inventory.cancel": "Annuler un inventaire non validé"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -701,5 +708,104 @@
   },
   "table": {
     "pageReport": "{first}–{last} sur {totalRecords}"
+  },
+  "inventories": {
+    "title": "Inventaires",
+    "subtitle": "Comptage physique du stock d'un site ; les écarts sont appliqués au stock à la validation.",
+    "one": "Inventaire",
+    "new": "Nouvel inventaire",
+    "newSubtitle": "Choisissez le site et les articles à compter. Le stock ne change qu'à la validation.",
+    "search": "N° d'inventaire…",
+    "empty": "Aucun inventaire pour le moment.",
+    "open": "Ouvrir",
+    "count": "Compter",
+    "type": "Type d'inventaire",
+    "allTypes": "Tous les types",
+    "types": {
+      "FULL": "Complet",
+      "TARGETED": "Ciblé"
+    },
+    "typeHelp": {
+      "FULL": "tous les articles actifs gérés sur le site",
+      "TARGETED": "articles choisis"
+    },
+    "statuses": {
+      "DRAFT": "Brouillon",
+      "COUNTING": "Comptage en cours",
+      "READY_TO_VALIDATE": "À valider",
+      "VALIDATED": "Validé",
+      "CANCELLED": "Annulé"
+    },
+    "articles": "Articles",
+    "variances": "Écarts",
+    "addArticle": "Ajouter un article",
+    "articleSearch": "Référence, désignation ou code-barres…",
+    "removeArticle": "Retirer l'article",
+    "articlesRequired": "Choisissez au moins un article",
+    "noArticleSelected": "Aucun article choisi.",
+    "targetedHelp": "Recherchez les articles à compter ; le stock indiqué est celui du site.",
+    "fullPreview": "{{count}} article(s) actif(s) géré(s) sur ce site seront comptés (liste recalée au démarrage du comptage).",
+    "stockShort": "stock : {{quantity}} {{unit}}",
+    "createDraft": "Créer l'inventaire",
+    "created": "Inventaire {{number}} créé",
+    "stockTheoretical": "Stock théorique",
+    "stockAtValidation": "Stock à la validation",
+    "physical": "Quantité physique",
+    "physicalFor": "Quantité physique de {{reference}}",
+    "currentStock": "Stock actuel : {{quantity}}",
+    "appliedVariance": "Écart appliqué à la validation : {{quantity}}",
+    "adjustmentValue": "Valeur de l'ajustement",
+    "variance": {
+      "title": "Écart",
+      "surplus": "Excédent",
+      "shortage": "Manquant",
+      "none": "Aucun écart"
+    },
+    "lines": "Lignes de l'inventaire",
+    "noLines": "Aucun article dans cet inventaire.",
+    "lineSearch": "Référence ou désignation…",
+    "lineState": "Filtrer les lignes",
+    "lineStates": {
+      "all": "Toutes les lignes",
+      "counted": "Comptées",
+      "uncounted": "Non comptées",
+      "surplus": "Excédents",
+      "shortage": "Manquants",
+      "no_variance": "Sans écart"
+    },
+    "saving": "Enregistrement…",
+    "start": "Démarrer le comptage",
+    "completeCounting": "Terminer le comptage",
+    "completeHint": "Toutes les lignes doivent être comptées pour terminer le comptage.",
+    "reopenCounting": "Reprendre le comptage",
+    "validate": "Valider l'inventaire",
+    "validateTitle": "Valider l'inventaire {{number}}",
+    "confirmValidate": "Articles : {{lines}} · Comptés : {{counted}} · Excédents : {{surplus}} · Manquants : {{shortage}} · Sans écart : {{none}}. La validation applique les ajustements au stock : chaque écart est recalculé sur le stock courant du site (mouvements survenus pendant le comptage inclus). L'inventaire ne sera plus modifiable.",
+    "validated": "Inventaire {{number}} validé : stock ajusté",
+    "cancel": "Annuler l'inventaire",
+    "cancelInfo": "L'inventaire sera abandonné sans aucun effet sur le stock.",
+    "cancelled": "Inventaire {{number}} annulé",
+    "progress": "Articles comptés : {{counted}} / {{total}}",
+    "draftInfo": {
+      "FULL": "Brouillon : au démarrage du comptage, la liste est recalée sur les articles gérés sur le site et le stock théorique est relevé.",
+      "TARGETED": "Brouillon : ajoutez ou retirez des articles, puis démarrez le comptage. Le stock théorique est relevé au démarrage."
+    },
+    "readyInfo": "Comptage terminé. Vérifiez les écarts : ils seront recalculés sur le stock courant à la validation. Vous pouvez encore reprendre le comptage.",
+    "validatedInfo": "Inventaire validé : lecture seule. Une erreur se corrige par un nouvel inventaire.",
+    "seeMovements": "Voir les mouvements d'ajustement",
+    "cancelledInfo": "Inventaire annulé : lecture seule, aucun effet sur le stock.",
+    "createdAt": "Créé le",
+    "startedAt": "Comptage démarré le",
+    "completedAt": "Comptage terminé le",
+    "validatedAt": "Validé le",
+    "cancelledAt": "Annulé le",
+    "summary": "Résumé des écarts",
+    "summaryLines": "Articles",
+    "summaryCounted": "Comptés",
+    "summarySurplus": "Excédents",
+    "summaryShortage": "Manquants",
+    "summaryNoVariance": "Sans écart",
+    "summaryProjected": "Ajustement net si l'inventaire était validé maintenant (stock et CMUP courants) : {{value}}.",
+    "summaryFinal": "Ajustement net appliqué au stock (valorisé au CMUP) : {{value}}."
   }
 }

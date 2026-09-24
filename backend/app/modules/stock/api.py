@@ -7,6 +7,7 @@ from app.modules.stock.level_service import (
     LevelState,
     StateFilter,
     count_alerts,
+    levels_view,
     list_levels,
 )
 from app.modules.stock.models import MovementType
@@ -41,5 +42,6 @@ __all__ = [
     "LevelState",
     "StateFilter",
     "count_alerts",
+    "levels_view",
     "list_levels",
 ]

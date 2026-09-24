@@ -70,9 +70,16 @@ class ModuleManifest:
     tenant_setup: "Callable[[Session, uuid.UUID], None] | None" = field(
         default=None, compare=False, hash=False
     )
-    # Routeur HTTP du module (modules métier). Monté sous /api/v1/<code> et protégé par
+    # Routeur HTTP du module (modules métier). Monté sous /api/v1<url_prefix> et protégé par
     # require_module(code) : un module inactif pour le tenant répond 403 côté serveur.
     router: "APIRouter | None" = field(default=None, compare=False, hash=False)
+    # Préfixe d'URL du routeur (ex. ``/inventories``) ; par défaut dérivé du code du module
+    # (``/sales``, ``/restaurant/menu``). Ne change ni le code du module ni ses permissions.
+    route_prefix: str | None = None
+
+    @property
+    def url_prefix(self) -> str:
+        return self.route_prefix or "/" + self.code.replace(".", "/")
 
 
 class RegistryError(Exception):
@@ -117,6 +124,14 @@ class ModuleRegistry:
                     raise RegistryError(
                         f"{perm.code} dépend d'une fonctionnalité non déclarée : {perm.feature}"
                     )
+        prefixes: dict[str, str] = {}
+        for manifest in self._modules.values():
+            if manifest.router is None:
+                continue
+            prefix = manifest.url_prefix
+            if not prefix.startswith("/") or prefix in prefixes:
+                raise RegistryError(f"préfixe d'URL invalide ou en double : {prefix}")
+            prefixes[prefix] = manifest.code
         self._check_cycles()
 
     def _check_cycles(self) -> None:
