@@ -51,5 +51,21 @@
   "invalid_stock_thresholds": "Le stock maximum doit être supérieur ou égal au stock minimum.",
   "invalid_sort": "Tri non disponible.",
   "role_template_exists": "Ce rôle existe déjà.",
-  "role_template_not_found": "Modèle de rôle introuvable."
+  "role_template_not_found": "Modèle de rôle introuvable.",
+  "insufficient_stock": "Stock insuffisant : {{details}}.",
+  "document_not_draft": "Seul un brouillon peut être modifié ou validé.",
+  "document_not_validated": "Seul un document validé peut être annulé.",
+  "document_empty": "Le document ne contient aucune ligne.",
+  "duplicate_article_line": "Un même article ne peut figurer qu'une fois dans le document.",
+  "article_inactive": "Un article du document est inactif.",
+  "future_operation_date": "La date ne peut pas être postérieure à aujourd'hui.",
+  "stock_entry_not_found": "Entrée de stock introuvable.",
+  "stock_exit_not_found": "Sortie de stock introuvable.",
+  "exit_reason_not_found": "Motif de sortie introuvable.",
+  "exit_reason_inactive": "Le motif de sortie est inactif.",
+  "exit_reason_taken": "Un motif porte déjà ce libellé.",
+  "system_exit_reason": "Les motifs système ne sont pas modifiables (activation / désactivation seulement).",
+  "supplier_required": "Le fournisseur est obligatoire pour un achat.",
+  "site_required": "Choisissez un site.",
+  "site_mismatch": "Ce document ne correspond pas au site sélectionné."
 }

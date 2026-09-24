@@ -272,11 +272,14 @@ h1 {
 
 .sm-dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.5rem;
 }
 
 .sm-fieldset {
+  /* Un fieldset prend par défaut la largeur minimale de son contenu : débordement mobile. */
+  min-width: 0;
   border: 1px solid var(--surface-border, #e5e7eb);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
@@ -326,5 +329,77 @@ h1 {
 
   .sm-content {
     padding: 1rem;
+  }
+}
+
+/* --- Stock ------------------------------------------------------------------------------- */
+
+.sm-clickable {
+  cursor: pointer;
+}
+
+.sm-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.sm-details dt {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary, #6b7280);
+}
+
+.sm-details dd {
+  margin: 0.15rem 0 0;
+}
+
+.sm-line {
+  display: grid;
+  grid-template-columns: minmax(14rem, 3fr) minmax(7rem, 1fr) minmax(7rem, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.sm-line > * {
+  min-width: 0;
+}
+
+.sm-article-picker {
+  display: flex;
+  width: 100%;
+}
+
+.sm-article-picker input {
+  flex: 1;
+  min-width: 0;
+}
+
+.sm-total {
+  text-align: right;
+  margin: 0.75rem 0;
+}
+
+.sm-kpi {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.sm-kpi-danger {
+  color: var(--red-600, #dc2626);
+}
+
+.sm-kpi-warning {
+  color: var(--orange-600, #ea580c);
+}
+
+@media (max-width: 800px) {
+  .sm-line {
+    grid-template-columns: 1fr 1fr auto;
+  }
+
+  .sm-line > :first-child {
+    grid-column: 1 / -1;
   }
 }

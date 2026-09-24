@@ -12,7 +12,7 @@ optional_modules = ["restaurant.qr"]
 
 navigation = [
   "dashboard", "restaurant.tables", "restaurant.orders", "restaurant.kitchen", "pos",
-  "restaurant.menu", "catalog", "stock", "restaurant.recipes", "customers", "reports",
+  "restaurant.menu", "catalog", "stock", "alerts", "restaurant.recipes", "customers", "reports",
   "suppliers", "inventory_count", "organization", "users", "subscription", "audit",
 ]
 

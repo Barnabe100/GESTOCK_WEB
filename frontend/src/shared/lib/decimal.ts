@@ -34,3 +34,18 @@ export function formatQuantity(value: string | null | undefined, locale = 'fr'):
   if (value === null || value === undefined || value === '') return '';
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(Number(value));
 }
+
+/** Coût unitaire / CMUP (4 décimales en base) : jusqu'à 4 décimales, jamais arrondi à 2. */
+export function formatCost(
+  value: string | null | undefined,
+  currency: string,
+  locale = 'fr',
+): string {
+  if (value === null || value === undefined || value === '') return '';
+  const hasDecimals = /\.\d*[1-9]/.test(value);
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    ...(hasDecimals ? { minimumFractionDigits: 2, maximumFractionDigits: 4 } : {}),
+  }).format(Number(value));
+}

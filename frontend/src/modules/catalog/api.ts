@@ -51,11 +51,12 @@ export const catalogKeys = {
   articles: ['catalog', 'articles'] as const,
 };
 
-export function useCategories(query: string) {
+export function useCategories(query: string, enabled = true) {
   return useQuery({
     queryKey: [...catalogKeys.categories, query],
     queryFn: ({ signal }) => api.get<Page<Category>>(`/catalog/categories?${query}`, signal),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
