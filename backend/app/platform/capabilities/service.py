@@ -82,6 +82,21 @@ class CapabilityService:
             granted |= effective_role_permissions(role, self.registry)
         return granted
 
+    def held_permissions(
+        self,
+        membership: TenantMembership,
+        site_id: uuid.UUID | None,
+        modules: set[str],
+    ) -> set[str]:
+        """Permissions détenues sur une portée (tout le tenant si ``site_id`` est nul), limitées
+        aux modules effectifs, avant filtrage par le statut d'abonnement. Sert à la fois au
+        calcul des capacités et au contrôle anti-escalade."""
+        module_permissions = self.registry.permissions_of(modules)
+        granted = self.granted_permissions(membership, site_id)
+        if granted is None:
+            return set(module_permissions)
+        return {code for code in granted if code in module_permissions}
+
     def accessible_site_ids(self, membership: TenantMembership) -> frozenset[uuid.UUID]:
         active = set(self.session.scalars(select(Site.id).where(Site.is_active.is_(True))))
         if membership.is_owner or membership.all_sites:
@@ -109,12 +124,7 @@ class CapabilityService:
 
         modules = self.effective_modules(profile, plan)
         module_permissions = self.registry.permissions_of(modules)
-        granted = self.granted_permissions(membership, site_id)
-        candidates = (
-            set(module_permissions)
-            if granted is None
-            else {code for code in granted if code in module_permissions}
-        )
+        candidates = self.held_permissions(membership, site_id, modules)
         permitted = {c for c in candidates if module_permissions[c].access.value in access}
 
         navigation = tuple(code for code in profile.navigation if code in modules)

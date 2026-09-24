@@ -35,6 +35,7 @@ from app.platform.access.schemas import (
     RoleUpdate,
 )
 from app.platform.audit.service import record_audit
+from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.loader import role_templates
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
@@ -77,17 +78,48 @@ class _AccessBase:
         self.db = db
         self.ctx = ctx
         self.registry = registry
+        self._held_cache: dict[uuid.UUID | None, set[str]] = {}
 
-    def _ensure_grantable(self, permission_codes: Iterable[str]) -> None:
-        """Anti-escalade : un non-propriétaire ne peut accorder que ce qu'il détient."""
+    # --- Anti-escalade (ADR-0015) ------------------------------------------------------------
+    # Un non-propriétaire n'accorde que ce qu'il détient **sur la même portée** : un rôle limité
+    # à un site ne donne aucun droit d'accorder quoi que ce soit ailleurs, ni sur tout le tenant.
+
+    def _held(self, site_id: uuid.UUID | None) -> set[str]:
+        if site_id not in self._held_cache:
+            self._held_cache[site_id] = CapabilityService(self.db, self.registry).held_permissions(
+                self.ctx.membership, site_id, set(self.ctx.capabilities.modules)
+            )
+        return self._held_cache[site_id]
+
+    def _ensure_grantable(
+        self, permission_codes: Iterable[str], site_id: uuid.UUID | None = None
+    ) -> None:
+        """Permissions accordées sur tout le tenant (``site_id`` nul) ou sur un site."""
         if self.ctx.membership.is_owner:
             return
-        excess = sorted(set(permission_codes) - self.ctx.capabilities.permissions)
+        if site_id is not None:
+            self._ensure_sites_in_scope({site_id}, all_sites=False)
+        excess = sorted(set(permission_codes) - self._held(site_id))
         if excess:
             raise ForbiddenError(
                 "Vous ne pouvez pas accorder des permissions que vous ne détenez pas",
                 code="permission_escalation",
                 extra={"permissions": excess},
+            )
+
+    def _ensure_sites_in_scope(self, site_ids: Iterable[uuid.UUID], *, all_sites: bool) -> None:
+        """Accès aux sites : jamais au-delà des sites de l'acteur (ni « tous les sites » s'il ne
+        l'a pas lui-même)."""
+        membership = self.ctx.membership
+        if membership.is_owner or membership.all_sites:
+            return
+        own = {link.site_id for link in membership.site_links}
+        outside = sorted(str(s) for s in set(site_ids) - own)
+        if all_sites or outside:
+            raise ForbiddenError(
+                "Vous ne pouvez pas accorder l'accès à des sites hors de votre périmètre",
+                code="site_escalation",
+                extra={"site_ids": outside, "all_sites": all_sites},
             )
 
     def _audit(
@@ -254,14 +286,15 @@ class MemberService(_AccessBase):
                 raise BusinessRuleError(
                     "Un rôle limité à un site exige l'accès à ce site", code="site_not_assigned"
                 )
+        self._ensure_sites_in_scope(site_ids, all_sites=all_sites)
         role_map = {r.id: r for r in self.db.scalars(select(Role))}  # RLS
-        granted: set[str] = set()
         for assignment in roles:
             role = role_map.get(assignment.role_id)
             if role is None:
                 raise BusinessRuleError("Rôle inconnu", code="role_not_found")
-            granted |= effective_role_permissions(role, self.registry)
-        self._ensure_grantable(granted)
+            self._ensure_grantable(
+                effective_role_permissions(role, self.registry), assignment.site_id
+            )
 
     def _apply_access(
         self, membership: TenantMembership, roles: list[RoleAssignment], site_ids: list[uuid.UUID]
@@ -360,7 +393,10 @@ class MemberService(_AccessBase):
             else [s.site_id for s in membership.site_links]
         )
         all_sites = data.all_sites if data.all_sites is not None else membership.all_sites
-        self._validate_access(current_roles, [], True)
+        # … et que son accès actuel (rôles, sites) soit dans le périmètre de l'acteur.
+        self._validate_access(
+            current_roles, [s.site_id for s in membership.site_links], membership.all_sites
+        )
         self._validate_access(roles, site_ids, all_sites)
         if data.status == MembershipStatus.ACTIVE and membership.status != MembershipStatus.ACTIVE:
             self._check_user_limit()
