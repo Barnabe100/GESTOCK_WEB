@@ -14,8 +14,9 @@ utilisateur.
 > **Phase 2 en cours** : catalogue (catégories, articles) et fournisseurs (2.1) ; stock par
 > site, entrées, sorties, journal des mouvements, seuils par site et alertes (2.2).
 > RBAC consolidé : rôles de base (Administrateur, Gestionnaire, Vendeur, Consultant) et
-> rôles personnalisés par entreprise (ADR-0015). Référentiel clients (2.3).
-> Transferts, inventaires, ventes, créances, caisse, POS et restaurant ne sont pas commencés.
+> rôles personnalisés par entreprise (ADR-0015). Référentiel clients (2.3). Ventes simples au
+> comptant (2.4) : brouillon, validation par le moteur de stock, annulation.
+> Transferts, inventaires, paiements, créances, caisse, POS et restaurant ne sont pas commencés.
 
 ## Documentation
 
@@ -24,6 +25,7 @@ utilisateur.
 - [API REST](docs/architecture/API.md)
 - [Catalogue et stock : règles métier](docs/architecture/CATALOGUE_STOCK.md)
 - [Clients : règles métier](docs/architecture/CLIENTS.md)
+- [Ventes simples : cycle de vie et règles](docs/architecture/SALES.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)
 

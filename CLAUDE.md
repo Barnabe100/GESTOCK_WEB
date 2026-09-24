@@ -14,9 +14,11 @@ et [`docs/adr/`](docs/adr/README.md).
 `suppliers`), 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
 journal des mouvements, seuils par site — et `alerts`), consolidation du RBAC (rôles de
 base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015)
-et 2.3 (module `customers` : référentiel clients, [`CLIENTS.md`](docs/architecture/CLIENTS.md)).
+2.3 (module `customers` : référentiel clients, [`CLIENTS.md`](docs/architecture/CLIENTS.md))
+et 2.4 (module `sales` : ventes simples au comptant, validation via `StockService`,
+[`SALES.md`](docs/architecture/SALES.md), ADR-0017 ; prix toujours lus dans le catalogue).
 Transferts (fonctionnalité de plan `stock.transfers`, préparée), inventaires et autres modules
-métier (ventes, créances, POS, caisse, restaurant…) : seulement déclarés `planned`
+métier (paiements, créances, POS, caisse, restaurant…) : seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.
 

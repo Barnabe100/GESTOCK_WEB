@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2) et clients (2.3)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3) et ventes (2.4)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -104,7 +104,7 @@ introuvable (`404`) ; d'un autre site que le site sélectionné, refusé (`403 s
 |---|---|---|---|
 | GET | `/stock/levels` | `stock.level.view` | Articles × sites : `quantity`, `average_cost` (CMUP, 4 déc.), `stock_value`, seuils effectifs `min_stock`/`max_stock` (surcharge du site sinon article), `min_override`/`max_override`, `state` = `ok` \| `low` \| `out` \| `not_stocked`. Filtres `site_id`, `category_id`, `search`, `state` (`all`, `alerts`, `out`, `low`, `ok`, `not_stocked`), `include_inactive` ; tri `reference`, `designation`, `category`, `quantity`, `site` |
 | PUT | `/stock/levels/{site_id}/{article_id}/thresholds` | `stock.threshold.manage` | Surcharges du site `{min_stock, max_stock}` (`null` = seuil de l'article) ; audité ; ne modifie ni quantité ni CMUP |
-| GET | `/stock/movements` | `stock.movement.view` | Journal : filtres `site_id`, `article_id`, `movement_type`, `user_id`, `date_from`, `date_to` (jour du fuseau du tenant), `search` (référence, désignation, numéro de document) ; tri `occurred_at` (défaut décroissant) |
+| GET | `/stock/movements` | `stock.movement.view` | Journal : filtres `site_id`, `article_id`, `movement_type` (`ENTRY`, `EXIT`, `SALE`, `CANCELLATION`…), `user_id`, `date_from`, `date_to` (jour du fuseau du tenant), `search` (référence, désignation, numéro de document ou de vente — `source_number`) ; tri `occurred_at` (défaut décroissant) |
 | GET | `/stock/exit-reasons` | `stock.reason.view` ou `stock.exit.create` / `.update` | Motifs (filtre `status`, tri `label`) |
 | POST · PATCH | `/stock/exit-reasons` · `/{id}` | `stock.reason.manage` | Créer · renommer (motif système : `403 system_exit_reason`) |
 | POST | `/stock/exit-reasons/{id}/activate` · `/deactivate` | `stock.reason.manage` | Statut (y compris motifs système) |
@@ -147,6 +147,33 @@ Corps : `customer_type`, `name` (obligatoires à la création), `legal_name`, `t
 décimale, 2 décimales, ≥ 0). Codes : `validation_error` (422 ; 400 si un champ obligatoire
 est vidé en modification), `customer_not_found` (404, dont un client d'une autre entreprise),
 `invalid_sort` (400).
+
+### Ventes (module `sales`) — Phase 2.4
+
+Mêmes conventions de liste et de sites que les documents de stock. Règles métier et cycle de
+vie : [`SALES.md`](SALES.md) ; décisions : [ADR-0017](../adr/0017-ventes-prix-validation-annulation.md).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/sales` | `sales.sale.view` | Liste des ventes des sites accessibles ; `search` (numéro, code / nom / téléphone du client), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `site_id`, `customer_id`, `date_from`, `date_to` ; tri `number` (défaut décroissant), `sale_date`, `total`, `created_at` |
+| POST | `/sales` | `sales.sale.create` | Créer un **brouillon** (numéro `VTE-000001` attribué, prix copiés du catalogue, totaux calculés) |
+| GET | `/sales/{id}` | `sales.sale.view` | Détail avec lignes |
+| PUT | `/sales/{id}` | `sales.sale.update` | Remplacer date, client, observations et lignes d'un brouillon (prix relus) ; site non modifiable |
+| POST | `/sales/{id}/validate` | `sales.sale.validate` | Mouvements `SALE` via `StockService` (tout ou rien) ; statut `VALIDATED` |
+| POST | `/sales/{id}/cancel` | `sales.sale.cancel` | `{reason}` (5–500 car.) ; brouillon : abandon ; validée : mouvements `CANCELLATION` (remise en stock, CMUP inchangé) |
+
+Corps : `{site_id?, sale_date?, customer_id?, notes?, lines: [{article_id, quantity}]}` —
+**aucun prix ni total** : `unit_price` provient de `catalog_articles.sale_price`,
+`line_total`, `subtotal` et `total` sont calculés par le serveur (chaînes décimales en
+réponse). 1 à 500 lignes, quantité `> 0` (3 déc.), un article une seule fois.
+Codes : `insufficient_stock` (422, détail par article), `sale_not_draft` (409, modification
+ou validation d'une vente non brouillon — double validation comprise),
+`sale_prices_changed` (409, `articles` : références dont le prix catalogue a changé depuis
+l'enregistrement), `sale_already_cancelled` (409), `sale_empty`, `duplicate_article_line`,
+`article_inactive`, `article_not_found`, `customer_inactive` (`customer_code`),
+`customer_not_found`, `future_operation_date`, `site_required` (422), `site_access_denied`,
+`site_mismatch` (403), `sale_not_found` (404, dont une vente d'un autre site ou d'une autre
+entreprise). Abonnement expiré : consultation seule (`403 subscription_restricted`).
 
 ## Routes des modules métier
 

@@ -1,7 +1,8 @@
 # Modèle de données
 
 Migrations : `0001` socle plateforme · `0002` fonctionnalités de plan · `0003` catalogue et
-fournisseurs (`backend/migrations/versions/`).
+fournisseurs · `0004` stock · `0005` rôles (RBAC) · `0006` clients · `0007` ventes
+(`backend/migrations/versions/`).
 Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` (UTC).
 
 ## Vue d'ensemble
@@ -78,7 +79,7 @@ applicatif : `SELECT, INSERT, UPDATE` (jamais de suppression physique).
 |---|---|---|
 | `document_sequences` | `tenant_id`, `sequence_key`, `next_value` | PK `(tenant_id, sequence_key)` ; incrément atomique `INSERT … ON CONFLICT DO UPDATE … RETURNING` (plateforme, réutilisable) |
 | `stock_levels` | `tenant_id`, `site_id`, `article_id`, `quantity` (`NUMERIC(18,3)`), `average_cost` (CMUP, `NUMERIC(18,4)`), `min_stock`, `max_stock` (surcharges du site, nullables) | unique `(tenant_id, site_id, article_id)` ; `CHECK quantity ≥ 0`, `average_cost ≥ 0`, `max ≥ min` ; modifié uniquement par `StockService` (quantité, CMUP) et le service des seuils |
-| `stock_movements` | `tenant_id`, `site_id`, `article_id`, `movement_type`, `quantity` (signée), `quantity_before/after`, `unit_cost`, `average_cost_before/after`, `source_type`, `source_id`, `source_line_id`, `origin_movement_id`, `user_id`, `comment`, `occurred_at` | **append-only** ; `CHECK quantity ≠ 0`, `quantity_after = quantity_before + quantity`, `quantity_after ≥ 0` ; unique `(tenant_id, source_line_id, movement_type)` (anti double application) ; source polymorphe sans FK (ADR-0014) |
+| `stock_movements` | `tenant_id`, `site_id`, `article_id`, `movement_type`, `quantity` (signée), `quantity_before/after`, `unit_cost`, `average_cost_before/after`, `source_type`, `source_id`, `source_line_id`, `source_number` (numéro lisible du document source, Phase 2.4, nul pour les mouvements antérieurs), `origin_movement_id`, `user_id`, `comment`, `occurred_at` | **append-only** ; `CHECK quantity ≠ 0`, `quantity_after = quantity_before + quantity`, `quantity_after ≥ 0` ; unique `(tenant_id, source_line_id, movement_type)` (anti double application) ; source polymorphe sans FK (ADR-0014) |
 | `stock_exit_reasons` | `tenant_id`, `code` (motifs système), `label`, `description`, `is_system`, `is_active` | unique `(tenant_id, lower(label))` et `(tenant_id, code)` |
 | `stock_entries` | `tenant_id`, `number`, `site_id`, `kind` (`PURCHASE` \| `INITIAL_STOCK`), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `operation_date`, `supplier_id`, `document_reference`, `comment`, auteurs et dates de création / validation / annulation, `cancellation_reason` | numéro unique par tenant ; `CHECK` fournisseur obligatoire pour un achat ; motif obligatoire si annulée |
 | `stock_entry_lines` | `tenant_id`, `entry_id`, `line_no`, `article_id`, `quantity` (> 0), `unit_cost` (`NUMERIC(18,2)`), `amount` | article unique par document |
@@ -98,6 +99,17 @@ Les motifs système sont créés au provisioning (`tenant_setup` du module) et p
 Référence `CLI-000001` : séquence `customer` de `document_sequences`. Détails :
 [`CLIENTS.md`](CLIENTS.md).
 
+### Ventes (Phase 2.4, isolés par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `sales` | `tenant_id`, `number` (`VTE-000001`), `site_id`, `customer_id` (nullable : vente comptant anonyme), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, `created_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, id)` (cible des futurs paiements) ; FK composites vers `sites` et `customers` ; `CHECK` montants ≥ 0, validée ⇒ `validated_at`, annulée ⇒ motif ; index `(tenant_id, sale_date)` |
+| `sale_lines` | `tenant_id`, `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price` (copié du catalogue), `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
+
+Numéro : séquence `sale` de `document_sequences`. Le stock n'est jamais modifié par ces
+tables : la validation passe par `StockService` (mouvements `SALE`, `source_type = 'sale'`).
+Détails : [`SALES.md`](SALES.md).
+
 Les énumérations sont stockées en texte avec contrainte `CHECK` (évolution plus simple qu'un
 type PostgreSQL natif).
 
@@ -110,7 +122,7 @@ type PostgreSQL natif).
 
 | Table | Politiques |
 |---|---|
-| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (7 tables) | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
+| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (7 tables), sales, sale_lines | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
 | tenant_memberships | + `own_memberships_read` : **sans tenant actif**, l'utilisateur lit ses propres appartenances |
 | tenants | `tenant_isolation` sur `id` + `member_tenants_read` (**sans tenant actif**) |
 | audit_logs | lecture : tenant actif ; insertion : tenant actif ou `tenant_id` nul |
@@ -120,8 +132,8 @@ type PostgreSQL natif).
 | Droits | Tables |
 |---|---|
 | `SELECT` | catalogue |
-| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits |
-| `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines (lignes de brouillon) |
+| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits, sales |
+| `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines, sale_lines (lignes de brouillon) |
 | `SELECT, INSERT` | audit_logs, stock_movements (append-only) |
 
 Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais de données.

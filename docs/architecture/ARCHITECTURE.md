@@ -207,7 +207,8 @@ et les modules métier (`app/modules/`). Il est validé au démarrage : dépenda
 absence de cycle, permissions préfixées par le code du module. Les modules métier non encore
 réalisés sont **déclarés sans implémentation** (statut `planned`, `app/modules/planned.py`)
 pour que profils et plans puissent les référencer ; ils ne sont ni routés ni affichés.
-Modules réalisés : `catalog`, `suppliers` (2.1), `stock`, `alerts` (2.2), `customers` (2.3).
+Modules réalisés : `catalog`, `suppliers` (2.1), `stock`, `alerts` (2.2), `customers` (2.3),
+`sales` (2.4 : ventes simples, dépend de `catalog`, `stock`, `customers`).
 
 Règles de dépendance :
 
@@ -447,10 +448,15 @@ travail : une requête = une transaction, commit à la fin si succès).
 
 ### 9.3 Ventes et paiements
 
-- Cycle explicite (`brouillon → validée → [annulée]`), transition de validation
-  **conditionnelle** (`UPDATE … WHERE status = 'brouillon'`) + **clé d'idempotence**
-  fournie par le client (double clic, réseau instable, futur POS offline).
-- Le total est recalculé côté serveur ; la somme des paiements est contrôlée
+- Cycle explicite (`brouillon → validée → [annulée]`). **Réalisé en Phase 2.4**
+  ([`SALES.md`](SALES.md), [ADR-0017](../adr/0017-ventes-prix-validation-annulation.md)) :
+  la validation verrouille la vente (`SELECT … FOR UPDATE`) puis vérifie le statut ; une
+  seconde validation (double clic, réseau instable, requêtes concurrentes) est refusée
+  (409) sans aucun mouvement, et l'unicité `(source_line_id, movement_type)` des mouvements
+  interdit toute double sortie. Une **clé d'idempotence** fournie par le client (réponse
+  rejouée plutôt que 409) reste prévue pour les paiements et le POS offline.
+- Le prix vient du catalogue et le total est recalculé côté serveur (jamais envoyé par le
+  client) ; la somme des paiements sera contrôlée
   (paiement mixte, partiel, crédit client selon capacités).
 - Caisse : sessions (ouverture / fond de caisse / mouvements / fermeture /
   rapprochement) — module dédié en V1.
@@ -504,8 +510,8 @@ travail : une requête = une transaction, commit à la fin si succès).
 |---|---|---|
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
-| **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · puis transferts, inventaires | V1 |
-| **3 — Ventes & encaissement** | Ventes (sur le référentiel clients), créances, paiements, caisse, POS | V1 |
+| **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · puis transferts, inventaires | V1 |
+| **3 — Ventes & encaissement** | Paiements, créances et ventes à crédit, caisse, POS (sur le module `sales` de la 2.4) | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 

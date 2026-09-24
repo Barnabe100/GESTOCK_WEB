@@ -23,5 +23,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0014](0014-documents-et-mouvements-de-stock.md) | Documents de stock, mouvements et état des niveaux | Proposée |
 | [0015](0015-rbac-roles-de-base-et-personnalises.md) | RBAC : rôles de base, rôles personnalisés, portée et anti-escalade | Acceptée |
 | [0016](0016-recherche-trigrammes.md) | Recherche « contient » servie par des index trigrammes (pg_trgm) | Acceptée |
+| [0017](0017-ventes-prix-validation-annulation.md) | Ventes : prix du catalogue, validation et annulation | Proposée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

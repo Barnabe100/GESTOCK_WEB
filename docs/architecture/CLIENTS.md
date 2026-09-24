@@ -61,7 +61,10 @@ Voir [`API.md`](API.md) : `GET/POST /customers`, `GET/PATCH /customers/{id}`,
 `customer.updated` (avant/après par champ), `customer.activated`, `customer.deactivated`,
 dans la transaction de l'opération.
 
-## 5. Intégration future (non implémentée)
+## 5. Intégration avec les modules commerciaux
+
+La ligne « Ventes » est réalisée en Phase 2.4 ([`SALES.md`](SALES.md)) : client facultatif,
+actif exigé à l'enregistrement et à la validation. Les autres restent à venir.
 
 ```text
 Ventes     : Client ─► Vente (site_id, customer_id FK composite) ─► Lignes ─► StockService
