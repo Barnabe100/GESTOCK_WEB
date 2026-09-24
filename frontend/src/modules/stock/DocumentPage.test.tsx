@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EntryPage, ExitPage } from './DocumentPage';
-import { jsonResponse, pageOf, renderWithCapabilities } from './testing';
+import { jsonResponse, pageOf, renderWithCapabilities } from '@/shared/testing';
 
 const validatedEntry = {
   id: 'e1',

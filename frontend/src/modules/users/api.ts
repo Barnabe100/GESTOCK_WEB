@@ -37,13 +37,27 @@ export interface MemberUpdateInput {
   status?: 'active' | 'suspended';
 }
 
+/** Rôle de base (système, lecture seule) ou rôle personnalisé du tenant. */
 export interface Role {
   id: string;
   name: string;
   description: string | null;
   template_code: string | null;
   is_system: boolean;
+  is_active: boolean;
+  /** Rôle protégé (Administrateur) : ni désactivable ni modifiable. */
+  protected: boolean;
+  member_count: number;
   permission_codes: string[];
+}
+
+export interface RoleMember {
+  membership_id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  status: 'active' | 'suspended';
+  site_id: string | null;
 }
 
 export interface RoleInput {
@@ -52,10 +66,13 @@ export interface RoleInput {
   permissions: string[];
 }
 
+/** Permission déclarée par un module de l'offre (liste fournie par l'API, jamais figée). */
 export interface Permission {
   code: string;
   module: string;
   access: string;
+  resource: string;
+  action: string;
 }
 
 export const userKeys = {
@@ -98,23 +115,47 @@ export function usePermissions() {
   });
 }
 
-export function useSaveRole() {
+function useRoleMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id?: string; input: RoleInput }) =>
-      id ? api.patch<Role>(`/roles/${id}`, input) : api.post<Role>('/roles', input),
+    mutationFn,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: userKeys.roles });
+      void qc.invalidateQueries({ queryKey: userKeys.members });
+      // Les droits de l'utilisateur courant peuvent changer.
       void qc.invalidateQueries({ queryKey: ['capabilities'] });
     },
   });
 }
 
-export function useDeleteRole() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/roles/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: userKeys.roles }),
+export function useSaveRole() {
+  return useRoleMutation(({ id, input }: { id?: string; input: RoleInput }) =>
+    id ? api.patch<Role>(`/roles/${id}`, input) : api.post<Role>('/roles', input),
+  );
+}
+
+export function useDuplicateRole() {
+  return useRoleMutation(
+    ({ id, name, description }: { id: string; name: string; description: string | null }) =>
+      api.post<Role>(`/roles/${id}/duplicate`, { name, description }),
+  );
+}
+
+/** Désactivation : sans `confirm`, l'API répond 409 `role_in_use` si le rôle est attribué. */
+export function useSetRoleActive() {
+  return useRoleMutation(
+    ({ id, active, confirm = false }: { id: string; active: boolean; confirm?: boolean }) =>
+      active
+        ? api.post<Role>(`/roles/${id}/activate`)
+        : api.post<Role>(`/roles/${id}/deactivate`, { confirm }),
+  );
+}
+
+export function useRoleMembers(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: [...userKeys.roles, id, 'members'],
+    queryFn: ({ signal }) => api.get<RoleMember[]>(`/roles/${id}/members`, signal),
+    enabled: enabled && id !== undefined,
   });
 }
 

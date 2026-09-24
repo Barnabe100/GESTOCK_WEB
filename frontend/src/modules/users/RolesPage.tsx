@@ -1,34 +1,42 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
-import { Checkbox } from 'primereact/checkbox';
 import { Column } from 'primereact/column';
 import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
 import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
+import { Message } from 'primereact/message';
+import { TabPanel, TabView } from 'primereact/tabview';
 import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
+import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { translateError } from '@/shared/lib/errors';
+import type { StatusFilterValue } from '@/shared/lib/serverTable';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { SearchInput } from '@/shared/ui/SearchInput';
+import { StatusFilter } from '@/shared/ui/StatusFilter';
 import { useToast } from '@/shared/ui/toast';
 
 import {
   useCreateRoleFromTemplate,
-  useDeleteRole,
+  useDuplicateRole,
   usePermissions,
+  useRoleMembers,
   useRoles,
   useRoleTemplates,
   useSaveRole,
-  type Permission,
+  useSetRoleActive,
   type Role,
 } from './api';
+import { normalizeSearch } from './permissionGroups';
+import { PermissionPicker } from './PermissionPicker';
 
 const schema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -37,20 +45,63 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-function groupByModule(permissions: Permission[]): [string, Permission[]][] {
-  const groups = new Map<string, Permission[]>();
-  for (const permission of permissions) {
-    groups.set(permission.module, [...(groups.get(permission.module) ?? []), permission]);
-  }
-  return [...groups.entries()];
+function RoleTags({ role }: { role: Role }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {role.is_system && <Tag severity="info" value={t('roles.system')} />}
+      {role.protected && <Tag severity="warning" icon="pi pi-lock" value={t('roles.protected')} />}
+      {!role.is_active && <Tag severity="secondary" value={t('common.inactive')} />}
+    </>
+  );
 }
 
+function RoleMembers({ role }: { role: Role }) {
+  const { t } = useTranslation();
+  const { capabilities } = useCapabilities();
+  const members = useRoleMembers(role.id, true);
+  const siteNames = new Map(capabilities.sites.map((s) => [s.id, s.name]));
+  if (members.isError) {
+    return <ErrorMessage error={members.error} onRetry={() => void members.refetch()} />;
+  }
+  return (
+    <DataTable
+      value={members.data ?? []}
+      loading={members.isPending}
+      dataKey={(m: { membership_id: string; site_id: string | null }) =>
+        `${m.membership_id}:${m.site_id ?? ''}`
+      }
+      emptyMessage={t('roles.noMembers')}
+    >
+      <Column field="full_name" header={t('members.name')} />
+      <Column field="email" header={t('members.email')} />
+      <Column
+        header={t('roles.scope')}
+        body={(m: { site_id: string | null }) =>
+          m.site_id ? (siteNames.get(m.site_id) ?? '…') : t('roles.wholeTenant')
+        }
+      />
+      <Column
+        header={t('members.status')}
+        body={(m: { status: 'active' | 'suspended' }) => t(`members.statuses.${m.status}`)}
+      />
+    </DataTable>
+  );
+}
+
+/** Création, modification (rôle personnalisé) ou consultation (rôle de base, lecture seule). */
 function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
   const { can, capabilities } = useCapabilities();
   const permissions = usePermissions();
   const save = useSaveRole();
+  const readOnly = role !== null && (role.is_system || !can('users.role.manage'));
+  const available = new Set((permissions.data ?? []).map((p) => p.code));
+  // Permissions enregistrées d'un module sorti de l'offre : sans effet, retirées à l'enregistrement.
+  const outOfOffer = permissions.data
+    ? (role?.permission_codes ?? []).filter((c) => !available.has(c))
+    : [];
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -62,7 +113,14 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
 
   const onSubmit = form.handleSubmit((values) =>
     save.mutate(
-      { id: role?.id, input: { ...values, description: values.description || null } },
+      {
+        id: role?.id,
+        input: {
+          name: values.name,
+          description: values.description,
+          permissions: values.permissions.filter((c) => available.has(c)),
+        },
+      },
       {
         onSuccess: () => {
           toast.success(t(role ? 'roles.updated' : 'roles.created'));
@@ -73,69 +131,124 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
     ),
   );
 
-  return (
-    <Dialog
-      header={t(role ? 'roles.edit' : 'roles.new')}
-      visible
-      onHide={onClose}
-      className="sm-dialog sm-dialog-wide"
-    >
-      <form onSubmit={onSubmit} className="sm-form" noValidate>
+  const header = role
+    ? readOnly
+      ? role.name
+      : `${t('roles.edit')} — ${role.name}`
+    : t('roles.new');
+  const details = (
+    <form onSubmit={onSubmit} className="sm-form" noValidate>
+      {role?.is_system && <Message severity="info" text={t('roles.systemReadOnly')} />}
+      <div className="sm-form-grid">
         <FormField
           id="role-name"
           label={t('roles.name')}
           error={form.formState.errors.name && t('validation.required')}
         >
-          <InputText id="role-name" {...form.register('name')} autoFocus />
+          <InputText id="role-name" {...form.register('name')} disabled={readOnly} autoFocus />
         </FormField>
         <FormField id="role-description" label={t('roles.description')}>
-          <InputText id="role-description" {...form.register('description')} />
+          <InputText id="role-description" {...form.register('description')} disabled={readOnly} />
         </FormField>
-        <fieldset className="sm-fieldset">
-          <legend>{t('roles.permissions')}</legend>
-          <Controller
-            control={form.control}
-            name="permissions"
-            render={({ field }) => (
-              <>
-                {groupByModule(permissions.data ?? []).map(([module, items]) => (
-                  <div key={module} className="sm-permission-group">
-                    <strong>{t(`modules.${module}`)}</strong>
-                    {items.map((permission) => {
-                      const id = `perm-${permission.code}`;
-                      // Anti-escalade (ergonomie) : seul le propriétaire accorde ce qu'il n'a pas.
-                      const grantable = capabilities.is_owner || can(permission.code);
-                      return (
-                        <div key={permission.code} className="sm-checkbox">
-                          <Checkbox
-                            inputId={id}
-                            checked={field.value.includes(permission.code)}
-                            disabled={!grantable}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.checked
-                                  ? [...field.value, permission.code]
-                                  : field.value.filter((c) => c !== permission.code),
-                              )
-                            }
-                          />
-                          <label htmlFor={id}>
-                            {t(`permissions.${permission.code}`, permission.code)}
-                          </label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </>
-            )}
+      </div>
+      {outOfOffer.length > 0 && !readOnly && (
+        <Message severity="warn" text={t('roles.outOfOffer', { codes: outOfOffer.join(', ') })} />
+      )}
+      {permissions.isError ? (
+        <ErrorMessage error={permissions.error} onRetry={() => void permissions.refetch()} />
+      ) : (
+        <Controller
+          control={form.control}
+          name="permissions"
+          render={({ field }) => (
+            <PermissionPicker
+              permissions={permissions.data ?? []}
+              value={field.value}
+              onChange={field.onChange}
+              readOnly={readOnly}
+              // Anti-escalade (ergonomie) : seul le propriétaire accorde ce qu'il n'a pas.
+              canGrant={(code) => capabilities.is_owner || can(code)}
+            />
+          )}
+        />
+      )}
+      <div className="sm-dialog-actions">
+        <Button
+          type="button"
+          label={t(readOnly ? 'actions.back' : 'actions.cancel')}
+          text
+          onClick={onClose}
+        />
+        {!readOnly && <Button type="submit" label={t('actions.save')} loading={save.isPending} />}
+      </div>
+    </form>
+  );
+
+  return (
+    <Dialog header={header} visible onHide={onClose} className="sm-dialog sm-dialog-wide">
+      {role && can('users.member.view') ? (
+        <TabView>
+          <TabPanel header={t('roles.permissions')}>{details}</TabPanel>
+          <TabPanel header={t('roles.membersTab', { count: role.member_count })}>
+            <RoleMembers role={role} />
+          </TabPanel>
+        </TabView>
+      ) : (
+        details
+      )}
+    </Dialog>
+  );
+}
+
+function DuplicateDialog({ role, onClose }: { role: Role; onClose: () => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const duplicate = useDuplicateRole();
+  const [name, setName] = useState(t('roles.copyOf', { name: role.name }));
+  const [description, setDescription] = useState(role.description ?? '');
+  const valid = name.trim().length > 0 && name.trim().length <= 100;
+
+  const submit = () =>
+    duplicate.mutate(
+      { id: role.id, name: name.trim(), description: description.trim() || null },
+      {
+        onSuccess: () => {
+          toast.success(t('roles.duplicated'));
+          onClose();
+        },
+        onError: (error) => toast.error(translateError(t, error)),
+      },
+    );
+
+  return (
+    <Dialog header={t('roles.duplicate')} visible onHide={onClose} className="sm-dialog">
+      <div className="sm-form">
+        <p className="sm-help">{t('roles.duplicateHelp', { name: role.name })}</p>
+        <FormField id="duplicate-name" label={t('roles.name')}>
+          <InputText
+            id="duplicate-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
           />
-        </fieldset>
+        </FormField>
+        <FormField id="duplicate-description" label={t('roles.description')}>
+          <InputText
+            id="duplicate-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </FormField>
         <div className="sm-dialog-actions">
           <Button type="button" label={t('actions.cancel')} text onClick={onClose} />
-          <Button type="submit" label={t('actions.save')} loading={save.isPending} />
+          <Button
+            label={t('roles.duplicate')}
+            disabled={!valid}
+            loading={duplicate.isPending}
+            onClick={submit}
+          />
         </div>
-      </form>
+      </div>
     </Dialog>
   );
 }
@@ -145,25 +258,106 @@ export default function RolesPage() {
   const toast = useToast();
   const { can } = useCapabilities();
   const roles = useRoles();
-  const remove = useDeleteRole();
+  const setActive = useSetRoleActive();
   const [editing, setEditing] = useState<Role | null | undefined>(undefined);
+  const [duplicating, setDuplicating] = useState<Role | null>(null);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<StatusFilterValue>('all');
   const canManage = can('users.role.manage');
   const templates = useRoleTemplates(canManage);
   const fromTemplate = useCreateRoleFromTemplate();
   const missingTemplates = (templates.data ?? []).filter((tpl) => !tpl.instantiated);
 
-  const onDelete = (role: Role) =>
-    confirmDialog({
-      message: t('roles.confirmDelete', { name: role.name }),
-      acceptLabel: t('actions.delete'),
-      rejectLabel: t('actions.cancel'),
-      acceptClassName: 'p-button-danger',
-      accept: () =>
-        remove.mutate(role.id, {
-          onSuccess: () => toast.success(t('roles.deleted')),
-          onError: (error) => toast.error(translateError(t, error)),
-        }),
-    });
+  const term = normalizeSearch(search);
+  const visible = (roles.data ?? []).filter(
+    (r) =>
+      (status === 'all' || r.is_active === (status === 'active')) &&
+      (term === '' || normalizeSearch(`${r.name} ${r.description ?? ''}`).includes(term)),
+  );
+
+  const toggle = (role: Role, confirm = false) =>
+    setActive.mutate(
+      { id: role.id, active: !role.is_active, confirm },
+      {
+        onSuccess: () => toast.success(t('roles.statusChanged')),
+        onError: (error) => {
+          if (error instanceof ApiError && error.code === 'role_in_use') {
+            const members = Array.isArray(error.extra.members)
+              ? (error.extra.members as { full_name: string }[])
+              : [];
+            confirmDialog({
+              header: t('roles.deactivateTitle', { name: role.name }),
+              message: t('roles.confirmDeactivate', {
+                count: Number(error.extra.count ?? members.length),
+                names: [...new Set(members.map((m) => m.full_name))].join(', '),
+              }),
+              icon: 'pi pi-exclamation-triangle',
+              acceptLabel: t('actions.deactivate'),
+              rejectLabel: t('actions.cancel'),
+              acceptClassName: 'p-button-danger',
+              accept: () => toggle(role, true),
+            });
+            return;
+          }
+          toast.error(translateError(t, error));
+        },
+      },
+    );
+
+  const actions = (r: Role) => (
+    <div className="sm-row-actions">
+      <Button
+        icon={r.is_system || !canManage ? 'pi pi-eye' : 'pi pi-pencil'}
+        text
+        aria-label={t(r.is_system || !canManage ? 'roles.view' : 'actions.edit')}
+        tooltip={t(r.is_system || !canManage ? 'roles.view' : 'actions.edit')}
+        onClick={() => setEditing(r)}
+      />
+      {canManage && (
+        <Button
+          icon="pi pi-copy"
+          text
+          aria-label={t('roles.duplicate')}
+          tooltip={t('roles.duplicate')}
+          onClick={() => setDuplicating(r)}
+        />
+      )}
+      {canManage && !r.protected && (
+        <Button
+          icon={r.is_active ? 'pi pi-ban' : 'pi pi-check'}
+          text
+          severity={r.is_active ? 'danger' : undefined}
+          aria-label={t(r.is_active ? 'actions.deactivate' : 'actions.activate')}
+          tooltip={t(r.is_active ? 'actions.deactivate' : 'actions.activate')}
+          onClick={() => toggle(r)}
+        />
+      )}
+    </div>
+  );
+
+  const table = (items: Role[], empty: string) => (
+    <DataTable
+      value={items}
+      loading={roles.isPending}
+      dataKey="id"
+      emptyMessage={empty}
+      rowClassName={(r: Role) => (r.is_active ? '' : 'sm-row-inactive')}
+    >
+      <Column
+        header={t('roles.name')}
+        body={(r: Role) => (
+          <div className="sm-tags">
+            <span>{r.name}</span>
+            <RoleTags role={r} />
+          </div>
+        )}
+      />
+      <Column field="description" header={t('roles.description')} />
+      <Column header={t('roles.permissions')} body={(r: Role) => r.permission_codes.length} />
+      <Column header={t('roles.members')} body={(r: Role) => r.member_count} />
+      <Column header={t('common.actions')} body={actions} />
+    </DataTable>
+  );
 
   return (
     <>
@@ -195,47 +389,38 @@ export default function RolesPage() {
           ))}
         </div>
       )}
+      <div className="sm-toolbar">
+        <SearchInput value={search} onChange={setSearch} />
+        <StatusFilter value={status} onChange={setStatus} />
+      </div>
       {roles.isError ? (
         <ErrorMessage error={roles.error} onRetry={() => void roles.refetch()} />
       ) : (
-        <DataTable value={roles.data ?? []} loading={roles.isPending} dataKey="id">
-          <Column
-            header={t('roles.name')}
-            body={(r: Role) => (
-              <div className="sm-tags">
-                <span>{r.name}</span>
-                {r.is_system && <Tag severity="secondary" value={t('roles.system')} />}
-              </div>
+        <>
+          <section className="sm-block" aria-labelledby="roles-system">
+            <h2 id="roles-system" className="sm-section-title">
+              {t('roles.systemRoles')}
+            </h2>
+            <p className="sm-help">{t('roles.systemRolesHelp')}</p>
+            {table(
+              visible.filter((r) => r.is_system),
+              t('common.noData'),
             )}
-          />
-          <Column field="description" header={t('roles.description')} />
-          <Column header={t('roles.permissions')} body={(r: Role) => r.permission_codes.length} />
-          {canManage && (
-            <Column
-              body={(r: Role) =>
-                r.is_system ? null : (
-                  <div className="sm-row-actions">
-                    <Button
-                      icon="pi pi-pencil"
-                      text
-                      aria-label={t('actions.edit')}
-                      onClick={() => setEditing(r)}
-                    />
-                    <Button
-                      icon="pi pi-trash"
-                      text
-                      severity="danger"
-                      aria-label={t('actions.delete')}
-                      onClick={() => onDelete(r)}
-                    />
-                  </div>
-                )
-              }
-            />
-          )}
-        </DataTable>
+          </section>
+          <section className="sm-block" aria-labelledby="roles-custom">
+            <h2 id="roles-custom" className="sm-section-title">
+              {t('roles.customRoles')}
+            </h2>
+            <p className="sm-help">{t('roles.customRolesHelp')}</p>
+            {table(
+              visible.filter((r) => !r.is_system),
+              t('roles.noCustomRole'),
+            )}
+          </section>
+        </>
       )}
       {editing !== undefined && <RoleDialog role={editing} onClose={() => setEditing(undefined)} />}
+      {duplicating && <DuplicateDialog role={duplicating} onClose={() => setDuplicating(null)} />}
     </>
   );
 }

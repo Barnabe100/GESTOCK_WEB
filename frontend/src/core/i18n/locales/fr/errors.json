@@ -24,7 +24,7 @@
   "role_name_taken": "Un rôle porte déjà ce nom.",
   "role_in_use": "Ce rôle est attribué à des utilisateurs.",
   "role_not_found": "Rôle introuvable.",
-  "system_role": "Les rôles système ne sont pas modifiables.",
+  "system_role": "Les rôles de base ne sont pas modifiables : dupliquez-les pour créer une variante.",
   "unknown_permission": "Permission inconnue.",
   "permission_escalation": "Vous ne pouvez pas accorder des permissions que vous ne détenez pas.",
   "member_exists": "Cet utilisateur est déjà membre de l'entreprise.",
@@ -67,5 +67,9 @@
   "system_exit_reason": "Les motifs système ne sont pas modifiables (activation / désactivation seulement).",
   "supplier_required": "Le fournisseur est obligatoire pour un achat.",
   "site_required": "Choisissez un site.",
-  "site_mismatch": "Ce document ne correspond pas au site sélectionné."
+  "site_mismatch": "Ce document ne correspond pas au site sélectionné.",
+  "role_name_reserved": "Ce nom est réservé à un rôle de base.",
+  "role_inactive": "Ce rôle est désactivé : il ne peut pas être attribué.",
+  "role_protected": "Ce rôle est protégé : il ne peut être ni désactivé ni modifié.",
+  "site_escalation": "Vous ne pouvez pas accorder l'accès à des sites hors de votre périmètre."
 }

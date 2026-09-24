@@ -10,7 +10,7 @@ import { MultiSelect } from 'primereact/multiselect';
 import { Password } from 'primereact/password';
 import { Tag } from 'primereact/tag';
 import { useState } from 'react';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
@@ -29,6 +29,8 @@ const schema = z.object({
   full_name: z.string().trim().min(1).max(150),
   password: z.string().max(256),
   role_ids: z.array(z.string()),
+  // Rôles limités à un site (ex. « Responsable boutique » sur la seule boutique).
+  site_roles: z.array(z.object({ role_id: z.string().min(1), site_id: z.string().min(1) })),
   site_ids: z.array(z.string()),
   all_sites: z.boolean(),
   status: z.enum(['active', 'suspended']),
@@ -48,8 +50,11 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
       email: member?.email ?? '',
       full_name: member?.full_name ?? '',
       password: '',
-      // Les rôles limités à un site (API) sont conservés tels quels à l'édition.
       role_ids: member?.roles.filter((r) => !r.site_id).map((r) => r.role_id) ?? [],
+      site_roles:
+        member?.roles
+          .filter((r) => r.site_id)
+          .map((r) => ({ role_id: r.role_id, site_id: r.site_id ?? '' })) ?? [],
       site_ids: member?.site_ids ?? [],
       all_sites: member?.all_sites ?? false,
       status: member?.status ?? 'active',
@@ -57,11 +62,34 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
   });
   const errors = form.formState.errors;
   const allSites = useWatch({ control: form.control, name: 'all_sites' });
+  const siteRoles = useFieldArray({ control: form.control, name: 'site_roles' });
+  const { capabilities } = useCapabilities();
+
+  // Rôles proposés : actifs ; un rôle désactivé déjà attribué reste affiché (et conservé).
+  const assigned = new Set(member?.roles.map((r) => r.role_id) ?? []);
+  const roleOptions = (roles.data ?? [])
+    .filter((r) => r.is_active || assigned.has(r.id))
+    .map((r) => ({
+      value: r.id,
+      label: r.is_active ? r.name : `${r.name} (${t('common.inactive').toLowerCase()})`,
+      disabled: !r.is_active,
+    }));
+  // Sites proposés : ceux de l'utilisateur courant (le backend refuse tout autre site).
+  const siteNames = new Map((sites.data ?? []).map((s) => [s.id, s.name]));
+  const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
+  for (const id of member?.site_ids ?? []) {
+    if (!siteOptions.some((o) => o.value === id)) {
+      siteOptions.push({ value: id, label: siteNames.get(id) ?? '…' });
+    }
+  }
 
   const onSubmit = form.handleSubmit((values) => {
     const tenantWide = values.role_ids.map((role_id) => ({ role_id, site_id: null }));
-    const siteScoped = member?.roles.filter((r) => r.site_id) ?? [];
-    const site_ids = values.all_sites ? [] : values.site_ids;
+    const siteScoped = values.site_roles.map(({ role_id, site_id }) => ({ role_id, site_id }));
+    // Un rôle limité à un site exige l'accès à ce site : ajouté automatiquement.
+    const site_ids = values.all_sites
+      ? []
+      : [...new Set([...values.site_ids, ...siteScoped.map((r) => r.site_id)])];
     const mutation = editing
       ? {
           id: member.id,
@@ -77,7 +105,7 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
             email: values.email,
             full_name: values.full_name,
             password: values.password || undefined,
-            roles: tenantWide.map(({ role_id }) => ({ role_id })),
+            roles: [...tenantWide, ...siteScoped],
             site_ids,
             all_sites: values.all_sites,
           },
@@ -96,7 +124,7 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
       header={t(editing ? 'members.edit' : 'members.new')}
       visible
       onHide={onClose}
-      className="sm-dialog"
+      className="sm-dialog sm-dialog-wide"
     >
       <form onSubmit={onSubmit} className="sm-form" noValidate>
         <FormField
@@ -150,7 +178,8 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
                 inputId="member-roles"
                 value={field.value}
                 onChange={(e) => field.onChange(e.value)}
-                options={(roles.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
+                options={roleOptions}
+                optionDisabled="disabled"
                 display="chip"
               />
             )}
@@ -180,13 +209,68 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
                   inputId="member-sites"
                   value={field.value}
                   onChange={(e) => field.onChange(e.value)}
-                  options={(sites.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+                  options={siteOptions}
                   display="chip"
                 />
               )}
             />
           </FormField>
         )}
+        <fieldset className="sm-fieldset">
+          <legend>{t('members.siteRoles')}</legend>
+          <small className="sm-help">{t('members.siteRolesHelp')}</small>
+          {siteRoles.fields.map((field, index) => (
+            <div key={field.id} className="sm-site-role">
+              <Controller
+                control={form.control}
+                name={`site_roles.${index}.role_id`}
+                render={({ field: f }) => (
+                  <Dropdown
+                    value={f.value}
+                    onChange={(e) => f.onChange(e.value)}
+                    options={roleOptions}
+                    optionDisabled="disabled"
+                    placeholder={t('members.chooseRole')}
+                    aria-label={t('members.roles')}
+                    invalid={Boolean(errors.site_roles?.[index]?.role_id)}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name={`site_roles.${index}.site_id`}
+                render={({ field: f }) => (
+                  <Dropdown
+                    value={f.value}
+                    onChange={(e) => f.onChange(e.value)}
+                    options={siteOptions}
+                    placeholder={t('members.chooseSite')}
+                    aria-label={t('layout.site')}
+                    invalid={Boolean(errors.site_roles?.[index]?.site_id)}
+                  />
+                )}
+              />
+              <Button
+                type="button"
+                icon="pi pi-trash"
+                text
+                severity="danger"
+                aria-label={t('members.removeSiteRole')}
+                onClick={() => siteRoles.remove(index)}
+              />
+            </div>
+          ))}
+          <div>
+            <Button
+              type="button"
+              icon="pi pi-plus"
+              outlined
+              size="small"
+              label={t('members.addSiteRole')}
+              onClick={() => siteRoles.append({ role_id: '', site_id: '' })}
+            />
+          </div>
+        </fieldset>
         {editing && (
           <FormField id="member-status" label={t('members.status')}>
             <Controller
@@ -223,7 +307,12 @@ export default function MembersPage() {
   const sites = useSites();
   const [editing, setEditing] = useState<Member | null | undefined>(undefined);
   const canManage = can('users.member.manage');
-  const roleNames = new Map((roles.data ?? []).map((r) => [r.id, r.name]));
+  const roleNames = new Map(
+    (roles.data ?? []).map((r) => [
+      r.id,
+      r.is_active ? r.name : `${r.name} (${t('common.inactive').toLowerCase()})`,
+    ]),
+  );
   const siteNames = new Map((sites.data ?? []).map((s) => [s.id, s.name]));
 
   return (

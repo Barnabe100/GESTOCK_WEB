@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import StockLevelsPage from './StockLevelsPage';
-import { pageOf, renderWithCapabilities, SITES } from './testing';
+import { pageOf, renderWithCapabilities, SITES } from '@/shared/testing';
 
 const level = {
   site_id: 's1',

@@ -1,4 +1,4 @@
-// Aides de test du module stock (non incluses dans le bundle : importées par les tests seuls).
+// Aides de test des pages (non incluses dans le bundle : importées par les tests seuls).
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -31,10 +31,19 @@ export function renderWithCapabilities(
     sites = SITES,
     path = '/',
     route = '/',
-  }: { permissions: string[]; sites?: typeof SITES; path?: string; route?: string },
+    isOwner = false,
+  }: {
+    permissions: string[];
+    sites?: typeof SITES;
+    path?: string;
+    route?: string;
+    isOwner?: boolean;
+  },
 ) {
   const caps = {
+    user: { id: 'u-me', email: 'me@example.com', full_name: 'Moi' },
     tenant: { id: 't', name: 'T', slug: 't', currency: 'XOF', locale: 'fr', timezone: 'UTC' },
+    is_owner: isOwner,
     site: null,
     sites,
     modules: [],
