@@ -20,9 +20,11 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 
 import {
+  useCreateRoleFromTemplate,
   useDeleteRole,
   usePermissions,
   useRoles,
+  useRoleTemplates,
   useSaveRole,
   type Permission,
   type Role,
@@ -146,6 +148,9 @@ export default function RolesPage() {
   const remove = useDeleteRole();
   const [editing, setEditing] = useState<Role | null | undefined>(undefined);
   const canManage = can('users.role.manage');
+  const templates = useRoleTemplates(canManage);
+  const fromTemplate = useCreateRoleFromTemplate();
+  const missingTemplates = (templates.data ?? []).filter((tpl) => !tpl.instantiated);
 
   const onDelete = (role: Role) =>
     confirmDialog({
@@ -171,6 +176,25 @@ export default function RolesPage() {
           )
         }
       />
+      {missingTemplates.length > 0 && (
+        <div className="sm-toolbar" aria-label={t('roles.templates')}>
+          {missingTemplates.map((tpl) => (
+            <Button
+              key={tpl.code}
+              icon="pi pi-plus"
+              outlined
+              label={t('roles.addTemplate', { name: tpl.name })}
+              loading={fromTemplate.isPending}
+              onClick={() =>
+                fromTemplate.mutate(tpl.code, {
+                  onSuccess: () => toast.success(t('roles.created')),
+                  onError: (error) => toast.error(translateError(t, error)),
+                })
+              }
+            />
+          ))}
+        </div>
+      )}
       {roles.isError ? (
         <ErrorMessage error={roles.error} onRetry={() => void roles.refetch()} />
       ) : (

@@ -1,4 +1,4 @@
-# API REST — Phase 1 (socle plateforme)
+# API REST — socle plateforme (Phase 1) et catalogue (Phase 2.1)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -47,10 +47,40 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | PATCH | `/roles/{id}` | `users.role.manage` | Modifier (rôles système exclus) |
 | DELETE | `/roles/{id}` | `users.role.manage` | Supprimer (si non attribué) |
 | GET | `/permissions` | `users.role.view` | Permissions des modules effectifs |
+| GET | `/role-templates` | `users.role.view` | Modèles de rôles système (instanciés ou non) |
+| POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle système manquant |
 | GET | `/subscription` | `subscription.subscription.view` | Offre, statut effectif, période, limites, utilisation |
 | GET | `/audit-logs` | `audit.log.view` | Journal d'audit paginé (`limit`, `offset`, `action`, `user_id`) |
 
 « tenant » = jeton lié à un tenant, appartenance active, tenant actif, mot de passe à jour.
+
+### Catalogue (module `catalog`) et fournisseurs (module `suppliers`) — Phase 2.1
+
+Routes montées sous le code du module et refusées (`403 module_unavailable`) si le module
+n'est pas effectif pour le tenant. Listes : `limit` (1–200, défaut 25), `offset`,
+`sort` (champ de la liste blanche, `-` = décroissant), `search` (contient, insensible à la
+casse), `status` = `all` | `active` | `inactive`. Réponse : `{items, total, limit, offset}`.
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/catalog/categories` | `catalog.category.view` | Liste (tri : `name`, `created_at`) |
+| POST | `/catalog/categories` | `catalog.category.create` | Créer (nom unique par tenant, casse ignorée) |
+| GET · PATCH | `/catalog/categories/{id}` | `…view` · `…update` | Détail · renommer |
+| POST | `/catalog/categories/{id}/activate` · `/deactivate` | `catalog.category.status` | Statut (jamais de suppression) |
+| GET | `/catalog/articles` | `catalog.article.view` | Liste ; filtres `category_id`, `supplier_id` ; tri `reference`, `designation`, `category`, `sale_price`, `purchase_price`, `created_at` |
+| GET | `/catalog/articles/by-barcode/{code}` | `catalog.article.view` | Article **actif** pour ce code-barres |
+| POST | `/catalog/articles` | `catalog.article.create` | Créer (catégorie / fournisseur actifs) |
+| GET · PATCH | `/catalog/articles/{id}` | `…view` · `…update` | Détail · modifier (aucun champ de stock) |
+| POST | `/catalog/articles/{id}/activate` · `/deactivate` | `catalog.article.status` | Statut (réactivation refusée si code-barres pris) |
+| GET · POST | `/suppliers` | `suppliers.supplier.view` · `.create` | Liste (recherche nom, contact, ville, email, téléphone) · créer |
+| GET · PATCH | `/suppliers/{id}` | `…view` · `…update` | Détail · modifier (chaîne vide = champ effacé) |
+| POST | `/suppliers/{id}/activate` · `/deactivate` | `suppliers.supplier.status` | Statut |
+
+Montants (`purchase_price`, `sale_price`) : chaînes décimales à 2 décimales max ; quantités
+(`min_stock`, `max_stock`) : 3 décimales max. Codes d'erreur spécifiques :
+`category_name_taken`, `article_reference_taken`, `article_barcode_taken` (409),
+`category_inactive`, `supplier_inactive`, `category_not_found`, `supplier_not_found`,
+`invalid_stock_thresholds`, `module_unavailable` (422), `invalid_sort` (400).
 
 ## Routes des modules métier
 

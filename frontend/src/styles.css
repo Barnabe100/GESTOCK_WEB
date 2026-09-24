@@ -257,6 +257,19 @@ h1 {
   width: min(44rem, 95vw);
 }
 
+.sm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: var(--sm-gap);
+}
+
+.sm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--sm-gap);
+}
+
 .sm-dialog-actions {
   display: flex;
   justify-content: flex-end;

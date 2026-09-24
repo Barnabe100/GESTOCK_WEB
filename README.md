@@ -10,14 +10,16 @@ utilisateur.
 > **État actuel : phase 1 — socle plateforme.** Multi-tenant (RLS PostgreSQL), multi-sites,
 > utilisateurs multi-entreprises, authentification, rôles et permissions, profils d'activité,
 > plans et abonnements, registre de modules, capacités et interface dynamique, audit,
-> provisioning par CLI, CI. **Aucun module métier (stock, ventes, caisse, restaurant…)
-> n'est encore implémenté.**
+> provisioning par CLI, CI.
+> **Phase 2 en cours** : catalogue (catégories, articles) et fournisseurs livrés (2.1) ;
+> stock par site à venir (2.2). Ventes, caisse, POS et restaurant ne sont pas commencés.
 
 ## Documentation
 
 - [Architecture](docs/architecture/ARCHITECTURE.md)
 - [Modèle de données](docs/architecture/DATA_MODEL.md)
 - [API REST](docs/architecture/API.md)
+- [Catalogue et stock : règles métier](docs/architecture/CATALOGUE_STOCK.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)
 

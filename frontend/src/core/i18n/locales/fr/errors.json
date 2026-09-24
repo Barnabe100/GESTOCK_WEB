@@ -39,5 +39,17 @@
   "validation_error": "Certaines données sont invalides.",
   "network_error": "Serveur injoignable. Vérifiez votre connexion.",
   "unknown": "Une erreur est survenue.",
-  "feature_unavailable": "Cette fonctionnalité n'est pas incluse dans votre abonnement."
+  "feature_unavailable": "Cette fonctionnalité n'est pas incluse dans votre abonnement.",
+  "category_name_taken": "Une catégorie porte déjà ce nom.",
+  "category_not_found": "Catégorie introuvable.",
+  "category_inactive": "La catégorie sélectionnée est inactive.",
+  "supplier_not_found": "Fournisseur introuvable.",
+  "supplier_inactive": "Le fournisseur sélectionné est inactif.",
+  "article_not_found": "Introuvable.",
+  "article_reference_taken": "Cette référence est déjà utilisée.",
+  "article_barcode_taken": "Ce code-barres est déjà utilisé par un élément actif.",
+  "invalid_stock_thresholds": "Le stock maximum doit être supérieur ou égal au stock minimum.",
+  "invalid_sort": "Tri non disponible.",
+  "role_template_exists": "Ce rôle existe déjà.",
+  "role_template_not_found": "Modèle de rôle introuvable."
 }

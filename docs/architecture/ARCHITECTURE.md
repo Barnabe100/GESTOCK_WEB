@@ -497,7 +497,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 |---|---|---|
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
-| **2 — Catalogue & stock** | Articles, catégories, fournisseurs, stock, entrées/sorties, mouvements, transferts, inventaires | V1 |
+| **2 — Catalogue & stock** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 stock par site, entrées/sorties, mouvements, alertes · puis transferts, inventaires ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) | V1 |
 | **3 — Ventes & encaissement** | Clients, ventes, paiements, caisse, POS | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |

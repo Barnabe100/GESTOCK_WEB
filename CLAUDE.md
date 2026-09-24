@@ -10,9 +10,13 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 1 — socle plateforme (implémenté).** Aucun module métier (stock, POS,
-caisse, restaurant…) n'est implémenté : ils sont seulement déclarés `planned`
-(`backend/app/modules/planned.py`). Ne pas les commencer sans validation explicite.
+**Phase actuelle : 2 — catalogue et stock.** Sous-phase 2.1 livrée : modules `catalog`
+(catégories, articles) et `suppliers`. Les autres modules métier (stock, POS, caisse,
+restaurant…) sont seulement déclarés `planned` (`backend/app/modules/planned.py`). Ne pas les
+commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.
+
+Règles métier de référence (issues du Desktop, identifiants CAT/SUP/ART/STK/ENT/SOR/ALR) :
+[`docs/architecture/CATALOGUE_STOCK.md`](docs/architecture/CATALOGUE_STOCK.md).
 
 Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MODEL.md),
 [`docs/architecture/API.md`](docs/architecture/API.md).
@@ -56,7 +60,10 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
     internes d'un autre module ; pas de cycle.
 11. **Transactions explicites** : SQLAlchemy synchrone ; les services ne valident pas,
     l'endpoint (ou la CLI) appelle `db.commit()`. Écritures d'audit dans la même transaction.
-12. **Textes d'interface** : toujours via i18n (`t(...)`), jamais en dur ; vocabulaire métier
+12. **Listes** : pagination, tri (liste blanche, `text_sort` pour les textes) et recherche
+    côté serveur (`app/shared/pagination.py`). Montants/quantités : types `Money`/`Quantity`
+    (`app/shared/schemas.py`), sérialisés en chaînes JSON.
+13. **Textes d'interface** : toujours via i18n (`t(...)`), jamais en dur ; vocabulaire métier
     via l'espace de noms `terminology` (surchargé par le profil). Erreurs API = `code` stable
     traduit dans `errors.json`.
 
@@ -67,7 +74,8 @@ backend/app/
   core/       config, BD, sécurité, logs (aucune règle métier)
   api/v1/     agrégation des routeurs
   platform/   tenants, sites, users, auth, RBAC, plans, profils, registre, capacités, audit
-  modules/    modules métier : <module>/{manifest,router,schemas,service,repository,models}.py
+  modules/    modules métier : <module>/{manifest,router,schemas,service,models,api}.py
+              (api.py = interface publique utilisée par les autres modules)
   shared/     types valeur, identifiants, erreurs
 frontend/src/
   app/        providers, routeur

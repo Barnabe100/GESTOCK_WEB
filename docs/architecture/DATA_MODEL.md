@@ -1,6 +1,7 @@
-# Modèle de données — Phase 1 (socle plateforme)
+# Modèle de données
 
-Migration : `backend/migrations/versions/20260923_0001_socle_plateforme.py`.
+Migrations : `0001` socle plateforme · `0002` fonctionnalités de plan · `0003` catalogue et
+fournisseurs (`backend/migrations/versions/`).
 Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` (UTC).
 
 ## Vue d'ensemble
@@ -32,7 +33,7 @@ Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` 
 |---|---|---|
 | `business_profiles` | `code` | Nom, navigation (JSONB), terminologie par langue (JSONB), réglages |
 | `business_profile_modules` | `profile_code, module_code` | Modules proposés ; `default_enabled` |
-| `plans` | `code` | Nom, limites (JSONB : `max_sites`, `max_users`), `grace_days` |
+| `plans` | `code` | Nom, limites (JSONB, codes déclarés par les modules), fonctionnalités (JSONB), `grace_days` |
 | `plan_modules` | `plan_code, module_code` | Modules inclus |
 | `subscription_access_policies` | `status` | Natures d'accès autorisées (`text[]`) |
 
@@ -54,11 +55,22 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 | `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
 | `subscriptions` | `tenant_id` (unique), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at` | |
 | `tenant_memberships` | `tenant_id`, `user_id`, `status`, `is_owner`, `all_sites` | `UNIQUE(tenant_id, user_id)` |
-| `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system` | `UNIQUE(tenant_id, name)` |
+| `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system` | `UNIQUE(tenant_id, name)` ; rôle système : permissions résolues depuis son modèle (ADR-0013) |
 | `role_permissions` | `tenant_id`, `role_id`, `permission_code` | FK `(tenant_id, role_id)` |
 | `membership_roles` | `tenant_id`, `membership_id`, `role_id`, `site_id` (nullable) | FK composites vers membre, rôle et site du **même tenant** ; unicité `NULLS NOT DISTINCT` |
 | `membership_sites` | `tenant_id`, `membership_id`, `site_id` | FK composites |
 | `audit_logs` | `tenant_id` (nullable), `site_id`, `user_id`, `action`, `entity_type`, `entity_id`, `data` (JSONB), `ip_address`, `user_agent`, `occurred_at` | Index `(tenant_id, occurred_at)` |
+
+### Catalogue et fournisseurs (Phase 2.1, isolés par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `catalog_categories` | `tenant_id`, `name` (100), `is_active` | unique `(tenant_id, lower(name))` |
+| `suppliers` | `tenant_id`, `name` (150), `contact_name`, `phone`, `email`, `address`, `city`, `country`, `notes`, `is_active` | nom non unique (règle SUP-02) |
+| `catalog_articles` | `tenant_id`, `reference` (50), `designation` (255), `category_id`, `unit` (20), `main_supplier_id`, `purchase_price`, `sale_price` (`NUMERIC(18,2)`), `min_stock`, `max_stock` (`NUMERIC(18,3)`), `description`, `barcode`, `is_active` | unique `(tenant_id, lower(reference))` ; unique partiel `(tenant_id, barcode) WHERE is_active` ; `CHECK` prix ≥ 0, `min_stock` ≥ 0, `max_stock` ≥ `min_stock` ; FK composites vers catégorie et fournisseur du même tenant |
+
+Pas de colonne de stock sur l'article : le stock est tenu par site (Phase 2.2). Droits du rôle
+applicatif : `SELECT, INSERT, UPDATE` (jamais de suppression physique).
 
 Les énumérations sont stockées en texte avec contrainte `CHECK` (évolution plus simple qu'un
 type PostgreSQL natif).
@@ -72,7 +84,7 @@ type PostgreSQL natif).
 
 | Table | Politiques |
 |---|---|
-| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
+| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
 | tenant_memberships | + `own_memberships_read` : **sans tenant actif**, l'utilisateur lit ses propres appartenances |
 | tenants | `tenant_isolation` sur `id` + `member_tenants_read` (**sans tenant actif**) |
 | audit_logs | lecture : tenant actif ; insertion : tenant actif ou `tenant_id` nul |
@@ -82,7 +94,7 @@ type PostgreSQL natif).
 | Droits | Tables |
 |---|---|
 | `SELECT` | catalogue |
-| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions |
+| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, catalog_categories, suppliers, catalog_articles |
 | `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, roles, role_permissions, membership_sites, membership_roles |
 | `SELECT, INSERT` | audit_logs (append-only) |
 

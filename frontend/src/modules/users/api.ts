@@ -117,3 +117,27 @@ export function useDeleteRole() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: userKeys.roles }),
   });
 }
+
+export interface RoleTemplate {
+  code: string;
+  name: string;
+  description: string | null;
+  instantiated: boolean;
+}
+
+export function useRoleTemplates(enabled: boolean) {
+  return useQuery({
+    queryKey: [...userKeys.roles, 'templates'],
+    queryFn: ({ signal }) => api.get<RoleTemplate[]>('/role-templates', signal),
+    enabled,
+  });
+}
+
+export function useCreateRoleFromTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (templateCode: string) =>
+      api.post<Role>('/roles/from-template', { template_code: templateCode }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: userKeys.roles }),
+  });
+}

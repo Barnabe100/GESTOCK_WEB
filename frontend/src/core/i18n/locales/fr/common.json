@@ -12,7 +12,9 @@
     "confirm": "Confirmer",
     "retry": "Réessayer",
     "logout": "Se déconnecter",
-    "back": "Retour"
+    "back": "Retour",
+    "activate": "Activer",
+    "deactivate": "Désactiver"
   },
   "common": {
     "loading": "Chargement…",
@@ -23,7 +25,9 @@
     "active": "Actif",
     "inactive": "Inactif",
     "comingSoon": "Bientôt disponible",
-    "noData": "Aucune donnée"
+    "noData": "Aucune donnée",
+    "search": "Rechercher…",
+    "actions": "Actions"
   },
   "auth": {
     "loginTitle": "Connexion",
@@ -59,7 +63,10 @@
     "members": "Utilisateurs",
     "roles": "Rôles",
     "audit": "Journal d'audit",
-    "subscription": "Abonnement"
+    "subscription": "Abonnement",
+    "articles": "$t(terminology:catalog.items)",
+    "categories": "Catégories",
+    "suppliers": "Fournisseurs"
   },
   "modules": {
     "dashboard": "Tableau de bord",
@@ -186,7 +193,9 @@
     "created": "Rôle créé",
     "updated": "Rôle modifié",
     "deleted": "Rôle supprimé",
-    "confirmDelete": "Supprimer le rôle « {{name}} » ?"
+    "confirmDelete": "Supprimer le rôle « {{name}} » ?",
+    "templates": "Rôles modèles disponibles",
+    "addTemplate": "Ajouter « {{name}} »"
   },
   "permissions": {
     "organization.tenant.view": "Consulter les informations de l'entreprise",
@@ -200,7 +209,19 @@
     "users.role.view": "Consulter les rôles",
     "users.role.manage": "Gérer les rôles",
     "audit.log.view": "Consulter le journal d'audit",
-    "subscription.subscription.view": "Consulter l'abonnement"
+    "subscription.subscription.view": "Consulter l'abonnement",
+    "catalog.category.view": "Consulter les catégories",
+    "catalog.category.create": "Créer une catégorie",
+    "catalog.category.update": "Modifier une catégorie",
+    "catalog.category.status": "Activer / désactiver une catégorie",
+    "catalog.article.view": "Consulter le catalogue",
+    "catalog.article.create": "Créer un article",
+    "catalog.article.update": "Modifier un article",
+    "catalog.article.status": "Activer / désactiver un article",
+    "suppliers.supplier.view": "Consulter les fournisseurs",
+    "suppliers.supplier.create": "Créer un fournisseur",
+    "suppliers.supplier.update": "Modifier un fournisseur",
+    "suppliers.supplier.status": "Activer / désactiver un fournisseur"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -239,5 +260,66 @@
     "required": "Champ obligatoire",
     "invalid": "Valeur invalide",
     "email": "Adresse email invalide"
+  },
+  "statusFilter": {
+    "label": "Statut",
+    "all": "Tous",
+    "active": "Actifs",
+    "inactive": "Inactifs"
+  },
+  "categories": {
+    "title": "Catégories",
+    "new": "Nouvelle catégorie",
+    "edit": "Modifier la catégorie",
+    "name": "Nom",
+    "status": "Statut",
+    "created": "Catégorie créée",
+    "updated": "Catégorie modifiée",
+    "statusChanged": "Statut mis à jour"
+  },
+  "suppliers": {
+    "title": "Fournisseurs",
+    "new": "Nouveau fournisseur",
+    "edit": "Modifier le fournisseur",
+    "name": "Nom / raison sociale",
+    "contact": "Contact",
+    "phone": "Téléphone",
+    "email": "Email",
+    "address": "Adresse",
+    "city": "Ville",
+    "country": "Pays",
+    "notes": "Observations",
+    "status": "Statut",
+    "created": "Fournisseur créé",
+    "updated": "Fournisseur modifié",
+    "statusChanged": "Statut mis à jour"
+  },
+  "articles": {
+    "title": "$t(terminology:catalog.items)",
+    "new": "Ajouter",
+    "edit": "Modifier",
+    "reference": "Référence",
+    "designation": "Désignation",
+    "category": "Catégorie",
+    "allCategories": "Toutes les catégories",
+    "unit": "Unité",
+    "unitHelp": "Ex. pièce, kg, L, m, carton",
+    "supplier": "Fournisseur principal",
+    "noSupplier": "Aucun",
+    "purchasePrice": "Prix d'achat",
+    "salePrice": "Prix de vente",
+    "minStock": "Stock minimum",
+    "maxStock": "Stock maximum",
+    "thresholdsHelp": "Seuils par défaut des alertes de stock",
+    "barcode": "Code-barres",
+    "description": "Description",
+    "status": "Statut",
+    "created": "Enregistrement créé",
+    "updated": "Enregistrement modifié",
+    "statusChanged": "Statut mis à jour",
+    "inactiveCategory": "(inactive)",
+    "invalidMoney": "Montant invalide (2 décimales au plus)",
+    "invalidQuantity": "Quantité invalide (3 décimales au plus)",
+    "thresholds": "Le maximum doit être supérieur ou égal au minimum"
   }
 }

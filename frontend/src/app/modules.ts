@@ -1,8 +1,10 @@
 import type { FrontendModule } from '@/core/modules/types';
 import { auditModule } from '@/modules/audit';
+import { catalogModule } from '@/modules/catalog';
 import { dashboardModule } from '@/modules/dashboard';
 import { organizationModule } from '@/modules/organization';
 import { subscriptionModule } from '@/modules/subscription';
+import { suppliersModule } from '@/modules/suppliers';
 import { usersModule } from '@/modules/users';
 
 /**
@@ -11,6 +13,8 @@ import { usersModule } from '@/modules/users';
  */
 export const FRONTEND_MODULES: readonly FrontendModule[] = [
   dashboardModule,
+  catalogModule,
+  suppliersModule,
   organizationModule,
   usersModule,
   subscriptionModule,
