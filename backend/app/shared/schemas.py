@@ -26,6 +26,12 @@ Quantity = Annotated[
     PlainSerializer(lambda v: format(v, "f"), return_type=str, when_used="json"),
 ]
 
+# Quantité signée (mouvements : + entrée, − sortie).
+SignedQuantity = Annotated[
+    Decimal,
+    Field(max_digits=18, decimal_places=3),
+    PlainSerializer(lambda v: format(v, "f"), return_type=str, when_used="json"),
+]
 PositiveQuantity = Annotated[
     Decimal,
     Field(gt=0, max_digits=18, decimal_places=3),

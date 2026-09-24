@@ -31,6 +31,12 @@ def visible_site_ids(ctx: RequestContext) -> set[uuid.UUID]:
     return set(ctx.capabilities.accessible_site_ids)
 
 
+def filter_site_ids(ctx: RequestContext, site_id: uuid.UUID | None) -> set[uuid.UUID]:
+    """Sites visibles, restreints au site demandé en filtre (vide s'il n'est pas visible)."""
+    visible = visible_site_ids(ctx)
+    return visible & {site_id} if site_id is not None else visible
+
+
 def ensure_document_site(ctx: RequestContext, site_id: uuid.UUID, not_found_code: str) -> None:
     """Un document d'un site non accessible est introuvable ; d'un autre site que le site
     sélectionné, refusé (les rôles limités à un site ne valent que sur ce site)."""

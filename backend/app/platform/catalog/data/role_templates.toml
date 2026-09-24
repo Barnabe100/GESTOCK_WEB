@@ -15,7 +15,7 @@ description = "Catalogue, fournisseurs, entrées/sorties et inventaires (sans an
 permissions = [
   "catalog.*",
   "suppliers.*",
-  "stock.level.view",
+  "stock.level.view", "stock.threshold.manage",
   "stock.movement.view",
   "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
   "stock.exit.view", "stock.exit.create", "stock.exit.update", "stock.exit.validate",

@@ -250,3 +250,11 @@ def api_for(client: TestClient) -> Any:
         return Api(client=client, token=response.json()["access_token"])
 
     return _api_for
+
+
+@pytest.fixture
+def world(provision: Any, api_for: Any) -> Any:
+    """Tenant ENTREPRISE à deux sites, trois articles, un fournisseur (tests du stock)."""
+    from tests.stock_helpers import make_world
+
+    return make_world(provision, api_for)

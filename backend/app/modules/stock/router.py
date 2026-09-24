@@ -5,7 +5,20 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.modules.stock.document_service import EntryService, ExitService
-from app.modules.stock.models import DocumentStatus, EntryKind, StockEntry, StockExit
+from app.modules.stock.level_service import (
+    StateFilter,
+    ThresholdService,
+    get_level,
+    list_levels,
+)
+from app.modules.stock.models import (
+    DocumentStatus,
+    EntryKind,
+    MovementType,
+    StockEntry,
+    StockExit,
+)
+from app.modules.stock.movement_service import list_movements
 from app.modules.stock.reason_service import ExitReasonService
 from app.modules.stock.schemas import (
     CancelInput,
@@ -17,7 +30,12 @@ from app.modules.stock.schemas import (
     ExitOut,
     ExitReasonInput,
     ExitReasonOut,
+    LevelOut,
+    MovementOut,
+    ThresholdInput,
 )
+from app.modules.stock.sites import filter_site_ids, operation_site
+from app.modules.stock.stock_service import StockService
 from app.platform.context import (
     DbSession,
     NowDep,
@@ -248,3 +266,122 @@ def cancel_exit(
     document = service.cancel(exit_id, body.reason)
     db.commit()
     return service.to_out([document], with_lines=True)[0]
+
+
+# --- Niveaux de stock et seuils par site -----------------------------------------------------
+
+LevelView = Annotated[RequestContext, Depends(require_permission("stock.level.view"))]
+ThresholdManage = Annotated[RequestContext, Depends(require_permission("stock.threshold.manage"))]
+MovementView = Annotated[RequestContext, Depends(require_permission("stock.movement.view"))]
+
+
+@router.get("/levels", response_model=Page[LevelOut])
+def list_stock_levels(
+    ctx: LevelView,
+    db: DbSession,
+    paging: Paging,
+    search: str | None = None,
+    site_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    state: StateFilter = StateFilter.ALL,
+    include_inactive: bool = False,
+) -> Page[LevelOut]:
+    rows, total = list_levels(
+        db,
+        ctx.tenant_id,
+        filter_site_ids(ctx, site_id),
+        paging,
+        search=search,
+        category_id=category_id,
+        state=state,
+        include_inactive=include_inactive,
+    )
+    return Page(
+        items=[LevelOut.model_validate(r) for r in rows],
+        total=total,
+        limit=paging.limit,
+        offset=paging.offset,
+    )
+
+
+@router.put("/levels/{site_id}/{article_id}/thresholds", response_model=LevelOut)
+def set_stock_thresholds(
+    site_id: uuid.UUID,
+    article_id: uuid.UUID,
+    body: ThresholdInput,
+    ctx: ThresholdManage,
+    db: DbSession,
+    now: NowDep,
+) -> LevelOut:
+    site = operation_site(ctx, site_id)
+    stock = StockService(db, ctx.tenant_id, ctx.user.id, now)
+    ThresholdService(db, ctx, stock).set_thresholds(
+        site, article_id, body.min_stock, body.max_stock
+    )
+    db.commit()
+    return LevelOut.model_validate(get_level(db, ctx.tenant_id, site, article_id))
+
+
+# --- Journal des mouvements ------------------------------------------------------------------
+
+
+@router.get("/movements", response_model=Page[MovementOut])
+def list_stock_movements(
+    ctx: MovementView,
+    db: DbSession,
+    paging: Paging,
+    search: str | None = None,
+    site_id: uuid.UUID | None = None,
+    article_id: uuid.UUID | None = None,
+    movement_type: MovementType | None = None,
+    user_id: uuid.UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> Page[MovementOut]:
+    rows, total = list_movements(
+        db,
+        ctx.tenant_id,
+        ctx.tenant.timezone,
+        filter_site_ids(ctx, site_id),
+        paging,
+        search=search,
+        article_id=article_id,
+        movement_type=movement_type,
+        user_id=user_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    items = [
+        MovementOut.model_validate(
+            {
+                **{c: getattr(row.StockMovement, c) for c in _MOVEMENT_FIELDS},
+                "site_name": row.site_name,
+                "article_reference": row.article_reference,
+                "article_designation": row.article_designation,
+                "unit": row.unit,
+                "user_name": row.user_name,
+                "document_number": row.document_number,
+            }
+        )
+        for row in rows
+    ]
+    return Page(items=items, total=total, limit=paging.limit, offset=paging.offset)
+
+
+_MOVEMENT_FIELDS = (
+    "id",
+    "occurred_at",
+    "site_id",
+    "article_id",
+    "movement_type",
+    "quantity",
+    "quantity_before",
+    "quantity_after",
+    "unit_cost",
+    "average_cost_before",
+    "average_cost_after",
+    "source_type",
+    "source_id",
+    "origin_movement_id",
+    "comment",
+)

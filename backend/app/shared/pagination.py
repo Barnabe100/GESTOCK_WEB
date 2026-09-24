@@ -69,6 +69,13 @@ def paginate(db: Session, stmt: Select[Any], params: PageParams) -> tuple[list[A
     return rows, total
 
 
+def paginate_rows(db: Session, stmt: Select[Any], params: PageParams) -> tuple[list[Any], int]:
+    """Comme ``paginate`` pour une requête multi-colonnes (lignes, pas entités)."""
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    rows = list(db.execute(stmt.limit(params.limit).offset(params.offset)).all())
+    return rows, total
+
+
 def escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 

@@ -1,11 +1,11 @@
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.modules.stock.level_service import LevelState
 from app.modules.stock.models import DocumentStatus, EntryKind, MovementType
-from app.shared.schemas import Money, PositiveQuantity, Quantity, UnitCost
+from app.shared.schemas import Money, PositiveQuantity, Quantity, SignedQuantity, UnitCost
 from app.shared.text import Optional100, Optional150, Optional500, Required150
 
 # --- Motifs de sortie ---------------------------------------------------------------------------
@@ -137,14 +137,48 @@ class MovementOut(BaseModel):
     article_id: uuid.UUID
     article_reference: str
     article_designation: str
+    unit: str
     movement_type: MovementType
-    quantity: Decimal
-    quantity_before: Decimal
-    quantity_after: Decimal
+    quantity: SignedQuantity
+    quantity_before: Quantity
+    quantity_after: Quantity
     unit_cost: UnitCost | None
+    average_cost_before: UnitCost
     average_cost_after: UnitCost
     source_type: str
     source_id: uuid.UUID
     document_number: str | None
+    origin_movement_id: uuid.UUID | None
     user_name: str | None
     comment: str | None
+
+
+# --- Niveaux de stock et seuils ----------------------------------------------------------------
+
+
+class LevelOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    site_id: uuid.UUID
+    site_name: str
+    article_id: uuid.UUID
+    reference: str
+    designation: str
+    unit: str
+    category_name: str
+    article_active: bool
+    quantity: Quantity
+    average_cost: UnitCost
+    stock_value: Money
+    min_stock: Quantity
+    max_stock: Quantity | None
+    min_override: Quantity | None
+    max_override: Quantity | None
+    state: LevelState
+
+
+class ThresholdInput(BaseModel):
+    """Surcharges du site ; ``null`` = seuil par défaut de l'article."""
+
+    min_stock: Quantity | None = None
+    max_stock: Quantity | None = None

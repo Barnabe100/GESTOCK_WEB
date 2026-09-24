@@ -21,7 +21,6 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     _planned("cash_register", "payments"),
     _planned("pos", "sales", "payments", "cash_register"),
     _planned("reports"),
-    _planned("alerts", "stock"),
     # Restauration (V2)
     _planned("restaurant.menu", "catalog"),
     _planned("restaurant.tables"),
