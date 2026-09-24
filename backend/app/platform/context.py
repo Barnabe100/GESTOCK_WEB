@@ -242,6 +242,23 @@ def require_permission(code: str) -> Callable[[RequestContext], RequestContext]:
     return dependency
 
 
+def require_any_permission(*codes: str) -> Callable[[RequestContext], RequestContext]:
+    """Au moins une des permissions (ex. choisir un motif de sortie sans l'administrer)."""
+    _DECLARED_PERMISSIONS.update(codes)
+
+    def dependency(ctx: TenantContext) -> RequestContext:
+        if any(code in ctx.capabilities.permissions for code in codes):
+            return ctx
+        if any(code in ctx.capabilities.restricted_permissions for code in codes):
+            raise ForbiddenError(
+                "Action indisponible avec le statut actuel de l'abonnement",
+                code="subscription_restricted",
+            )
+        raise ForbiddenError("Permission insuffisante", code="permission_denied")
+
+    return dependency
+
+
 def require_module(
     code: str, registry: ModuleRegistry | None = None
 ) -> Callable[[RequestContext], RequestContext]:

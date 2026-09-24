@@ -52,14 +52,16 @@ def audit_action(
     entity_type: str,
     entity_id: uuid.UUID | str | None,
     data: dict[str, Any] | None = None,
+    site_id: uuid.UUID | None = None,
 ) -> AuditLog:
-    """Raccourci pour une action faite dans un contexte tenant (utilisateur, site, requête)."""
+    """Raccourci pour une action faite dans un contexte tenant (utilisateur, site, requête).
+    ``site_id`` : site concerné par l'opération (par défaut, le site sélectionné)."""
     return record_audit(
         session,
         action=action,
         tenant_id=ctx.tenant_id,
         user_id=ctx.user.id,
-        site_id=ctx.site.id if ctx.site else None,
+        site_id=site_id or (ctx.site.id if ctx.site else None),
         entity_type=entity_type,
         entity_id=entity_id,
         data=data,
