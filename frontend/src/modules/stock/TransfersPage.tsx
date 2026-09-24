@@ -1,8 +1,6 @@
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dropdown } from 'primereact/dropdown';
-import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,13 +14,16 @@ import {
   useDebouncedValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
+import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import type { DocumentStatus } from './api';
 import { TRANSFERS_FEATURE, useTransfers, type StockTransfer } from './transferApi';
-import { DocumentStatusTag } from './ui';
 
 const STATUSES: DocumentStatus[] = ['DRAFT', 'VALIDATED', 'CANCELLED'];
 
@@ -56,9 +57,23 @@ export default function TransfersPage() {
   const featureActive = capabilities.features.includes(TRANSFERS_FEATURE);
   const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered =
+    search !== '' ||
+    status !== null ||
+    source !== null ||
+    destination !== null ||
+    dateFrom !== '' ||
+    dateTo !== '';
+  const resetFilters = () => {
+    setSearch('');
+    setStatus(null);
+    setSource(null);
+    setDestination(null);
+    setDateFrom('');
+    setDateTo('');
+    resetPage();
+  };
   const siteFilter = (
     value: string | null,
     set: (v: string | null) => void,
@@ -81,6 +96,7 @@ export default function TransfersPage() {
     <>
       <PageHeader
         title={t('transfers.title')}
+        description={t('transfers.subtitle')}
         actions={
           featureActive &&
           can('stock.transfer.create') && (
@@ -95,7 +111,7 @@ export default function TransfersPage() {
       {!featureActive && (
         <Message severity="info" className="sm-block" text={t('transfers.readOnlyPlan')} />
       )}
-      <div className="sm-toolbar">
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           placeholder={t('transfers.search')}
@@ -117,79 +133,78 @@ export default function TransfersPage() {
         />
         {siteFilter(source, setSource, t('transfers.allSources'))}
         {siteFilter(destination, setDestination, t('transfers.allDestinations'))}
-        <InputText
-          type="date"
-          value={dateFrom}
-          aria-label={t('stock.dateFrom')}
-          title={t('stock.dateFrom')}
-          onChange={(e) => {
-            setDateFrom(e.target.value);
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onChange={({ from, to }) => {
+            setDateFrom(from);
+            setDateTo(to);
             resetPage();
           }}
         />
-        <InputText
-          type="date"
-          value={dateTo}
-          aria-label={t('stock.dateTo')}
-          title={t('stock.dateTo')}
-          onChange={(e) => {
-            setDateTo(e.target.value);
-            resetPage();
-          }}
+      </FilterBar>
+      <ServerTable
+        query={transfers}
+        table={table}
+        onTableChange={setTable}
+        onRowClick={(r: StockTransfer) => void navigate(`/stock/transfers/${r.id}`)}
+        empty={
+          <ListEmpty
+            filtered={filtered}
+            title={t('transfers.empty')}
+            action={
+              featureActive &&
+              can('stock.transfer.create') && (
+                <Button
+                  icon="pi pi-plus"
+                  label={t('transfers.new')}
+                  outlined
+                  onClick={() => void navigate('/stock/transfers/new')}
+                />
+              )
+            }
+          />
+        }
+      >
+        <Column field="number" header={t('stock.number')} sortable bodyClassName="sm-nowrap" />
+        <Column
+          field="operation_date"
+          header={t('stock.date')}
+          sortable
+          body={(r: StockTransfer) => formatDate(r.operation_date, locale, 'UTC')}
         />
-      </div>
-      {transfers.isError ? (
-        <ErrorMessage error={transfers.error} onRetry={() => void transfers.refetch()} />
-      ) : (
-        <DataTable
-          value={transfers.data?.items ?? []}
-          loading={transfers.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={transfers.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          <Column field="number" header={t('stock.number')} sortable bodyClassName="sm-nowrap" />
-          <Column
-            field="operation_date"
-            header={t('stock.date')}
-            sortable
-            body={(r: StockTransfer) => formatDate(r.operation_date, locale, 'UTC')}
-          />
-          <Column field="source_site_name" header={t('transfers.source')} />
-          <Column field="destination_site_name" header={t('transfers.destination')} />
-          <Column field="line_count" header={t('transfers.articleCount')} />
-          <Column
-            header={t('stock.status')}
-            body={(r: StockTransfer) => <DocumentStatusTag status={r.status} />}
-          />
-          <Column field="created_by_name" header={t('stock.createdBy')} />
-          <Column
-            header={t('common.actions')}
-            body={(r: StockTransfer) => (
-              <Button
-                icon={
-                  r.status === 'DRAFT' && can('stock.transfer.update')
-                    ? 'pi pi-pencil'
-                    : 'pi pi-eye'
-                }
-                text
-                aria-label={t('transfers.open')}
-                tooltip={t('transfers.open')}
-                onClick={() => void navigate(`/stock/transfers/${r.id}`)}
+        <Column field="source_site_name" header={t('transfers.source')} />
+        <Column field="destination_site_name" header={t('transfers.destination')} />
+        <Column
+          field="line_count"
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+          header={t('transfers.articleCount')}
+        />
+        <Column
+          header={t('stock.status')}
+          body={(r: StockTransfer) => <DocumentStatusBadge status={r.status} />}
+        />
+        <Column field="created_by_name" header={t('stock.createdBy')} />
+        <Column
+          header={t('common.actions')}
+          body={(r: StockTransfer) => {
+            const editable = r.status === 'DRAFT' && featureActive && can('stock.transfer.update');
+            return (
+              <RowActions
+                actions={[
+                  {
+                    key: 'open',
+                    label: t(editable ? 'actions.edit' : 'transfers.open'),
+                    icon: editable ? 'pi pi-pencil' : 'pi pi-eye',
+                    onClick: () => void navigate(`/stock/transfers/${r.id}`),
+                  },
+                ]}
               />
-            )}
-          />
-        </DataTable>
-      )}
+            );
+          }}
+        />
+      </ServerTable>
     </>
   );
 }

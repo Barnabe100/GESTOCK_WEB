@@ -1,7 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
@@ -22,12 +21,17 @@ import {
   type StatusFilterValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
-import { ActiveTag, StatusFilter } from '@/shared/ui/StatusFilter';
+import { StatusFilter } from '@/shared/ui/StatusFilter';
+import { ActiveBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
+import { confirmAction } from '@/shared/ui/confirm';
 
 import {
   useArticles,
@@ -144,6 +148,7 @@ function ArticleDialog({ article, onClose }: { article: Article | null; onClose:
     <FormField
       id={`article-${name}`}
       label={t(label)}
+      required={name !== 'barcode'}
       help={help}
       error={errors[name] && t('validation.required')}
     >
@@ -157,6 +162,7 @@ function ArticleDialog({ article, onClose }: { article: Article | null; onClose:
     <FormField
       id={`article-${name}`}
       label={t(label)}
+      required={name !== 'max_stock'}
       error={
         errors[name] &&
         t(
@@ -184,6 +190,7 @@ function ArticleDialog({ article, onClose }: { article: Article | null; onClose:
           <FormField
             id="article-category"
             label={t('articles.category')}
+            required
             error={errors.category_id && t('validation.required')}
           >
             <Controller
@@ -260,30 +267,47 @@ export default function ArticlesPage() {
   const setActive = useSetArticleActive();
   const { currency, locale } = capabilities.tenant;
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered = search !== '' || status !== 'all' || categoryId !== null;
+  const resetFilters = () => {
+    setSearch('');
+    setStatus('all');
+    setCategoryId(null);
+    resetPage();
+  };
 
-  const toggle = (a: Article) =>
-    setActive.mutate(
-      { id: a.id, active: !a.is_active },
-      {
-        onSuccess: () => toast.success(t('articles.statusChanged')),
-        onError: (error) => toast.error(translateError(t, error)),
-      },
-    );
+  // Désactivation : action sensible, confirmée ; réactivation directe.
+  const toggle = (a: Article) => {
+    const run = () =>
+      setActive.mutate(
+        { id: a.id, active: !a.is_active },
+        {
+          onSuccess: () => toast.success(t('articles.statusChanged')),
+          onError: (error) => toast.error(translateError(t, error)),
+        },
+      );
+    if (!a.is_active) return run();
+    confirmAction(t, {
+      header: t('articles.deactivateTitle'),
+      message: t('articles.deactivateConfirm', { name: a.designation }),
+      acceptLabel: t('actions.deactivate'),
+      danger: true,
+      onAccept: run,
+    });
+  };
 
   return (
     <>
       <PageHeader
         title={t('articles.title')}
+        description={t('articles.subtitle')}
         actions={
           can('catalog.article.create') && (
             <Button icon="pi pi-plus" label={t('articles.new')} onClick={() => setEditing(null)} />
           )
         }
       />
-      <div className="sm-toolbar">
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           onChange={(v) => {
@@ -310,70 +334,72 @@ export default function ArticlesPage() {
             resetPage();
           }}
         />
-      </div>
-      {articles.isError ? (
-        <ErrorMessage error={articles.error} onRetry={() => void articles.refetch()} />
-      ) : (
-        <DataTable
-          value={articles.data?.items ?? []}
-          loading={articles.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={articles.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          <Column field="reference" header={t('articles.reference')} sortable />
-          <Column field="designation" header={t('articles.designation')} sortable />
-          <Column
-            field="category_name"
-            sortField="category"
-            header={t('articles.category')}
-            sortable
+      </FilterBar>
+      <ServerTable
+        query={articles}
+        table={table}
+        onTableChange={setTable}
+        empty={
+          <ListEmpty
+            filtered={filtered}
+            title={t('articles.empty')}
+            action={
+              can('catalog.article.create') && (
+                <Button
+                  icon="pi pi-plus"
+                  label={t('articles.new')}
+                  outlined
+                  onClick={() => setEditing(null)}
+                />
+              )
+            }
           />
-          <Column field="unit" header={t('articles.unit')} />
-          <Column
-            field="sale_price"
-            header={t('articles.salePrice')}
-            sortable
-            body={(a: Article) => formatMoney(a.sale_price, currency, locale)}
-          />
-          <Column
-            header={t('articles.status')}
-            body={(a: Article) => <ActiveTag active={a.is_active} />}
-          />
-          <Column
-            header={t('common.actions')}
-            body={(a: Article) => (
-              <div className="sm-row-actions">
-                {can('catalog.article.update') && (
-                  <Button
-                    icon="pi pi-pencil"
-                    text
-                    aria-label={t('actions.edit')}
-                    onClick={() => setEditing(a)}
-                  />
-                )}
-                {can('catalog.article.status') && (
-                  <Button
-                    icon={a.is_active ? 'pi pi-ban' : 'pi pi-check'}
-                    text
-                    aria-label={t(a.is_active ? 'actions.deactivate' : 'actions.activate')}
-                    onClick={() => toggle(a)}
-                  />
-                )}
-              </div>
-            )}
-          />
-        </DataTable>
-      )}
+        }
+      >
+        <Column field="reference" header={t('articles.reference')} sortable />
+        <Column field="designation" header={t('articles.designation')} sortable />
+        <Column
+          field="category_name"
+          sortField="category"
+          header={t('articles.category')}
+          sortable
+        />
+        <Column field="unit" header={t('articles.unit')} />
+        <Column
+          field="sale_price"
+          header={t('articles.salePrice')}
+          sortable
+          body={(a: Article) => formatMoney(a.sale_price, currency, locale)}
+        />
+        <Column
+          header={t('articles.status')}
+          body={(a: Article) => <ActiveBadge active={a.is_active} />}
+        />
+        <Column
+          header={t('common.actions')}
+          body={(a: Article) => (
+            <RowActions
+              actions={[
+                {
+                  key: 'edit',
+                  label: t('actions.edit'),
+                  icon: 'pi pi-pencil',
+                  onClick: () => setEditing(a),
+                  hidden: !can('catalog.article.update'),
+                },
+                {
+                  key: 'status',
+                  label: t(a.is_active ? 'actions.deactivate' : 'actions.activate'),
+                  icon: a.is_active ? 'pi pi-ban' : 'pi pi-check-circle',
+                  danger: a.is_active,
+                  onClick: () => toggle(a),
+                  hidden: !can('catalog.article.status'),
+                },
+              ]}
+            />
+          )}
+        />
+      </ServerTable>
       {editing !== undefined && (
         <ArticleDialog article={editing} onClose={() => setEditing(undefined)} />
       )}

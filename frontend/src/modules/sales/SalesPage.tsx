@@ -1,8 +1,6 @@
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dropdown } from 'primereact/dropdown';
-import { InputText } from 'primereact/inputtext';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -16,12 +14,15 @@ import {
   useDebouncedValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
+import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import { SALE_STATUSES, useSales, type Sale, type SaleStatus } from './api';
-import { SaleStatusTag } from './ui';
 
 export default function SalesPage() {
   const { t } = useTranslation();
@@ -50,14 +51,23 @@ export default function SalesPage() {
   const { currency, locale } = capabilities.tenant;
   const multiSite = capabilities.site === null && capabilities.sites.length > 1;
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered =
+    search !== '' || status !== null || siteId !== null || dateFrom !== '' || dateTo !== '';
+  const resetFilters = () => {
+    setSearch('');
+    setStatus(null);
+    setSiteId(null);
+    setDateFrom('');
+    setDateTo('');
+    resetPage();
+  };
 
   return (
     <>
       <PageHeader
         title={t('sales.title')}
+        description={t('sales.subtitle')}
         actions={
           can('sales.sale.create') && (
             <Button
@@ -68,7 +78,7 @@ export default function SalesPage() {
           )
         }
       />
-      <div className="sm-toolbar">
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           placeholder={t('sales.search')}
@@ -101,86 +111,82 @@ export default function SalesPage() {
             aria-label={t('layout.site')}
           />
         )}
-        <InputText
-          type="date"
-          value={dateFrom}
-          aria-label={t('stock.dateFrom')}
-          title={t('stock.dateFrom')}
-          onChange={(e) => {
-            setDateFrom(e.target.value);
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onChange={({ from, to }) => {
+            setDateFrom(from);
+            setDateTo(to);
             resetPage();
           }}
         />
-        <InputText
-          type="date"
-          value={dateTo}
-          aria-label={t('stock.dateTo')}
-          title={t('stock.dateTo')}
-          onChange={(e) => {
-            setDateTo(e.target.value);
-            resetPage();
-          }}
+      </FilterBar>
+      <ServerTable
+        query={sales}
+        table={table}
+        onTableChange={setTable}
+        onRowClick={(s: Sale) => void navigate(`/sales/${s.id}`)}
+        empty={
+          <ListEmpty
+            filtered={filtered}
+            title={t('sales.empty')}
+            action={
+              can('sales.sale.create') && (
+                <Button
+                  icon="pi pi-plus"
+                  label={t('sales.new')}
+                  outlined
+                  onClick={() => void navigate('/sales/new')}
+                />
+              )
+            }
+          />
+        }
+      >
+        <Column field="number" header={t('sales.number')} sortable bodyClassName="sm-nowrap" />
+        <Column
+          field="sale_date"
+          header={t('sales.date')}
+          sortable
+          body={(s: Sale) => formatDate(s.sale_date, locale, 'UTC')}
         />
-      </div>
-      {sales.isError ? (
-        <ErrorMessage error={sales.error} onRetry={() => void sales.refetch()} />
-      ) : (
-        <DataTable
-          value={sales.data?.items ?? []}
-          loading={sales.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={sales.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          <Column field="number" header={t('sales.number')} sortable bodyClassName="sm-nowrap" />
-          <Column
-            field="sale_date"
-            header={t('sales.date')}
-            sortable
-            body={(s: Sale) => formatDate(s.sale_date, locale, 'UTC')}
-          />
-          {multiSite && <Column field="site_name" header={t('layout.site')} />}
-          <Column
-            header={t('sales.customer')}
-            body={(s: Sale) => s.customer_name ?? t('sales.anonymousShort')}
-          />
-          <Column
-            field="total"
-            header={t('sales.total')}
-            sortable
-            bodyClassName="sm-nowrap"
-            body={(s: Sale) => formatMoney(s.total, currency, locale)}
-          />
-          <Column
-            header={t('sales.status')}
-            body={(s: Sale) => <SaleStatusTag status={s.status} />}
-          />
-          <Column field="created_by_name" header={t('sales.seller')} />
-          <Column
-            header={t('common.actions')}
-            body={(s: Sale) => (
-              <Button
-                icon={
-                  s.status === 'DRAFT' && can('sales.sale.update') ? 'pi pi-pencil' : 'pi pi-eye'
-                }
-                text
-                aria-label={t('sales.open')}
-                tooltip={t('sales.open')}
-                onClick={() => void navigate(`/sales/${s.id}`)}
+        {multiSite && <Column field="site_name" header={t('layout.site')} />}
+        <Column
+          header={t('sales.customer')}
+          body={(s: Sale) => s.customer_name ?? t('sales.anonymousShort')}
+        />
+        <Column
+          field="total"
+          header={t('sales.total')}
+          sortable
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+          body={(s: Sale) => formatMoney(s.total, currency, locale)}
+        />
+        <Column
+          header={t('sales.status')}
+          body={(s: Sale) => <DocumentStatusBadge labels="sales.statuses" status={s.status} />}
+        />
+        <Column field="created_by_name" header={t('sales.seller')} />
+        <Column
+          header={t('common.actions')}
+          body={(s: Sale) => {
+            const editable = s.status === 'DRAFT' && can('sales.sale.update');
+            return (
+              <RowActions
+                actions={[
+                  {
+                    key: 'open',
+                    label: t(editable ? 'actions.edit' : 'sales.open'),
+                    icon: editable ? 'pi pi-pencil' : 'pi pi-eye',
+                    onClick: () => void navigate(`/sales/${s.id}`),
+                  },
+                ]}
               />
-            )}
-          />
-        </DataTable>
-      )}
+            );
+          }}
+        />
+      </ServerTable>
     </>
   );
 }

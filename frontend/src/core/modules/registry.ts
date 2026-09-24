@@ -1,4 +1,4 @@
-import type { FrontendModule, ModuleRoute, NavItem, UiCapabilities } from './types';
+import type { FrontendModule, ModuleRoute, NavGroup, NavItem, UiCapabilities } from './types';
 
 /**
  * Construction de l'interface à partir des capacités renvoyées par le backend.
@@ -52,4 +52,15 @@ export function buildRoutes(
   return activeModules(registry, caps).flatMap((module) =>
     module.routes.filter((route) => isAllowed(route, caps)),
   );
+}
+
+/** Ordre des rubriques de la barre latérale (présentation seulement, jamais une règle métier). */
+export const NAV_GROUPS: readonly NavGroup[] = ['home', 'catalog', 'stock', 'sales', 'admin'];
+
+/** Regroupe les entrées autorisées par rubrique ; les rubriques vides sont omises. */
+export function groupNavigation(items: NavItem[]): { group: NavGroup; items: NavItem[] }[] {
+  return NAV_GROUPS.map((group) => ({
+    group,
+    items: items.filter((item) => (item.group ?? 'home') === group),
+  })).filter((section) => section.items.length > 0);
 }

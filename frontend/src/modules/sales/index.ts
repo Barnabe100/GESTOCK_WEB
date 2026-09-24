@@ -8,6 +8,7 @@ export const salesModule: FrontendModule = {
     {
       key: 'sales',
       labelKey: 'nav.sales',
+      group: 'sales',
       icon: 'pi pi-shopping-cart',
       path: '/sales',
       permission: 'sales.sale.view',

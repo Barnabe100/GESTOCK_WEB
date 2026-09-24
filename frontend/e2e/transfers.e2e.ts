@@ -103,9 +103,9 @@ async function choose(page: Page, inputId: string, label: string) {
 
 /** Saisie d'un transfert site principal → dépôt ; renvoie son numéro. */
 async function enterTransfer(page: Page, s: Setup, quantity: string) {
-  await page.getByRole('link', { name: 'Transferts' }).click();
+  await page.getByRole('link', { name: 'Transferts', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Transferts inter-sites' })).toBeVisible();
-  await page.getByRole('button', { name: 'Nouveau transfert' }).click();
+  await page.getByRole('button', { name: 'Nouveau transfert' }).first().click();
   await expect(page.getByRole('heading', { name: 'Nouveau transfert' })).toBeVisible();
   await choose(page, 'transfer-source', s.sourceName);
   await choose(page, 'transfer-destination', DESTINATION.name);
@@ -155,14 +155,14 @@ test.describe('Transferts inter-sites', () => {
       '50.000',
       '1400.0000',
     ]);
-    await page.getByRole('link', { name: 'Stock par site' }).click();
+    await page.getByRole('link', { name: 'Stock par site', exact: true }).click();
     await page.getByRole('searchbox').fill(s.reference);
     const rows = page.getByRole('row').filter({ hasText: s.reference });
     await expect(rows.filter({ hasText: DESTINATION.name })).toContainText('50');
     await expect(rows.filter({ hasText: s.sourceName })).toContainText('70');
 
     // Journal : sortie du site source et entrée du dépôt, rattachées au transfert.
-    await page.getByRole('link', { name: 'Mouvements' }).click();
+    await page.getByRole('link', { name: 'Mouvements', exact: true }).click();
     const movements = page.getByRole('row').filter({ hasText: number });
     await expect(movements.filter({ hasText: 'Transfert sortant' })).toContainText('-30');
     await expect(movements.filter({ hasText: 'Transfert entrant' })).toContainText(
@@ -170,7 +170,7 @@ test.describe('Transferts inter-sites', () => {
     );
 
     // Audit.
-    await page.getByRole('link', { name: "Journal d'audit" }).click();
+    await page.getByRole('link', { name: "Journal d'audit", exact: true }).click();
     for (const action of ['stock_transfer.validated', 'stock_transfer.created']) {
       await expect(
         page.getByRole('row').filter({ hasText: action }).filter({ hasText: number }).first(),
@@ -192,7 +192,7 @@ test.describe('Transferts inter-sites', () => {
 
   test('plan STANDARD : consultation seule, aucune opération', async ({ page, request }) => {
     await loginUi(page, STANDARD_OWNER.email, STANDARD_OWNER.password, STANDARD_OWNER.tenant);
-    await page.getByRole('link', { name: 'Transferts' }).click();
+    await page.getByRole('link', { name: 'Transferts', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Transferts inter-sites' })).toBeVisible();
     await expect(page.getByText(/Consultation seule/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Nouveau transfert' })).toHaveCount(0);
@@ -241,7 +241,7 @@ test.describe('Transferts inter-sites', () => {
 
       // Historique consultable dans l'interface, en lecture seule.
       await loginUi(page, DOWNGRADE_OWNER.email, DOWNGRADE_OWNER.password, DOWNGRADE_OWNER.tenant);
-      await page.getByRole('link', { name: 'Transferts' }).click();
+      await page.getByRole('link', { name: 'Transferts', exact: true }).click();
       await expect(page.getByText(/Consultation seule/)).toBeVisible();
       await expect(page.getByRole('button', { name: 'Nouveau transfert' })).toHaveCount(0);
       await expect(page.getByRole('row').filter({ hasText: validated.number })).toContainText(
@@ -293,7 +293,7 @@ test.describe('Transferts inter-sites', () => {
     const overflow = () =>
       page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(await overflow()).toBe(false);
-    await page.getByRole('button', { name: 'Nouveau transfert' }).click();
+    await page.getByRole('button', { name: 'Nouveau transfert' }).first().click();
     await choose(page, 'transfer-source', s.sourceName);
     await page.getByRole('button', { name: 'Ajouter une ligne' }).click();
     await page.locator('#line-0-article').fill(s.reference);

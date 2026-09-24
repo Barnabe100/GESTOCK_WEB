@@ -8,6 +8,7 @@ export const auditModule: FrontendModule = {
     {
       key: 'audit',
       labelKey: 'nav.audit',
+      group: 'admin',
       icon: 'pi pi-history',
       path: '/audit',
       permission: 'audit.log.view',

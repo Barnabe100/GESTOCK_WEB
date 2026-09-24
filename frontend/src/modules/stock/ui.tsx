@@ -1,30 +1,24 @@
 import type { TFunction } from 'i18next';
-import { Tag } from 'primereact/tag';
 import { useTranslation } from 'react-i18next';
 
 import { ApiError } from '@/core/api/client';
 import { formatQuantity } from '@/shared/lib/decimal';
 import { translateError } from '@/shared/lib/errors';
 
-import type { DocumentStatus, LevelState } from './api';
+import { StatusBadge, type Tone } from '@/shared/ui/StatusBadge';
 
-const STATE_SEVERITY = {
+import type { LevelState } from './api';
+
+const STATE_TONES: Record<LevelState, Tone> = {
   ok: 'success',
   low: 'warning',
   out: 'danger',
-  not_stocked: 'secondary',
-} as const;
+  not_stocked: 'neutral',
+};
 
 export function LevelStateTag({ state }: { state: LevelState }) {
   const { t } = useTranslation();
-  return <Tag severity={STATE_SEVERITY[state]} value={t(`stock.states.${state}`)} />;
-}
-
-const STATUS_SEVERITY = { DRAFT: 'info', VALIDATED: 'success', CANCELLED: 'secondary' } as const;
-
-export function DocumentStatusTag({ status }: { status: DocumentStatus }) {
-  const { t } = useTranslation();
-  return <Tag severity={STATUS_SEVERITY[status]} value={t(`stock.documentStatus.${status}`)} />;
+  return <StatusBadge tone={STATE_TONES[state]} label={t(`stock.states.${state}`)} />;
 }
 
 /** Message d'erreur ; « stock insuffisant » détaille les articles et le stock disponible. */

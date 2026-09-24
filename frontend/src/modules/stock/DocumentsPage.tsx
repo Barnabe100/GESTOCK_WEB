@@ -1,8 +1,6 @@
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dropdown } from 'primereact/dropdown';
-import { InputText } from 'primereact/inputtext';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -16,9 +14,13 @@ import {
   useDebouncedValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
+import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import {
   DOCUMENT_CONFIG,
@@ -29,7 +31,6 @@ import {
   type StockEntry,
   type StockExit,
 } from './api';
-import { DocumentStatusTag } from './ui';
 
 const STATUSES: DocumentStatus[] = ['DRAFT', 'VALIDATED', 'CANCELLED'];
 
@@ -55,14 +56,22 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const { currency, locale } = capabilities.tenant;
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered = search !== '' || status !== null || dateFrom !== '' || dateTo !== '';
+  const resetFilters = () => {
+    setSearch('');
+    setStatus(null);
+    setDateFrom('');
+    setDateTo('');
+    resetPage();
+  };
+  const open = (d: StockDocument) => void navigate(`/stock/${kind}/${d.id}`);
 
   return (
     <>
       <PageHeader
         title={t(`${config.i18n}.title`)}
+        description={t(`${config.i18n}.subtitle`)}
         actions={
           can(`${config.permission}.create`) && (
             <Button
@@ -73,7 +82,7 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
           )
         }
       />
-      <div className="sm-toolbar">
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           placeholder={t(`${config.i18n}.search`)}
@@ -93,78 +102,83 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
           showClear
           aria-label={t('stock.status')}
         />
-        <InputText
-          type="date"
-          value={dateFrom}
-          aria-label={t('stock.dateFrom')}
-          title={t('stock.dateFrom')}
-          onChange={(e) => {
-            setDateFrom(e.target.value);
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onChange={({ from, to }) => {
+            setDateFrom(from);
+            setDateTo(to);
             resetPage();
           }}
         />
-        <InputText
-          type="date"
-          value={dateTo}
-          aria-label={t('stock.dateTo')}
-          title={t('stock.dateTo')}
-          onChange={(e) => {
-            setDateTo(e.target.value);
-            resetPage();
-          }}
-        />
-      </div>
-      {documents.isError ? (
-        <ErrorMessage error={documents.error} onRetry={() => void documents.refetch()} />
-      ) : (
-        <DataTable
-          value={documents.data?.items ?? []}
-          loading={documents.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={documents.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          selectionMode="single"
-          onRowClick={(e) => navigate(`/stock/${kind}/${(e.data as StockDocument).id}`)}
-          rowClassName={() => 'sm-clickable'}
-          emptyMessage={t('common.noData')}
-        >
-          <Column field="number" header={t('stock.number')} sortable />
-          <Column
-            field="operation_date"
-            header={t('stock.date')}
-            sortable
-            body={(d: StockDocument) => formatDate(d.operation_date, locale, 'UTC')}
+      </FilterBar>
+      <ServerTable
+        query={documents}
+        table={table}
+        onTableChange={setTable}
+        onRowClick={open}
+        empty={
+          <ListEmpty
+            filtered={filtered}
+            title={t(`${config.i18n}.empty`)}
+            action={
+              can(`${config.permission}.create`) && (
+                <Button
+                  icon="pi pi-plus"
+                  label={t(`${config.i18n}.new`)}
+                  outlined
+                  onClick={() => void navigate(`/stock/${kind}/new`)}
+                />
+              )
+            }
           />
-          {showSite && <Column field="site_name" header={t('layout.site')} />}
-          {kind === 'entries' ? (
-            <Column
-              header={t('entries.supplierOrKind')}
-              body={(d: StockEntry) =>
-                d.kind === 'INITIAL_STOCK' ? t('entries.kinds.INITIAL_STOCK') : d.supplier_name
-              }
+        }
+      >
+        <Column field="number" header={t('stock.number')} sortable />
+        <Column
+          field="operation_date"
+          header={t('stock.date')}
+          sortable
+          body={(d: StockDocument) => formatDate(d.operation_date, locale, 'UTC')}
+        />
+        {showSite && <Column field="site_name" header={t('layout.site')} />}
+        {kind === 'entries' ? (
+          <Column
+            header={t('entries.supplierOrKind')}
+            body={(d: StockEntry) =>
+              d.kind === 'INITIAL_STOCK' ? t('entries.kinds.INITIAL_STOCK') : d.supplier_name
+            }
+          />
+        ) : (
+          <Column header={t('exits.reason')} body={(d: StockExit) => d.reason_label} />
+        )}
+        <Column
+          field="line_count"
+          header={t('stock.lines')}
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+        />
+        <Column
+          header={t('stock.total')}
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+          body={(d: StockDocument) => formatMoney(d.total_amount, currency, locale)}
+        />
+        <Column
+          header={t('stock.status')}
+          body={(d: StockDocument) => <DocumentStatusBadge status={d.status} />}
+        />
+        <Column
+          header={t('common.actions')}
+          body={(d: StockDocument) => (
+            <RowActions
+              actions={[
+                { key: 'open', label: t('stock.open'), icon: 'pi pi-eye', onClick: () => open(d) },
+              ]}
             />
-          ) : (
-            <Column header={t('exits.reason')} body={(d: StockExit) => d.reason_label} />
           )}
-          <Column field="line_count" header={t('stock.lines')} />
-          <Column
-            header={t('stock.total')}
-            body={(d: StockDocument) => formatMoney(d.total_amount, currency, locale)}
-          />
-          <Column
-            header={t('stock.status')}
-            body={(d: StockDocument) => <DocumentStatusTag status={d.status} />}
-          />
-        </DataTable>
-      )}
+        />
+      </ServerTable>
     </>
   );
 }

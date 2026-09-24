@@ -13,13 +13,15 @@ et [`docs/adr/`](docs/adr/README.md).
 **Phase actuelle : 2 — catalogue et stock.** Sous-phases livrées : 2.1 (modules `catalog` et
 `suppliers`), 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
 journal des mouvements, seuils par site — et `alerts`), consolidation du RBAC (rôles de
-base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015)
-2.3 (module `customers` : référentiel clients, [`CLIENTS.md`](docs/architecture/CLIENTS.md))
-et 2.4 (module `sales` : ventes simples au comptant, validation via `StockService`,
-[`SALES.md`](docs/architecture/SALES.md), ADR-0017 ; prix toujours lus dans le catalogue)
-et 2.5 (transferts inter-sites dans `stock`, fonctionnalité de plan `stock.transfers` :
+base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015),
+2.3 (module `customers` : référentiel clients, [`CLIENTS.md`](docs/architecture/CLIENTS.md)),
+2.4 (module `sales` : ventes simples au comptant, validation via `StockService`,
+[`SALES.md`](docs/architecture/SALES.md), ADR-0017 ; prix toujours lus dans le catalogue),
+2.5 (transferts inter-sites dans `stock`, fonctionnalité de plan `stock.transfers` :
 `StockService.transfer`, ADR-0018 ; une permission peut dépendre d'une fonctionnalité ;
-sans la fonctionnalité, l'historique reste consultable en lecture seule).
+sans la fonctionnalité, l'historique reste consultable en lecture seule)
+et 2.5-B (Design System de l'interface, [`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md) ;
+aucune règle métier modifiée).
 Inventaires et autres modules métier (paiements, créances, POS, caisse, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
@@ -80,6 +82,10 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
 13. **Textes d'interface** : toujours via i18n (`t(...)`), jamais en dur ; vocabulaire métier
     via l'espace de noms `terminology` (surchargé par le profil). Erreurs API = `code` stable
     traduit dans `errors.json`.
+14. **Interface** : suivre le Design System ([`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md)) —
+    jetons `--sm-*`, composants de `shared/ui` (`PageHeader`, `FilterBar`, `ServerTable`,
+    `RowActions`, `StatusBadge`, `EmptyState`, `confirmAction`…), statuts à tonalité unique,
+    confirmation des actions sensibles. PrimeReact uniquement.
 
 ## Structure
 

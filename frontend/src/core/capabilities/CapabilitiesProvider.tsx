@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -10,6 +9,7 @@ import { applyTerminology } from '@/core/i18n/terminology';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 
 import { CapabilitiesContext, type CapabilitiesContextValue } from './CapabilitiesContext';
+import { LoadingState } from '@/shared/ui/LoadingState';
 
 export const capabilitiesKey = (tenantId: string, siteId: string | null) =>
   ['capabilities', tenantId, siteId ?? 'all'] as const;
@@ -78,11 +78,7 @@ export function CapabilitiesProvider({
   }, [capabilities, setSiteId]);
 
   if (query.isPending) {
-    return (
-      <div className="sm-center">
-        <ProgressSpinner />
-      </div>
-    );
+    return <LoadingState />;
   }
   if (!value) {
     return (

@@ -2,14 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Column } from 'primereact/column';
-import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
 import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -28,12 +26,15 @@ import {
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
+import { confirmAction } from '@/shared/ui/confirm';
 
 import { useSale, useSaleMutations, type Sale, type SaleInput, type SaleLine } from './api';
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
-import { saleError, SaleStatusTag } from './ui';
+import { saleError } from './ui';
 
 const quantity = z.string().refine((v) => {
   const n = normalizeDecimal(v, 3);
@@ -153,12 +154,11 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
   });
 
   const onValidate = form.handleSubmit((values) =>
-    confirmDialog({
+    confirmAction(t, {
       header: t('sales.validate'),
       message: t('sales.confirmValidate', { total: formatMoney(displayTotal, currency, locale) }),
       acceptLabel: t('sales.validate'),
-      rejectLabel: t('actions.cancel'),
-      accept: async () => {
+      onAccept: async () => {
         try {
           const saved = form.formState.isDirty || !sale ? await persist(values) : sale;
           const validated = await validate.mutateAsync(saved.id);
@@ -172,12 +172,12 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
 
   return (
     <form onSubmit={onSave} className="sm-form" noValidate>
-      <ConfirmDialog />
       <div className="sm-form-grid">
         {isNew && siteId === null ? (
           <FormField
             id="sale-site"
             label={t('layout.site')}
+            required
             error={errors.site_id && t('validation.required')}
           >
             <Controller
@@ -230,6 +230,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
               <FormField
                 id={`line-${index}-article`}
                 label={t('stock.article')}
+                required
                 error={
                   lineErrors?.article &&
                   t(
@@ -453,11 +454,7 @@ export default function SalePage() {
   const [cancelling, setCancelling] = useState(false);
 
   if (!isNew && query.isPending) {
-    return (
-      <div className="sm-center">
-        <ProgressSpinner />
-      </div>
-    );
+    return <LoadingState />;
   }
   if (!isNew && query.isError) {
     return <ErrorMessage error={query.error} onRetry={() => void query.refetch()} />;
@@ -473,9 +470,13 @@ export default function SalePage() {
     <>
       <PageHeader
         title={sale ? `${t('sales.one')} ${sale.number}` : t('sales.new')}
+        breadcrumbs={[
+          { label: t('sales.title'), to: '/sales' },
+          { label: sale ? sale.number : t('sales.new') },
+        ]}
         actions={
           <div className="sm-tags">
-            {sale && <SaleStatusTag status={sale.status} />}
+            {sale && <DocumentStatusBadge labels="sales.statuses" status={sale.status} />}
             {canCancel && (
               <Button
                 icon="pi pi-undo"

@@ -8,6 +8,7 @@ export const organizationModule: FrontendModule = {
     {
       key: 'company',
       labelKey: 'nav.company',
+      group: 'admin',
       icon: 'pi pi-building',
       path: '/organization/company',
       permission: 'organization.tenant.view',
@@ -15,6 +16,7 @@ export const organizationModule: FrontendModule = {
     {
       key: 'sites',
       labelKey: 'nav.sites',
+      group: 'admin',
       icon: 'pi pi-map-marker',
       path: '/organization/sites',
       permission: 'organization.site.view',
@@ -22,6 +24,7 @@ export const organizationModule: FrontendModule = {
     {
       key: 'modules',
       labelKey: 'nav.modules',
+      group: 'admin',
       icon: 'pi pi-th-large',
       path: '/organization/modules',
       permission: 'organization.module.view',

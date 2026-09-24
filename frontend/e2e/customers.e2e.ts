@@ -12,11 +12,11 @@ test.describe('Clients', () => {
     const phone = `7${Date.now().toString().slice(-7)}`;
     await loginUi(page, OWNER.email, OWNER.password);
 
-    await page.getByRole('link', { name: 'Clients' }).click();
+    await page.getByRole('link', { name: 'Clients', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Clients' })).toBeVisible();
 
     // Création : validation côté client, puis enregistrement.
-    await page.getByRole('button', { name: 'Nouveau client' }).click();
+    await page.getByRole('button', { name: 'Nouveau client' }).first().click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Enregistrer' }).click();
     await expect(dialog.getByText('Champ obligatoire')).toBeVisible();
@@ -45,13 +45,17 @@ test.describe('Clients', () => {
     await expect(page.getByRole('heading', { name })).toBeVisible();
     await expect(page.getByText('Ouagadougou')).toBeVisible();
     await page.getByRole('button', { name: 'Désactiver' }).click();
+    // Action sensible : confirmation explicite.
+    const confirm = page.getByRole('dialog');
+    await expect(confirm.getByText(`Désactiver le client ${name}`, { exact: false })).toBeVisible();
+    await confirm.getByRole('button', { name: 'Désactiver' }).click();
     await expect(page.getByText('Client désactivé', { exact: true })).toBeVisible();
     await expect(page.getByText(/Client désactivé : consultable/)).toBeVisible();
-    await page.getByRole('button', { name: 'Activer' }).click();
+    await page.getByRole('button', { name: 'Activer', exact: true }).click();
     await expect(page.getByText('Client réactivé')).toBeVisible();
 
     // Audit : les quatre opérations sont tracées.
-    await page.getByRole('link', { name: "Journal d'audit" }).click();
+    await page.getByRole('link', { name: "Journal d'audit", exact: true }).click();
     for (const action of [
       'customer.activated',
       'customer.deactivated',
@@ -95,11 +99,11 @@ test.describe('Clients', () => {
     expect(changed.status()).toBe(204);
 
     await loginUi(page, email, definitive);
-    await page.getByRole('link', { name: 'Clients' }).click();
+    await page.getByRole('link', { name: 'Clients', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Clients' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Nouveau client' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Modifier' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Rôles' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Rôles', exact: true })).toHaveCount(0);
 
     // Le backend refuse, quel que soit l'écran.
     const sellerToken = await apiToken(request, email, definitive);
@@ -118,7 +122,7 @@ test.describe('Clients', () => {
     const overflow = () =>
       page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(await overflow()).toBe(false);
-    await page.getByRole('button', { name: 'Nouveau client' }).click();
+    await page.getByRole('button', { name: 'Nouveau client' }).first().click();
     await expect(page.getByRole('dialog').getByLabel('Nom et prénom')).toBeVisible();
     expect(await overflow()).toBe(false);
   });

@@ -93,7 +93,8 @@ describe('page Articles', () => {
 
   it('transmet la recherche au serveur (pagination côté serveur)', async () => {
     renderPage(['catalog.article.view', 'catalog.article.create']);
-    expect(screen.getByRole('button', { name: 'Ajouter' })).toBeTruthy();
+    // En-tête (et état vide, tant que la liste est vide) : bouton de création.
+    expect(screen.getAllByRole('button', { name: 'Ajouter' }).length).toBeGreaterThan(0);
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'vis' } });
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes('search=vis'))).toBe(true),

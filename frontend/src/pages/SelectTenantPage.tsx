@@ -1,12 +1,12 @@
 import { Button } from 'primereact/button';
 import { Message } from 'primereact/message';
-import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useNavigate } from 'react-router';
 
 import { useAuth } from '@/core/auth/AuthContext';
 import { translateError } from '@/shared/lib/errors';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
 
 import { AuthCard } from './AuthCard';
 
@@ -50,7 +50,7 @@ export function SelectTenantPage() {
               onClick={() => void choose(m.tenant_id)}
             >
               <span>{m.tenant_name}</span>
-              {m.is_owner && <Tag value={t('auth.owner')} />}
+              {m.is_owner && <StatusBadge tone="info" label={t('auth.owner')} />}
             </Button>
           </li>
         ))}

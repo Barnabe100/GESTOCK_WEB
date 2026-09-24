@@ -8,6 +8,7 @@ export const suppliersModule: FrontendModule = {
     {
       key: 'suppliers',
       labelKey: 'nav.suppliers',
+      group: 'catalog',
       icon: 'pi pi-truck',
       path: '/suppliers',
       permission: 'suppliers.supplier.view',

@@ -8,6 +8,7 @@ export const subscriptionModule: FrontendModule = {
     {
       key: 'subscription',
       labelKey: 'nav.subscription',
+      group: 'admin',
       icon: 'pi pi-credit-card',
       path: '/subscription',
       permission: 'subscription.subscription.view',

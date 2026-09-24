@@ -8,6 +8,7 @@ export const alertsModule: FrontendModule = {
     {
       key: 'stock-alerts',
       labelKey: 'nav.stockAlerts',
+      group: 'stock',
       icon: 'pi pi-bell',
       path: '/alerts/stock',
       permission: 'alerts.stock.view',

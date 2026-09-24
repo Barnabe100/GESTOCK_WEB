@@ -1,7 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
@@ -19,12 +18,17 @@ import {
   type StatusFilterValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
-import { ActiveTag, StatusFilter } from '@/shared/ui/StatusFilter';
+import { StatusFilter } from '@/shared/ui/StatusFilter';
+import { ActiveBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
+import { confirmAction } from '@/shared/ui/confirm';
 
 import { useSaveSupplier, useSetSupplierActive, useSuppliers, type Supplier } from './api';
 
@@ -94,6 +98,7 @@ function SupplierDialog({ supplier, onClose }: { supplier: Supplier | null; onCl
         <FormField
           id="supplier-name"
           label={t('suppliers.name')}
+          required
           error={errors.name && t('validation.required')}
         >
           <InputText id="supplier-name" {...form.register('name')} autoFocus />
@@ -144,30 +149,46 @@ export default function SuppliersPage() {
   const suppliers = useSuppliers(toQueryString(table, { search: debounced, status }));
   const setActive = useSetSupplierActive();
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered = search !== '' || status !== 'all';
+  const resetFilters = () => {
+    setSearch('');
+    setStatus('all');
+    resetPage();
+  };
 
-  const toggle = (s: Supplier) =>
-    setActive.mutate(
-      { id: s.id, active: !s.is_active },
-      {
-        onSuccess: () => toast.success(t('suppliers.statusChanged')),
-        onError: (error) => toast.error(translateError(t, error)),
-      },
-    );
+  // Désactivation : action sensible, confirmée ; réactivation directe.
+  const toggle = (s: Supplier) => {
+    const run = () =>
+      setActive.mutate(
+        { id: s.id, active: !s.is_active },
+        {
+          onSuccess: () => toast.success(t('suppliers.statusChanged')),
+          onError: (error) => toast.error(translateError(t, error)),
+        },
+      );
+    if (!s.is_active) return run();
+    confirmAction(t, {
+      header: t('suppliers.deactivateTitle'),
+      message: t('suppliers.deactivateConfirm', { name: s.name }),
+      acceptLabel: t('actions.deactivate'),
+      danger: true,
+      onAccept: run,
+    });
+  };
 
   return (
     <>
       <PageHeader
         title={t('suppliers.title')}
+        description={t('suppliers.subtitle')}
         actions={
           can('suppliers.supplier.create') && (
             <Button icon="pi pi-plus" label={t('suppliers.new')} onClick={() => setEditing(null)} />
           )
         }
       />
-      <div className="sm-toolbar">
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           onChange={(v) => {
@@ -182,59 +203,61 @@ export default function SuppliersPage() {
             resetPage();
           }}
         />
-      </div>
-      {suppliers.isError ? (
-        <ErrorMessage error={suppliers.error} onRetry={() => void suppliers.refetch()} />
-      ) : (
-        <DataTable
-          value={suppliers.data?.items ?? []}
-          loading={suppliers.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={suppliers.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          <Column field="name" header={t('suppliers.name')} sortable />
-          <Column field="contact_name" header={t('suppliers.contact')} />
-          <Column field="phone" header={t('suppliers.phone')} />
-          <Column field="city" header={t('suppliers.city')} sortable />
-          <Column
-            header={t('suppliers.status')}
-            body={(s: Supplier) => <ActiveTag active={s.is_active} />}
+      </FilterBar>
+      <ServerTable
+        query={suppliers}
+        table={table}
+        onTableChange={setTable}
+        empty={
+          <ListEmpty
+            filtered={filtered}
+            title={t('suppliers.empty')}
+            action={
+              can('suppliers.supplier.create') && (
+                <Button
+                  icon="pi pi-plus"
+                  label={t('suppliers.new')}
+                  outlined
+                  onClick={() => setEditing(null)}
+                />
+              )
+            }
           />
-          <Column
-            header={t('common.actions')}
-            body={(s: Supplier) => (
-              <div className="sm-row-actions">
-                {can('suppliers.supplier.update') && (
-                  <Button
-                    icon="pi pi-pencil"
-                    text
-                    aria-label={t('actions.edit')}
-                    onClick={() => setEditing(s)}
-                  />
-                )}
-                {can('suppliers.supplier.status') && (
-                  <Button
-                    icon={s.is_active ? 'pi pi-ban' : 'pi pi-check'}
-                    text
-                    aria-label={t(s.is_active ? 'actions.deactivate' : 'actions.activate')}
-                    onClick={() => toggle(s)}
-                  />
-                )}
-              </div>
-            )}
-          />
-        </DataTable>
-      )}
+        }
+      >
+        <Column field="name" header={t('suppliers.name')} sortable />
+        <Column field="contact_name" header={t('suppliers.contact')} />
+        <Column field="phone" header={t('suppliers.phone')} />
+        <Column field="city" header={t('suppliers.city')} sortable />
+        <Column
+          header={t('suppliers.status')}
+          body={(s: Supplier) => <ActiveBadge active={s.is_active} />}
+        />
+        <Column
+          header={t('common.actions')}
+          body={(s: Supplier) => (
+            <RowActions
+              actions={[
+                {
+                  key: 'edit',
+                  label: t('actions.edit'),
+                  icon: 'pi pi-pencil',
+                  onClick: () => setEditing(s),
+                  hidden: !can('suppliers.supplier.update'),
+                },
+                {
+                  key: 'status',
+                  label: t(s.is_active ? 'actions.deactivate' : 'actions.activate'),
+                  icon: s.is_active ? 'pi pi-ban' : 'pi pi-check-circle',
+                  danger: s.is_active,
+                  onClick: () => toggle(s),
+                  hidden: !can('suppliers.supplier.status'),
+                },
+              ]}
+            />
+          )}
+        />
+      </ServerTable>
       {editing !== undefined && (
         <SupplierDialog supplier={editing} onClose={() => setEditing(undefined)} />
       )}

@@ -1,16 +1,27 @@
 import { Button } from 'primereact/button';
+import { ConfirmDialog } from 'primereact/confirmdialog';
 import { Dropdown } from 'primereact/dropdown';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useNavigate } from 'react-router';
 
 import { useAuth } from '@/core/auth/AuthContext';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { buildNavigation } from '@/core/modules/registry';
+import { buildNavigation, groupNavigation } from '@/core/modules/registry';
 import type { FrontendModule } from '@/core/modules/types';
 
 const ALL_SITES = '__all__';
 
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+/** Menu construit à partir des capacités, regroupé par rubrique (ordre : NAV_GROUPS). */
 export function Sidebar({
   modules,
   onNavigate,
@@ -20,19 +31,31 @@ export function Sidebar({
 }) {
   const { t } = useTranslation();
   const { capabilities } = useCapabilities();
-  const items = useMemo(() => buildNavigation(modules, capabilities), [modules, capabilities]);
+  const sections = useMemo(
+    () => groupNavigation(buildNavigation(modules, capabilities)),
+    [modules, capabilities],
+  );
   return (
-    <nav aria-label={t('layout.menu')}>
-      <ul className="sm-nav">
-        {items.map((item) => (
-          <li key={item.key}>
-            <NavLink to={item.path} end={item.path === '/'} onClick={onNavigate}>
-              <i className={item.icon} aria-hidden />
-              <span>{t(item.labelKey)}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+    <nav aria-label={t('layout.menu')} className="sm-sidebar-nav">
+      {sections.map(({ group, items }) => (
+        <div key={group} className="sm-nav-group">
+          {group !== 'home' && (
+            <p className="sm-nav-group-title" id={`nav-${group}`}>
+              {t(`navGroups.${group}`)}
+            </p>
+          )}
+          <ul className="sm-nav" aria-labelledby={group !== 'home' ? `nav-${group}` : undefined}>
+            {items.map((item) => (
+              <li key={item.key}>
+                <NavLink to={item.path} end={item.path === '/'} onClick={onNavigate}>
+                  <i className={item.icon} aria-hidden />
+                  <span>{t(item.labelKey)}</span>
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </nav>
   );
 }
@@ -50,6 +73,15 @@ export function AppLayout({
   const { capabilities, siteId, setSiteId } = useCapabilities();
   const [menuOpen, setMenuOpen] = useState(false);
 
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   const siteOptions = [
     { value: ALL_SITES, label: t('layout.allSites') },
     ...capabilities.sites.map((s) => ({ value: s.id, label: s.name })),
@@ -57,16 +89,23 @@ export function AppLayout({
 
   return (
     <div className={`sm-shell${menuOpen ? ' sm-menu-open' : ''}`}>
-      <aside className="sm-sidebar">
+      <a className="sm-skip-link" href="#main-content">
+        {t('layout.skipToContent')}
+      </a>
+      <aside className="sm-sidebar" id="app-sidebar">
         <div className="sm-brand">
-          <span className="sm-logo">SM</span>
+          <span className="sm-logo" aria-hidden>
+            SM
+          </span>
           <div className="sm-brand-text">
+            <span className="sm-brand-product">{t('app.name')}</span>
             <div className="sm-strong">{capabilities.tenant.name}</div>
             <small className="sm-muted">{capabilities.profile.name}</small>
           </div>
         </div>
         <Sidebar modules={modules} onNavigate={() => setMenuOpen(false)} />
       </aside>
+      <div className="sm-backdrop" aria-hidden onClick={() => setMenuOpen(false)} />
       <div className="sm-main">
         <header className="sm-topbar">
           <Button
@@ -74,6 +113,8 @@ export function AppLayout({
             text
             className="sm-menu-toggle"
             aria-label={t('layout.menu')}
+            aria-controls="app-sidebar"
+            aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
           />
           <div className="sm-topbar-site">
@@ -98,17 +139,27 @@ export function AppLayout({
                 onClick={() => navigate('/select-tenant')}
               />
             )}
+            <span className="sm-avatar" aria-hidden>
+              {initials(capabilities.user.full_name)}
+            </span>
             <span className="sm-user-name">{capabilities.user.full_name}</span>
             <Button
               icon="pi pi-sign-out"
               text
+              rounded
               aria-label={t('actions.logout')}
+              tooltip={t('actions.logout')}
+              tooltipOptions={{ position: 'bottom' }}
               onClick={() => void auth.logout()}
             />
           </div>
         </header>
-        <main className="sm-content">{children}</main>
+        <main className="sm-content" id="main-content" tabIndex={-1}>
+          {children}
+        </main>
       </div>
+      {/* Dialogue de confirmation unique (confirmAction), partagé par tous les écrans. */}
+      <ConfirmDialog />
     </div>
   );
 }

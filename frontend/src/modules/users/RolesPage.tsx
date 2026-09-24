@@ -1,13 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
 import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
 import { TabPanel, TabView } from 'primereact/tabview';
-import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -23,6 +21,10 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
 import { StatusFilter } from '@/shared/ui/StatusFilter';
 import { useToast } from '@/shared/ui/toast';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { confirmAction } from '@/shared/ui/confirm';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import {
   useCreateRoleFromTemplate,
@@ -49,9 +51,11 @@ function RoleTags({ role }: { role: Role }) {
   const { t } = useTranslation();
   return (
     <>
-      {role.is_system && <Tag severity="info" value={t('roles.system')} />}
-      {role.protected && <Tag severity="warning" icon="pi pi-lock" value={t('roles.protected')} />}
-      {!role.is_active && <Tag severity="secondary" value={t('common.inactive')} />}
+      {role.is_system && <StatusBadge tone="info" label={t('roles.system')} />}
+      {role.protected && (
+        <StatusBadge tone="warning" icon="pi pi-lock" label={t('roles.protected')} />
+      )}
+      {!role.is_active && <StatusBadge tone="neutral" label={t('common.inactive')} />}
     </>
   );
 }
@@ -143,6 +147,7 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
         <FormField
           id="role-name"
           label={t('roles.name')}
+          required
           error={form.formState.errors.name && t('validation.required')}
         >
           <InputText id="role-name" {...form.register('name')} disabled={readOnly} autoFocus />
@@ -285,17 +290,15 @@ export default function RolesPage() {
             const members = Array.isArray(error.extra.members)
               ? (error.extra.members as { full_name: string }[])
               : [];
-            confirmDialog({
+            confirmAction(t, {
               header: t('roles.deactivateTitle', { name: role.name }),
               message: t('roles.confirmDeactivate', {
                 count: Number(error.extra.count ?? members.length),
                 names: [...new Set(members.map((m) => m.full_name))].join(', '),
               }),
-              icon: 'pi pi-exclamation-triangle',
               acceptLabel: t('actions.deactivate'),
-              rejectLabel: t('actions.cancel'),
-              acceptClassName: 'p-button-danger',
-              accept: () => toggle(role, true),
+              danger: true,
+              onAccept: () => toggle(role, true),
             });
             return;
           }
@@ -305,42 +308,42 @@ export default function RolesPage() {
     );
 
   const actions = (r: Role) => (
-    <div className="sm-row-actions">
-      <Button
-        icon={r.is_system || !canManage ? 'pi pi-eye' : 'pi pi-pencil'}
-        text
-        aria-label={t(r.is_system || !canManage ? 'roles.view' : 'actions.edit')}
-        tooltip={t(r.is_system || !canManage ? 'roles.view' : 'actions.edit')}
-        onClick={() => setEditing(r)}
-      />
-      {canManage && (
-        <Button
-          icon="pi pi-copy"
-          text
-          aria-label={t('roles.duplicate')}
-          tooltip={t('roles.duplicate')}
-          onClick={() => setDuplicating(r)}
-        />
-      )}
-      {canManage && !r.protected && (
-        <Button
-          icon={r.is_active ? 'pi pi-ban' : 'pi pi-check'}
-          text
-          severity={r.is_active ? 'danger' : undefined}
-          aria-label={t(r.is_active ? 'actions.deactivate' : 'actions.activate')}
-          tooltip={t(r.is_active ? 'actions.deactivate' : 'actions.activate')}
-          onClick={() => toggle(r)}
-        />
-      )}
-    </div>
+    <RowActions
+      actions={[
+        {
+          key: 'open',
+          label: t(r.is_system || !canManage ? 'roles.view' : 'actions.edit'),
+          icon: r.is_system || !canManage ? 'pi pi-eye' : 'pi pi-pencil',
+          onClick: () => setEditing(r),
+        },
+        {
+          key: 'duplicate',
+          label: t('roles.duplicate'),
+          icon: 'pi pi-copy',
+          onClick: () => setDuplicating(r),
+          hidden: !canManage,
+        },
+        {
+          key: 'status',
+          label: t(r.is_active ? 'actions.deactivate' : 'actions.activate'),
+          icon: r.is_active ? 'pi pi-ban' : 'pi pi-check-circle',
+          danger: r.is_active,
+          onClick: () => toggle(r),
+          hidden: !canManage || r.protected,
+        },
+      ]}
+    />
   );
 
   const table = (items: Role[], empty: string) => (
     <DataTable
+      className="sm-table"
       value={items}
       loading={roles.isPending}
       dataKey="id"
-      emptyMessage={empty}
+      rowHover
+      tableStyle={{ minWidth: '44rem' }}
+      emptyMessage={<EmptyState icon="pi pi-shield" title={empty} />}
       rowClassName={(r: Role) => (r.is_active ? '' : 'sm-row-inactive')}
     >
       <Column
@@ -361,9 +364,9 @@ export default function RolesPage() {
 
   return (
     <>
-      <ConfirmDialog />
       <PageHeader
         title={t('roles.title')}
+        description={t('roles.subtitle')}
         actions={
           canManage && (
             <Button icon="pi pi-plus" label={t('roles.new')} onClick={() => setEditing(null)} />

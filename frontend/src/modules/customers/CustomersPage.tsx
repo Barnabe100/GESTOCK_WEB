@@ -1,6 +1,5 @@
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dropdown } from 'primereact/dropdown';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,10 +13,14 @@ import {
   type StatusFilterValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
-import { ActiveTag, StatusFilter } from '@/shared/ui/StatusFilter';
+import { StatusFilter } from '@/shared/ui/StatusFilter';
+import { ActiveBadge } from '@/shared/ui/StatusBadge';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import { CUSTOMER_TYPES, useCustomers, type Customer, type CustomerType } from './api';
 import { CustomerDialog } from './CustomerDialog';
@@ -40,21 +43,27 @@ export default function CustomersPage() {
   const customers = useCustomers(toQueryString(table, { search: debounced, status, type }));
   const { toggle } = useCustomerStatus();
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered = search !== '' || status !== 'all' || type !== null;
+  const resetFilters = () => {
+    setSearch('');
+    setStatus('all');
+    setType(null);
+    resetPage();
+  };
 
   return (
     <>
       <PageHeader
         title={t('customers.title')}
+        description={t('customers.subtitle')}
         actions={
           can('customers.customer.create') && (
             <Button icon="pi pi-plus" label={t('customers.new')} onClick={() => setEditing(null)} />
           )
         }
       />
-      <div className="sm-toolbar">
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           placeholder={t('customers.search')}
@@ -81,83 +90,81 @@ export default function CustomersPage() {
             resetPage();
           }}
         />
-      </div>
-      {customers.isError ? (
-        <ErrorMessage error={customers.error} onRetry={() => void customers.refetch()} />
-      ) : (
-        <DataTable
-          value={customers.data?.items ?? []}
-          loading={customers.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={customers.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          <Column field="code" header={t('customers.code')} sortable bodyClassName="sm-nowrap" />
-          <Column
-            field="name"
-            header={t('customers.nameOrLegal')}
-            sortable
-            body={(c: Customer) => (
-              <div>
-                <div>{c.name}</div>
-                {c.legal_name && <small className="sm-muted">{c.legal_name}</small>}
-              </div>
-            )}
-          />
-          <Column
-            header={t('customers.type')}
-            body={(c: Customer) => t(`customers.types.${c.customer_type}`)}
-          />
-          <Column field="phone" header={t('customers.phone')} />
-          <Column field="email" header={t('customers.email')} />
-          <Column
-            header={t('customers.status')}
-            body={(c: Customer) => <ActiveTag active={c.is_active} />}
-          />
-          <Column
-            header={t('common.actions')}
-            body={(c: Customer) => (
-              <div className="sm-row-actions">
+      </FilterBar>
+      <ServerTable
+        query={customers}
+        table={table}
+        onTableChange={setTable}
+        empty={
+          <ListEmpty
+            filtered={filtered}
+            title={t('customers.empty')}
+            action={
+              can('customers.customer.create') && (
                 <Button
-                  icon="pi pi-eye"
-                  text
-                  aria-label={t('customers.view')}
-                  tooltip={t('customers.view')}
-                  onClick={() => void navigate(`/customers/${c.id}`)}
+                  icon="pi pi-plus"
+                  label={t('customers.new')}
+                  outlined
+                  onClick={() => setEditing(null)}
                 />
-                {can('customers.customer.update') && (
-                  <Button
-                    icon="pi pi-pencil"
-                    text
-                    aria-label={t('actions.edit')}
-                    tooltip={t('actions.edit')}
-                    onClick={() => setEditing(c)}
-                  />
-                )}
-                {can('customers.customer.status') && (
-                  <Button
-                    icon={c.is_active ? 'pi pi-ban' : 'pi pi-check'}
-                    text
-                    severity={c.is_active ? 'danger' : undefined}
-                    aria-label={t(c.is_active ? 'actions.deactivate' : 'actions.activate')}
-                    tooltip={t(c.is_active ? 'actions.deactivate' : 'actions.activate')}
-                    onClick={() => toggle(c)}
-                  />
-                )}
-              </div>
-            )}
+              )
+            }
           />
-        </DataTable>
-      )}
+        }
+      >
+        <Column field="code" header={t('customers.code')} sortable bodyClassName="sm-nowrap" />
+        <Column
+          field="name"
+          header={t('customers.nameOrLegal')}
+          sortable
+          body={(c: Customer) => (
+            <div>
+              <div>{c.name}</div>
+              {c.legal_name && <small className="sm-muted">{c.legal_name}</small>}
+            </div>
+          )}
+        />
+        <Column
+          header={t('customers.type')}
+          body={(c: Customer) => t(`customers.types.${c.customer_type}`)}
+        />
+        <Column field="phone" header={t('customers.phone')} />
+        <Column field="email" header={t('customers.email')} />
+        <Column
+          header={t('customers.status')}
+          body={(c: Customer) => <ActiveBadge active={c.is_active} />}
+        />
+        <Column
+          header={t('common.actions')}
+          body={(c: Customer) => (
+            <RowActions
+              actions={[
+                {
+                  key: 'view',
+                  label: t('customers.view'),
+                  icon: 'pi pi-eye',
+                  onClick: () => void navigate(`/customers/${c.id}`),
+                },
+                {
+                  key: 'edit',
+                  label: t('actions.edit'),
+                  icon: 'pi pi-pencil',
+                  onClick: () => setEditing(c),
+                  hidden: !can('customers.customer.update'),
+                },
+                {
+                  key: 'status',
+                  label: t(c.is_active ? 'actions.deactivate' : 'actions.activate'),
+                  icon: c.is_active ? 'pi pi-ban' : 'pi pi-check-circle',
+                  danger: c.is_active,
+                  onClick: () => toggle(c),
+                  hidden: !can('customers.customer.status'),
+                },
+              ]}
+            />
+          )}
+        />
+      </ServerTable>
       {editing !== undefined && (
         <CustomerDialog customer={editing} onClose={() => setEditing(undefined)} />
       )}

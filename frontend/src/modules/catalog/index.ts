@@ -8,6 +8,7 @@ export const catalogModule: FrontendModule = {
     {
       key: 'articles',
       labelKey: 'nav.articles',
+      group: 'catalog',
       icon: 'pi pi-box',
       path: '/catalog/articles',
       permission: 'catalog.article.view',
@@ -15,6 +16,7 @@ export const catalogModule: FrontendModule = {
     {
       key: 'categories',
       labelKey: 'nav.categories',
+      group: 'catalog',
       icon: 'pi pi-tags',
       path: '/catalog/categories',
       permission: 'catalog.category.view',

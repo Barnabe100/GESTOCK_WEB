@@ -11,6 +11,8 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { translateError } from '@/shared/lib/errors';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
+import { FormSection } from '@/shared/ui/FormSection';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 
@@ -37,7 +39,7 @@ export default function CompanyPage() {
 
   if (tenant.isError)
     return <ErrorMessage error={tenant.error} onRetry={() => void tenant.refetch()} />;
-  if (!tenant.data) return null;
+  if (!tenant.data) return <LoadingState />;
 
   const onSubmit = form.handleSubmit((values) =>
     update.mutate(values, {
@@ -48,27 +50,46 @@ export default function CompanyPage() {
 
   return (
     <>
-      <PageHeader title={t('company.title')} />
-      <Card>
+      <PageHeader title={t('company.title')} description={t('company.subtitle')} />
+      <Card className="sm-form-card">
         <form onSubmit={onSubmit} className="sm-form" noValidate>
-          <FormField
-            id="name"
-            label={t('company.name')}
-            error={form.formState.errors.name && t('validation.required')}
-          >
-            <InputText id="name" {...form.register('name')} disabled={!editable} />
-          </FormField>
-          <FormField id="timezone" label={t('company.timezone')}>
-            <InputText id="timezone" {...form.register('timezone')} disabled={!editable} />
-          </FormField>
-          <FormField id="slug" label={t('company.slug')}>
-            <InputText id="slug" value={tenant.data.slug} disabled />
-          </FormField>
-          <FormField id="currency" label={t('company.currency')}>
-            <InputText id="currency" value={tenant.data.currency} disabled />
-          </FormField>
+          <FormSection title={t('company.identity')}>
+            <FormField
+              id="name"
+              label={t('company.name')}
+              required={editable}
+              error={form.formState.errors.name && t('validation.required')}
+            >
+              <InputText id="name" {...form.register('name')} disabled={!editable} />
+            </FormField>
+            <FormField
+              id="timezone"
+              label={t('company.timezone')}
+              required={editable}
+              error={form.formState.errors.timezone && t('validation.required')}
+            >
+              <InputText id="timezone" {...form.register('timezone')} disabled={!editable} />
+            </FormField>
+          </FormSection>
+          <FormSection title={t('company.fixed')} description={t('company.fixedHelp')}>
+            <div className="sm-form-grid">
+              <FormField id="slug" label={t('company.slug')}>
+                <InputText id="slug" value={tenant.data.slug} disabled />
+              </FormField>
+              <FormField id="currency" label={t('company.currency')}>
+                <InputText id="currency" value={tenant.data.currency} disabled />
+              </FormField>
+            </div>
+          </FormSection>
           {editable && (
-            <Button type="submit" label={t('actions.save')} loading={update.isPending} />
+            <div className="sm-form-actions">
+              <Button
+                type="submit"
+                icon="pi pi-check"
+                label={t('actions.save')}
+                loading={update.isPending}
+              />
+            </div>
           )}
         </form>
       </Card>

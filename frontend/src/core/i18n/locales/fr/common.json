@@ -14,7 +14,10 @@
     "logout": "Se déconnecter",
     "back": "Retour",
     "activate": "Activer",
-    "deactivate": "Désactiver"
+    "deactivate": "Désactiver",
+    "more": "Plus d'actions",
+    "view": "Voir",
+    "new": "Nouveau"
   },
   "common": {
     "loading": "Chargement…",
@@ -27,7 +30,9 @@
     "comingSoon": "Bientôt disponible",
     "noData": "Aucune donnée",
     "search": "Rechercher…",
-    "actions": "Actions"
+    "actions": "Actions",
+    "noResults": "Aucun résultat",
+    "noResultsHint": "Aucun élément ne correspond à la recherche ou aux filtres."
   },
   "auth": {
     "loginTitle": "Connexion",
@@ -53,7 +58,9 @@
     "site": "Site",
     "allSites": "Tous les sites",
     "switchTenant": "Changer d'entreprise",
-    "menu": "Menu"
+    "menu": "Menu",
+    "skipToContent": "Aller au contenu",
+    "breadcrumb": "Fil d'Ariane"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -76,6 +83,12 @@
     "stockAlerts": "Alertes de stock",
     "customers": "$t(terminology:customers.items)",
     "sales": "$t(terminology:sales.sales)"
+  },
+  "navGroups": {
+    "catalog": "Catalogue",
+    "stock": "Stock",
+    "sales": "Ventes et clients",
+    "admin": "Administration"
   },
   "modules": {
     "dashboard": "Tableau de bord",
@@ -110,7 +123,18 @@
     "validUntil": "Échéance : {{date}}",
     "currentSite": "Site actif",
     "offer": "Modules de votre offre",
-    "restricted": "Votre abonnement limite certaines actions. Consultez la page Abonnement."
+    "restricted": "Votre abonnement limite certaines actions. Consultez la page Abonnement.",
+    "subtitle": "{{tenant}} · {{site}}",
+    "indicators": "Indicateurs",
+    "outOfStock": "Articles en rupture",
+    "lowStock": "Articles sous le seuil",
+    "seeAlerts": "Voir les alertes",
+    "draftSales": "Ventes en brouillon",
+    "draftTransfers": "Transferts en brouillon",
+    "recentSales": "Dernières ventes",
+    "allSales": "Toutes les ventes",
+    "shortcuts": "Actions rapides",
+    "periodEnd": "Échéance"
   },
   "subscriptionStatus": {
     "trial": "Essai",
@@ -148,7 +172,9 @@
       "other": "Autre"
     },
     "created": "Site créé",
-    "updated": "Site modifié"
+    "updated": "Site modifié",
+    "subtitle": "Boutiques, dépôts et autres lieux d'activité de l'entreprise.",
+    "empty": "Aucun site."
   },
   "company": {
     "title": "Entreprise",
@@ -157,7 +183,11 @@
     "currency": "Devise",
     "timezone": "Fuseau horaire",
     "locale": "Langue",
-    "saved": "Informations enregistrées"
+    "saved": "Informations enregistrées",
+    "subtitle": "Informations générales de l'entreprise.",
+    "identity": "Identité",
+    "fixed": "Paramètres fixés à la création",
+    "fixedHelp": "Ces valeurs ne sont pas modifiables depuis cet écran."
   },
   "moduleAdmin": {
     "title": "Modules",
@@ -173,7 +203,7 @@
   },
   "members": {
     "title": "Utilisateurs",
-    "new": "Ajouter un utilisateur",
+    "new": "Nouvel utilisateur",
     "edit": "Modifier l'utilisateur",
     "name": "Nom",
     "email": "Email",
@@ -195,7 +225,9 @@
     "chooseRole": "Choisir un rôle",
     "chooseSite": "Choisir un site",
     "addSiteRole": "Ajouter un rôle pour un site",
-    "removeSiteRole": "Retirer"
+    "removeSiteRole": "Retirer",
+    "subtitle": "Comptes ayant accès à l'entreprise, leurs rôles et leurs sites.",
+    "empty": "Aucun utilisateur."
   },
   "roles": {
     "title": "Rôles",
@@ -235,7 +267,8 @@
     "selectedCount": "{{count}} permission(s) sélectionnée(s)",
     "noPermission": "Aucune permission",
     "selectModule": "Tout sélectionner",
-    "unselectModule": "Tout désélectionner"
+    "unselectModule": "Tout désélectionner",
+    "subtitle": "Les rôles regroupent des permissions ; les rôles de base sont proposés par StockManager."
   },
   "permissions": {
     "organization.tenant.view": "Consulter les informations de l'entreprise",
@@ -300,7 +333,9 @@
     "action": "Action",
     "entity": "Objet",
     "details": "Détails",
-    "system": "Système"
+    "system": "Système",
+    "subtitle": "Traçabilité des actions sensibles : qui, quand, quoi.",
+    "empty": "Aucune action enregistrée."
   },
   "subscriptionPage": {
     "title": "Abonnement",
@@ -318,19 +353,24 @@
     "limitNames": {
       "max_sites": "Sites",
       "max_users": "Utilisateurs"
-    }
+    },
+    "subtitle": "Offre souscrite, statut et fonctionnalités incluses."
   },
   "errors": {
     "pageNotFound": "Page introuvable",
     "forbidden": "Vous n'avez pas accès à cette page.",
     "generic": "Une erreur est survenue.",
-    "network": "Serveur injoignable. Vérifiez votre connexion."
+    "network": "Serveur injoignable. Vérifiez votre connexion.",
+    "pageNotFoundHint": "L'adresse demandée n'existe pas ou n'est pas accessible avec vos droits.",
+    "backHome": "Retour au tableau de bord",
+    "loadFailed": "Impossible de charger ces informations"
   },
   "validation": {
     "required": "Champ obligatoire",
     "invalid": "Valeur invalide",
     "email": "Adresse email invalide",
-    "tooLong": "Valeur trop longue"
+    "tooLong": "Valeur trop longue",
+    "requiredField": "obligatoire"
   },
   "statusFilter": {
     "label": "Statut",
@@ -346,7 +386,11 @@
     "status": "Statut",
     "created": "Catégorie créée",
     "updated": "Catégorie modifiée",
-    "statusChanged": "Statut mis à jour"
+    "statusChanged": "Statut mis à jour",
+    "subtitle": "Classement des articles du catalogue.",
+    "empty": "Aucune catégorie pour le moment.",
+    "deactivateTitle": "Désactiver la catégorie",
+    "deactivateConfirm": "Désactiver la catégorie « {{name}} » ? Elle ne sera plus proposée pour les nouveaux articles."
   },
   "suppliers": {
     "title": "Fournisseurs",
@@ -363,7 +407,11 @@
     "status": "Statut",
     "created": "Fournisseur créé",
     "updated": "Fournisseur modifié",
-    "statusChanged": "Statut mis à jour"
+    "statusChanged": "Statut mis à jour",
+    "subtitle": "Fournisseurs de l'entreprise, utilisés pour les achats et réceptions.",
+    "empty": "Aucun fournisseur pour le moment.",
+    "deactivateTitle": "Désactiver le fournisseur",
+    "deactivateConfirm": "Désactiver le fournisseur « {{name}} » ? Il ne sera plus proposé pour les nouvelles réceptions."
   },
   "articles": {
     "title": "$t(terminology:catalog.items)",
@@ -391,7 +439,11 @@
     "inactiveCategory": "(inactive)",
     "invalidMoney": "Montant invalide (2 décimales au plus)",
     "invalidQuantity": "Quantité invalide (3 décimales au plus)",
-    "thresholds": "Le maximum doit être supérieur ou égal au minimum"
+    "thresholds": "Le maximum doit être supérieur ou égal au minimum",
+    "subtitle": "Référentiel du catalogue : références, prix de vente, seuils et fournisseurs.",
+    "empty": "Aucun élément dans le catalogue pour le moment.",
+    "deactivateTitle": "Désactiver",
+    "deactivateConfirm": "Désactiver « {{name}} » ? Il ne sera plus proposé dans les nouvelles opérations ; son historique est conservé."
   },
   "stock": {
     "levelsTitle": "Stock par site",
@@ -471,7 +523,12 @@
     "saveDraft": "Enregistrer le brouillon",
     "draftSaved": "Brouillon enregistré",
     "validate": "Valider",
-    "shortage": "{{reference}} (disponible : {{available}})"
+    "shortage": "{{reference}} (disponible : {{available}})",
+    "movementsSubtitle": "Historique de toutes les variations de stock, non modifiable.",
+    "movementsEmpty": "Aucun mouvement de stock.",
+    "levelsSubtitle": "Quantités, CMUP et valeur du stock, par article et par site.",
+    "levelsEmpty": "Aucun article en stock.",
+    "open": "Ouvrir"
   },
   "entries": {
     "title": "Entrées de stock",
@@ -488,7 +545,9 @@
     "supplierOrKind": "Fournisseur / type",
     "documentReference": "Référence de la pièce (BL, facture…)",
     "unitCost": "Coût unitaire",
-    "confirmValidate": "Valider cette entrée ? Le stock et le CMUP du site seront mis à jour ; le document ne sera plus modifiable."
+    "confirmValidate": "Valider cette entrée ? Le stock et le CMUP du site seront mis à jour ; le document ne sera plus modifiable.",
+    "subtitle": "Réceptions fournisseurs et stocks initiaux : le stock augmente à la validation.",
+    "empty": "Aucune entrée de stock pour le moment."
   },
   "exits": {
     "title": "Sorties de stock",
@@ -500,7 +559,9 @@
     "beneficiary": "Bénéficiaire",
     "reference": "Référence",
     "costHelp": "Le coût des lignes est le CMUP du site au moment de la validation.",
-    "confirmValidate": "Valider cette sortie ? Le stock du site sera diminué ; le document ne sera plus modifiable."
+    "confirmValidate": "Valider cette sortie ? Le stock du site sera diminué ; le document ne sera plus modifiable.",
+    "subtitle": "Consommations, pertes, casse… : le stock diminue à la validation.",
+    "empty": "Aucune sortie de stock pour le moment."
   },
   "transfers": {
     "title": "Transferts inter-sites",
@@ -526,7 +587,9 @@
     "cancelWarning": "Les quantités seront retirées du site destination et remises sur le site source par des mouvements inverses. Refusé si le stock du site destination ne suffit plus.",
     "cancelDraftInfo": "Le brouillon sera abandonné, sans effet sur le stock.",
     "cancelled": "Transfert {{number}} annulé",
-    "readOnlyPlan": "Consultation seule : la création, la validation et l'annulation des transferts nécessitent la fonctionnalité « Transferts inter-sites » (offre Entreprise)."
+    "readOnlyPlan": "Consultation seule : la création, la validation et l'annulation des transferts nécessitent la fonctionnalité « Transferts inter-sites » (offre Entreprise).",
+    "subtitle": "Mouvements de stock entre les sites de l'entreprise.",
+    "empty": "Aucun transfert pour le moment."
   },
   "exitReasons": {
     "title": "Motifs de sortie",
@@ -537,11 +600,18 @@
     "system": "Système",
     "created": "Motif créé",
     "updated": "Motif modifié",
-    "statusChanged": "Statut mis à jour"
+    "statusChanged": "Statut mis à jour",
+    "subtitle": "Motifs proposés lors de la saisie des sorties de stock.",
+    "empty": "Aucun motif.",
+    "deactivateTitle": "Désactiver le motif",
+    "deactivateConfirm": "Désactiver le motif « {{name}} » ? Il ne sera plus proposé pour les nouvelles sorties."
   },
   "alerts": {
     "title": "Alertes de stock",
-    "none": "Aucune alerte de stock"
+    "none": "Aucune alerte de stock",
+    "subtitle": "Articles en rupture ou sous leur stock minimum, par site.",
+    "outHint": "Stock nul sur un site qui gère l'article",
+    "lowHint": "Stock inférieur ou égal au minimum"
   },
   "customers": {
     "title": "$t(terminology:customers.items)",
@@ -580,7 +650,11 @@
     "created": "Client {{code}} créé",
     "updated": "Client modifié",
     "activated": "Client réactivé",
-    "deactivated": "Client désactivé"
+    "deactivated": "Client désactivé",
+    "subtitle": "Référentiel clients partagé par tous les sites.",
+    "empty": "Aucun client pour le moment.",
+    "deactivateTitle": "Désactiver le client",
+    "deactivateConfirm": "Désactiver le client {{name}} ? Il ne sera plus proposé pour les nouvelles ventes ; ses ventes passées restent consultables."
   },
   "sales": {
     "title": "$t(terminology:sales.sales)",
@@ -617,6 +691,15 @@
     "cancel": "Annuler la vente",
     "cancelWarning": "Les quantités vendues seront remises en stock par des mouvements d'annulation. Cette action est définitive.",
     "cancelDraftInfo": "Le brouillon sera abandonné, sans effet sur le stock.",
-    "cancelled": "Vente {{number}} annulée"
+    "cancelled": "Vente {{number}} annulée",
+    "subtitle": "Ventes comptant : brouillons, ventes validées et annulées.",
+    "empty": "Aucune vente pour le moment."
+  },
+  "filters": {
+    "reset": "Réinitialiser",
+    "period": "Période"
+  },
+  "table": {
+    "pageReport": "{first}–{last} sur {totalRecords}"
   }
 }

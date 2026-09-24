@@ -1,65 +1,74 @@
 import { Column } from 'primereact/column';
-import { DataTable } from 'primereact/datatable';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatDateTime } from '@/shared/lib/format';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
+import { INITIAL_TABLE, type TableState } from '@/shared/lib/serverTable';
+import { EmptyState } from '@/shared/ui/EmptyState';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { ServerTable } from '@/shared/ui/ServerTable';
 
 import { useAuditLogs, type AuditLog } from './api';
 
-const PAGE_SIZE = 25;
+/** Valeur lisible d'un détail d'audit (les structures restent compactes). */
+function display(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+/** Détails d'une entrée : paires « clé : valeur » plutôt qu'un bloc JSON brut. */
+function AuditDetails({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data);
+  if (entries.length === 0) return null;
+  return (
+    <dl className="sm-kv">
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <dt>{key}</dt>
+          <dd className={typeof value === 'object' && value !== null ? 'sm-code' : undefined}>
+            {display(value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 export default function AuditLogPage() {
   const { t } = useTranslation();
   const { capabilities } = useCapabilities();
-  const [first, setFirst] = useState(0);
-  const logs = useAuditLogs(PAGE_SIZE, first);
+  const [table, setTable] = useState<TableState>(INITIAL_TABLE);
+  const logs = useAuditLogs(table.rows, table.first);
   const { locale, timezone } = capabilities.tenant;
 
   return (
     <>
-      <PageHeader title={t('audit.title')} />
-      {logs.isError ? (
-        <ErrorMessage error={logs.error} onRetry={() => void logs.refetch()} />
-      ) : (
-        <DataTable
-          value={logs.data?.items ?? []}
-          loading={logs.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={first}
-          rows={PAGE_SIZE}
-          totalRecords={logs.data?.total ?? 0}
-          onPage={(e) => setFirst(e.first)}
-          emptyMessage={t('common.noData')}
-        >
-          <Column
-            header={t('audit.date')}
-            body={(l: AuditLog) => formatDateTime(l.occurred_at, locale, timezone)}
-          />
-          <Column
-            header={t('audit.user')}
-            body={(l: AuditLog) => l.user_name ?? l.user_email ?? t('audit.system')}
-          />
-          <Column field="action" header={t('audit.action')} />
-          <Column
-            header={t('audit.entity')}
-            body={(l: AuditLog) => (l.entity_type ? `${l.entity_type}` : '')}
-          />
-          <Column
-            header={t('audit.details')}
-            body={(l: AuditLog) => (
-              <code className="sm-code">
-                {Object.keys(l.data).length ? JSON.stringify(l.data) : ''}
-              </code>
-            )}
-          />
-        </DataTable>
-      )}
+      <PageHeader title={t('audit.title')} description={t('audit.subtitle')} />
+      <ServerTable
+        query={logs}
+        table={table}
+        onTableChange={setTable}
+        minWidth="56rem"
+        empty={<EmptyState icon="pi pi-history" title={t('audit.empty')} />}
+      >
+        <Column
+          header={t('audit.date')}
+          bodyClassName="sm-nowrap"
+          body={(l: AuditLog) => formatDateTime(l.occurred_at, locale, timezone)}
+        />
+        <Column
+          header={t('audit.user')}
+          body={(l: AuditLog) => l.user_name ?? l.user_email ?? t('audit.system')}
+        />
+        <Column field="action" header={t('audit.action')} bodyClassName="sm-nowrap" />
+        <Column header={t('audit.entity')} body={(l: AuditLog) => l.entity_type ?? ''} />
+        <Column
+          header={t('audit.details')}
+          body={(l: AuditLog) => <AuditDetails data={l.data} />}
+        />
+      </ServerTable>
     </>
   );
 }

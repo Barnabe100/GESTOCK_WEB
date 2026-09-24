@@ -6,7 +6,6 @@ import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputSwitch } from 'primereact/inputswitch';
 import { InputText } from 'primereact/inputtext';
-import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +18,9 @@ import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { ActiveBadge } from '@/shared/ui/StatusBadge';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import { useSaveSite, useSites, type Site } from './api';
 
@@ -84,6 +86,7 @@ function SiteDialog({ site, onClose }: { site: Site | null; onClose: () => void 
         <FormField
           id="site-name"
           label={t('sites.name')}
+          required
           error={errors.name && t('validation.required')}
         >
           <InputText id="site-name" {...form.register('name')} autoFocus />
@@ -91,6 +94,7 @@ function SiteDialog({ site, onClose }: { site: Site | null; onClose: () => void 
         <FormField
           id="site-code"
           label={t('sites.code')}
+          required
           error={errors.code && t('validation.invalid')}
         >
           <InputText id="site-code" {...form.register('code')} />
@@ -150,6 +154,7 @@ export default function SitesPage() {
     <>
       <PageHeader
         title={t('sites.title')}
+        description={t('sites.subtitle')}
         actions={
           canManage && (
             <Button icon="pi pi-plus" label={t('sites.new')} onClick={() => setEditing(null)} />
@@ -160,31 +165,34 @@ export default function SitesPage() {
         <ErrorMessage error={sites.error} onRetry={() => void sites.refetch()} />
       ) : (
         <DataTable
+          className="sm-table"
           value={sites.data ?? []}
           loading={sites.isPending}
           dataKey="id"
-          emptyMessage={t('common.noData')}
+          rowHover
+          tableStyle={{ minWidth: '36rem' }}
+          emptyMessage={<EmptyState icon="pi pi-map-marker" title={t('sites.empty')} />}
         >
           <Column field="name" header={t('sites.name')} />
           <Column field="code" header={t('sites.code')} />
           <Column header={t('sites.kind')} body={(s: Site) => t(`sites.kinds.${s.kind}`)} />
           <Column
             header={t('sites.status')}
-            body={(s: Site) => (
-              <Tag
-                severity={s.is_active ? 'success' : 'secondary'}
-                value={t(s.is_active ? 'common.active' : 'common.inactive')}
-              />
-            )}
+            body={(s: Site) => <ActiveBadge active={s.is_active} />}
           />
           {canManage && (
             <Column
+              header={t('common.actions')}
               body={(s: Site) => (
-                <Button
-                  icon="pi pi-pencil"
-                  text
-                  aria-label={t('actions.edit')}
-                  onClick={() => setEditing(s)}
+                <RowActions
+                  actions={[
+                    {
+                      key: 'edit',
+                      label: t('actions.edit'),
+                      icon: 'pi pi-pencil',
+                      onClick: () => setEditing(s),
+                    },
+                  ]}
                 />
               )}
             />

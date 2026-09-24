@@ -1,4 +1,3 @@
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { Suspense, useMemo } from 'react';
 import { Navigate, useRoutes } from 'react-router';
 
@@ -10,13 +9,10 @@ import { AppLayout } from '@/layouts/AppLayout';
 import { NotFound } from '@/shared/ui/NotFound';
 
 import { FRONTEND_MODULES } from './modules';
+import { LoadingState } from '@/shared/ui/LoadingState';
 
 function Spinner() {
-  return (
-    <div className="sm-center">
-      <ProgressSpinner />
-    </div>
-  );
+  return <LoadingState />;
 }
 
 /** Routes générées depuis le registre des modules, filtrées par les capacités. */

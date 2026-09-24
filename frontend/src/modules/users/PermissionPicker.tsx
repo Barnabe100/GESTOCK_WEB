@@ -1,19 +1,20 @@
 import { Button } from 'primereact/button';
 import { Checkbox } from 'primereact/checkbox';
 import { InputSwitch } from 'primereact/inputswitch';
-import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SearchInput } from '@/shared/ui/SearchInput';
+import { StatusBadge, type Tone } from '@/shared/ui/StatusBadge';
 
 import type { Permission } from './api';
 import { groupPermissions, normalizeSearch } from './permissionGroups';
 
-const ACCESS_SEVERITY: Record<string, 'info' | 'success' | 'warning' | 'danger' | 'secondary'> = {
+// Nature d'une permission : même tonalité partout (lecture neutre, écriture, administration…).
+const ACCESS_TONES: Record<string, Tone> = {
   read: 'info',
   write: 'success',
-  export: 'secondary',
+  export: 'neutral',
   admin: 'warning',
   billing: 'danger',
 };
@@ -112,9 +113,9 @@ export function PermissionPicker({
                         onChange={(e) => set([permission.code], Boolean(e.checked))}
                       />
                       <label htmlFor={id}>{label(permission)}</label>
-                      <Tag
-                        severity={ACCESS_SEVERITY[permission.access] ?? 'secondary'}
-                        value={t(`access.${permission.access}`, permission.access)}
+                      <StatusBadge
+                        tone={ACCESS_TONES[permission.access] ?? 'neutral'}
+                        label={t(`access.${permission.access}`, permission.access)}
                       />
                     </div>
                   );

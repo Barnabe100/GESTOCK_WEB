@@ -8,6 +8,7 @@ export const stockModule: FrontendModule = {
     {
       key: 'stock-levels',
       labelKey: 'nav.stockLevels',
+      group: 'stock',
       icon: 'pi pi-warehouse',
       path: '/stock/levels',
       permission: 'stock.level.view',
@@ -15,6 +16,7 @@ export const stockModule: FrontendModule = {
     {
       key: 'stock-entries',
       labelKey: 'nav.stockEntries',
+      group: 'stock',
       icon: 'pi pi-sign-in',
       path: '/stock/entries',
       permission: 'stock.entry.view',
@@ -22,6 +24,7 @@ export const stockModule: FrontendModule = {
     {
       key: 'stock-exits',
       labelKey: 'nav.stockExits',
+      group: 'stock',
       icon: 'pi pi-sign-out',
       path: '/stock/exits',
       permission: 'stock.exit.view',
@@ -29,6 +32,7 @@ export const stockModule: FrontendModule = {
     {
       key: 'stock-transfers',
       labelKey: 'nav.stockTransfers',
+      group: 'stock',
       icon: 'pi pi-arrow-right-arrow-left',
       path: '/stock/transfers',
       // Consultation de l'historique même sans la fonctionnalité (plan) : pas de `feature`.
@@ -37,6 +41,7 @@ export const stockModule: FrontendModule = {
     {
       key: 'stock-movements',
       labelKey: 'nav.stockMovements',
+      group: 'stock',
       icon: 'pi pi-history',
       path: '/stock/movements',
       permission: 'stock.movement.view',
@@ -44,6 +49,7 @@ export const stockModule: FrontendModule = {
     {
       key: 'stock-exit-reasons',
       labelKey: 'nav.exitReasons',
+      group: 'stock',
       icon: 'pi pi-list',
       path: '/stock/exit-reasons',
       permission: 'stock.reason.manage',

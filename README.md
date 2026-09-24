@@ -27,6 +27,7 @@ utilisateur.
 - [Catalogue et stock : règles métier](docs/architecture/CATALOGUE_STOCK.md)
 - [Clients : règles métier](docs/architecture/CLIENTS.md)
 - [Ventes simples : cycle de vie et règles](docs/architecture/SALES.md)
+- [Design System (interface)](docs/architecture/DESIGN_SYSTEM.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)
 

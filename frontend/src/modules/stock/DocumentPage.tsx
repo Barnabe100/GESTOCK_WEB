@@ -2,14 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Column } from 'primereact/column';
-import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
 import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -22,8 +20,11 @@ import { formatCost, formatMoney, formatQuantity, normalizeDecimal } from '@/sha
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
+import { confirmAction } from '@/shared/ui/confirm';
 
 import {
   DOCUMENT_CONFIG,
@@ -40,7 +41,7 @@ import {
   type StockExit,
 } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
-import { DocumentStatusTag, stockError } from './ui';
+import { stockError } from './ui';
 
 const OPTIONS_QUERY = 'limit=200&status=active&sort=name';
 
@@ -339,11 +340,11 @@ function DocumentForm({
   });
 
   const onValidate = form.handleSubmit((values) =>
-    confirmDialog({
+    confirmAction(t, {
+      header: t('stock.validate'),
       message: t(`${config.i18n}.confirmValidate`),
       acceptLabel: t('stock.validate'),
-      rejectLabel: t('actions.cancel'),
-      accept: async () => {
+      onAccept: async () => {
         try {
           const saved = form.formState.isDirty || !document ? await persist(values) : document;
           const validated = await validate.mutateAsync(saved.id);
@@ -360,12 +361,12 @@ function DocumentForm({
 
   return (
     <form onSubmit={onSave} className="sm-form" noValidate>
-      <ConfirmDialog />
       <div className="sm-form-grid">
         {isNew && siteId === null && (
           <FormField
             id="doc-site"
             label={t('layout.site')}
+            required
             error={errors.site_id && t('validation.required')}
           >
             <Controller
@@ -439,6 +440,7 @@ function DocumentForm({
             <FormField
               id="doc-reason"
               label={t('exits.reason')}
+              required
               error={errors.reason_id && t('validation.required')}
             >
               <Controller
@@ -480,6 +482,7 @@ function DocumentForm({
               <FormField
                 id={`line-${index}-article`}
                 label={t('stock.article')}
+                required
                 error={lineErrors?.article && t('validation.required')}
               >
                 <Controller
@@ -587,11 +590,7 @@ function DocumentPage({ kind }: { kind: DocumentKind }) {
   const [cancelling, setCancelling] = useState(false);
 
   if (!isNew && query.isPending) {
-    return (
-      <div className="sm-center">
-        <ProgressSpinner />
-      </div>
-    );
+    return <LoadingState />;
   }
   if (!isNew && query.isError) {
     return <ErrorMessage error={query.error} onRetry={() => void query.refetch()} />;
@@ -620,9 +619,13 @@ function DocumentPage({ kind }: { kind: DocumentKind }) {
     <>
       <PageHeader
         title={document ? `${t(`${config.i18n}.one`)} ${document.number}` : t(`${config.i18n}.new`)}
+        breadcrumbs={[
+          { label: t(`${config.i18n}.title`), to: `/stock/${kind}` },
+          { label: document ? document.number : t(`${config.i18n}.new`) },
+        ]}
         actions={
           <div className="sm-tags">
-            {document && <DocumentStatusTag status={document.status} />}
+            {document && <DocumentStatusBadge status={document.status} />}
             {canCancel && (
               <Button
                 icon="pi pi-undo"

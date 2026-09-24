@@ -1,5 +1,4 @@
 import { Dropdown } from 'primereact/dropdown';
-import { Tag } from 'primereact/tag';
 import { useTranslation } from 'react-i18next';
 
 import type { StatusFilterValue } from '@/shared/lib/serverTable';
@@ -21,16 +20,6 @@ export function StatusFilter({
         label: t(`statusFilter.${v}`),
       }))}
       aria-label={t('statusFilter.label')}
-    />
-  );
-}
-
-export function ActiveTag({ active }: { active: boolean }) {
-  const { t } = useTranslation();
-  return (
-    <Tag
-      severity={active ? 'success' : 'secondary'}
-      value={t(active ? 'common.active' : 'common.inactive')}
     />
   );
 }

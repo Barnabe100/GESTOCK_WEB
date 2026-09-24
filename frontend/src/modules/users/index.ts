@@ -8,6 +8,7 @@ export const usersModule: FrontendModule = {
     {
       key: 'members',
       labelKey: 'nav.members',
+      group: 'admin',
       icon: 'pi pi-users',
       path: '/users/members',
       permission: 'users.member.view',
@@ -15,6 +16,7 @@ export const usersModule: FrontendModule = {
     {
       key: 'roles',
       labelKey: 'nav.roles',
+      group: 'admin',
       icon: 'pi pi-shield',
       path: '/users/roles',
       permission: 'users.role.view',

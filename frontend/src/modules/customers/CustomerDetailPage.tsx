@@ -1,6 +1,5 @@
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
@@ -9,8 +8,9 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { ActiveTag } from '@/shared/ui/StatusFilter';
+import { ActiveBadge } from '@/shared/ui/StatusBadge';
 
 import { useCustomer } from './api';
 import { CustomerDialog } from './CustomerDialog';
@@ -31,11 +31,7 @@ export default function CustomerDetailPage() {
   const { currency, locale, timezone } = capabilities.tenant;
 
   if (customer.isPending) {
-    return (
-      <div className="sm-center">
-        <ProgressSpinner />
-      </div>
-    );
+    return <LoadingState />;
   }
   if (customer.isError) {
     return <ErrorMessage error={customer.error} onRetry={() => void customer.refetch()} />;
@@ -62,9 +58,10 @@ export default function CustomerDetailPage() {
     <>
       <PageHeader
         title={c.name}
+        breadcrumbs={[{ label: t('customers.title'), to: '/customers' }, { label: c.name }]}
         actions={
           <div className="sm-tags">
-            <ActiveTag active={c.is_active} />
+            <ActiveBadge active={c.is_active} />
             {can('customers.customer.update') && (
               <Button
                 icon="pi pi-pencil"

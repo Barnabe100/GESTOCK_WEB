@@ -1,7 +1,5 @@
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dropdown } from 'primereact/dropdown';
-import { InputText } from 'primereact/inputtext';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -14,9 +12,11 @@ import {
   useDebouncedValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
 
 import { useMovements, type Movement, type MovementType } from './api';
 
@@ -54,14 +54,20 @@ export default function MovementsPage() {
   const { currency, locale, timezone } = capabilities.tenant;
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered = search !== '' || type !== null || dateFrom !== '' || dateTo !== '';
+  const resetFilters = () => {
+    setSearch('');
+    setType(null);
+    setDateFrom('');
+    setDateTo('');
+    resetPage();
+  };
 
   return (
     <>
-      <PageHeader title={t('stock.movementsTitle')} />
-      <div className="sm-toolbar">
+      <PageHeader title={t('stock.movementsTitle')} description={t('stock.movementsSubtitle')} />
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           placeholder={t('stock.movementSearch')}
@@ -81,83 +87,58 @@ export default function MovementsPage() {
           showClear
           aria-label={t('stock.movementType')}
         />
-        <InputText
-          type="date"
-          value={dateFrom}
-          aria-label={t('stock.dateFrom')}
-          title={t('stock.dateFrom')}
-          onChange={(e) => {
-            setDateFrom(e.target.value);
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onChange={({ from, to }) => {
+            setDateFrom(from);
+            setDateTo(to);
             resetPage();
           }}
         />
-        <InputText
-          type="date"
-          value={dateTo}
-          aria-label={t('stock.dateTo')}
-          title={t('stock.dateTo')}
-          onChange={(e) => {
-            setDateTo(e.target.value);
-            resetPage();
-          }}
+      </FilterBar>
+      <ServerTable
+        query={movements}
+        table={table}
+        onTableChange={setTable}
+        empty={<ListEmpty filtered={filtered} title={t('stock.movementsEmpty')} />}
+      >
+        <Column
+          field="occurred_at"
+          header={t('stock.date')}
+          sortable
+          body={(m: Movement) => formatDateTime(m.occurred_at, locale, timezone)}
         />
-      </div>
-      {movements.isError ? (
-        <ErrorMessage error={movements.error} onRetry={() => void movements.refetch()} />
-      ) : (
-        <DataTable
-          value={movements.data?.items ?? []}
-          loading={movements.isFetching}
-          dataKey="id"
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={movements.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          <Column
-            field="occurred_at"
-            header={t('stock.date')}
-            sortable
-            body={(m: Movement) => formatDateTime(m.occurred_at, locale, timezone)}
-          />
-          {showSite && <Column field="site_name" header={t('layout.site')} />}
-          <Column
-            header={t('stock.movementType')}
-            body={(m: Movement) => t(`stock.movementTypes.${m.movement_type}`)}
-          />
-          <Column field="document_number" header={t('stock.document')} />
-          <Column
-            header={t('stock.article')}
-            body={(m: Movement) => `${m.article_reference} — ${m.article_designation}`}
-          />
-          <Column
-            header={t('stock.quantity')}
-            body={(m: Movement) =>
-              `${m.quantity.startsWith('-') ? '' : '+'}${formatQuantity(m.quantity, locale)} ${m.unit}`
-            }
-          />
-          <Column
-            header={t('stock.stockAfter')}
-            body={(m: Movement) => formatQuantity(m.quantity_after, locale)}
-          />
-          <Column
-            header={t('stock.unitCost')}
-            body={(m: Movement) => formatCost(m.unit_cost, currency, locale)}
-          />
-          <Column
-            header={t('stock.averageCost')}
-            body={(m: Movement) => formatCost(m.average_cost_after, currency, locale)}
-          />
-          <Column field="user_name" header={t('audit.user')} />
-        </DataTable>
-      )}
+        {showSite && <Column field="site_name" header={t('layout.site')} />}
+        <Column
+          header={t('stock.movementType')}
+          body={(m: Movement) => t(`stock.movementTypes.${m.movement_type}`)}
+        />
+        <Column field="document_number" header={t('stock.document')} />
+        <Column
+          header={t('stock.article')}
+          body={(m: Movement) => `${m.article_reference} — ${m.article_designation}`}
+        />
+        <Column
+          header={t('stock.quantity')}
+          body={(m: Movement) =>
+            `${m.quantity.startsWith('-') ? '' : '+'}${formatQuantity(m.quantity, locale)} ${m.unit}`
+          }
+        />
+        <Column
+          header={t('stock.stockAfter')}
+          body={(m: Movement) => formatQuantity(m.quantity_after, locale)}
+        />
+        <Column
+          header={t('stock.unitCost')}
+          body={(m: Movement) => formatCost(m.unit_cost, currency, locale)}
+        />
+        <Column
+          header={t('stock.averageCost')}
+          body={(m: Movement) => formatCost(m.average_cost_after, currency, locale)}
+        />
+        <Column field="user_name" header={t('audit.user')} />
+      </ServerTable>
     </>
   );
 }

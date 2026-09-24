@@ -1,5 +1,8 @@
 import type { ComponentType, LazyExoticComponent } from 'react';
 
+/** Rubrique de la barre latérale (ordre : NAV_GROUPS). */
+export type NavGroup = 'home' | 'catalog' | 'stock' | 'sales' | 'admin';
+
 export interface NavItem {
   /** Identifiant unique de l'entrée. */
   key: string;
@@ -12,6 +15,8 @@ export interface NavItem {
   permission?: string;
   /** Fonctionnalité de plan requise en plus (ex. `stock.transfers`). */
   feature?: string;
+  /** Rubrique d'affichage (défaut : `home`). */
+  group?: NavGroup;
 }
 
 export interface ModuleRoute {

@@ -2,11 +2,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Checkbox } from 'primereact/checkbox';
 import { Column } from 'primereact/column';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
-import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -22,11 +20,15 @@ import {
   useDebouncedValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
 import { useToast } from '@/shared/ui/toast';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { FilterBar } from '@/shared/ui/FilterBar';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import { useSetThresholds, useStockLevels, type LevelStateFilter, type StockLevel } from './api';
 import { LevelStateTag, thresholdText } from './ui';
@@ -133,14 +135,20 @@ export default function StockLevelsPage() {
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
   const canManage = can('stock.threshold.manage');
 
-  const onPage = (e: DataTableStateEvent) =>
-    setTable({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const filtered = search !== '' || state !== 'all' || categoryId !== null || includeInactive;
+  const resetFilters = () => {
+    setSearch('');
+    setState('all');
+    setCategoryId(null);
+    setIncludeInactive(false);
+    resetPage();
+  };
 
   return (
     <>
-      <PageHeader title={t('stock.levelsTitle')} />
-      <div className="sm-toolbar">
+      <PageHeader title={t('stock.levelsTitle')} description={t('stock.levelsSubtitle')} />
+      <FilterBar onReset={resetFilters} active={filtered}>
         <SearchInput
           value={search}
           onChange={(v) => {
@@ -182,91 +190,88 @@ export default function StockLevelsPage() {
           />
           <label htmlFor="include-inactive">{t('stock.includeInactive')}</label>
         </div>
-      </div>
-      {levels.isError ? (
-        <ErrorMessage error={levels.error} onRetry={() => void levels.refetch()} />
-      ) : (
-        <DataTable
-          value={levels.data?.items ?? []}
-          loading={levels.isFetching}
-          dataKey={(l: StockLevel) => `${l.site_id}:${l.article_id}`}
-          lazy
-          paginator
-          first={table.first}
-          rows={table.rows}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          totalRecords={levels.data?.total ?? 0}
-          sortField={table.sortField}
-          sortOrder={table.sortOrder}
-          onPage={onPage}
-          onSort={onPage}
-          emptyMessage={t('common.noData')}
-        >
-          {showSite && (
-            <Column field="site_name" sortField="site" header={t('layout.site')} sortable />
+      </FilterBar>
+      <ServerTable
+        query={levels}
+        table={table}
+        onTableChange={setTable}
+        minWidth="60rem"
+        dataKey={(l: StockLevel) => `${l.site_id}:${l.article_id}`}
+        empty={<ListEmpty filtered={filtered} title={t('stock.levelsEmpty')} />}
+      >
+        {showSite && (
+          <Column field="site_name" sortField="site" header={t('layout.site')} sortable />
+        )}
+        <Column field="reference" header={t('articles.reference')} sortable />
+        <Column
+          field="designation"
+          header={t('articles.designation')}
+          sortable
+          body={(l: StockLevel) => (
+            <div className="sm-tags">
+              <span>{l.designation}</span>
+              {!l.article_active && <StatusBadge tone="neutral" label={t('common.inactive')} />}
+            </div>
           )}
-          <Column field="reference" header={t('articles.reference')} sortable />
+        />
+        <Column
+          field="category_name"
+          sortField="category"
+          header={t('articles.category')}
+          sortable
+        />
+        <Column
+          field="quantity"
+          header={t('stock.quantity')}
+          sortable
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+          body={(l: StockLevel) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
+        />
+        <Column
+          header={t('stock.averageCost')}
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+          body={(l: StockLevel) => formatCost(l.average_cost, currency, locale)}
+        />
+        <Column
+          header={t('stock.value')}
+          headerClassName="sm-num"
+          bodyClassName="sm-num"
+          body={(l: StockLevel) => formatMoney(l.stock_value, currency, locale)}
+        />
+        <Column
+          header={t('stock.minMax')}
+          body={(l: StockLevel) =>
+            `${thresholdText(l.min_stock, l.min_override, locale)} / ${thresholdText(
+              l.max_stock,
+              l.max_override,
+              locale,
+            )}`
+          }
+        />
+        <Column
+          header={t('stock.state')}
+          body={(l: StockLevel) => <LevelStateTag state={l.state} />}
+        />
+        {canManage && (
           <Column
-            field="designation"
-            header={t('articles.designation')}
-            sortable
+            header={t('common.actions')}
             body={(l: StockLevel) => (
-              <div className="sm-tags">
-                <span>{l.designation}</span>
-                {!l.article_active && <Tag severity="secondary" value={t('common.inactive')} />}
-              </div>
+              <RowActions
+                actions={[
+                  {
+                    key: 'thresholds',
+                    label: t('stock.editThresholds'),
+                    icon: 'pi pi-sliders-h',
+                    onClick: () => setEditing(l),
+                  },
+                ]}
+              />
             )}
           />
-          <Column
-            field="category_name"
-            sortField="category"
-            header={t('articles.category')}
-            sortable
-          />
-          <Column
-            field="quantity"
-            header={t('stock.quantity')}
-            sortable
-            body={(l: StockLevel) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
-          />
-          <Column
-            header={t('stock.averageCost')}
-            body={(l: StockLevel) => formatCost(l.average_cost, currency, locale)}
-          />
-          <Column
-            header={t('stock.value')}
-            body={(l: StockLevel) => formatMoney(l.stock_value, currency, locale)}
-          />
-          <Column
-            header={t('stock.minMax')}
-            body={(l: StockLevel) =>
-              `${thresholdText(l.min_stock, l.min_override, locale)} / ${thresholdText(
-                l.max_stock,
-                l.max_override,
-                locale,
-              )}`
-            }
-          />
-          <Column
-            header={t('stock.state')}
-            body={(l: StockLevel) => <LevelStateTag state={l.state} />}
-          />
-          {canManage && (
-            <Column
-              header={t('common.actions')}
-              body={(l: StockLevel) => (
-                <Button
-                  icon="pi pi-sliders-h"
-                  text
-                  aria-label={t('stock.editThresholds')}
-                  tooltip={t('stock.editThresholds')}
-                  onClick={() => setEditing(l)}
-                />
-              )}
-            />
-          )}
-        </DataTable>
-      )}
+        )}
+      </ServerTable>
       <small className="sm-help">{t('stock.overrideLegend')}</small>
       {editing && <ThresholdDialog level={editing} onClose={() => setEditing(null)} />}
     </>

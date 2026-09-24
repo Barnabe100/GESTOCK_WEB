@@ -8,7 +8,6 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { MultiSelect } from 'primereact/multiselect';
 import { Password } from 'primereact/password';
-import { Tag } from 'primereact/tag';
 import { useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +20,9 @@ import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { EmptyState } from '@/shared/ui/EmptyState';
+import { RowActions } from '@/shared/ui/RowActions';
 
 import { useMembers, useRoles, useSaveMember, type Member } from './api';
 
@@ -130,6 +132,7 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
         <FormField
           id="member-email"
           label={t('members.email')}
+          required
           error={errors.email && t('validation.email')}
         >
           <InputText
@@ -143,6 +146,7 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
         <FormField
           id="member-name"
           label={t('members.name')}
+          required
           error={errors.full_name && t('validation.required')}
         >
           <InputText id="member-name" {...form.register('full_name')} disabled={editing} />
@@ -319,6 +323,7 @@ export default function MembersPage() {
     <>
       <PageHeader
         title={t('members.title')}
+        description={t('members.subtitle')}
         actions={
           canManage && (
             <Button
@@ -332,7 +337,15 @@ export default function MembersPage() {
       {members.isError ? (
         <ErrorMessage error={members.error} onRetry={() => void members.refetch()} />
       ) : (
-        <DataTable value={members.data ?? []} loading={members.isPending} dataKey="id">
+        <DataTable
+          className="sm-table"
+          value={members.data ?? []}
+          loading={members.isPending}
+          dataKey="id"
+          rowHover
+          tableStyle={{ minWidth: '44rem' }}
+          emptyMessage={<EmptyState icon="pi pi-users" title={t('members.empty')} />}
+        >
           <Column
             header={t('members.name')}
             body={(m: Member) => (
@@ -346,7 +359,7 @@ export default function MembersPage() {
             header={t('members.roles')}
             body={(m: Member) =>
               m.is_owner ? (
-                <Tag value={t('auth.owner')} />
+                <StatusBadge tone="info" icon="pi pi-star" label={t('auth.owner')} />
               ) : (
                 m.roles
                   .map(
@@ -370,28 +383,33 @@ export default function MembersPage() {
             header={t('members.status')}
             body={(m: Member) => (
               <div className="sm-tags">
-                <Tag
-                  severity={m.status === 'active' ? 'success' : 'secondary'}
-                  value={t(`members.statuses.${m.status}`)}
+                <StatusBadge
+                  tone={m.status === 'active' ? 'success' : 'neutral'}
+                  label={t(`members.statuses.${m.status}`)}
                 />
                 {m.must_change_password && (
-                  <Tag severity="warning" value={t('members.mustChange')} />
+                  <StatusBadge tone="warning" label={t('members.mustChange')} />
                 )}
               </div>
             )}
           />
           {canManage && (
             <Column
-              body={(m: Member) =>
-                !m.is_owner && m.user_id !== capabilities.user.id ? (
-                  <Button
-                    icon="pi pi-pencil"
-                    text
-                    aria-label={t('actions.edit')}
-                    onClick={() => setEditing(m)}
-                  />
-                ) : null
-              }
+              header={t('common.actions')}
+              body={(m: Member) => (
+                <RowActions
+                  actions={[
+                    {
+                      key: 'edit',
+                      label: t('actions.edit'),
+                      icon: 'pi pi-pencil',
+                      onClick: () => setEditing(m),
+                      // Ni le propriétaire ni son propre compte (anti-escalade côté serveur).
+                      hidden: m.is_owner || m.user_id === capabilities.user.id,
+                    },
+                  ]}
+                />
+              )}
             />
           )}
         </DataTable>

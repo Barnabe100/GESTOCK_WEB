@@ -1,6 +1,7 @@
 // Aides de test des pages (non incluses dans le bundle : importées par les tests seuls).
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
+import { ConfirmDialog } from 'primereact/confirmdialog';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
@@ -47,6 +48,15 @@ export function renderWithCapabilities(
     user: { id: 'u-me', email: 'me@example.com', full_name: 'Moi' },
     tenant: { id: 't', name: 'T', slug: 't', currency: 'XOF', locale: 'fr', timezone: 'UTC' },
     is_owner: isOwner,
+    profile: { code: 'retail', name: 'Commerce' },
+    plan: { code: 'STANDARD', name: 'Standard' },
+    subscription: {
+      status: 'active',
+      billing_period: 'monthly',
+      current_period_end: '2026-12-31T00:00:00Z',
+      allowed_access: ['read', 'write', 'export', 'admin', 'billing'],
+    },
+    restricted_permissions: [],
     site: null,
     sites,
     modules: [],
@@ -72,6 +82,8 @@ export function renderWithCapabilities(
             <Route path={path} element={element} />
           </Routes>
         </MemoryRouter>
+        {/* Comme la coquille de l'application : un seul dialogue de confirmation. */}
+        <ConfirmDialog />
       </CapabilitiesContext.Provider>
     </QueryClientProvider>,
   );

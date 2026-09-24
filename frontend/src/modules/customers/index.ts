@@ -8,6 +8,7 @@ export const customersModule: FrontendModule = {
     {
       key: 'customers',
       labelKey: 'nav.customers',
+      group: 'sales',
       icon: 'pi pi-id-card',
       path: '/customers',
       permission: 'customers.customer.view',

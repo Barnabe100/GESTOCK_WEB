@@ -116,7 +116,7 @@ describe('page Clients', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
     expect(await within(dialog).findByText('Champ obligatoire')).toBeTruthy();
 
-    fireEvent.change(within(dialog).getByLabelText('Nom et prénom'), {
+    fireEvent.change(within(dialog).getByLabelText(/^Nom et prénom/), {
       target: { value: 'Moussa' },
     });
     fireEvent.change(within(dialog).getByLabelText('Email'), { target: { value: 'moussa@' } });
@@ -163,10 +163,15 @@ describe('page Clients', () => {
     expect((within(dialog).getByLabelText('Raison sociale') as HTMLInputElement).value).toBe(
       'QDC SARL',
     );
-    expect(within(dialog).getByLabelText('Nom usuel / enseigne')).toBeTruthy();
+    expect(within(dialog).getByLabelText(/^Nom usuel \/ enseigne/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Désactiver' }));
+    // Action sensible : confirmation explicite, rien n'est envoyé avant.
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).getByText(/Désactiver le client Awa Traoré/)).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/deactivate'))).toBe(false);
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Désactiver' }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(

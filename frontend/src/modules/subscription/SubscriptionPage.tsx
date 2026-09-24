@@ -1,12 +1,11 @@
 import { Card } from 'primereact/card';
-import { Tag } from 'primereact/tag';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatDate } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { SubscriptionStatusTag } from '@/shared/ui/StatusTag';
+import { SubscriptionStatusBadge, StatusBadge } from '@/shared/ui/StatusBadge';
 
 import { useSubscription } from './api';
 
@@ -24,12 +23,15 @@ export default function SubscriptionPage() {
 
   return (
     <>
-      <PageHeader title={t('subscriptionPage.title')} />
+      <PageHeader
+        title={t('subscriptionPage.title')}
+        description={t('subscriptionPage.subtitle')}
+      />
       <div className="sm-grid">
         <Card title={t('subscriptionPage.plan')}>
           <p className="sm-strong">{s.plan_name}</p>
           <p>{t(`billingPeriod.${s.billing_period}`)}</p>
-          <SubscriptionStatusTag status={s.effective_status} />
+          <SubscriptionStatusBadge status={s.effective_status} />
         </Card>
         <Card title={t('subscriptionPage.period')}>
           <p>
@@ -52,7 +54,7 @@ export default function SubscriptionPage() {
       <Card title={t('subscriptionPage.allowed')} className="sm-block">
         <div className="sm-tags">
           {s.allowed_access.map((access) => (
-            <Tag key={access} value={t(`access.${access}`)} />
+            <StatusBadge key={access} tone="info" label={t(`access.${access}`)} />
           ))}
         </div>
         <p className="sm-muted">{t('subscriptionPage.renewInfo')}</p>

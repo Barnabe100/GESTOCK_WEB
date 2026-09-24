@@ -2,14 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Column } from 'primereact/column';
-import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
 import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
-import { ProgressSpinner } from 'primereact/progressspinner';
 import { useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -21,8 +19,11 @@ import { formatCost, formatMoney, formatQuantity, normalizeDecimal } from '@/sha
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
+import { confirmAction } from '@/shared/ui/confirm';
 
 import type { DocumentLine } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
@@ -34,7 +35,7 @@ import {
   type StockTransfer,
   type TransferInput,
 } from './transferApi';
-import { DocumentStatusTag, stockError } from './ui';
+import { stockError } from './ui';
 
 const quantity = z.string().refine((v) => {
   const n = normalizeDecimal(v, 3);
@@ -157,12 +158,11 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
   });
 
   const onValidate = form.handleSubmit((values) =>
-    confirmDialog({
+    confirmAction(t, {
       header: t('transfers.validate'),
       message: t('transfers.confirmValidate'),
       acceptLabel: t('transfers.validate'),
-      rejectLabel: t('actions.cancel'),
-      accept: async () => {
+      onAccept: async () => {
         try {
           const saved = form.formState.isDirty || !transfer ? await persist(values) : transfer;
           const validated = await validate.mutateAsync(saved.id);
@@ -177,11 +177,11 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
   const destinationError = errors.destination_site_id?.message;
   return (
     <form onSubmit={onSave} className="sm-form" noValidate>
-      <ConfirmDialog />
       <div className="sm-form-grid">
         <FormField
           id="transfer-source"
           label={t('transfers.source')}
+          required
           error={errors.source_site_id && t('validation.required')}
         >
           <Controller
@@ -202,6 +202,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
         <FormField
           id="transfer-destination"
           label={t('transfers.destination')}
+          required
           error={
             destinationError &&
             t(destinationError === 'same' ? 'errors:same_site_transfer' : 'validation.required')
@@ -241,6 +242,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
               <FormField
                 id={`line-${index}-article`}
                 label={t('stock.article')}
+                required
                 error={
                   lineErrors?.article &&
                   t(
@@ -466,11 +468,7 @@ export default function TransferPage() {
   const [cancelling, setCancelling] = useState(false);
 
   if (!isNew && query.isPending) {
-    return (
-      <div className="sm-center">
-        <ProgressSpinner />
-      </div>
-    );
+    return <LoadingState />;
   }
   if (!isNew && query.isError) {
     return <ErrorMessage error={query.error} onRetry={() => void query.refetch()} />;
@@ -491,9 +489,13 @@ export default function TransferPage() {
     <>
       <PageHeader
         title={transfer ? `${t('transfers.one')} ${transfer.number}` : t('transfers.new')}
+        breadcrumbs={[
+          { label: t('transfers.title'), to: '/stock/transfers' },
+          { label: transfer ? transfer.number : t('transfers.new') },
+        ]}
         actions={
           <div className="sm-tags">
-            {transfer && <DocumentStatusTag status={transfer.status} />}
+            {transfer && <DocumentStatusBadge status={transfer.status} />}
             {canCancel && (
               <Button
                 icon="pi pi-undo"

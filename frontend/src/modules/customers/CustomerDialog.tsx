@@ -145,6 +145,7 @@ export function CustomerDialog({
           <FormField
             id="customer-name"
             label={t(type === 'BUSINESS' ? 'customers.businessName' : 'customers.name')}
+            required
             error={errorText('name')}
           >
             <InputText id="customer-name" {...form.register('name')} autoFocus />

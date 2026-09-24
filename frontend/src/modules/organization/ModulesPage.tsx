@@ -1,7 +1,6 @@
 import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
 import { InputSwitch } from 'primereact/inputswitch';
-import { Tag } from 'primereact/tag';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
@@ -9,6 +8,7 @@ import { translateError } from '@/shared/lib/errors';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
 
 import { useModules, useToggleModule, type TenantModule } from './api';
 
@@ -32,8 +32,7 @@ export default function ModulesPage() {
 
   return (
     <>
-      <PageHeader title={t('moduleAdmin.title')} />
-      <p className="sm-muted">{t('moduleAdmin.intro')}</p>
+      <PageHeader title={t('moduleAdmin.title')} description={t('moduleAdmin.intro')} />
       {modules.isError ? (
         <ErrorMessage error={modules.error} onRetry={() => void modules.refetch()} />
       ) : (
@@ -57,9 +56,9 @@ export default function ModulesPage() {
             header={t('moduleAdmin.status')}
             body={(m: TenantModule) => (
               <div className="sm-tags">
-                {!m.in_plan && <Tag severity="warning" value={t('moduleAdmin.notInPlan')} />}
+                {!m.in_plan && <StatusBadge tone="warning" label={t('moduleAdmin.notInPlan')} />}
                 {m.status === 'planned' && (
-                  <Tag severity="secondary" value={t('moduleAdmin.planned')} />
+                  <StatusBadge tone="neutral" label={t('moduleAdmin.planned')} />
                 )}
               </div>
             )}
