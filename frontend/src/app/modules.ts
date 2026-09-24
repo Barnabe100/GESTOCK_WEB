@@ -5,6 +5,7 @@ import { catalogModule } from '@/modules/catalog';
 import { customersModule } from '@/modules/customers';
 import { dashboardModule } from '@/modules/dashboard';
 import { organizationModule } from '@/modules/organization';
+import { salesModule } from '@/modules/sales';
 import { stockModule } from '@/modules/stock';
 import { subscriptionModule } from '@/modules/subscription';
 import { suppliersModule } from '@/modules/suppliers';
@@ -19,6 +20,7 @@ export const FRONTEND_MODULES: readonly FrontendModule[] = [
   catalogModule,
   suppliersModule,
   customersModule,
+  salesModule,
   stockModule,
   alertsModule,
   organizationModule,

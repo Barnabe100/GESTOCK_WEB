@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCost, formatMoney, formatQuantity, normalizeDecimal } from './decimal';
+import {
+  formatCost,
+  formatMoney,
+  formatQuantity,
+  multiplyMoney,
+  normalizeDecimal,
+  sumMoney,
+} from './decimal';
 
 describe('saisie décimale', () => {
   it('normalise la virgule et les espaces', () => {
@@ -35,5 +42,19 @@ describe('affichage', () => {
     expect(formatCost('100.5000', 'XOF').replace(/\s/g, ' ')).toMatch(/^100,50 F\s?CFA$/);
     expect(formatCost('100.0000', 'XOF').replace(/\s/g, ' ')).toMatch(/^100 F\s?CFA$/);
     expect(formatCost(null, 'XOF')).toBe('');
+  });
+});
+
+describe('calculs d’affichage (sans float)', () => {
+  it('multiplie quantité × prix au centime, demi supérieur', () => {
+    expect(multiplyMoney('2.5', '150')).toBe('375.00');
+    expect(multiplyMoney('0.333', '0.35')).toBe('0.12');
+    expect(multiplyMoney('3', '0.1')).toBe('0.30'); // 0.1 × 3 exact (pas 0.30000000000000004)
+    expect(multiplyMoney('1.005', '1')).toBe('1.01');
+  });
+
+  it('additionne des montants', () => {
+    expect(sumMoney(['375.00', '150.00', '0.12'])).toBe('525.12');
+    expect(sumMoney([])).toBe('0.00');
   });
 });

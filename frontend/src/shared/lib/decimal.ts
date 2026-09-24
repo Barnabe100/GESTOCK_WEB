@@ -49,3 +49,35 @@ export function formatCost(
     ...(hasDecimals ? { minimumFractionDigits: 2, maximumFractionDigits: 4 } : {}),
   }).format(Number(value));
 }
+
+/**
+ * Arithmétique décimale d'AFFICHAGE (totaux en temps réel), sans float : entiers BigInt à
+ * échelle fixe. Le serveur recalcule et fait foi (règle d'architecture 9).
+ */
+function toScaled(value: string, scale: number): bigint {
+  const [whole = '0', fraction = ''] = value.trim().split('.');
+  const digits = `${whole}${fraction.padEnd(scale, '0').slice(0, scale)}`;
+  return BigInt(digits.replace(/^(-?)0+(?=\d)/, '$1'));
+}
+
+function fromScaled(value: bigint, scale: number): string {
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, '0');
+  const result = `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  return negative ? `-${result}` : result;
+}
+
+/** quantité (3 déc.) × prix (2 déc.), arrondi au centime demi supérieur : « 0.333 × 0.35 = 0.12 ». */
+export function multiplyMoney(quantity: string, price: string): string {
+  const product = toScaled(quantity, 3) * toScaled(price, 2); // échelle 5
+  const cents = (product + 500n) / 1000n; // montants positifs : demi supérieur
+  return fromScaled(cents, 2);
+}
+
+/** Somme de montants à 2 décimales. */
+export function sumMoney(values: string[]): string {
+  return fromScaled(
+    values.reduce((total, v) => total + toScaled(v, 2), 0n),
+    2,
+  );
+}

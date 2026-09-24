@@ -73,7 +73,8 @@
     "stockMovements": "Mouvements",
     "exitReasons": "Motifs de sortie",
     "stockAlerts": "Alertes de stock",
-    "customers": "$t(terminology:customers.items)"
+    "customers": "$t(terminology:customers.items)",
+    "sales": "$t(terminology:sales.sales)"
   },
   "modules": {
     "dashboard": "Tableau de bord",
@@ -279,7 +280,12 @@
     "customers.customer.view": "Consulter les clients",
     "customers.customer.create": "Créer un client",
     "customers.customer.update": "Modifier un client",
-    "customers.customer.status": "Activer / désactiver un client"
+    "customers.customer.status": "Activer / désactiver un client",
+    "sales.sale.view": "Consulter les ventes",
+    "sales.sale.create": "Créer une vente (brouillon)",
+    "sales.sale.update": "Modifier une vente en brouillon",
+    "sales.sale.validate": "Valider une vente (sortie de stock)",
+    "sales.sale.cancel": "Annuler une vente"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -543,5 +549,42 @@
     "updated": "Client modifié",
     "activated": "Client réactivé",
     "deactivated": "Client désactivé"
+  },
+  "sales": {
+    "title": "$t(terminology:sales.sales)",
+    "one": "$t(terminology:sales.sale)",
+    "new": "Nouvelle vente",
+    "open": "Ouvrir la vente",
+    "search": "Numéro, client (code, nom, téléphone)…",
+    "number": "Numéro",
+    "date": "Date de vente",
+    "customer": "$t(terminology:customers.customer)",
+    "customerHelp": "Facultatif : sans client, la vente est une vente comptant.",
+    "anonymous": "Vente comptant (sans client)",
+    "anonymousShort": "Sans client",
+    "seller": "Saisie par",
+    "status": "Statut",
+    "allStatuses": "Tous les statuts",
+    "allSites": "Tous les sites",
+    "statuses": {
+      "DRAFT": "Brouillon",
+      "VALIDATED": "Validée",
+      "CANCELLED": "Annulée"
+    },
+    "lines": "Articles vendus",
+    "noLines": "Ajoutez au moins un article.",
+    "unitPrice": "Prix unitaire",
+    "lineTotal": "Montant",
+    "total": "Total",
+    "totalHelp": "Montant indicatif : prix du catalogue, recalculé par le serveur à l'enregistrement.",
+    "notes": "Observations",
+    "draftSaved": "Brouillon enregistré",
+    "validate": "Valider la vente",
+    "confirmValidate": "Valider la vente pour un total de {{total}} ? Le stock sera diminué et la vente ne sera plus modifiable.",
+    "validated": "Vente {{number}} validée",
+    "cancel": "Annuler la vente",
+    "cancelWarning": "Les quantités vendues seront remises en stock par des mouvements d'annulation. Cette action est définitive.",
+    "cancelDraftInfo": "Le brouillon sera abandonné, sans effet sur le stock.",
+    "cancelled": "Vente {{number}} annulée"
   }
 }

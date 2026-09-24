@@ -49,3 +49,37 @@ export async function apiToken(
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/** Crée un membre avec un rôle de base (tous sites) et fixe son mot de passe définitif. */
+export async function createMember(
+  request: APIRequestContext,
+  ownerToken: string,
+  template: string,
+  password: string,
+): Promise<string> {
+  const roles = (await (
+    await request.get('/api/v1/roles', { headers: bearer(ownerToken) })
+  ).json()) as { id: string; template_code: string | null }[];
+  const role = roles.find((r) => r.template_code === template);
+  expect(role, `rôle de base « ${template} » introuvable`).toBeTruthy();
+  const email = `${template}-${Date.now()}@example.com`;
+  const temporary = 'Provisoire-E2E-2026';
+  const created = await request.post('/api/v1/members', {
+    headers: bearer(ownerToken),
+    data: {
+      email,
+      full_name: unique(template),
+      password: temporary,
+      roles: [{ role_id: role?.id }],
+      all_sites: true,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const firstToken = await apiToken(request, email, temporary);
+  const changed = await request.post('/api/v1/me/password', {
+    headers: bearer(firstToken),
+    data: { current_password: temporary, new_password: password },
+  });
+  expect(changed.status()).toBe(204);
+  return email;
+}

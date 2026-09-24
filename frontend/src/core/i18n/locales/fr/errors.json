@@ -72,5 +72,11 @@
   "role_inactive": "Ce rôle est désactivé : il ne peut pas être attribué.",
   "role_protected": "Ce rôle est protégé : il ne peut être ni désactivé ni modifié.",
   "site_escalation": "Vous ne pouvez pas accorder l'accès à des sites hors de votre périmètre.",
-  "customer_not_found": "Client introuvable."
+  "customer_not_found": "Client introuvable.",
+  "sale_not_found": "Vente introuvable.",
+  "sale_not_draft": "Seule une vente en brouillon peut être modifiée ou validée.",
+  "sale_empty": "Une vente doit comporter au moins un article.",
+  "sale_prices_changed": "Des prix ont changé depuis l'enregistrement : {{articles}}. Enregistrez à nouveau la vente pour appliquer les prix actuels.",
+  "sale_already_cancelled": "Cette vente est déjà annulée.",
+  "customer_inactive": "Ce client est désactivé : il ne peut pas être associé à une vente."
 }

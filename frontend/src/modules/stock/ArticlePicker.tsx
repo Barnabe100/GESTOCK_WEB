@@ -12,6 +12,8 @@ export interface ArticleOption {
   designation: string;
   unit: string;
   label: string;
+  /** Prix de vente catalogue (affichage indicatif ; le serveur fait foi). */
+  sale_price?: string;
 }
 
 export function toArticleOption(a: {
@@ -19,6 +21,7 @@ export function toArticleOption(a: {
   reference: string;
   designation: string;
   unit: string;
+  sale_price?: string;
 }): ArticleOption {
   return { ...a, label: `${a.reference} — ${a.designation}` };
 }
