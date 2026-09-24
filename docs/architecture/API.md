@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3) et ventes (2.4)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4) et transferts (2.5)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -102,7 +102,7 @@ introuvable (`404`) ; d'un autre site que le site sélectionné, refusé (`403 s
 
 | Méthode | Chemin | Permission | Rôle |
 |---|---|---|---|
-| GET | `/stock/levels` | `stock.level.view` | Articles × sites : `quantity`, `average_cost` (CMUP, 4 déc.), `stock_value`, seuils effectifs `min_stock`/`max_stock` (surcharge du site sinon article), `min_override`/`max_override`, `state` = `ok` \| `low` \| `out` \| `not_stocked`. Filtres `site_id`, `category_id`, `search`, `state` (`all`, `alerts`, `out`, `low`, `ok`, `not_stocked`), `include_inactive` ; tri `reference`, `designation`, `category`, `quantity`, `site` |
+| GET | `/stock/levels` | `stock.level.view` | Articles × sites : `quantity`, `average_cost` (CMUP, 4 déc.), `stock_value`, seuils effectifs `min_stock`/`max_stock` (surcharge du site sinon article), `min_override`/`max_override`, `state` = `ok` \| `low` \| `out` \| `not_stocked`. Filtres `site_id`, `category_id`, `search`, `state` (`all`, `alerts`, `out`, `low`, `ok`, `not_stocked`), `include_inactive`, `article_id` (répétable : stock disponible des lignes en saisie) ; tri `reference`, `designation`, `category`, `quantity`, `site` |
 | PUT | `/stock/levels/{site_id}/{article_id}/thresholds` | `stock.threshold.manage` | Surcharges du site `{min_stock, max_stock}` (`null` = seuil de l'article) ; audité ; ne modifie ni quantité ni CMUP |
 | GET | `/stock/movements` | `stock.movement.view` | Journal : filtres `site_id`, `article_id`, `movement_type` (`ENTRY`, `EXIT`, `SALE`, `CANCELLATION`…), `user_id`, `date_from`, `date_to` (jour du fuseau du tenant), `search` (référence, désignation, numéro de document ou de vente — `source_number`) ; tri `occurred_at` (défaut décroissant) |
 | GET | `/stock/exit-reasons` | `stock.reason.view` ou `stock.exit.create` / `.update` | Motifs (filtre `status`, tri `label`) |
@@ -121,7 +121,7 @@ Entrée : `{site_id?, kind: PURCHASE|INITIAL_STOCK, operation_date?, supplier_id
 comment?, lines: [{article_id, quantity, unit_cost}]}` ; sortie : `{site_id?, operation_date?,
 reason_id, beneficiary?, reference?, comment?, lines: [{article_id, quantity}]}`. Quantités
 `> 0` (3 déc.), coûts d'entrée 2 déc. ; au plus 500 lignes ; un article une seule fois.
-Codes d'erreur : `insufficient_stock` (422, `articles: [{article_id, reference, available}]`),
+Codes d'erreur : `insufficient_stock` (422, `articles: [{article_id, site_id, reference, available}]`),
 `document_not_draft`, `document_not_validated` (409), `document_empty`,
 `duplicate_article_line`, `article_inactive`, `article_not_found`, `future_operation_date`,
 `supplier_required`, `supplier_inactive`, `exit_reason_inactive`, `site_required`,
@@ -129,6 +129,29 @@ Codes d'erreur : `insufficient_stock` (422, `articles: [{article_id, reference, 
 `site_access_denied`, `site_mismatch` (403), `stock_entry_not_found`,
 `stock_exit_not_found`, `exit_reason_not_found` (404). Abonnement expiré : consultation
 possible, opérations refusées (`403 subscription_restricted`).
+
+### Transferts inter-sites (module `stock`, fonctionnalité `stock.transfers`) — Phase 2.5
+
+Toutes les routes exigent la fonctionnalité de plan `stock.transfers` (`403
+feature_unavailable` sinon) en plus de leur permission. Règles : [`CATALOGUE_STOCK.md`
+§8](CATALOGUE_STOCK.md#8-transferts-inter-sites-phase-25) ; décisions :
+[ADR-0018](../adr/0018-transferts-inter-sites.md).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/stock/transfers` | `stock.transfer.view` | Transferts dont un site est visible et dont les deux sites sont accessibles ; `search` (numéro), `status`, `source_site_id`, `destination_site_id`, `date_from`, `date_to` ; tri `number` (défaut décroissant), `operation_date`, `created_at` |
+| POST | `/stock/transfers` | `stock.transfer.create` | Brouillon `TRF-000001` : `{source_site_id?, destination_site_id, operation_date?, comment?, lines: [{article_id, quantity}]}` (source = site sélectionné par défaut) |
+| GET | `/stock/transfers/{id}` | `stock.transfer.view` | Détail avec lignes (coût et valeur après validation) |
+| PUT | `/stock/transfers/{id}` | `stock.transfer.update` | Remplacer destination, date, commentaire et lignes d'un brouillon (source fixe) |
+| POST | `/stock/transfers/{id}/validate` | `stock.transfer.validate` | Sortie `TRANSFER_OUT` du site source et entrée `TRANSFER_IN` du site destination, en une transaction |
+| POST | `/stock/transfers/{id}/cancel` | `stock.transfer.cancel` | `{reason}` (5–500 car.) ; brouillon : abandon ; validé : mouvements inverses sur les deux sites, CMUP inchangés |
+
+La permission est exigée sur les **deux** sites (rôles limités à un site). Codes :
+`same_site_transfer`, `site_required`, `future_operation_date`, `duplicate_article_line`,
+`article_inactive`, `article_not_found`, `document_empty`, `validation_error` (lignes vides,
+quantité ≤ 0), `insufficient_stock` (422) ; `document_not_draft` (modification ou double
+validation), `transfer_already_cancelled` (409) ; `site_access_denied`, `site_mismatch`,
+`site_permission_denied`, `feature_unavailable` (403) ; `stock_transfer_not_found` (404).
 
 ### Clients (module `customers`) — Phase 2.3
 

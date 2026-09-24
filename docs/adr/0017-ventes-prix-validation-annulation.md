@@ -1,6 +1,6 @@
 # ADR-0017 — Ventes : prix du catalogue, validation et annulation
 
-- **Statut** : Proposée
+- **Statut** : Acceptée (validée par TechNova le 2026-09-24)
 - **Date** : 2026-09-24
 
 ## Contexte

@@ -17,6 +17,17 @@ SM_OWNER_PASSWORD='Provisoire-E2E-1' uv run stockmanager create-tenant \
 À la première connexion, remplacez le mot de passe provisoire par `E2e-Proprietaire-2026`
 (ou fixez vos valeurs avec `E2E_OWNER_EMAIL`, `E2E_OWNER_PASSWORD`, `E2E_TENANT_NAME`).
 
+Les transferts vérifient aussi qu'un plan STANDARD n'y a pas accès : créez une seconde
+entreprise, puis remplacez son mot de passe provisoire par `E2e-Standard-2026` (ou
+`E2E_STANDARD_EMAIL`, `E2E_STANDARD_PASSWORD`, `E2E_STANDARD_TENANT`) :
+
+```bash
+echo 'Provisoire-E2E-Std-1' | uv run stockmanager create-tenant --name "Démo E2E Standard" \
+  --slug demo-e2e-standard --profile quincaillerie --plan STANDARD \
+  --owner-email e2e-standard@example.com --owner-name "Propriétaire Standard" \
+  --owner-password-stdin
+```
+
 ## Exécution
 
 ```bash
@@ -37,3 +48,7 @@ la suite peut être rejouée sur la même base.
   et un client, puis vente complète (brouillon, validation, stock 10 → 7, mouvement, audit,
   double validation refusée), Vendeur sans droit d'annulation, annulation par
   l'Administrateur (stock rétabli), mobile.
+- `transfers.e2e.ts` (Phase 2.5) : crée au besoin le site « Dépôt E2E » (l'entreprise de test
+  devient multi-sites) et, par test, un article stocké sur les deux sites ; transfert complet
+  (stock 100 → 70 et 20 → 50, CMUP 1 400, mouvements, audit), stock insuffisant, plan STANDARD
+  sans transferts, mobile.

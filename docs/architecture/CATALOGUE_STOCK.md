@@ -62,10 +62,10 @@ ultérieure.
 | STK-02 | Le service n'ouvre jamais sa propre transaction : il s'exécute dans celle du document (tout ou rien). | ✅ (ADR-0008) |
 | STK-03 | **Stock jamais négatif**, quel que soit le rôle, vérifié avant toute écriture. | ✅ + contrainte `CHECK` + verrou de ligne |
 | STK-04 | Quantité **signée** ; `stock_après = stock_avant + quantité`. | ✅ |
-| STK-05 | CMUP recalculé **uniquement sur une ENTRÉE** : `((stock_avant × CMUP) + (q × prix)) / (stock_avant + q)`. | ✅ (portée : Q1) |
+| STK-05 | CMUP recalculé **uniquement sur une ENTRÉE** : `((stock_avant × CMUP) + (q × prix)) / (stock_avant + q)`. | ✅ (portée : Q1 ; un transfert entrant est une entrée pour le site destination, §8) |
 | STK-06 | Sorties, ventes, ajustements, annulations ne modifient pas le CMUP ; pas de reconstruction rétroactive. | ✅ |
 | STK-07 | Mouvements **immuables** (jamais modifiés ni supprimés) ; une correction = un nouveau mouvement. | ✅ (droits SQL : insertion seule) |
-| STK-08 | Types : ENTRÉE, SORTIE, VENTE, AJUSTEMENT, ANNULATION. | ✅ (+ TRANSFERT : Q4) |
+| STK-08 | Types : ENTRÉE, SORTIE, VENTE, AJUSTEMENT, ANNULATION. | ✅ (+ TRANSFERT SORTANT / ENTRANT, Phase 2.5) |
 | STK-09 | Chaque mouvement : date-heure, article, type, quantité, stock avant/après, coût unitaire, ligne d'origine, mouvement d'origine (annulation), utilisateur, commentaire. | ✅ + `site_id` |
 | STK-10 | Consultation des mouvements : recherche libre (article, utilisateur, commentaire), filtres date (borne de fin inclusive sur la journée), article, type, utilisateur ; permission dédiée. | ✅ + site, pagination |
 
@@ -165,7 +165,7 @@ par le tenant (`POST /roles/from-template`).
 | Q1 | **CMUP par site.** Une sortie utilise le CMUP du site au moment de la sortie et ne le recalcule jamais. Le futur transfert sortira au CMUP du site source. |
 | Q2 | Seuils min/max de l'article = valeurs par défaut ; **surcharge par site** prioritaire si elle existe. |
 | Q3 | Numérotation **par entreprise** (`ENT-000001`, `SOR-000001`), sûre en concurrence. |
-| Q4 | Transferts **non implémentés** ; préparés (fonctionnalité de plan `stock.transfers`, ENTREPRISE), sans condition commerciale dans le code. |
+| Q4 | Transferts préparés en 2.2 (fonctionnalité de plan `stock.transfers`, ENTREPRISE), sans condition commerciale dans le code ; **réalisés en Phase 2.5** (§8). |
 | Q5 | Stock initial = **entrée de stock normale** de type `INITIAL_STOCK` ; pas de champ sur l'article. |
 | Q6 | CMUP calculé et stocké avec **4 décimales** ; montants à 2 décimales ; `Decimal` uniquement. |
 | Q7 | Motifs système créés pour chaque entreprise : `CONSOMMATION_INTERNE`, `DOTATION`, `PERTE`, `CASSE`, `ECHANTILLON`, `AUTRE` (`is_system`, `is_active`), protégés. |
@@ -176,7 +176,7 @@ par le tenant (`POST /roles/from-template`).
 
 - `stock` devient **disponible** (dépend de `catalog`) : niveaux par site, seuils par site,
   motifs de sortie, entrées, sorties, journal des mouvements. Déclare la fonctionnalité
-  `stock.transfers` (préparée, non implémentée ; incluse dans le plan ENTREPRISE).
+  `stock.transfers` (incluse dans le plan ENTREPRISE ; transferts réalisés en Phase 2.5, §8).
 - `alerts` devient **disponible** (dépend de `stock`) : alertes de stock faible / rupture.
 - Le stock accède au catalogue et aux fournisseurs uniquement par leurs API publiques
   (`catalog/api.py`, `suppliers/api.py`).
@@ -187,7 +187,7 @@ par le tenant (`POST /roles/from-template`).
 |---|---|---|
 | `document_sequences` | Compteurs de numérotation par entreprise | PK `(tenant_id, sequence_key)`, `next_value` ; plateforme (réutilisable : ventes…) |
 | `stock_levels` | Stock et CMUP par (site, article) + surcharges de seuils | unique `(tenant_id, site_id, article_id)` ; `quantity NUMERIC(18,3) CHECK ≥ 0` ; `average_cost NUMERIC(18,4) CHECK ≥ 0` ; `min_stock`/`max_stock` surcharges nullables, `CHECK max ≥ min` |
-| `stock_movements` | Journal **append-only** | type (`ENTRY`, `EXIT`, `CANCELLATION`, `SALE` — ventes, Phase 2.4, [`SALES.md`](SALES.md) ; réservés : `ADJUSTMENT`, `TRANSFER_OUT`, `TRANSFER_IN`) ; `quantity` signée ≠ 0 ; `quantity_before/after` avec `CHECK after = before + quantity AND after ≥ 0` ; `unit_cost`, `average_cost_before/after` (4 déc.) ; `source_type`, `source_id`, `source_line_id`, `source_number` (numéro lisible, 2.4) ; `origin_movement_id` (annulation) ; utilisateur ; **unique `(tenant_id, source_line_id, movement_type)`** = garde anti double application |
+| `stock_movements` | Journal **append-only** | type (`ENTRY`, `EXIT`, `CANCELLATION`, `SALE` — ventes, Phase 2.4, [`SALES.md`](SALES.md) ; `TRANSFER_OUT`, `TRANSFER_IN` — transferts, Phase 2.5 ; réservé : `ADJUSTMENT`) ; `quantity` signée ≠ 0 ; `quantity_before/after` avec `CHECK after = before + quantity AND after ≥ 0` ; `unit_cost`, `average_cost_before/after` (4 déc.) ; `source_type`, `source_id`, `source_line_id`, `source_number` (numéro lisible, 2.4) ; `origin_movement_id` (annulation) ; utilisateur ; **unique `(tenant_id, source_line_id, movement_type, site_id)`** (par site depuis la 2.5) = garde anti double application |
 | `stock_exit_reasons` | Motifs de sortie | `code` (système), `label` unique par tenant (casse ignorée), `is_system`, `is_active` |
 | `stock_entries` / `stock_entry_lines` | Entrées | numéro unique par tenant ; `kind` `PURCHASE` \| `INITIAL_STOCK` ; `status` `DRAFT` → `VALIDATED` → `CANCELLED` ; site ; date ; fournisseur (obligatoire pour `PURCHASE`, `CHECK`) ; motif d'annulation obligatoire si annulée (`CHECK`) ; lignes : article unique par document, `quantity > 0`, `unit_cost ≥ 0` (2 déc.), `amount` |
 | `stock_exits` / `stock_exit_lines` | Sorties | idem ; motif ; bénéficiaire ; lignes : `unit_cost` (4 déc.) et `amount` **figés à la validation** (CMUP du site) |
@@ -269,7 +269,7 @@ Choix de conception : [ADR-0014](../adr/0014-documents-et-mouvements-de-stock.md
 | SOR-* / Q7 | Sorties avec motif actif ; six motifs système protégés (activables / désactivables, non renommables) ; motifs du tenant gérés par l'administration (`stock.reason.manage`) |
 | Q2 | Surcharges par site (`PUT /stock/levels/{site}/{article}/thresholds`), prioritaires sur l'article |
 | Q3 | `ENT-000001`, `SOR-000001` par entreprise (`document_sequences`, atomique, sans trou sur échec) |
-| Q4 | Aucun transfert ; fonctionnalité `stock.transfers` déclarée (plan ENTREPRISE), types de mouvement réservés |
+| Q4 | Aucun transfert en 2.2 ; fonctionnalité `stock.transfers` déclarée (plan ENTREPRISE), types de mouvement réservés — transferts réalisés en 2.5 (§8) |
 | ALR-01 / ALR-02 | Module `alerts` : rupture (`out`) et stock faible (`low`) des articles actifs, par site, compteurs |
 
 Rôle de base **Gestionnaire** (ex-Gestionnaire de stock) : consultation, saisie et validation
@@ -287,3 +287,34 @@ des entrées et sorties, seuils par site, alertes ; **ni annulation ni gestion d
 5. `stock.threshold.manage` accordé au Gestionnaire.
 6. Source polymorphe des mouvements sans clé étrangère (ADR-0014, Proposée). ADR-0013
    (rôles système dynamiques) : Acceptée le 2026-09-24 avec l'ADR-0015.
+
+## 8. Transferts inter-sites (Phase 2.5)
+
+Décisions : [ADR-0018](../adr/0018-transferts-inter-sites.md). Fonctionnalité de plan
+`stock.transfers` (ENTREPRISE) : sans elle, ni routes (`403 feature_unavailable`), ni
+permissions, ni menu.
+
+| Id | Règle | Réalisation |
+|---|---|---|
+| TRF-01 | Un transfert appartient à l'entreprise ; site source et site destination du **même** tenant, **distincts**, actifs. | FK composites `(tenant_id, site)` ; `CHECK source_site_id <> destination_site_id` ; `same_site_transfer`, `site_access_denied` |
+| TRF-02 | Cycle **brouillon → validé → annulé** ; numéro `TRF-000001` par entreprise (`document_sequences`). | Brouillon modifiable (destination, date, lignes ; source fixe) ; validé immuable |
+| TRF-03 | Lignes : article existant, actif, du tenant, une fois par transfert ; quantité > 0 (3 déc.) ; au moins une ligne. | `duplicate_article_line`, `article_inactive`, `article_not_found`, `UNIQUE (transfer_id, article_id)`, `CHECK quantity > 0` |
+| TRF-04 | Validation **atomique** : sortie du site source et entrée du site destination dans **une** transaction ; tout le stock source contrôlé avant la moindre écriture. | `StockService.transfer` ; `insufficient_stock` (avec `site_id`) → rien ne change, transfert toujours brouillon |
+| TRF-05 | Mouvements `TRANSFER_OUT` (−q, source) et `TRANSFER_IN` (+q, destination), liés au transfert (`source_number` = `TRF-…`). | Journal filtrable par type et par numéro |
+| TRF-06 | **CMUP** : sortie au CMUP du site source (inchangé) ; entrée au même coût, qui recalcule le CMUP destination (STK-05). | Coût (4 déc.) et valeur (2 déc.) figés sur les lignes |
+| TRF-07 | **Annulation** : brouillon = abandon ; validé = mouvements inverses `CANCELLATION` (retrait destination, remise source) au coût du transfert, CMUP inchangés (STK-06) ; refus total si le stock destination ne suffit plus. | `transfer_already_cancelled` ; mouvements d'origine jamais modifiés |
+| TRF-08 | **Concurrence** : double validation refusée (`409`) ; transfert et vente simultanés ne consomment jamais deux fois le même stock ; transferts croisés sans interblocage. | Verrou du transfert + verrous des niveaux dans un ordre global (site, article) |
+| TRF-09 | **Sites du membre** : accès aux deux sites ; site sélectionné = l'un des deux ; permission détenue sur les deux sites. | `site_access_denied`, `site_mismatch`, `site_permission_denied` ; transfert touchant un site inaccessible : `404` |
+
+Permissions (nature) : `stock.transfer.view` (R), `.create`, `.update`, `.validate`,
+`.cancel` (W), liées à la fonctionnalité `stock.transfers`. Rôles de base : Administrateur
+tout ; Gestionnaire tout sauf l'annulation ; Consultant consultation ; Vendeur aucun accès.
+Audit : `stock_transfer.created`, `.updated` (avant / après), `.validated` (statut précédent
+/ nouveau, lignes, valeur), `.cancelled` (motif, `stock_restored`) — numéro, sites, lignes et
+quantités, utilisateur, dans la transaction de l'opération.
+
+Exemple : site A 10 u au CMUP 100, site B 5 u au CMUP 200, transfert de 3 u →
+A = 7 u (CMUP 100), B = 8 u (CMUP (5 × 200 + 3 × 100) / 8 = 162,5) ; valeur transférée 300.
+Annulation → A = 10 u (CMUP 100), B = 5 u (CMUP 162,5, inchangé : pas de reconstruction).
+
+Hors périmètre : état « en transit » (expédition puis réception), inventaires, lots.

@@ -15,8 +15,9 @@ utilisateur.
 > site, entrées, sorties, journal des mouvements, seuils par site et alertes (2.2).
 > RBAC consolidé : rôles de base (Administrateur, Gestionnaire, Vendeur, Consultant) et
 > rôles personnalisés par entreprise (ADR-0015). Référentiel clients (2.3). Ventes simples au
-> comptant (2.4) : brouillon, validation par le moteur de stock, annulation.
-> Transferts, inventaires, paiements, créances, caisse, POS et restaurant ne sont pas commencés.
+> comptant (2.4) : brouillon, validation par le moteur de stock, annulation. Transferts
+> inter-sites (2.5, plan ENTREPRISE) : sortie et entrée atomiques, CMUP par site.
+> Inventaires, paiements, créances, caisse, POS et restaurant ne sont pas commencés.
 
 ## Documentation
 

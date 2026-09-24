@@ -132,7 +132,8 @@ Une ressource d'un autre tenant répond **404** (on ne révèle pas son existenc
 - La **consolidation** (rapports multi-sites) exige une permission dédiée
   (ex. `reports.consolidated.view`).
 - Les **transferts inter-sites** produisent deux mouvements de stock liés
-  (sortie site A, entrée site B), avec un état « en transit » si nécessaire.
+  (sortie site A, entrée site B) dans une seule transaction (Phase 2.5, ADR-0018) ;
+  un état « en transit » pourra s'y ajouter si nécessaire.
 
 ## 5. Modularité : Core, modules, profils, plans
 
@@ -208,7 +209,8 @@ absence de cycle, permissions préfixées par le code du module. Les modules mé
 réalisés sont **déclarés sans implémentation** (statut `planned`, `app/modules/planned.py`)
 pour que profils et plans puissent les référencer ; ils ne sont ni routés ni affichés.
 Modules réalisés : `catalog`, `suppliers` (2.1), `stock`, `alerts` (2.2), `customers` (2.3),
-`sales` (2.4 : ventes simples, dépend de `catalog`, `stock`, `customers`).
+`sales` (2.4 : ventes simples, dépend de `catalog`, `stock`, `customers`) ; transferts
+inter-sites dans `stock` (2.5, fonctionnalité de plan `stock.transfers`).
 
 Règles de dépendance :
 
@@ -510,7 +512,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 |---|---|---|
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
-| **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · puis transferts, inventaires | V1 |
+| **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · puis inventaires | V1 |
 | **3 — Ventes & encaissement** | Paiements, créances et ventes à crédit, caisse, POS (sur le module `sales` de la 2.4) | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
