@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
-from app.platform.catalog.models import BusinessProfile, Plan
+from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
 from app.platform.registry import ModuleRegistry, get_registry
 from app.platform.subscriptions.plan_policy import PlanPolicy
@@ -21,9 +21,17 @@ class TenantService:
         self.db = db
         self.ctx = ctx
 
+    # Jamais effacés : null ignoré (nom, fuseau) ou refusé (pays).
+    _NOT_CLEARABLE = ("name", "timezone")
+
     def update(self, data: TenantUpdate) -> None:
         tenant = self.ctx.tenant
-        changes = data.model_dump(exclude_unset=True, exclude_none=True)
+        changes = data.model_dump(exclude_unset=True)
+        for key in self._NOT_CLEARABLE:
+            if key in changes and changes[key] is None:
+                del changes[key]
+        if "country_code" in changes:
+            changes["country_code"] = self._country(changes["country_code"])
         before = {k: getattr(tenant, k) for k in changes}
         for key, value in changes.items():
             setattr(tenant, key, value)
@@ -37,6 +45,19 @@ class TenantService:
             data={"before": before, "after": changes},
             meta=self.ctx.meta,
         )
+
+    def _country(self, code: str | None) -> str:
+        """Pays renseigné une fois, jamais effacé ; un nouveau pays doit être actif dans le
+        référentiel (le pays actuel reste accepté même s'il a été désactivé depuis)."""
+        if code is None:
+            raise BusinessRuleError("Le pays est obligatoire", code="country_required")
+        code = code.upper()
+        if code == self.ctx.tenant.country_code:
+            return code
+        country = self.db.get(GeoCountry, code)
+        if country is None or not country.is_active:
+            raise BusinessRuleError(f"Pays inconnu : {code}", code="unknown_country")
+        return code
 
 
 class SiteService:

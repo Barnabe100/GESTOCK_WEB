@@ -118,6 +118,8 @@ export async function provisionTenant(
         .replace(/^-|-$/g, ''),
       '--business-profile',
       profile,
+      '--country',
+      'BF',
       '--plan',
       'ENTREPRISE',
       '--owner-email',

@@ -5,6 +5,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.platform.tenancy.models import SiteKind
+from app.shared.text import (
+    Optional50,
+    Optional100,
+    Optional150,
+    Optional255,
+    Optional1000,
+    OptionalEmail,
+    OptionalHttpsUrl,
+    OptionalPhone,
+)
 
 
 class TenantOut(BaseModel):
@@ -17,11 +27,39 @@ class TenantOut(BaseModel):
     currency: str
     locale: str
     timezone: str
+    # Entreprise (Phase 3.2). ``country_code`` nul : tenant antérieur, pays à renseigner.
+    country_code: str | None
+    trade_name: str | None
+    email: str | None
+    phone: str | None
+    address: str | None
+    city: str | None
+    region: str | None
+    website: str | None
+    tax_id: str | None
+    trade_register: str | None
+    description: str | None
+    logo_url: str | None
 
 
 class TenantUpdate(BaseModel):
+    """Champ omis : inchangé. Champ facultatif à ``null`` (ou vide) : effacé. Le nom, le fuseau
+    horaire et le pays ne s'effacent jamais ; la devise est fixée à la création."""
+
     name: str | None = Field(default=None, min_length=1, max_length=150)
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    country_code: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
+    trade_name: Optional150 = None
+    email: OptionalEmail = None
+    phone: OptionalPhone = None
+    address: Optional255 = None
+    city: Optional100 = None
+    region: Optional100 = None
+    website: OptionalHttpsUrl = None
+    tax_id: Optional50 = None
+    trade_register: Optional50 = None
+    description: Optional1000 = None
+    logo_url: OptionalHttpsUrl = None
 
     @field_validator("timezone")
     @classmethod

@@ -61,8 +61,26 @@ class BusinessRuleError(AppError):
     title = "Règle métier non respectée"
 
 
+class TooManyRequestsError(AppError):
+    """Limite de fréquence atteinte ; ``retry_after`` (secondes) est renvoyé dans l'en-tête
+    ``Retry-After`` et dans le corps."""
+
+    status_code = 429
+    code = "rate_limited"
+    title = "Trop de demandes"
+
+    def __init__(self, detail: str | None = None, *, retry_after: int) -> None:
+        super().__init__(detail, extra={"retry_after": retry_after})
+        self.retry_after = retry_after
+
+
 def _problem(
-    status: int, code: str, title: str, detail: str, extra: dict[str, Any] | None = None
+    status: int,
+    code: str,
+    title: str,
+    detail: str,
+    extra: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body: dict[str, Any] = {
         "type": "about:blank",
@@ -73,14 +91,18 @@ def _problem(
     }
     if extra:
         body.update(extra)
-    headers = {"WWW-Authenticate": "Bearer"} if status == 401 else None
+    if status == 401:
+        headers = {"WWW-Authenticate": "Bearer"}
     return JSONResponse(body, status_code=status, media_type=PROBLEM_JSON, headers=headers)
 
 
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        return _problem(exc.status_code, exc.code, exc.title, exc.detail, exc.extra)
+        headers = (
+            {"Retry-After": str(exc.retry_after)} if isinstance(exc, TooManyRequestsError) else None
+        )
+        return _problem(exc.status_code, exc.code, exc.title, exc.detail, exc.extra, headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

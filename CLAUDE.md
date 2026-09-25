@@ -140,9 +140,9 @@ docker compose up -d db          # crée aussi le rôle stockmanager_app
 # Backend (depuis backend/)
 uv sync
 uv run alembic upgrade head                 # rôle propriétaire (SM_MIGRATION_DATABASE_URL)
-uv run stockmanager catalog sync            # profils, plans, politiques
+uv run stockmanager catalog sync            # secteurs, profils, plans, pays, politiques
 uv run stockmanager create-tenant --name "…" --slug … --business-profile restaurant.maquis \
-    --plan STANDARD --owner-email … --owner-name "…"
+    --country BF --plan STANDARD --owner-email … --owner-name "…"
 uv run stockmanager change-profile --tenant-id … --profile retail.alimentation  # audité
 uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données conservées, audité
 uv run uvicorn app.main:app --reload --port 8000

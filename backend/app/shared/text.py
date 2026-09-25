@@ -3,7 +3,9 @@ vide efface le champ (None)."""
 
 import re
 from typing import Annotated
+from urllib.parse import urlsplit
 
+from email_validator import EmailNotValidError, validate_email
 from pydantic import AfterValidator, BeforeValidator, StringConstraints
 
 
@@ -63,3 +65,36 @@ def phone_digits(term: str) -> str | None:
 
 
 OptionalPhone = Annotated[Optional30, AfterValidator(normalize_phone)]
+
+Optional254 = Annotated[Annotated[str, _opt(254)] | None, BlankToNone]
+
+
+def normalize_email(value: str | None) -> str | None:
+    """Adresse e-mail validée (syntaxe, sans vérification DNS) et normalisée."""
+    if value is None:
+        return None
+    try:
+        return validate_email(value, check_deliverability=False).normalized
+    except EmailNotValidError as exc:
+        raise ValueError("adresse email invalide") from exc
+
+
+def https_url(value: str | None) -> str | None:
+    """URL absolue en ``https`` uniquement (hôte requis, sans identifiants ni espaces)."""
+    if value is None:
+        return None
+    parts = urlsplit(value)
+    if (
+        parts.scheme != "https"
+        or not parts.hostname
+        or "." not in parts.hostname
+        or parts.username
+        or parts.password
+        or any(c.isspace() for c in value)
+    ):
+        raise ValueError("adresse https attendue (ex. https://exemple.com/logo.png)")
+    return value
+
+
+OptionalEmail = Annotated[Optional254, AfterValidator(normalize_email)]
+OptionalHttpsUrl = Annotated[Optional500, AfterValidator(https_url)]

@@ -2,6 +2,8 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import select
@@ -15,7 +17,7 @@ from app.core.security import hash_password
 from app.platform.access.models import Role, TenantMembership
 from app.platform.audit.service import RequestMeta, record_audit
 from app.platform.catalog.loader import RoleTemplate
-from app.platform.catalog.models import BusinessProfile, Plan
+from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.registry import ModuleRegistry
@@ -37,6 +39,9 @@ class ProvisionTenantCommand:
     billing_period: BillingPeriod
     owner_email: str
     owner_full_name: str
+    # Pays (ISO 3166-1 alpha-2, actif dans le référentiel) : obligatoire pour tout nouveau
+    # tenant ; fournit la devise et le fuseau horaire par défaut.
+    country_code: str
     # Obligatoire si l'utilisateur n'existe pas encore ; ignoré sinon (jamais écrasé).
     owner_password: str | None = None
     # Renseigné : abonnement en essai pour N jours ; sinon actif pour une période de facturation.
@@ -44,9 +49,10 @@ class ProvisionTenantCommand:
     first_site_name: str = "Site principal"
     first_site_code: str = "PRINCIPAL"
     first_site_kind: SiteKind = SiteKind.STORE
-    currency: str = "XOF"
+    # Nuls : devise et fuseau horaire par défaut du pays.
+    currency: str | None = None
     locale: str = "fr"
-    timezone: str = "Africa/Ouagadougou"
+    timezone: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +63,18 @@ class ProvisionResult:
     owner_user_id: uuid.UUID
     owner_created: bool
     enabled_modules: list[str] = field(default_factory=list)
+
+
+def subscription_price(
+    plan: Plan, billing_period: BillingPeriod
+) -> tuple[Decimal | None, str | None]:
+    """Prix de la période souscrite, à figer dans l'abonnement : celui du plan si TechNova a
+    ouvert cette période (prix et devise), sinon aucun."""
+    if billing_period is BillingPeriod.MONTHLY and plan.monthly_price_enabled:
+        return plan.monthly_price, plan.currency
+    if billing_period is BillingPeriod.ANNUAL and plan.annual_price_enabled:
+        return plan.annual_price, plan.currency
+    return None, None
 
 
 class TenantProvisioningService:
@@ -99,6 +117,8 @@ class TenantProvisioningService:
         if plan is None or not plan.is_active:
             raise BusinessRuleError(f"Plan inconnu : {cmd.plan_code}", code="unknown_plan")
 
+        country, currency, timezone = self._locale_defaults(cmd)
+
         tenant_id = new_id()
         set_db_context(self.db, tenant_id=tenant_id, user_id=None)
 
@@ -107,9 +127,10 @@ class TenantProvisioningService:
             name=cmd.name.strip(),
             slug=cmd.slug,
             business_profile_code=profile.code,
-            currency=cmd.currency,
+            country_code=country.code,
+            currency=currency,
             locale=cmd.locale,
-            timezone=cmd.timezone,
+            timezone=timezone,
         )
         self.db.add(tenant)
         try:
@@ -149,6 +170,7 @@ class TenantProvisioningService:
             data={
                 "actor": actor,
                 "profile": profile.code,
+                "country": tenant.country_code,
                 "sector": profile.sector_code,
                 "ux_profile": profile.ux_profile_code,
                 "plan": plan.code,
@@ -167,6 +189,25 @@ class TenantProvisioningService:
             enabled_modules=sorted(enabled),
         )
 
+    def _locale_defaults(self, cmd: ProvisionTenantCommand) -> tuple[GeoCountry, str, str]:
+        """Pays du référentiel (actif) ; devise et fuseau horaire : ceux demandés, sinon ceux
+        du pays. Une devise doit exister dans le référentiel (aucune table de devises)."""
+        country = self.db.get(GeoCountry, cmd.country_code.strip().upper())
+        if country is None or not country.is_active:
+            raise BusinessRuleError(f"Pays inconnu : {cmd.country_code}", code="unknown_country")
+        currency = cmd.currency or country.currency
+        known = set(self.db.scalars(select(GeoCountry.currency).distinct()))
+        if currency is None or currency not in known:
+            raise BusinessRuleError("Devise invalide (code ISO 4217)", code="invalid_currency")
+        timezone = cmd.timezone or country.timezone
+        try:
+            if timezone is None:
+                raise ValueError(timezone)
+            ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise BusinessRuleError("Fuseau horaire inconnu", code="invalid_timezone") from exc
+        return country, currency, timezone
+
     def _validate(self, cmd: ProvisionTenantCommand) -> None:
         if not cmd.name.strip():
             raise BusinessRuleError("Le nom est obligatoire", code="name_required")
@@ -175,7 +216,7 @@ class TenantProvisioningService:
                 "Slug invalide (minuscules, chiffres, tirets ; 63 caractères max)",
                 code="invalid_slug",
             )
-        if not CURRENCY_RE.match(cmd.currency):
+        if cmd.currency is not None and not CURRENCY_RE.match(cmd.currency):
             raise BusinessRuleError("Devise invalide (code ISO 4217)", code="invalid_currency")
         if cmd.trial_days is not None and cmd.trial_days < 1:
             raise BusinessRuleError("Durée d'essai invalide", code="invalid_trial_days")
@@ -189,6 +230,7 @@ class TenantProvisioningService:
         else:
             status = SubscriptionStatus.ACTIVE
             end = period_end(self.now, cmd.billing_period)
+        price, currency = subscription_price(plan, cmd.billing_period)
         subscription = Subscription(
             tenant_id=tenant_id,
             plan_code=plan.code,
@@ -197,6 +239,8 @@ class TenantProvisioningService:
             started_at=self.now,
             current_period_start=self.now,
             current_period_end=end,
+            price_at_subscription=price,
+            currency_at_subscription=currency,
         )
         self.db.add(subscription)
         return subscription

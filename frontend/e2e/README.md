@@ -10,7 +10,7 @@ docker compose up -d db
 cd backend
 uv run alembic upgrade head && uv run stockmanager catalog sync
 SM_OWNER_PASSWORD='Provisoire-E2E-1' uv run stockmanager create-tenant \
-  --name "Démo E2E" --slug demo-e2e --business-profile retail.quincaillerie --plan ENTREPRISE \
+  --name "Démo E2E" --slug demo-e2e --business-profile retail.quincaillerie --country BF --plan ENTREPRISE \
   --owner-email e2e-owner@example.com --owner-name "Propriétaire E2E"
 ```
 
@@ -23,7 +23,7 @@ entreprise, puis remplacez son mot de passe provisoire par `E2e-Standard-2026` (
 
 ```bash
 echo 'Provisoire-E2E-Std-1' | uv run stockmanager create-tenant --name "Démo E2E Standard" \
-  --slug demo-e2e-standard --business-profile retail.quincaillerie --plan STANDARD \
+  --slug demo-e2e-standard --business-profile retail.quincaillerie --country BF --plan STANDARD \
   --owner-email e2e-standard@example.com --owner-name "Propriétaire Standard" \
   --owner-password-stdin
 ```
@@ -35,7 +35,7 @@ en ENTREPRISE ; mot de passe définitif `E2e-Retrograde-2026` (ou `E2E_DOWNGRADE
 
 ```bash
 echo 'Provisoire-E2E-Retro-1' | uv run stockmanager create-tenant --name "Démo E2E Rétrogradé" \
-  --slug demo-e2e-downgrade --business-profile retail.quincaillerie --plan ENTREPRISE \
+  --slug demo-e2e-downgrade --business-profile retail.quincaillerie --country BF --plan ENTREPRISE \
   --owner-email e2e-downgrade@example.com --owner-name "Propriétaire Rétrogradé" \
   --owner-password-stdin
 ```

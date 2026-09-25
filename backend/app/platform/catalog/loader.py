@@ -1,11 +1,13 @@
 """Chargement et validation du catalogue (fichiers TOML de ``data/``)."""
 
 import fnmatch
+import re
 import tomllib
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.platform.catalog.ux import (
     NAME_RE,
@@ -75,6 +77,19 @@ class ProfileDef:
 
 
 @dataclass(frozen=True)
+class CountryDef:
+    """Pays ISO 3166-1 alpha-2 : devise (ISO 4217), indicatif (E.164) et fuseau horaire
+    (IANA) proposés par défaut ; ``is_active`` : proposé à l'inscription."""
+
+    code: str
+    name: str
+    currency: str | None
+    calling_code: int | None
+    timezone: str | None
+    is_active: bool
+
+
+@dataclass(frozen=True)
 class PlanDef:
     code: str
     name: str
@@ -123,6 +138,7 @@ class Catalog:
     plans: dict[str, PlanDef] = field(default_factory=dict)
     policies: dict[str, PolicyDef] = field(default_factory=dict)
     role_templates: dict[str, RoleTemplate] = field(default_factory=dict)
+    countries: dict[str, CountryDef] = field(default_factory=dict)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -139,6 +155,7 @@ def load_catalog(registry: ModuleRegistry, data_dir: Path = DATA_DIR) -> Catalog
         plans=_load_plans(_read(data_dir / "plans.toml")),
         policies=_load_policies(_read(data_dir / "subscription_policies.toml")),
         role_templates=_load_role_templates(_read(data_dir / "role_templates.toml")),
+        countries=_load_countries(_read(data_dir / "countries.toml")),
     )
     validate_catalog(catalog, registry)
     return catalog
@@ -235,6 +252,45 @@ def profile_ux(catalog: Catalog, profile: ProfileDef) -> UxConfig:
         terminology=profile.terminology,
         theme=profile.theme,
     )
+
+
+def _load_countries(raw: dict[str, Any]) -> dict[str, CountryDef]:
+    return {
+        code: CountryDef(
+            code=code,
+            name=data["name"],
+            currency=data.get("currency"),
+            calling_code=data.get("calling_code"),
+            timezone=data.get("timezone"),
+            is_active=bool(data.get("is_active", True)),
+        )
+        for code, data in raw.get("countries", {}).items()
+    }
+
+
+_COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
+_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+
+
+def _country_errors(country: CountryDef) -> list[str]:
+    owner = f"pays {country.code}"
+    errors: list[str] = []
+    if not _COUNTRY_RE.match(country.code):
+        errors.append(f"{owner} : code ISO 3166-1 alpha-2 invalide")
+    if not country.name.strip():
+        errors.append(f"{owner} : nom manquant")
+    if country.currency is not None and not _CURRENCY_RE.match(country.currency):
+        errors.append(f"{owner} : devise ISO 4217 invalide {country.currency!r}")
+    if country.calling_code is not None and not 1 <= country.calling_code <= 999:
+        errors.append(f"{owner} : indicatif invalide {country.calling_code}")
+    if country.timezone is not None:
+        try:
+            ZoneInfo(country.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            errors.append(f"{owner} : fuseau horaire inconnu {country.timezone!r}")
+    if country.is_active and (country.currency is None or country.timezone is None):
+        errors.append(f"{owner} : un pays actif exige une devise et un fuseau horaire")
+    return errors
 
 
 def _load_plans(raw: dict[str, Any]) -> dict[str, PlanDef]:
@@ -361,6 +417,11 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
                 errors.append(f"plan {plan.code} : fonctionnalité inconnue {feature}")
             elif module not in plan.modules and module not in core:
                 errors.append(f"plan {plan.code} : {feature} exige le module {module}")
+
+    if not catalog.countries:
+        errors.append("référentiel des pays vide")
+    for country in catalog.countries.values():
+        errors.extend(_country_errors(country))
 
     statuses = {s.value for s in SubscriptionStatus}
     if set(catalog.policies) != statuses:

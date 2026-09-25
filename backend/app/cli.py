@@ -38,7 +38,7 @@ def cmd_catalog_sync(args: argparse.Namespace, settings: Settings) -> int:
         session.commit()
     print(
         f"Catalogue synchronisé : {report.sectors} secteurs, {report.ux_profiles} profils UX, "
-        f"{report.profiles} profils, {report.plans} plans, "
+        f"{report.profiles} profils, {report.plans} plans, {report.countries} pays, "
         f"{report.policies} politiques d'abonnement."
     )
     for code in report.deactivated_sectors:
@@ -49,6 +49,8 @@ def cmd_catalog_sync(args: argparse.Namespace, settings: Settings) -> int:
         print(f"  profil désactivé : {code}")
     for code in report.deactivated_plans:
         print(f"  plan désactivé : {code}")
+    for code in report.deactivated_countries:
+        print(f"  pays désactivé : {code}")
     return 0
 
 
@@ -93,6 +95,7 @@ def cmd_create_tenant(args: argparse.Namespace, settings: Settings) -> int:
         billing_period=BillingPeriod(args.billing),
         owner_email=args.owner_email,
         owner_full_name=args.owner_name,
+        country_code=args.country,
         owner_password=_read_password(args),
         trial_days=args.trial_days,
         first_site_name=args.site_name,
@@ -179,7 +182,10 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--site-name", default="Site principal")
     create.add_argument("--site-code", default="PRINCIPAL")
     create.add_argument("--site-kind", default="store", choices=[k.value for k in SiteKind])
-    create.add_argument("--currency", default="XOF")
+    create.add_argument(
+        "--country", required=True, help="Pays ISO 3166-1 alpha-2 (ex. BF), obligatoire"
+    )
+    create.add_argument("--currency", default=None, help="Défaut : devise du pays")
     create.set_defaults(func=cmd_create_tenant)
 
     change = sub.add_parser("change-plan", help="Changer le plan d'une entreprise")

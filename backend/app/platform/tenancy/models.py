@@ -1,7 +1,7 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, TenantFiltered
@@ -29,6 +29,27 @@ class Tenant(IdMixin, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), default="XOF", nullable=False)
     locale: Mapped[str] = mapped_column(String(10), default="fr", nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), default="Africa/Ouagadougou", nullable=False)
+
+    # --- Entreprise (Phase 3.2) : informations persistantes, reprises par les reçus et les
+    # futurs documents. ``name`` est la raison sociale. Pays obligatoire pour tout nouveau
+    # tenant (contrôlé par l'application) ; nul seulement pour les tenants antérieurs, jusqu'à
+    # sa saisie ; jamais effacé ensuite.
+    country_code: Mapped[str | None] = mapped_column(
+        String(2), ForeignKey("geo_countries.code", ondelete="RESTRICT")
+    )
+    trade_name: Mapped[str | None] = mapped_column(String(150))
+    email: Mapped[str | None] = mapped_column(String(254))
+    phone: Mapped[str | None] = mapped_column(String(30))
+    address: Mapped[str | None] = mapped_column(String(255))
+    city: Mapped[str | None] = mapped_column(String(100))
+    region: Mapped[str | None] = mapped_column(String(100))
+    website: Mapped[str | None] = mapped_column(String(500))
+    # Identifiant fiscal (IFU) et registre du commerce (RCCM).
+    tax_id: Mapped[str | None] = mapped_column(String(50))
+    trade_register: Mapped[str | None] = mapped_column(String(50))
+    description: Mapped[str | None] = mapped_column(Text)
+    # Référence du logo (URL https) ; stockage de fichiers : phase ultérieure.
+    logo_url: Mapped[str | None] = mapped_column(String(500))
 
 
 class SiteKind(StrEnum):

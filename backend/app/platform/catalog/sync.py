@@ -10,6 +10,7 @@ from app.platform.catalog.models import (
     BusinessProfile,
     BusinessProfileModule,
     BusinessSector,
+    GeoCountry,
     Plan,
     PlanModule,
     SubscriptionAccessPolicy,
@@ -29,6 +30,8 @@ class SyncReport:
     ux_profiles: int = 0
     deactivated_sectors: list[str] = field(default_factory=list)
     deactivated_ux_profiles: list[str] = field(default_factory=list)
+    countries: int = 0
+    deactivated_countries: list[str] = field(default_factory=list)
 
 
 def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
@@ -90,6 +93,9 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
     for code in deactivated_ux:
         existing_ux[code].is_active = False
 
+    # Plans : seule la STRUCTURE vient des fichiers. Les paramètres commerciaux (publication,
+    # prix, périodes, devise, contact, description commerciale, ordre, essai) sont gérés par
+    # TechNova en base et ne sont jamais écrits ici (valeurs neutres à la création).
     existing_plans = {p.code: p for p in session.scalars(select(Plan))}
     for plan_def in catalog.plans.values():
         plan = existing_plans.get(plan_def.code) or Plan(code=plan_def.code)
@@ -106,6 +112,20 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
     deactivated_plans = sorted(set(existing_plans) - set(catalog.plans))
     for code in deactivated_plans:
         existing_plans[code].is_active = False
+
+    existing_countries = {c.code: c for c in session.scalars(select(GeoCountry))}
+    for country_def in catalog.countries.values():
+        country = existing_countries.get(country_def.code) or GeoCountry(code=country_def.code)
+        country.name = country_def.name
+        country.currency = country_def.currency
+        country.calling_code = country_def.calling_code
+        country.timezone = country_def.timezone
+        country.is_active = country_def.is_active
+        session.add(country)
+    # Un pays retiré est désactivé, jamais supprimé (des tenants le référencent).
+    deactivated_countries = sorted(set(existing_countries) - set(catalog.countries))
+    for code in deactivated_countries:
+        existing_countries[code].is_active = False
 
     existing_policies = {p.status: p for p in session.scalars(select(SubscriptionAccessPolicy))}
     for policy_def in catalog.policies.values():
@@ -127,4 +147,6 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
         ux_profiles=len(catalog.ux_profiles),
         deactivated_sectors=deactivated_sectors,
         deactivated_ux_profiles=deactivated_ux,
+        countries=len(catalog.countries),
+        deactivated_countries=deactivated_countries,
     )

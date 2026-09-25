@@ -45,6 +45,7 @@ OWNER_URL = os.environ.get(
 PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
+    "rate_limit_hits",
     "cash_movements",
     "cash_sessions",
     "cash_registers",
@@ -171,6 +172,7 @@ def provision(app_engine: Engine, owner_engine: Engine, settings: Settings) -> A
         password: str = PASSWORD,
         trial_days: int | None = None,
         activate_owner: bool = True,
+        country: str = "BF",
     ) -> ProvisionResult:
         with create_session_factory(app_engine)() as session:
             result = TenantProvisioningService(
@@ -184,6 +186,7 @@ def provision(app_engine: Engine, owner_engine: Engine, settings: Settings) -> A
                     billing_period=BillingPeriod.MONTHLY,
                     owner_email=owner_email or f"owner@{slug}.example.com",
                     owner_full_name=f"Owner {slug}",
+                    country_code=country,
                     owner_password=password,
                     trial_days=trial_days,
                 ),

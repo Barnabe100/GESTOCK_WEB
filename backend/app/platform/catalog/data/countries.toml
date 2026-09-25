@@ -1,0 +1,1500 @@
+# Référentiel des pays (Phase 3.2) : ISO 3166-1 alpha-2 complet (249 codes).
+#
+# Sources (données générées puis versionnées ; aucune dépendance d'exécution) :
+#   - codes : tzdata iso3166.tab ; noms français : CLDR (Babel) ;
+#   - devise : ISO 4217 en cours (CLDR) ; indicatif : ITU-T E.164 (libphonenumber) ;
+#   - fuseau horaire : premier fuseau IANA du pays (tzdata zone.tab), proposé par défaut.
+# is_active : pays proposés à l'inscription (défaut : actif). Les territoires sans indicatif
+# téléphonique (sans population permanente) sont inactifs. Synchronisé en base par
+# `stockmanager catalog sync` (table geo_countries, lecture seule pour l'application).
+
+[countries.AD]
+name = "Andorre"
+currency = "EUR"
+calling_code = 376
+timezone = "Europe/Andorra"
+
+[countries.AE]
+name = "Émirats arabes unis"
+currency = "AED"
+calling_code = 971
+timezone = "Asia/Dubai"
+
+[countries.AF]
+name = "Afghanistan"
+currency = "AFN"
+calling_code = 93
+timezone = "Asia/Kabul"
+
+[countries.AG]
+name = "Antigua-et-Barbuda"
+currency = "XCD"
+calling_code = 1
+timezone = "America/Antigua"
+
+[countries.AI]
+name = "Anguilla"
+currency = "XCD"
+calling_code = 1
+timezone = "America/Anguilla"
+
+[countries.AL]
+name = "Albanie"
+currency = "ALL"
+calling_code = 355
+timezone = "Europe/Tirane"
+
+[countries.AM]
+name = "Arménie"
+currency = "AMD"
+calling_code = 374
+timezone = "Asia/Yerevan"
+
+[countries.AO]
+name = "Angola"
+currency = "AOA"
+calling_code = 244
+timezone = "Africa/Luanda"
+
+[countries.AQ]
+name = "Antarctique"
+timezone = "Antarctica/McMurdo"
+is_active = false
+
+[countries.AR]
+name = "Argentine"
+currency = "ARS"
+calling_code = 54
+timezone = "America/Argentina/Buenos_Aires"
+
+[countries.AS]
+name = "Samoa américaines"
+currency = "USD"
+calling_code = 1
+timezone = "Pacific/Pago_Pago"
+
+[countries.AT]
+name = "Autriche"
+currency = "EUR"
+calling_code = 43
+timezone = "Europe/Vienna"
+
+[countries.AU]
+name = "Australie"
+currency = "AUD"
+calling_code = 61
+timezone = "Australia/Lord_Howe"
+
+[countries.AW]
+name = "Aruba"
+currency = "AWG"
+calling_code = 297
+timezone = "America/Aruba"
+
+[countries.AX]
+name = "Îles Åland"
+currency = "EUR"
+calling_code = 358
+timezone = "Europe/Mariehamn"
+
+[countries.AZ]
+name = "Azerbaïdjan"
+currency = "AZN"
+calling_code = 994
+timezone = "Asia/Baku"
+
+[countries.BA]
+name = "Bosnie-Herzégovine"
+currency = "BAM"
+calling_code = 387
+timezone = "Europe/Sarajevo"
+
+[countries.BB]
+name = "Barbade"
+currency = "BBD"
+calling_code = 1
+timezone = "America/Barbados"
+
+[countries.BD]
+name = "Bangladesh"
+currency = "BDT"
+calling_code = 880
+timezone = "Asia/Dhaka"
+
+[countries.BE]
+name = "Belgique"
+currency = "EUR"
+calling_code = 32
+timezone = "Europe/Brussels"
+
+[countries.BF]
+name = "Burkina Faso"
+currency = "XOF"
+calling_code = 226
+timezone = "Africa/Ouagadougou"
+
+[countries.BG]
+name = "Bulgarie"
+currency = "BGN"
+calling_code = 359
+timezone = "Europe/Sofia"
+
+[countries.BH]
+name = "Bahreïn"
+currency = "BHD"
+calling_code = 973
+timezone = "Asia/Bahrain"
+
+[countries.BI]
+name = "Burundi"
+currency = "BIF"
+calling_code = 257
+timezone = "Africa/Bujumbura"
+
+[countries.BJ]
+name = "Bénin"
+currency = "XOF"
+calling_code = 229
+timezone = "Africa/Porto-Novo"
+
+[countries.BL]
+name = "Saint-Barthélemy"
+currency = "EUR"
+calling_code = 590
+timezone = "America/St_Barthelemy"
+
+[countries.BM]
+name = "Bermudes"
+currency = "BMD"
+calling_code = 1
+timezone = "Atlantic/Bermuda"
+
+[countries.BN]
+name = "Brunei"
+currency = "BND"
+calling_code = 673
+timezone = "Asia/Brunei"
+
+[countries.BO]
+name = "Bolivie"
+currency = "BOB"
+calling_code = 591
+timezone = "America/La_Paz"
+
+[countries.BQ]
+name = "Pays-Bas caribéens"
+currency = "USD"
+calling_code = 599
+timezone = "America/Kralendijk"
+
+[countries.BR]
+name = "Brésil"
+currency = "BRL"
+calling_code = 55
+timezone = "America/Noronha"
+
+[countries.BS]
+name = "Bahamas"
+currency = "BSD"
+calling_code = 1
+timezone = "America/Nassau"
+
+[countries.BT]
+name = "Bhoutan"
+currency = "INR"
+calling_code = 975
+timezone = "Asia/Thimphu"
+
+[countries.BV]
+name = "Île Bouvet"
+currency = "NOK"
+is_active = false
+
+[countries.BW]
+name = "Botswana"
+currency = "BWP"
+calling_code = 267
+timezone = "Africa/Gaborone"
+
+[countries.BY]
+name = "Biélorussie"
+currency = "BYN"
+calling_code = 375
+timezone = "Europe/Minsk"
+
+[countries.BZ]
+name = "Belize"
+currency = "BZD"
+calling_code = 501
+timezone = "America/Belize"
+
+[countries.CA]
+name = "Canada"
+currency = "CAD"
+calling_code = 1
+timezone = "America/St_Johns"
+
+[countries.CC]
+name = "Îles Cocos"
+currency = "AUD"
+calling_code = 61
+timezone = "Indian/Cocos"
+
+[countries.CD]
+name = "Congo-Kinshasa"
+currency = "CDF"
+calling_code = 243
+timezone = "Africa/Kinshasa"
+
+[countries.CF]
+name = "République centrafricaine"
+currency = "XAF"
+calling_code = 236
+timezone = "Africa/Bangui"
+
+[countries.CG]
+name = "Congo-Brazzaville"
+currency = "XAF"
+calling_code = 242
+timezone = "Africa/Brazzaville"
+
+[countries.CH]
+name = "Suisse"
+currency = "CHF"
+calling_code = 41
+timezone = "Europe/Zurich"
+
+[countries.CI]
+name = "Côte d’Ivoire"
+currency = "XOF"
+calling_code = 225
+timezone = "Africa/Abidjan"
+
+[countries.CK]
+name = "Îles Cook"
+currency = "NZD"
+calling_code = 682
+timezone = "Pacific/Rarotonga"
+
+[countries.CL]
+name = "Chili"
+currency = "CLP"
+calling_code = 56
+timezone = "America/Santiago"
+
+[countries.CM]
+name = "Cameroun"
+currency = "XAF"
+calling_code = 237
+timezone = "Africa/Douala"
+
+[countries.CN]
+name = "Chine"
+currency = "CNY"
+calling_code = 86
+timezone = "Asia/Shanghai"
+
+[countries.CO]
+name = "Colombie"
+currency = "COP"
+calling_code = 57
+timezone = "America/Bogota"
+
+[countries.CR]
+name = "Costa Rica"
+currency = "CRC"
+calling_code = 506
+timezone = "America/Costa_Rica"
+
+[countries.CU]
+name = "Cuba"
+currency = "CUP"
+calling_code = 53
+timezone = "America/Havana"
+
+[countries.CV]
+name = "Cap-Vert"
+currency = "CVE"
+calling_code = 238
+timezone = "Atlantic/Cape_Verde"
+
+[countries.CW]
+name = "Curaçao"
+currency = "XCG"
+calling_code = 599
+timezone = "America/Curacao"
+
+[countries.CX]
+name = "Île Christmas"
+currency = "AUD"
+calling_code = 61
+timezone = "Indian/Christmas"
+
+[countries.CY]
+name = "Chypre"
+currency = "EUR"
+calling_code = 357
+timezone = "Asia/Nicosia"
+
+[countries.CZ]
+name = "Tchéquie"
+currency = "CZK"
+calling_code = 420
+timezone = "Europe/Prague"
+
+[countries.DE]
+name = "Allemagne"
+currency = "EUR"
+calling_code = 49
+timezone = "Europe/Berlin"
+
+[countries.DJ]
+name = "Djibouti"
+currency = "DJF"
+calling_code = 253
+timezone = "Africa/Djibouti"
+
+[countries.DK]
+name = "Danemark"
+currency = "DKK"
+calling_code = 45
+timezone = "Europe/Copenhagen"
+
+[countries.DM]
+name = "Dominique"
+currency = "XCD"
+calling_code = 1
+timezone = "America/Dominica"
+
+[countries.DO]
+name = "République dominicaine"
+currency = "DOP"
+calling_code = 1
+timezone = "America/Santo_Domingo"
+
+[countries.DZ]
+name = "Algérie"
+currency = "DZD"
+calling_code = 213
+timezone = "Africa/Algiers"
+
+[countries.EC]
+name = "Équateur"
+currency = "USD"
+calling_code = 593
+timezone = "America/Guayaquil"
+
+[countries.EE]
+name = "Estonie"
+currency = "EUR"
+calling_code = 372
+timezone = "Europe/Tallinn"
+
+[countries.EG]
+name = "Égypte"
+currency = "EGP"
+calling_code = 20
+timezone = "Africa/Cairo"
+
+[countries.EH]
+name = "Sahara occidental"
+currency = "MAD"
+calling_code = 212
+timezone = "Africa/El_Aaiun"
+
+[countries.ER]
+name = "Érythrée"
+currency = "ERN"
+calling_code = 291
+timezone = "Africa/Asmara"
+
+[countries.ES]
+name = "Espagne"
+currency = "EUR"
+calling_code = 34
+timezone = "Europe/Madrid"
+
+[countries.ET]
+name = "Éthiopie"
+currency = "ETB"
+calling_code = 251
+timezone = "Africa/Addis_Ababa"
+
+[countries.FI]
+name = "Finlande"
+currency = "EUR"
+calling_code = 358
+timezone = "Europe/Helsinki"
+
+[countries.FJ]
+name = "Fidji"
+currency = "FJD"
+calling_code = 679
+timezone = "Pacific/Fiji"
+
+[countries.FK]
+name = "Îles Malouines"
+currency = "FKP"
+calling_code = 500
+timezone = "Atlantic/Stanley"
+
+[countries.FM]
+name = "Micronésie"
+currency = "USD"
+calling_code = 691
+timezone = "Pacific/Chuuk"
+
+[countries.FO]
+name = "Îles Féroé"
+currency = "DKK"
+calling_code = 298
+timezone = "Atlantic/Faroe"
+
+[countries.FR]
+name = "France"
+currency = "EUR"
+calling_code = 33
+timezone = "Europe/Paris"
+
+[countries.GA]
+name = "Gabon"
+currency = "XAF"
+calling_code = 241
+timezone = "Africa/Libreville"
+
+[countries.GB]
+name = "Royaume-Uni"
+currency = "GBP"
+calling_code = 44
+timezone = "Europe/London"
+
+[countries.GD]
+name = "Grenade"
+currency = "XCD"
+calling_code = 1
+timezone = "America/Grenada"
+
+[countries.GE]
+name = "Géorgie"
+currency = "GEL"
+calling_code = 995
+timezone = "Asia/Tbilisi"
+
+[countries.GF]
+name = "Guyane française"
+currency = "EUR"
+calling_code = 594
+timezone = "America/Cayenne"
+
+[countries.GG]
+name = "Guernesey"
+currency = "GBP"
+calling_code = 44
+timezone = "Europe/Guernsey"
+
+[countries.GH]
+name = "Ghana"
+currency = "GHS"
+calling_code = 233
+timezone = "Africa/Accra"
+
+[countries.GI]
+name = "Gibraltar"
+currency = "GIP"
+calling_code = 350
+timezone = "Europe/Gibraltar"
+
+[countries.GL]
+name = "Groenland"
+currency = "DKK"
+calling_code = 299
+timezone = "America/Nuuk"
+
+[countries.GM]
+name = "Gambie"
+currency = "GMD"
+calling_code = 220
+timezone = "Africa/Banjul"
+
+[countries.GN]
+name = "Guinée"
+currency = "GNF"
+calling_code = 224
+timezone = "Africa/Conakry"
+
+[countries.GP]
+name = "Guadeloupe"
+currency = "EUR"
+calling_code = 590
+timezone = "America/Guadeloupe"
+
+[countries.GQ]
+name = "Guinée équatoriale"
+currency = "XAF"
+calling_code = 240
+timezone = "Africa/Malabo"
+
+[countries.GR]
+name = "Grèce"
+currency = "EUR"
+calling_code = 30
+timezone = "Europe/Athens"
+
+[countries.GS]
+name = "Géorgie du Sud-et-les Îles Sandwich du Sud"
+currency = "GBP"
+timezone = "Atlantic/South_Georgia"
+is_active = false
+
+[countries.GT]
+name = "Guatemala"
+currency = "GTQ"
+calling_code = 502
+timezone = "America/Guatemala"
+
+[countries.GU]
+name = "Guam"
+currency = "USD"
+calling_code = 1
+timezone = "Pacific/Guam"
+
+[countries.GW]
+name = "Guinée-Bissau"
+currency = "XOF"
+calling_code = 245
+timezone = "Africa/Bissau"
+
+[countries.GY]
+name = "Guyana"
+currency = "GYD"
+calling_code = 592
+timezone = "America/Guyana"
+
+[countries.HK]
+name = "R.A.S. chinoise de Hong Kong"
+currency = "HKD"
+calling_code = 852
+timezone = "Asia/Hong_Kong"
+
+[countries.HM]
+name = "Îles Heard-et-MacDonald"
+currency = "AUD"
+is_active = false
+
+[countries.HN]
+name = "Honduras"
+currency = "HNL"
+calling_code = 504
+timezone = "America/Tegucigalpa"
+
+[countries.HR]
+name = "Croatie"
+currency = "EUR"
+calling_code = 385
+timezone = "Europe/Zagreb"
+
+[countries.HT]
+name = "Haïti"
+currency = "HTG"
+calling_code = 509
+timezone = "America/Port-au-Prince"
+
+[countries.HU]
+name = "Hongrie"
+currency = "HUF"
+calling_code = 36
+timezone = "Europe/Budapest"
+
+[countries.ID]
+name = "Indonésie"
+currency = "IDR"
+calling_code = 62
+timezone = "Asia/Jakarta"
+
+[countries.IE]
+name = "Irlande"
+currency = "EUR"
+calling_code = 353
+timezone = "Europe/Dublin"
+
+[countries.IL]
+name = "Israël"
+currency = "ILS"
+calling_code = 972
+timezone = "Asia/Jerusalem"
+
+[countries.IM]
+name = "Île de Man"
+currency = "GBP"
+calling_code = 44
+timezone = "Europe/Isle_of_Man"
+
+[countries.IN]
+name = "Inde"
+currency = "INR"
+calling_code = 91
+timezone = "Asia/Kolkata"
+
+[countries.IO]
+name = "Territoire britannique de l’océan Indien"
+currency = "USD"
+calling_code = 246
+timezone = "Indian/Chagos"
+
+[countries.IQ]
+name = "Irak"
+currency = "IQD"
+calling_code = 964
+timezone = "Asia/Baghdad"
+
+[countries.IR]
+name = "Iran"
+currency = "IRR"
+calling_code = 98
+timezone = "Asia/Tehran"
+
+[countries.IS]
+name = "Islande"
+currency = "ISK"
+calling_code = 354
+timezone = "Atlantic/Reykjavik"
+
+[countries.IT]
+name = "Italie"
+currency = "EUR"
+calling_code = 39
+timezone = "Europe/Rome"
+
+[countries.JE]
+name = "Jersey"
+currency = "GBP"
+calling_code = 44
+timezone = "Europe/Jersey"
+
+[countries.JM]
+name = "Jamaïque"
+currency = "JMD"
+calling_code = 1
+timezone = "America/Jamaica"
+
+[countries.JO]
+name = "Jordanie"
+currency = "JOD"
+calling_code = 962
+timezone = "Asia/Amman"
+
+[countries.JP]
+name = "Japon"
+currency = "JPY"
+calling_code = 81
+timezone = "Asia/Tokyo"
+
+[countries.KE]
+name = "Kenya"
+currency = "KES"
+calling_code = 254
+timezone = "Africa/Nairobi"
+
+[countries.KG]
+name = "Kirghizstan"
+currency = "KGS"
+calling_code = 996
+timezone = "Asia/Bishkek"
+
+[countries.KH]
+name = "Cambodge"
+currency = "KHR"
+calling_code = 855
+timezone = "Asia/Phnom_Penh"
+
+[countries.KI]
+name = "Kiribati"
+currency = "AUD"
+calling_code = 686
+timezone = "Pacific/Tarawa"
+
+[countries.KM]
+name = "Comores"
+currency = "KMF"
+calling_code = 269
+timezone = "Indian/Comoro"
+
+[countries.KN]
+name = "Saint-Christophe-et-Niévès"
+currency = "XCD"
+calling_code = 1
+timezone = "America/St_Kitts"
+
+[countries.KP]
+name = "Corée du Nord"
+currency = "KPW"
+calling_code = 850
+timezone = "Asia/Pyongyang"
+
+[countries.KR]
+name = "Corée du Sud"
+currency = "KRW"
+calling_code = 82
+timezone = "Asia/Seoul"
+
+[countries.KW]
+name = "Koweït"
+currency = "KWD"
+calling_code = 965
+timezone = "Asia/Kuwait"
+
+[countries.KY]
+name = "Îles Caïmans"
+currency = "KYD"
+calling_code = 1
+timezone = "America/Cayman"
+
+[countries.KZ]
+name = "Kazakhstan"
+currency = "KZT"
+calling_code = 7
+timezone = "Asia/Almaty"
+
+[countries.LA]
+name = "Laos"
+currency = "LAK"
+calling_code = 856
+timezone = "Asia/Vientiane"
+
+[countries.LB]
+name = "Liban"
+currency = "LBP"
+calling_code = 961
+timezone = "Asia/Beirut"
+
+[countries.LC]
+name = "Sainte-Lucie"
+currency = "XCD"
+calling_code = 1
+timezone = "America/St_Lucia"
+
+[countries.LI]
+name = "Liechtenstein"
+currency = "CHF"
+calling_code = 423
+timezone = "Europe/Vaduz"
+
+[countries.LK]
+name = "Sri Lanka"
+currency = "LKR"
+calling_code = 94
+timezone = "Asia/Colombo"
+
+[countries.LR]
+name = "Liberia"
+currency = "LRD"
+calling_code = 231
+timezone = "Africa/Monrovia"
+
+[countries.LS]
+name = "Lesotho"
+currency = "ZAR"
+calling_code = 266
+timezone = "Africa/Maseru"
+
+[countries.LT]
+name = "Lituanie"
+currency = "EUR"
+calling_code = 370
+timezone = "Europe/Vilnius"
+
+[countries.LU]
+name = "Luxembourg"
+currency = "EUR"
+calling_code = 352
+timezone = "Europe/Luxembourg"
+
+[countries.LV]
+name = "Lettonie"
+currency = "EUR"
+calling_code = 371
+timezone = "Europe/Riga"
+
+[countries.LY]
+name = "Libye"
+currency = "LYD"
+calling_code = 218
+timezone = "Africa/Tripoli"
+
+[countries.MA]
+name = "Maroc"
+currency = "MAD"
+calling_code = 212
+timezone = "Africa/Casablanca"
+
+[countries.MC]
+name = "Monaco"
+currency = "EUR"
+calling_code = 377
+timezone = "Europe/Monaco"
+
+[countries.MD]
+name = "Moldavie"
+currency = "MDL"
+calling_code = 373
+timezone = "Europe/Chisinau"
+
+[countries.ME]
+name = "Monténégro"
+currency = "EUR"
+calling_code = 382
+timezone = "Europe/Podgorica"
+
+[countries.MF]
+name = "Saint-Martin"
+currency = "EUR"
+calling_code = 590
+timezone = "America/Marigot"
+
+[countries.MG]
+name = "Madagascar"
+currency = "MGA"
+calling_code = 261
+timezone = "Indian/Antananarivo"
+
+[countries.MH]
+name = "Îles Marshall"
+currency = "USD"
+calling_code = 692
+timezone = "Pacific/Majuro"
+
+[countries.MK]
+name = "Macédoine du Nord"
+currency = "MKD"
+calling_code = 389
+timezone = "Europe/Skopje"
+
+[countries.ML]
+name = "Mali"
+currency = "XOF"
+calling_code = 223
+timezone = "Africa/Bamako"
+
+[countries.MM]
+name = "Myanmar (Birmanie)"
+currency = "MMK"
+calling_code = 95
+timezone = "Asia/Yangon"
+
+[countries.MN]
+name = "Mongolie"
+currency = "MNT"
+calling_code = 976
+timezone = "Asia/Ulaanbaatar"
+
+[countries.MO]
+name = "R.A.S. chinoise de Macao"
+currency = "MOP"
+calling_code = 853
+timezone = "Asia/Macau"
+
+[countries.MP]
+name = "Îles Mariannes du Nord"
+currency = "USD"
+calling_code = 1
+timezone = "Pacific/Saipan"
+
+[countries.MQ]
+name = "Martinique"
+currency = "EUR"
+calling_code = 596
+timezone = "America/Martinique"
+
+[countries.MR]
+name = "Mauritanie"
+currency = "MRU"
+calling_code = 222
+timezone = "Africa/Nouakchott"
+
+[countries.MS]
+name = "Montserrat"
+currency = "XCD"
+calling_code = 1
+timezone = "America/Montserrat"
+
+[countries.MT]
+name = "Malte"
+currency = "EUR"
+calling_code = 356
+timezone = "Europe/Malta"
+
+[countries.MU]
+name = "Maurice"
+currency = "MUR"
+calling_code = 230
+timezone = "Indian/Mauritius"
+
+[countries.MV]
+name = "Maldives"
+currency = "MVR"
+calling_code = 960
+timezone = "Indian/Maldives"
+
+[countries.MW]
+name = "Malawi"
+currency = "MWK"
+calling_code = 265
+timezone = "Africa/Blantyre"
+
+[countries.MX]
+name = "Mexique"
+currency = "MXN"
+calling_code = 52
+timezone = "America/Mexico_City"
+
+[countries.MY]
+name = "Malaisie"
+currency = "MYR"
+calling_code = 60
+timezone = "Asia/Kuala_Lumpur"
+
+[countries.MZ]
+name = "Mozambique"
+currency = "MZN"
+calling_code = 258
+timezone = "Africa/Maputo"
+
+[countries.NA]
+name = "Namibie"
+currency = "ZAR"
+calling_code = 264
+timezone = "Africa/Windhoek"
+
+[countries.NC]
+name = "Nouvelle-Calédonie"
+currency = "XPF"
+calling_code = 687
+timezone = "Pacific/Noumea"
+
+[countries.NE]
+name = "Niger"
+currency = "XOF"
+calling_code = 227
+timezone = "Africa/Niamey"
+
+[countries.NF]
+name = "Île Norfolk"
+currency = "AUD"
+calling_code = 672
+timezone = "Pacific/Norfolk"
+
+[countries.NG]
+name = "Nigeria"
+currency = "NGN"
+calling_code = 234
+timezone = "Africa/Lagos"
+
+[countries.NI]
+name = "Nicaragua"
+currency = "NIO"
+calling_code = 505
+timezone = "America/Managua"
+
+[countries.NL]
+name = "Pays-Bas"
+currency = "EUR"
+calling_code = 31
+timezone = "Europe/Amsterdam"
+
+[countries.NO]
+name = "Norvège"
+currency = "NOK"
+calling_code = 47
+timezone = "Europe/Oslo"
+
+[countries.NP]
+name = "Népal"
+currency = "NPR"
+calling_code = 977
+timezone = "Asia/Kathmandu"
+
+[countries.NR]
+name = "Nauru"
+currency = "AUD"
+calling_code = 674
+timezone = "Pacific/Nauru"
+
+[countries.NU]
+name = "Niue"
+currency = "NZD"
+calling_code = 683
+timezone = "Pacific/Niue"
+
+[countries.NZ]
+name = "Nouvelle-Zélande"
+currency = "NZD"
+calling_code = 64
+timezone = "Pacific/Auckland"
+
+[countries.OM]
+name = "Oman"
+currency = "OMR"
+calling_code = 968
+timezone = "Asia/Muscat"
+
+[countries.PA]
+name = "Panama"
+currency = "PAB"
+calling_code = 507
+timezone = "America/Panama"
+
+[countries.PE]
+name = "Pérou"
+currency = "PEN"
+calling_code = 51
+timezone = "America/Lima"
+
+[countries.PF]
+name = "Polynésie française"
+currency = "XPF"
+calling_code = 689
+timezone = "Pacific/Tahiti"
+
+[countries.PG]
+name = "Papouasie-Nouvelle-Guinée"
+currency = "PGK"
+calling_code = 675
+timezone = "Pacific/Port_Moresby"
+
+[countries.PH]
+name = "Philippines"
+currency = "PHP"
+calling_code = 63
+timezone = "Asia/Manila"
+
+[countries.PK]
+name = "Pakistan"
+currency = "PKR"
+calling_code = 92
+timezone = "Asia/Karachi"
+
+[countries.PL]
+name = "Pologne"
+currency = "PLN"
+calling_code = 48
+timezone = "Europe/Warsaw"
+
+[countries.PM]
+name = "Saint-Pierre-et-Miquelon"
+currency = "EUR"
+calling_code = 508
+timezone = "America/Miquelon"
+
+[countries.PN]
+name = "Îles Pitcairn"
+currency = "NZD"
+timezone = "Pacific/Pitcairn"
+is_active = false
+
+[countries.PR]
+name = "Porto Rico"
+currency = "USD"
+calling_code = 1
+timezone = "America/Puerto_Rico"
+
+[countries.PS]
+name = "Territoires palestiniens"
+currency = "ILS"
+calling_code = 970
+timezone = "Asia/Gaza"
+
+[countries.PT]
+name = "Portugal"
+currency = "EUR"
+calling_code = 351
+timezone = "Europe/Lisbon"
+
+[countries.PW]
+name = "Palaos"
+currency = "USD"
+calling_code = 680
+timezone = "Pacific/Palau"
+
+[countries.PY]
+name = "Paraguay"
+currency = "PYG"
+calling_code = 595
+timezone = "America/Asuncion"
+
+[countries.QA]
+name = "Qatar"
+currency = "QAR"
+calling_code = 974
+timezone = "Asia/Qatar"
+
+[countries.RE]
+name = "La Réunion"
+currency = "EUR"
+calling_code = 262
+timezone = "Indian/Reunion"
+
+[countries.RO]
+name = "Roumanie"
+currency = "RON"
+calling_code = 40
+timezone = "Europe/Bucharest"
+
+[countries.RS]
+name = "Serbie"
+currency = "RSD"
+calling_code = 381
+timezone = "Europe/Belgrade"
+
+[countries.RU]
+name = "Russie"
+currency = "RUB"
+calling_code = 7
+timezone = "Europe/Kaliningrad"
+
+[countries.RW]
+name = "Rwanda"
+currency = "RWF"
+calling_code = 250
+timezone = "Africa/Kigali"
+
+[countries.SA]
+name = "Arabie saoudite"
+currency = "SAR"
+calling_code = 966
+timezone = "Asia/Riyadh"
+
+[countries.SB]
+name = "Îles Salomon"
+currency = "SBD"
+calling_code = 677
+timezone = "Pacific/Guadalcanal"
+
+[countries.SC]
+name = "Seychelles"
+currency = "SCR"
+calling_code = 248
+timezone = "Indian/Mahe"
+
+[countries.SD]
+name = "Soudan"
+currency = "SDG"
+calling_code = 249
+timezone = "Africa/Khartoum"
+
+[countries.SE]
+name = "Suède"
+currency = "SEK"
+calling_code = 46
+timezone = "Europe/Stockholm"
+
+[countries.SG]
+name = "Singapour"
+currency = "SGD"
+calling_code = 65
+timezone = "Asia/Singapore"
+
+[countries.SH]
+name = "Sainte-Hélène"
+currency = "SHP"
+calling_code = 290
+timezone = "Atlantic/St_Helena"
+
+[countries.SI]
+name = "Slovénie"
+currency = "EUR"
+calling_code = 386
+timezone = "Europe/Ljubljana"
+
+[countries.SJ]
+name = "Svalbard et Jan Mayen"
+currency = "NOK"
+calling_code = 47
+timezone = "Arctic/Longyearbyen"
+
+[countries.SK]
+name = "Slovaquie"
+currency = "EUR"
+calling_code = 421
+timezone = "Europe/Bratislava"
+
+[countries.SL]
+name = "Sierra Leone"
+currency = "SLE"
+calling_code = 232
+timezone = "Africa/Freetown"
+
+[countries.SM]
+name = "Saint-Marin"
+currency = "EUR"
+calling_code = 378
+timezone = "Europe/San_Marino"
+
+[countries.SN]
+name = "Sénégal"
+currency = "XOF"
+calling_code = 221
+timezone = "Africa/Dakar"
+
+[countries.SO]
+name = "Somalie"
+currency = "SOS"
+calling_code = 252
+timezone = "Africa/Mogadishu"
+
+[countries.SR]
+name = "Suriname"
+currency = "SRD"
+calling_code = 597
+timezone = "America/Paramaribo"
+
+[countries.SS]
+name = "Soudan du Sud"
+currency = "SSP"
+calling_code = 211
+timezone = "Africa/Juba"
+
+[countries.ST]
+name = "Sao Tomé-et-Principe"
+currency = "STN"
+calling_code = 239
+timezone = "Africa/Sao_Tome"
+
+[countries.SV]
+name = "Salvador"
+currency = "USD"
+calling_code = 503
+timezone = "America/El_Salvador"
+
+[countries.SX]
+name = "Saint-Martin (partie néerlandaise)"
+currency = "XCG"
+calling_code = 1
+timezone = "America/Lower_Princes"
+
+[countries.SY]
+name = "Syrie"
+currency = "SYP"
+calling_code = 963
+timezone = "Asia/Damascus"
+
+[countries.SZ]
+name = "Eswatini"
+currency = "SZL"
+calling_code = 268
+timezone = "Africa/Mbabane"
+
+[countries.TC]
+name = "Îles Turques-et-Caïques"
+currency = "USD"
+calling_code = 1
+timezone = "America/Grand_Turk"
+
+[countries.TD]
+name = "Tchad"
+currency = "XAF"
+calling_code = 235
+timezone = "Africa/Ndjamena"
+
+[countries.TF]
+name = "Terres australes françaises"
+currency = "EUR"
+timezone = "Indian/Kerguelen"
+is_active = false
+
+[countries.TG]
+name = "Togo"
+currency = "XOF"
+calling_code = 228
+timezone = "Africa/Lome"
+
+[countries.TH]
+name = "Thaïlande"
+currency = "THB"
+calling_code = 66
+timezone = "Asia/Bangkok"
+
+[countries.TJ]
+name = "Tadjikistan"
+currency = "TJS"
+calling_code = 992
+timezone = "Asia/Dushanbe"
+
+[countries.TK]
+name = "Tokelau"
+currency = "NZD"
+calling_code = 690
+timezone = "Pacific/Fakaofo"
+
+[countries.TL]
+name = "Timor oriental"
+currency = "USD"
+calling_code = 670
+timezone = "Asia/Dili"
+
+[countries.TM]
+name = "Turkménistan"
+currency = "TMT"
+calling_code = 993
+timezone = "Asia/Ashgabat"
+
+[countries.TN]
+name = "Tunisie"
+currency = "TND"
+calling_code = 216
+timezone = "Africa/Tunis"
+
+[countries.TO]
+name = "Tonga"
+currency = "TOP"
+calling_code = 676
+timezone = "Pacific/Tongatapu"
+
+[countries.TR]
+name = "Turquie"
+currency = "TRY"
+calling_code = 90
+timezone = "Europe/Istanbul"
+
+[countries.TT]
+name = "Trinité-et-Tobago"
+currency = "TTD"
+calling_code = 1
+timezone = "America/Port_of_Spain"
+
+[countries.TV]
+name = "Tuvalu"
+currency = "AUD"
+calling_code = 688
+timezone = "Pacific/Funafuti"
+
+[countries.TW]
+name = "Taïwan"
+currency = "TWD"
+calling_code = 886
+timezone = "Asia/Taipei"
+
+[countries.TZ]
+name = "Tanzanie"
+currency = "TZS"
+calling_code = 255
+timezone = "Africa/Dar_es_Salaam"
+
+[countries.UA]
+name = "Ukraine"
+currency = "UAH"
+calling_code = 380
+timezone = "Europe/Simferopol"
+
+[countries.UG]
+name = "Ouganda"
+currency = "UGX"
+calling_code = 256
+timezone = "Africa/Kampala"
+
+[countries.UM]
+name = "Îles mineures éloignées des États-Unis"
+currency = "USD"
+timezone = "Pacific/Midway"
+is_active = false
+
+[countries.US]
+name = "États-Unis"
+currency = "USD"
+calling_code = 1
+timezone = "America/New_York"
+
+[countries.UY]
+name = "Uruguay"
+currency = "UYU"
+calling_code = 598
+timezone = "America/Montevideo"
+
+[countries.UZ]
+name = "Ouzbékistan"
+currency = "UZS"
+calling_code = 998
+timezone = "Asia/Samarkand"
+
+[countries.VA]
+name = "État de la Cité du Vatican"
+currency = "EUR"
+calling_code = 39
+timezone = "Europe/Vatican"
+
+[countries.VC]
+name = "Saint-Vincent-et-les Grenadines"
+currency = "XCD"
+calling_code = 1
+timezone = "America/St_Vincent"
+
+[countries.VE]
+name = "Venezuela"
+currency = "VES"
+calling_code = 58
+timezone = "America/Caracas"
+
+[countries.VG]
+name = "Îles Vierges britanniques"
+currency = "USD"
+calling_code = 1
+timezone = "America/Tortola"
+
+[countries.VI]
+name = "Îles Vierges des États-Unis"
+currency = "USD"
+calling_code = 1
+timezone = "America/St_Thomas"
+
+[countries.VN]
+name = "Viêt Nam"
+currency = "VND"
+calling_code = 84
+timezone = "Asia/Ho_Chi_Minh"
+
+[countries.VU]
+name = "Vanuatu"
+currency = "VUV"
+calling_code = 678
+timezone = "Pacific/Efate"
+
+[countries.WF]
+name = "Wallis-et-Futuna"
+currency = "XPF"
+calling_code = 681
+timezone = "Pacific/Wallis"
+
+[countries.WS]
+name = "Samoa"
+currency = "WST"
+calling_code = 685
+timezone = "Pacific/Apia"
+
+[countries.YE]
+name = "Yémen"
+currency = "YER"
+calling_code = 967
+timezone = "Asia/Aden"
+
+[countries.YT]
+name = "Mayotte"
+currency = "EUR"
+calling_code = 262
+timezone = "Indian/Mayotte"
+
+[countries.ZA]
+name = "Afrique du Sud"
+currency = "ZAR"
+calling_code = 27
+timezone = "Africa/Johannesburg"
+
+[countries.ZM]
+name = "Zambie"
+currency = "ZMW"
+calling_code = 260
+timezone = "Africa/Lusaka"
+
+[countries.ZW]
+name = "Zimbabwe"
+currency = "USD"
+calling_code = 263
+timezone = "Africa/Harare"

@@ -72,7 +72,7 @@ docker compose up --build        # base, migrations + catalogue, API, frontend
 
 # Créer une première entreprise (le mot de passe provisoire est demandé)
 docker compose run --rm -it backend stockmanager create-tenant \
-  --name "Maquis Le Baobab" --slug baobab --business-profile restaurant.maquis --plan STANDARD \
+  --name "Maquis Le Baobab" --slug baobab --business-profile restaurant.maquis --country BF --plan STANDARD \
   --owner-email gerant@example.com --owner-name "Awa Traoré"
 ```
 
@@ -98,7 +98,7 @@ uv sync
 uv run alembic upgrade head
 uv run stockmanager catalog sync
 uv run stockmanager create-tenant --name "…" --slug … --business-profile retail.alimentation \
-    --plan STANDARD --owner-email … --owner-name "…"
+    --country BF --plan STANDARD --owner-email … --owner-name "…"
 uv run uvicorn app.main:app --reload --port 8000
 
 # Frontend (autre terminal)

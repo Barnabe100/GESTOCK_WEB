@@ -1,6 +1,7 @@
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import ARRAY, Boolean, CheckConstraint, ForeignKey, Integer, String, Text
+from sqlalchemy import ARRAY, Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -100,8 +101,56 @@ class BusinessProfileModule(Base):
     default_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class GeoCountry(TimestampMixin, Base):
+    """Pays (ISO 3166-1 alpha-2) : référentiel global synchronisé depuis
+    ``catalog/data/countries.toml`` ; lecture seule pour le rôle applicatif (Phase 3.2)."""
+
+    __tablename__ = "geo_countries"
+    __table_args__ = (
+        CheckConstraint("code ~ '^[A-Z]{2}$'", name="iso_code"),
+        CheckConstraint("currency IS NULL OR currency ~ '^[A-Z]{3}$'", name="iso_currency"),
+        # Un pays proposé à l'inscription fournit une devise et un fuseau horaire par défaut.
+        CheckConstraint(
+            "NOT is_active OR (currency IS NOT NULL AND timezone IS NOT NULL)",
+            name="active_has_defaults",
+        ),
+    )
+
+    code: Mapped[str] = mapped_column(String(2), primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    # Devise proposée par défaut (ISO 4217).
+    currency: Mapped[str | None] = mapped_column(String(3))
+    # Indicatif téléphonique international (E.164), sans « + ».
+    calling_code: Mapped[int | None] = mapped_column(Integer)
+    # Fuseau horaire proposé par défaut (IANA).
+    timezone: Mapped[str | None] = mapped_column(String(64))
+    # Proposé à l'inscription (le référentiel reste complet).
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
 class Plan(TimestampMixin, Base):
+    """Offre. **Structure** (modules, limites, fonctionnalités, délai de grâce) : ``plans.toml``,
+    synchronisée par ``catalog sync``. **Paramètres commerciaux** (publication, prix, périodes,
+    essai…) : gérés par TechNova en base, jamais écrasés par la synchronisation (Phase 3.2)."""
+
     __tablename__ = "plans"
+    __table_args__ = (
+        CheckConstraint(
+            "monthly_price IS NULL OR monthly_price >= 0", name="monthly_price_positive"
+        ),
+        CheckConstraint("annual_price IS NULL OR annual_price >= 0", name="annual_price_positive"),
+        CheckConstraint("trial_days >= 0", name="trial_days_positive"),
+        CheckConstraint("currency IS NULL OR currency ~ '^[A-Z]{3}$'", name="iso_currency"),
+        # Une période proposée a un prix (0 = gratuit) et une devise.
+        CheckConstraint(
+            "NOT monthly_price_enabled OR (monthly_price IS NOT NULL AND currency IS NOT NULL)",
+            name="monthly_enabled_has_price",
+        ),
+        CheckConstraint(
+            "NOT annual_price_enabled OR (annual_price IS NOT NULL AND currency IS NOT NULL)",
+            name="annual_enabled_has_price",
+        ),
+    )
 
     code: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -115,6 +164,34 @@ class Plan(TimestampMixin, Base):
     features: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     # Jours de grâce après la fin de période avant l'état « expiré ».
     grace_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- Paramètres commerciaux (TechNova ; valeurs par défaut neutres) ----------------------
+    # Publié : proposé au public (tarifs, inscription).
+    listed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    price_display_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    monthly_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    monthly_price_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    annual_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    annual_price_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    currency: Mapped[str | None] = mapped_column(String(3))
+    # Souscription sur contact commercial uniquement (jamais directement à l'inscription).
+    contact_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    commercial_description: Mapped[str | None] = mapped_column(Text)
+    display_order: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    # Essai gratuit à l'inscription (0 : aucun essai ; jamais activé sans configuration).
+    trial_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     modules: Mapped[list["PlanModule"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"

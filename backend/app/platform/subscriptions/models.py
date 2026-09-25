@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -26,7 +27,13 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     """Abonnement courant du tenant. L'expiration ne supprime jamais de données."""
 
     __tablename__ = "subscriptions"
-    __table_args__ = (UniqueConstraint("tenant_id"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id"),
+        CheckConstraint(
+            "(price_at_subscription IS NULL) = (currency_at_subscription IS NULL)",
+            name="price_snapshot_complete",
+        ),
+    )
 
     plan_code: Mapped[str] = mapped_column(
         String(50), ForeignKey("plans.code", ondelete="RESTRICT"), nullable=False
@@ -41,3 +48,7 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Prix de la période souscrite, figé à la souscription : une modification ultérieure du
+    # tarif du plan ne change pas rétroactivement l'abonnement (nul : aucun prix affiché).
+    price_at_subscription: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    currency_at_subscription: Mapped[str | None] = mapped_column(String(3))

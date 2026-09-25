@@ -7,6 +7,7 @@ from app.platform.capabilities.router import router as capabilities_router
 from app.platform.context import require_module
 from app.platform.identity.router import router as identity_router
 from app.platform.profiles.router import router as profiles_router
+from app.platform.public.router import router as public_router
 from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
 from app.platform.subscriptions.router import router as subscription_router
 from app.platform.tenancy.router import router as tenancy_router
@@ -29,6 +30,7 @@ def build_api_router(registry: ModuleRegistry | None = None) -> APIRouter:
     api_router = APIRouter()
     api_router.include_router(health.router)
     api_router.include_router(identity_router)
+    api_router.include_router(public_router)
     api_router.include_router(capabilities_router)
     api_router.include_router(tenancy_router)
     api_router.include_router(profiles_router)
