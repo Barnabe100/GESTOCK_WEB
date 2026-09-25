@@ -55,7 +55,14 @@ export function buildRoutes(
 }
 
 /** Ordre des rubriques de la barre latérale (présentation seulement, jamais une règle métier). */
-export const NAV_GROUPS: readonly NavGroup[] = ['home', 'catalog', 'stock', 'sales', 'admin'];
+export const NAV_GROUPS: readonly NavGroup[] = [
+  'home',
+  'catalog',
+  'stock',
+  'sales',
+  'cash',
+  'admin',
+];
 
 /** Regroupe les entrées autorisées par rubrique ; les rubriques vides sont omises. */
 export function groupNavigation(items: NavItem[]): { group: NavGroup; items: NavItem[] }[] {

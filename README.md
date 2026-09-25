@@ -30,6 +30,7 @@ utilisateur.
 - [Inventaires : règles et cycle de vie](docs/architecture/INVENTORY.md)
 - [Paiements des ventes : règles et solde](docs/architecture/PAYMENTS.md)
 - [Créances / comptes clients : définition, limite de crédit](docs/architecture/RECEIVABLES.md)
+- [Caisse : sessions, mouvements, solde, clôture](docs/architecture/CASH_REGISTER.md)
 - [Design System (interface)](docs/architecture/DESIGN_SYSTEM.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)

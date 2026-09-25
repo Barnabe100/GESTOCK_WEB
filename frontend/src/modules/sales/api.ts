@@ -83,7 +83,7 @@ export function useSale(id: string | undefined) {
 }
 
 /** Encaissements immédiats à la validation (paiement comptant) : aucun solde envoyé. */
-export type ImmediatePayment = Pick<PaymentInput, 'amount' | 'method'>;
+export type ImmediatePayment = Pick<PaymentInput, 'amount' | 'method' | 'cash_register_id'>;
 
 /**
  * Toute opération peut modifier le stock et les créances : ventes, niveaux, mouvements,
@@ -97,6 +97,7 @@ export function useSaleMutations() {
     void qc.invalidateQueries({ queryKey: ['stock'] });
     void qc.invalidateQueries({ queryKey: ['alerts'] });
     void qc.invalidateQueries({ queryKey: ['receivables'] });
+    void qc.invalidateQueries({ queryKey: ['cash'] });
   };
   return {
     save: useMutation({
@@ -170,6 +171,8 @@ export interface PaymentInput {
   reference: string | null;
   /** Même clé pour une même saisie : une double soumission ne crée pas de doublon. */
   idempotency_key: string;
+  /** Espèces : caisse du site de la vente (vérifiée par le serveur). */
+  cash_register_id?: string | null;
 }
 
 export function useSalePayments(saleId: string, enabled: boolean) {
@@ -186,6 +189,7 @@ export function usePaymentMutations(saleId: string) {
   const onSuccess = () => {
     void qc.invalidateQueries({ queryKey: saleKeys.all });
     void qc.invalidateQueries({ queryKey: ['receivables'] });
+    void qc.invalidateQueries({ queryKey: ['cash'] });
   };
   return {
     create: useMutation({

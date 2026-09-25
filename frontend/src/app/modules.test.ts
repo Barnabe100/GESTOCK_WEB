@@ -67,4 +67,26 @@ describe('registre des modules frontend', () => {
     });
     expect(withoutModule.map((item) => item.key)).not.toContain('receivables');
   });
+
+  it('Caisse : rubrique dédiée, entrées selon les permissions', () => {
+    const caps = {
+      modules: [{ code: 'cash_register', status: 'available' }],
+      navigation: ['cash_register'],
+      permissions: ['cash_register.register.view', 'cash_register.session.view'],
+    };
+    const cash = groupNavigation(buildNavigation(FRONTEND_MODULES, caps)).find(
+      (section) => section.group === 'cash',
+    );
+    expect(cash?.items.map((item) => item.key)).toEqual([
+      'cash-registers',
+      'cash-sessions',
+      'cash-journal',
+    ]);
+    const sessionsOnly = buildNavigation(FRONTEND_MODULES, {
+      ...caps,
+      permissions: ['cash_register.session.view'],
+    });
+    expect(sessionsOnly.map((item) => item.key)).toEqual(['cash-sessions', 'cash-journal']);
+    expect(buildNavigation(FRONTEND_MODULES, { ...caps, modules: [] })).toEqual([]);
+  });
 });

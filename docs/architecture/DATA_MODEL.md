@@ -142,6 +142,17 @@ Détails : [`SALES.md`](SALES.md).
 Numéro : séquence `payment`. Aucun état d'encaissement stocké sur `sales` : payé / reste /
 état sont calculés à partir des paiements `COMPLETED`. Détails : [`PAYMENTS.md`](PAYMENTS.md).
 
+### Caisse (Phase 2.9, isolée par RLS)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `cash_registers` | `tenant_id`, `code` (`CAI-001`), `site_id`, `name`, `description`, `is_active`, `created_by` | `UNIQUE (tenant_id, code)`, `UNIQUE (tenant_id, id, site_id)` ; FK composite vers `sites` ; jamais supprimée |
+| `cash_sessions` | `tenant_id`, `number` (`SES-000001`), `cash_register_id`, `site_id`, `status` (`OPEN` \| `CLOSED`), `opening_float`, `opened_at`/`_by`, `closed_at`/`_by`, `theoretical_balance`, `counted_balance`, `variance`, `closing_note` | FK composite `(tenant_id, cash_register_id, site_id)` → caisse ; **index unique partiel** : une session `OPEN` par caisse ; `CHECK` fond ≥ 0, fermée ⇒ comptée, écart = compté − théorique |
+| `cash_movements` | `tenant_id`, `cash_session_id`, `cash_register_id`, `site_id`, `movement_type`, `amount` (> 0), `category`, `reason`, `reference`, `source_type`/`_id`/`_number`, `payment_id`, `idempotency_key`, `occurred_at`, `created_by` | FK composites vers la session et vers `payments (tenant_id, id, site_id)` (nouvelle unicité) ; `UNIQUE (tenant_id, payment_id, movement_type)`, `UNIQUE (tenant_id, idempotency_key)` ; manuel ⇒ nature et motif ; vente ⇒ paiement ; append-only (`SELECT, INSERT`) |
+
+Solde théorique = Σ mouvements signés (jamais stocké hors instantané de clôture). Détails :
+[`CASH_REGISTER.md`](CASH_REGISTER.md).
+
 ### Créances (Phase 2.8) : aucune table
 
 Une créance ouverte est une vente `VALIDATED` dont le reste dû (`total` − paiements

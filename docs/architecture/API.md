@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7) et créances (2.8)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7), créances (2.8) et caisse (2.9)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -269,6 +269,31 @@ Codes : `receivable_not_found`, `customer_not_found` (404), `site_mismatch` (403
 validation d'une vente : `credit_limit_exceeded` (422 ; `credit_limit`, `sale_exposure`, et
 `current_exposure` / `available_credit` pour un membre voyant tous les sites). Aucune route
 d'écriture (405). Abonnement expiré : consultation normale.
+
+### Caisse (module `cash_register`) — Phase 2.9
+
+Monté sous `/cash`. Règles : [`CASH_REGISTER.md`](CASH_REGISTER.md) ; décisions :
+[ADR-0022](../adr/0022-caisse.md). Permissions `cash_register.{register.view, register.manage,
+session.view, session.open, session.close, movement.create}`.
+
+| Méthode | Chemin | Rôle |
+|---|---|---|
+| GET / POST | `/cash/registers` | Caisses des sites visibles (`search`, `site_id`, `status`, caisse courante et solde) / création `{site_id?, name, description?}` → `CAI-001` |
+| GET / PATCH | `/cash/registers/{id}` | Détail / `name`, `description` (site non modifiable) |
+| POST | `/cash/registers/{id}/activate`, `/deactivate` | Désactivation refusée si une session est ouverte |
+| GET / POST | `/cash/sessions` | Sessions (`cash_register_id`, `site_id`, `status`, `opened_by`, période) / ouverture `{cash_register_id, opening_float}` → `SES-000001` |
+| GET | `/cash/sessions/{id}` | Totaux, solde théorique (figé à la clôture), compté, écart |
+| POST | `/cash/sessions/{id}/close` | `{counted_balance, note?}` ; écart calculé par le serveur |
+| GET | `/cash/sessions/{id}/movements`, `/cash/movements` | Journal paginé, solde après chaque mouvement ; `movement_type`, `created_by`, `search`, `min_amount`, `max_amount`, période |
+| POST | `/cash/sessions/{id}/movements` | Entrée / sortie manuelle `{movement_type, amount, category, reason, reference?, idempotency_key?}` (201 ; 200 si rejouée) |
+
+Paiements (2.7) : `method = CASH` exige une session ouverte d'une caisse du site de la vente ;
+champ facultatif `cash_register_id` (aussi dans `payments` de la validation). Codes :
+`cash_session_required`, `cash_register_required`, `cash_insufficient_balance`,
+`cash_movement_type_invalid`, `cash_movement_category_invalid` (422), `cash_session_closed`,
+`cash_session_already_open`, `cash_register_inactive`, `cash_register_has_open_session`,
+`idempotency_key_reused` (409), `cash_register_not_found`, `cash_session_not_found` (404).
+Aucune suppression. Abonnement expiré : consultation seule.
 
 ## Routes des modules métier
 

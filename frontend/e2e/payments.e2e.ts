@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, loginUi, OWNER } from './support';
+import { apiToken, bearer, ensureCashOpen, loginUi, OWNER } from './support';
 
 /**
  * Phase 2.7 — Paiements des ventes : la validation d'une vente est indépendante de son
@@ -47,6 +47,8 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     lines: [{ article_id: article.id, quantity: '50', unit_cost: '6000' }],
   });
   await post(`/stock/entries/${entry.id}/validate`, {}, 200);
+  // Espèces : caisse ouverte sur le site (Phase 2.9).
+  await ensureCashOpen(request, token, site.id);
   return { token, reference, articleId: article.id, siteId: site.id };
 }
 

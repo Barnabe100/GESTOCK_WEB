@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { CashRegisterChoice } from '@/modules/cash_register/CashRegisterChoice';
 import { formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 import { EmptyState } from '@/shared/ui/EmptyState';
@@ -55,6 +56,7 @@ function PaymentDialog({
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [provider, setProvider] = useState('');
   const [reference, setReference] = useState('');
+  const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
   const [amountError, setAmountError] = useState<string | null>(null);
   // Une clé par saisie : double clic ou nouvel envoi après une coupure → aucun doublon.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -74,6 +76,7 @@ function PaymentDialog({
         provider: method === 'MOBILE_MONEY' ? provider.trim() || null : null,
         reference: reference.trim() || null,
         idempotency_key: idempotencyKey,
+        cash_register_id: method === 'CASH' ? cashRegisterId : null,
       },
       {
         onSuccess: (payment) => {
@@ -126,6 +129,13 @@ function PaymentDialog({
             options={PAYMENT_METHODS.map((m) => ({ value: m, label: t(`payment.method.${m}`) }))}
           />
         </FormField>
+        {method === 'CASH' && (
+          <CashRegisterChoice
+            siteId={sale.site_id}
+            value={cashRegisterId}
+            onChange={setCashRegisterId}
+          />
+        )}
         {method === 'MOBILE_MONEY' && (
           <FormField id="payment-provider" label={t('payment.provider')}>
             <InputText

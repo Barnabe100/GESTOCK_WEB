@@ -242,7 +242,8 @@ describe('saisie et consultation d’une vente', () => {
     const [url, init] = methodCalls(fetchMock, 'POST')[0] ?? [];
     expect(String(url)).toContain('/api/v1/sales/v1/validate');
     expect(JSON.parse(String(init?.body))).toEqual({
-      payments: [{ amount: '1000', method: 'CASH' }],
+      // Caisse choisie par le serveur (aucune caisse indiquée sans droit de consultation).
+      payments: [{ amount: '1000', method: 'CASH', cash_register_id: null }],
     });
     await waitFor(() =>
       expect(show).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' })),

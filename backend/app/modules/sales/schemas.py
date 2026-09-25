@@ -100,6 +100,9 @@ class PaymentCreate(BaseModel):
     provider: Optional50 = None
     reference: Optional100 = None
     idempotency_key: uuid.UUID | None = None
+    # Espèces : caisse du site de la vente (facultatif ; choisie par le serveur si une seule
+    # session est ouverte sur le site, ou celle ouverte par l'utilisateur).
+    cash_register_id: uuid.UUID | None = None
 
 
 class SaleValidate(BaseModel):

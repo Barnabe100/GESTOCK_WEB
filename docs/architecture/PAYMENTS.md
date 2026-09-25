@@ -103,8 +103,9 @@ montant, moyen, date. Aucune donnée sensible (pas de numéro de carte).
 
 - **Créances** : réalisées en Phase 2.8 ([`RECEIVABLES.md`](RECEIVABLES.md)) à partir du même
   « payé » (paiements `COMPLETED`), sans modifier les règles de paiement.
-- **Caisse** : `method`, `site_id`, `paid_at`, `amount` suffisent à rattacher les
-  encaissements en espèces à une session de caisse (aucun mouvement de caisse créé en 2.7).
+- **Caisse** : réalisée en Phase 2.9 ([`CASH_REGISTER.md`](CASH_REGISTER.md)) : un paiement
+  `CASH` exige une session de caisse ouverte sur le site de la vente et crée son mouvement de
+  caisse dans la même transaction ; son annulation crée la sortie inverse (session ouverte).
 - **Encaissements asynchrones** (Mobile Money par API, TPE) : statut `PENDING` réservé, déjà
   compté dans le solde engagé pour empêcher un doublon ; confirmation → `COMPLETED`. Le module
   planifié `payments` (« Paiements électroniques ») accueillera ces intégrations.

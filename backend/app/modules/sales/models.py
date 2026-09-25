@@ -151,6 +151,8 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         UniqueConstraint("tenant_id", "id"),
         # Clé d'idempotence fournie par le client : un seul paiement par clé et par tenant.
         UniqueConstraint("tenant_id", "idempotency_key"),
+        # Cible de la FK composite des mouvements de caisse : même tenant ET même site.
+        UniqueConstraint("tenant_id", "id", "site_id"),
         # Même tenant et même site que la vente (FK composite sur (tenant, vente, site)).
         ForeignKeyConstraint(
             ["tenant_id", "sale_id", "site_id"],

@@ -5,8 +5,9 @@ R, W = AccessKind.READ, AccessKind.WRITE
 
 MANIFEST = ModuleManifest(
     code="sales",
-    # Stock : sortie via StockService ; clients : client facultatif (API publique, FK).
-    depends_on=("catalog", "stock", "customers"),
+    # Stock : sortie via StockService ; clients : client facultatif (API publique, FK) ;
+    # caisse : encaissements espèces (API publique cash_register.api, Phase 2.9).
+    depends_on=("catalog", "stock", "customers", "cash_register"),
     permissions=(
         PermissionDef("sales.sale.view", R),
         PermissionDef("sales.sale.create", W),

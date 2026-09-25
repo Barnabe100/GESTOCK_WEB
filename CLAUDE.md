@@ -30,8 +30,13 @@ surpaiement sous verrou de la vente, annulation motivée, clé d'idempotence,
 créance = vente validée dont le reste dû — total − paiements `COMPLETED` — est positif,
 **calculée sans table** ; limite de crédit contrôlée à la validation de la vente sous verrou du
 client, `credit_limit NULL` = non configurée ; encaissement immédiat à la validation,
-[`RECEIVABLES.md`](docs/architecture/RECEIVABLES.md), ADR-0021).
-Autres modules métier (POS, caisse, paiements électroniques, restaurant…) :
+[`RECEIVABLES.md`](docs/architecture/RECEIVABLES.md), ADR-0021) et 2.9 (module `cash_register`, API `/cash` :
+caisse d'un site, sessions `OPEN`/`CLOSED` — une seule ouverte par caisse —, mouvements
+append-only, **solde calculé** à partir des mouvements, clôture avec écart calculé par le
+serveur ; un paiement `CASH` exige une session ouverte du site de la vente et crée son mouvement
+dans la même transaction ; `sales` dépend de `cash_register`,
+[`CASH_REGISTER.md`](docs/architecture/CASH_REGISTER.md), ADR-0022).
+Autres modules métier (POS, paiements électroniques, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

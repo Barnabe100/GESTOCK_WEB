@@ -100,5 +100,16 @@
   "sale_has_payments": "Cette vente a des paiements : annulez-les d'abord.",
   "credit_limit_exceeded": "Limite de crédit du client dépassée : cette vente laisserait {{amount}} à crédit (limite : {{limit}}). Encaissez tout ou partie de la vente à la validation.",
   "credit_limit_exceeded_available": "Limite de crédit du client dépassée : cette vente laisserait {{amount}} à crédit pour {{available}} de crédit disponible (limite : {{limit}}). Encaissez tout ou partie de la vente à la validation.",
-  "receivable_not_found": "Créance introuvable."
+  "receivable_not_found": "Créance introuvable.",
+  "cash_session_required": "Aucune caisse ouverte sur le site de la vente : ouvrez une session de caisse pour encaisser en espèces.",
+  "cash_register_required": "Plusieurs caisses sont ouvertes sur ce site : choisissez la caisse.",
+  "cash_register_not_found": "Caisse introuvable.",
+  "cash_session_not_found": "Session de caisse introuvable.",
+  "cash_register_inactive": "Cette caisse est désactivée.",
+  "cash_session_already_open": "Une session est déjà ouverte sur cette caisse.",
+  "cash_session_closed": "Cette session de caisse est clôturée : aucune opération n'est plus possible.",
+  "cash_register_has_open_session": "Clôturez d'abord la session ouverte de cette caisse.",
+  "cash_insufficient_balance": "Solde de caisse insuffisant pour cette sortie (solde : {{balance}}).",
+  "cash_movement_type_invalid": "Seules les entrées et sorties manuelles peuvent être saisies.",
+  "cash_movement_category_invalid": "Nature incompatible avec le sens du mouvement."
 }

@@ -115,3 +115,18 @@ def member(w: World, client: TestClient, email: str, template: str, **access: An
         "/me/password", json={"current_password": "Provisoire-123", "new_password": PASSWORD}
     )
     return Api(client, login(client, email).json()["access_token"])
+
+
+def open_cash(
+    w: World, site: str | None = None, opening_float: str = "0", name: str = "Caisse test"
+) -> dict[str, Any]:
+    """Caisse ouverte sur un site (défaut : site principal) : les paiements espèces exigent une
+    session de caisse ouverte sur le site de la vente (Phase 2.9)."""
+    register = w.owner.post("/cash/registers", json={"site_id": site or w.site, "name": name})
+    assert register.status_code == 201, register.text
+    session = w.owner.post(
+        "/cash/sessions",
+        json={"cash_register_id": register.json()["id"], "opening_float": opening_float},
+    )
+    assert session.status_code == 201, session.text
+    return dict(session.json())

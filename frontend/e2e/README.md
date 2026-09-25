@@ -79,6 +79,13 @@ la suite peut être rejouée sur la même base.
   disparue), annulation d'un paiement (créance réapparue) ; limite de crédit (refus au-delà,
   encaissement immédiat accepté, compte client) ; limite non configurée ; vendeur limité à un
   site (créances de son site seulement) et autre entreprise (introuvable) ; mobile.
+- `cash.e2e.ts` (Phase 2.9) : sur le site « Dépôt E2E » (sessions restées ouvertes clôturées au
+  préalable) : création d'une caisse, ouverture (fond 100 000), vente encaissée en espèces à la
+  validation (paiement, mouvement lié, solde 150 000), entrée, sortie, clôture (théorique
+  130 000, compté 128 500, écart −1 500), session fermée refusant tout mouvement ; paiement
+  espèces sans caisse ouverte refusé ; idempotence (un paiement, un mouvement) ; mobile.
+  `payments.e2e.ts` et `receivables.e2e.ts` ouvrent au besoin la caisse « Caisse E2E » de la
+  boutique (`ensureCashOpen`).
 - `ui.e2e.ts` (Phase 2.5-B, Design System) : navigation groupée, tableau de bord (indicateurs,
   actions rapides), liste standard (recherche, « Aucun résultat », réinitialisation),
   désactivation confirmée (annuler puis confirmer), entrée de stock saisie et validée par

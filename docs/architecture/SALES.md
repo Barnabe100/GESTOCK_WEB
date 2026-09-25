@@ -137,8 +137,10 @@ La validation contrôle la limite de crédit du client (exposition projetée = r
 ventes validées + reste dû de la vente) sous le verrou du client, et accepte des
 encaissements immédiats (`{payments: […]}`) dans la même transaction.
 
-Hors périmètre : échéances et relances,
-caisse, ticket / facture PDF, retours et avoirs, remises et promotions, fidélité, POS,
+**Caisse** : réalisée en Phase 2.9 — [`CASH_REGISTER.md`](CASH_REGISTER.md) (un paiement
+espèces exige une session de caisse ouverte sur le site de la vente).
+
+Hors périmètre : échéances et relances, ticket / facture PDF, retours et avoirs, remises et promotions, fidélité, POS,
 restaurant. Le module Ventes ne dépend d'aucun module futur ; ceux-ci s'y rattacheront :
 
 ```text

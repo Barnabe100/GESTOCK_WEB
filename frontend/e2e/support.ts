@@ -117,3 +117,45 @@ export async function createMember(
   expect(changed.status()).toBe(204);
   return email;
 }
+
+interface OpenSession {
+  id: string;
+  cash_register_id: string;
+}
+
+/**
+ * Caisse ouverte sur un site (Phase 2.9 : un paiement en espèces exige une session de caisse
+ * ouverte sur le site de la vente). Réutilise une session ouverte existante, sinon ouvre la
+ * caisse « Caisse E2E » du site (créée au besoin).
+ */
+export async function ensureCashOpen(
+  request: APIRequestContext,
+  token: string,
+  siteId: string,
+): Promise<OpenSession> {
+  const headers = bearer(token);
+  const open = (await (
+    await request.get(`/api/v1/cash/sessions?status=OPEN&site_id=${siteId}`, { headers })
+  ).json()) as { items: OpenSession[] };
+  if (open.items[0]) return open.items[0];
+  const registers = (await (
+    await request.get(`/api/v1/cash/registers?site_id=${siteId}&search=Caisse%20E2E`, {
+      headers,
+    })
+  ).json()) as { items: { id: string; is_active: boolean }[] };
+  let registerId = registers.items.find((r) => r.is_active)?.id;
+  if (!registerId) {
+    const created = await request.post('/api/v1/cash/registers', {
+      headers,
+      data: { site_id: siteId, name: 'Caisse E2E' },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    registerId = ((await created.json()) as { id: string }).id;
+  }
+  const session = await request.post('/api/v1/cash/sessions', {
+    headers,
+    data: { cash_register_id: registerId, opening_float: '0' },
+  });
+  expect(session.status(), await session.text()).toBe(201);
+  return (await session.json()) as OpenSession;
+}

@@ -1,6 +1,7 @@
 import type { FrontendModule } from '@/core/modules/types';
 import { alertsModule } from '@/modules/alerts';
 import { auditModule } from '@/modules/audit';
+import { cashRegisterModule } from '@/modules/cash_register';
 import { catalogModule } from '@/modules/catalog';
 import { customersModule } from '@/modules/customers';
 import { dashboardModule } from '@/modules/dashboard';
@@ -24,6 +25,7 @@ export const FRONTEND_MODULES: readonly FrontendModule[] = [
   customersModule,
   salesModule,
   receivablesModule,
+  cashRegisterModule,
   stockModule,
   inventoryCountModule,
   alertsModule,

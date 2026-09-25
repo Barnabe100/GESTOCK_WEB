@@ -88,6 +88,10 @@ def test_base_roles(owner: Api) -> None:
         "sales.payment.view",  # encaissement des ventes, sans annulation (Phase 2.7)
         "sales.payment.create",
         "receivables.receivable.view",  # créances : consultation (Phase 2.8)
+        "cash_register.register.view",  # caisse : ouverture et clôture (Phase 2.9)
+        "cash_register.session.view",
+        "cash_register.session.open",
+        "cash_register.session.close",
     }
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer

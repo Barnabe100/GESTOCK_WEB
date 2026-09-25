@@ -332,6 +332,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
       {validating && (
         <ValidateSaleDialog
           total={displayTotal}
+          siteId={validating.site_id ?? sale?.site_id ?? null}
           pending={save.isPending || validate.isPending}
           onConfirm={(payments) => void confirmValidation(validating, payments)}
           onClose={() => setValidating(null)}

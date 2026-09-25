@@ -14,6 +14,10 @@ constitue une créance (phase ultérieure).
   paiement. Annuler un paiement n'annule PAS la vente et ne touche jamais au stock.
 - **Double soumission** : clé d'idempotence facultative fournie par le client ; la même clé
   renvoie le paiement déjà créé (réponse rejouée) au lieu d'un doublon.
+- **Espèces et caisse** (Phase 2.9, ADR-0022) : un paiement ``CASH`` exige une session de
+  caisse ouverte sur le site de la vente ; le paiement et son mouvement de caisse sont créés
+  dans la MÊME transaction (tout ou rien). Son annulation crée la sortie inverse dans la même
+  session, si elle est encore ouverte. Les autres moyens ne touchent jamais la caisse.
 """
 
 import uuid
@@ -26,8 +30,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
+from app.modules.cash_register.api import CashService
 from app.modules.sales.models import (
     Payment,
+    PaymentMethod,
     PaymentStatus,
     Sale,
     SalePaymentStatus,
@@ -198,9 +204,25 @@ class PaymentService:
         )
         self.db.add(payment)
         self.db.flush()
+        cash: dict[str, Any] = {}
+        if payment.method is PaymentMethod.CASH:
+            # Espèces : mouvement de caisse dans la même transaction (sinon rien n'est créé).
+            movement = CashService(self.db, self.ctx, self.now).record_sale_cash_in(
+                site_id=sale.site_id,
+                payment_id=payment.id,
+                payment_number=payment.number,
+                amount=payment.amount,
+                sale_id=sale.id,
+                sale_number=sale.number,
+                cash_register_id=data.cash_register_id,
+            )
+            cash = {
+                "cash_session_id": str(movement.cash_session_id),
+                "cash_register_id": str(movement.cash_register_id),
+            }
         after = summarize(sale.total, committed + amount)
-        self._audit("created", sale, payment, {"status": PaymentStatus.COMPLETED.value})
-        self._audit("completed", sale, payment, self._balance(after))
+        self._audit("created", sale, payment, {"status": PaymentStatus.COMPLETED.value, **cash})
+        self._audit("completed", sale, payment, {**self._balance(after), **cash})
         return payment, False
 
     def cancel(self, sale_id: uuid.UUID, payment_id: uuid.UUID, reason: str) -> Payment:
@@ -210,6 +232,11 @@ class PaymentService:
         if payment.status is PaymentStatus.CANCELLED:
             raise ConflictError("Paiement déjà annulé", code="payment_already_cancelled")
         previous = payment.status
+        if payment.method is PaymentMethod.CASH and previous is PaymentStatus.COMPLETED:
+            # Espèces rendues : sortie inverse dans la session d'origine (encore ouverte).
+            CashService(self.db, self.ctx, self.now).record_sale_cash_reversal(
+                payment_id=payment.id, reason=reason
+            )
         payment.status = PaymentStatus.CANCELLED
         payment.cancelled_at = self.now
         payment.cancelled_by = self.ctx.user.id

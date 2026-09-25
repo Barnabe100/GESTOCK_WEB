@@ -31,6 +31,7 @@ def priced(world: World, owner_db: Session) -> World:
     )
     owner_db.commit()
     sh.validated_entry(world, [(0, "50", "6000")])
+    sh.open_cash(world)  # paiements espèces : caisse ouverte sur le site (Phase 2.9)
     return world
 
 
@@ -414,6 +415,7 @@ def test_custom_role_permissions(priced: World, client: TestClient) -> None:
 def test_site_scope(priced: World, client: TestClient) -> None:
     sh.validated_entry(priced, [(0, "20", "6000")], site_id=priced.site2)
     depot_sale = _sale(priced, "2", site_id=priced.site2)
+    sh.open_cash(priced, priced.site2, name="Caisse dépôt")
     shop = sh.member(priced, client, "boutique@example.com", "seller", site_ids=[priced.site])
     for response in (
         shop.get(f"/sales/{depot_sale['id']}/payments"),

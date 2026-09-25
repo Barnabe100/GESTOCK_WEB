@@ -9,7 +9,7 @@ modules = [
 optional_modules = []
 
 navigation = [
-  "dashboard", "catalog", "stock", "alerts", "sales", "pos", "customers", "receivables", "suppliers", "inventory_count",
+  "dashboard", "catalog", "stock", "alerts", "sales", "pos", "customers", "receivables", "cash_register", "suppliers", "inventory_count",
   "reports", "organization", "users", "subscription", "audit",
 ]
 

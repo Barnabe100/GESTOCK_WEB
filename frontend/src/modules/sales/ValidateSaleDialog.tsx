@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { CashRegisterChoice } from '@/modules/cash_register/CashRegisterChoice';
 import { formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
 import { FormField } from '@/shared/ui/FormField';
 
@@ -20,12 +21,15 @@ import { PAYMENT_METHODS, type ImmediatePayment, type PaymentMethod } from './ap
  */
 export function ValidateSaleDialog({
   total,
+  siteId,
   pending,
   onConfirm,
   onClose,
 }: {
   /** Total indicatif (chaîne décimale). */
   total: string;
+  /** Site de la vente : caisse des encaissements en espèces. */
+  siteId: string | null;
   pending: boolean;
   onConfirm: (payments: ImmediatePayment[]) => void;
   onClose: () => void;
@@ -37,6 +41,7 @@ export function ValidateSaleDialog({
   const [payNow, setPayNow] = useState(false);
   const [amount, setAmount] = useState(total.replace(/\.00$/, ''));
   const [method, setMethod] = useState<PaymentMethod>('CASH');
+  const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
   const [amountError, setAmountError] = useState<string | null>(null);
 
   const confirm = () => {
@@ -50,7 +55,9 @@ export function ValidateSaleDialog({
       return;
     }
     setAmountError(null);
-    onConfirm([{ amount: normalized, method }]);
+    onConfirm([
+      { amount: normalized, method, cash_register_id: method === 'CASH' ? cashRegisterId : null },
+    ]);
   };
 
   return (
@@ -95,6 +102,13 @@ export function ValidateSaleDialog({
                     }))}
                   />
                 </FormField>
+                {method === 'CASH' && siteId && (
+                  <CashRegisterChoice
+                    siteId={siteId}
+                    value={cashRegisterId}
+                    onChange={setCashRegisterId}
+                  />
+                )}
               </>
             )}
           </>

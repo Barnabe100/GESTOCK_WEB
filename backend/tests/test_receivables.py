@@ -34,6 +34,9 @@ def priced(world: World, owner_db: Session) -> World:
     owner_db.commit()
     sh.validated_entry(world, [(0, "200", "6000")])
     sh.validated_entry(world, [(0, "100", "6000")], site_id=world.site2)
+    # Paiements espèces : caisse ouverte sur chaque site (Phase 2.9).
+    sh.open_cash(world)
+    sh.open_cash(world, world.site2, name="Caisse dépôt")
     return world
 
 

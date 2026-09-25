@@ -1,7 +1,7 @@
 import type { ComponentType, LazyExoticComponent } from 'react';
 
 /** Rubrique de la barre latérale (ordre : NAV_GROUPS). */
-export type NavGroup = 'home' | 'catalog' | 'stock' | 'sales' | 'admin';
+export type NavGroup = 'home' | 'catalog' | 'stock' | 'sales' | 'cash' | 'admin';
 
 export interface NavItem {
   /** Identifiant unique de l'entrée. */

@@ -6,6 +6,7 @@ Voir docs/architecture/ARCHITECTURE.md (section 5).
 """
 
 from app.modules.alerts.manifest import MANIFEST as ALERTS
+from app.modules.cash_register.manifest import MANIFEST as CASH_REGISTER
 from app.modules.catalog.manifest import MANIFEST as CATALOG
 from app.modules.customers.manifest import MANIFEST as CUSTOMERS
 from app.modules.inventory_count.manifest import MANIFEST as INVENTORY_COUNT
@@ -23,6 +24,7 @@ BUSINESS_MODULES: tuple[ModuleManifest, ...] = (
     CUSTOMERS,
     STOCK,
     ALERTS,
+    CASH_REGISTER,
     SALES,
     INVENTORY_COUNT,
     RECEIVABLES,

@@ -81,3 +81,8 @@ export function sumMoney(values: string[]): string {
     2,
   );
 }
+
+/** Différence a − b de montants à 2 décimales (écart de caisse indicatif). */
+export function subtractMoney(a: string, b: string): string {
+  return fromScaled(toScaled(a, 2) - toScaled(b, 2), 2);
+}

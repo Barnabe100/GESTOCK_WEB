@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, loginUi, OWNER, STANDARD_OWNER } from './support';
+import { apiToken, bearer, ensureCashOpen, loginUi, OWNER, STANDARD_OWNER } from './support';
 
 /**
  * Phase 2.8 — Créances / comptes clients : créance = vente validée dont le reste dû (total −
@@ -72,6 +72,8 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     });
     await post(request, token, `/stock/entries/${entry.id}/validate`, {});
   }
+  // Espèces : caisse ouverte en boutique (Phase 2.9).
+  await ensureCashOpen(request, token, shop.id);
   return { token, suffix, articleId: article.id, shop: shop.id, depot: depot.id };
 }
 
