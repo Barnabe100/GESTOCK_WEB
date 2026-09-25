@@ -183,12 +183,30 @@ test.describe('Administration des utilisateurs', () => {
     await dialog.locator('#member-email').fill(`e2e-cible-${Date.now()}@example.com`);
     await dialog.locator('#member-name').fill('Cible');
     await dialog.locator('#member-password').fill(TEMPORARY);
-    await pick(page, 'member-roles', 'Administrateur');
-    await dialog.getByRole('button', { name: 'Enregistrer' }).click();
-    await expect(
-      page.getByText('Vous ne pouvez pas accorder des permissions que vous ne détenez pas.'),
-    ).toBeVisible();
-    await expect(dialog).toBeVisible();
+    // Interface (3.2-E) : le rôle non délégable est proposé mais désactivé, selon le serveur.
+    await dialog
+      .locator('#member-roles')
+      .locator('xpath=ancestor::div[contains(@class,"p-multiselect")][1]')
+      .click();
+    const admin = page
+      .locator('.p-multiselect-panel')
+      .getByRole('option', { name: /^Administrateur \(hors de votre périmètre\)/ });
+    await expect(admin).toHaveClass(/p-disabled/);
+    await page.getByRole('dialog').locator('.p-dialog-title').click();
+    // Serveur : la même tentative faite directement par l'API est refusée (anti-escalade).
+    const hrToken = await tokenFor(request, hr, PASSWORD, a.name);
+    const forced = await request.post('/api/v1/members', {
+      headers: bearer(hrToken),
+      data: {
+        email: `e2e-force-${Date.now()}@example.com`,
+        full_name: 'Forcé',
+        password: TEMPORARY,
+        roles: [{ role_id: await roleId(request, a.token, 'administrator') }],
+        all_sites: true,
+      },
+    });
+    expect(forced.status()).toBe(403);
+    expect(((await forced.json()) as { code: string }).code).toBe('permission_escalation');
   });
 
   test('liste des utilisateurs sur mobile, sans débordement @mobile', async ({ page, request }) => {

@@ -345,7 +345,7 @@
     "scope": "Portée",
     "wholeTenant": "Toute l'entreprise",
     "systemReadOnly": "Rôle de base : lecture seule. Utilisez « Dupliquer » pour créer un rôle personnalisé à partir de celui-ci.",
-    "outOfOffer": "Permissions hors de votre offre actuelle, sans effet et retirées à l'enregistrement : {{codes}}",
+    "outOfOffer": "Permissions hors de votre offre actuelle, conservées sans effet tant que l'offre ne les inclut pas : {{codes}}.",
     "duplicate": "Dupliquer",
     "duplicated": "Rôle dupliqué",
     "copyOf": "Copie de {{name}}",
@@ -359,7 +359,9 @@
     "noPermission": "Aucune permission",
     "selectModule": "Tout sélectionner",
     "unselectModule": "Tout désélectionner",
-    "subtitle": "Les rôles regroupent des permissions ; les rôles de base sont proposés par StockManager."
+    "subtitle": "Les rôles regroupent des permissions ; les rôles de base sont proposés par StockManager.",
+    "notDelegable": "Hors de votre périmètre",
+    "outOfScope": "Ce rôle contient des permissions que vous ne pouvez pas accorder : vous pouvez le consulter, mais seul un utilisateur qui détient toutes ses permissions peut le modifier, le dupliquer, l'activer ou le désactiver."
   },
   "permissions": {
     "organization.tenant.view": "Consulter les informations de l'entreprise",

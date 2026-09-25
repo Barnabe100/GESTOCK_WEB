@@ -57,7 +57,9 @@ class RoleKind(StrEnum):
     CUSTOM = "custom"
 
 
-def role_out(role: Role, registry: ModuleRegistry, member_count: int = 0) -> RoleOut:
+def role_out(
+    role: Role, registry: ModuleRegistry, member_count: int = 0, delegable: bool = False
+) -> RoleOut:
     template = (
         role_templates().get(role.template_code) if role.is_system and role.template_code else None
     )
@@ -71,6 +73,7 @@ def role_out(role: Role, registry: ModuleRegistry, member_count: int = 0) -> Rol
         protected=bool(template and template.protected),
         member_count=member_count,
         permission_codes=sorted(effective_role_permissions(role, registry)),
+        delegable=delegable,
     )
 
 
@@ -110,6 +113,43 @@ class _AccessBase:
                 self.ctx.capabilities.features,
             )
         return self._held_cache[site_id]
+
+    # --- Délégation (Phase 3.2-E, ADR-0030) ----------------------------------------------------
+    # Une seule logique : ce que l'acteur peut déléguer est exactement ce que ``_ensure_grantable``
+    # accepte. L'interface ne décide jamais ; elle affiche ces projections.
+
+    def _offer(self) -> set[str]:
+        """Permissions utilisables dans ce tenant (modules effectifs, fonctionnalités du plan)."""
+        return set(
+            self.registry.available_permissions(
+                self.ctx.capabilities.modules, self.ctx.capabilities.features
+            )
+        )
+
+    def role_grants(self, role: Role) -> set[str]:
+        """Permissions qu'un rôle accorde **réellement** dans ce tenant : celles de son modèle ou
+        de sa liste, limitées à l'offre actuelle (le calcul des capacités n'accorde jamais le
+        reste). Base de tout contrôle de délégation d'un rôle."""
+        return effective_role_permissions(role, self.registry) & self._offer()
+
+    def _site_in_scope(self, site_id: uuid.UUID) -> bool:
+        membership = self.ctx.membership
+        if membership.is_owner or membership.all_sites:
+            return True
+        return site_id in {link.site_id for link in membership.site_links}
+
+    def delegable_permissions(self, site_id: uuid.UUID | None = None) -> set[str]:
+        """Permissions que l'acteur peut accorder sur tout le tenant (``site_id`` nul) ou sur un
+        site de son périmètre : le propriétaire, toute l'offre ; sinon, ce qu'il détient sur
+        cette portée."""
+        if self.ctx.membership.is_owner:
+            return self._offer()
+        if site_id is not None and not self._site_in_scope(site_id):
+            return set()
+        return self._held(site_id) & self._offer()
+
+    def is_delegable(self, role: Role, site_id: uuid.UUID | None = None) -> bool:
+        return self.role_grants(role) <= self.delegable_permissions(site_id)
 
     def _ensure_grantable(
         self, permission_codes: Iterable[str], site_id: uuid.UUID | None = None
@@ -200,8 +240,25 @@ class RoleService(_AccessBase):
         ).tuples()
         return {role_id: int(count) for role_id, count in rows}
 
-    def out(self, role: Role) -> RoleOut:
-        return role_out(role, self.registry, self.member_counts().get(role.id, 0))
+    def out(self, role: Role, counts: dict[uuid.UUID, int] | None = None) -> RoleOut:
+        counts = self.member_counts() if counts is None else counts
+        return role_out(role, self.registry, counts.get(role.id, 0), self.is_delegable(role))
+
+    def delegable_roles(self, site_id: uuid.UUID | None = None) -> list[Role]:
+        """Rôles actifs que l'acteur peut attribuer sur cette portée (tout le tenant ou un site
+        de son périmètre)."""
+        if site_id is not None and self.db.get(Site, site_id) is None:  # RLS : site du tenant
+            raise NotFoundError("Site introuvable", code="site_not_found")
+        delegable = self.delegable_permissions(site_id)
+        return [
+            r for r in self.list_all(status=StatusFilter.ACTIVE) if self.role_grants(r) <= delegable
+        ]
+
+    def delegable_permission_list(self, site_id: uuid.UUID | None = None) -> list[PermissionOut]:
+        if site_id is not None and self.db.get(Site, site_id) is None:
+            raise NotFoundError("Site introuvable", code="site_not_found")
+        delegable = self.delegable_permissions(site_id)
+        return [p for p in self.available_permissions() if p.code in delegable]
 
     def get(self, role_id: uuid.UUID) -> Role:
         role = self.db.get(Role, role_id)
@@ -264,7 +321,7 @@ class RoleService(_AccessBase):
         if role.is_system:
             raise ForbiddenError("Rôle de base non modifiable", code="system_role")
         # Modifier un rôle revient à accorder ses permissions à ses titulaires.
-        self._ensure_grantable(effective_role_permissions(role, self.registry))
+        self._ensure_grantable(self.role_grants(role))
 
     def _is_protected(self, role: Role) -> bool:
         template = role_templates().get(role.template_code or "")
@@ -316,8 +373,11 @@ class RoleService(_AccessBase):
         if data.description is not None:
             role.description = data.description or None
         if data.permissions is not None:
-            codes = self._validate_permissions(data.permissions)
-            wanted = set(codes)
+            # Permissions enregistrées devenues hors de l'offre (ex. plan réduit) : conservées
+            # telles quelles (sans effet tant que l'offre ne les inclut pas) ; jamais ajoutées.
+            kept = (set(data.permissions) - self._offer()) & set(role.permission_codes or [])
+            codes = self._validate_permissions(sorted(set(data.permissions) - kept))
+            wanted = set(codes) | kept
             # Mise à jour différentielle (pas de conflit de clé primaire au remplacement).
             for link in list(role.permission_links):
                 if link.permission_code not in wanted:
@@ -356,7 +416,7 @@ class RoleService(_AccessBase):
         if role.is_active:
             return role
         # Réactiver rend ses permissions à tous ses titulaires.
-        self._ensure_grantable(effective_role_permissions(role, self.registry))
+        self._ensure_grantable(self.role_grants(role))
         role.is_active = True
         self.db.flush()
         members = self.members(role.id)
@@ -374,7 +434,7 @@ class RoleService(_AccessBase):
             raise ForbiddenError("Ce rôle est protégé", code="role_protected")
         if not role.is_active:
             return role
-        self._ensure_grantable(effective_role_permissions(role, self.registry))
+        self._ensure_grantable(self.role_grants(role))
         members = self.members(role.id)
         if members and not data.confirm:
             raise ConflictError(
@@ -541,9 +601,7 @@ class MemberService(_AccessBase):
                 raise BusinessRuleError(
                     "Ce rôle est désactivé", code="role_inactive", extra={"role_id": str(role.id)}
                 )
-            self._ensure_grantable(
-                effective_role_permissions(role, self.registry), assignment.site_id
-            )
+            self._ensure_grantable(self.role_grants(role), assignment.site_id)
 
     def _apply_access(
         self, membership: TenantMembership, roles: list[RoleAssignment], site_ids: list[uuid.UUID]

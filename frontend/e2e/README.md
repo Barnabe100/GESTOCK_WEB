@@ -91,6 +91,9 @@ la suite peut être rejouée sur la même base.
   abonnement en attente d'activation (site accepté, catégorie refusée), refus générique d'un
   e-mail existant, mobile. Démarrer le backend avec une limite d'inscriptions suffisante :
   `SM_SIGNUP_RATE_LIMIT_ATTEMPTS=1000 uv run uvicorn app.main:app --port 8000`.
+- `roles.e2e.ts` (Phase 3.2-E) : entreprise créée par la CLI ; un utilisateur « RH » (rôle
+  personnalisé) ne se voit proposer que les permissions qu'il détient, les rôles de base hors de
+  son périmètre sont signalés ; refus serveur d'une création de rôle forcée par l'API.
 - `users.e2e.ts` (Phase 3.2-D) : crée par la CLI (`../backend` ou `E2E_BACKEND_DIR`) des
   entreprises à chaque exécution ; ajout d'un utilisateur (rôle, site), compte global réutilisé
   (un même compte dans deux entreprises), identité en lecture seule, désactivation limitée à

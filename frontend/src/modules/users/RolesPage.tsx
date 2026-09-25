@@ -29,6 +29,7 @@ import { RowActions } from '@/shared/ui/RowActions';
 import {
   useCreateRoleFromTemplate,
   useDuplicateRole,
+  useDelegablePermissions,
   usePermissions,
   useRoleMembers,
   useRoles,
@@ -49,8 +50,13 @@ type FormValues = z.infer<typeof schema>;
 
 function RoleTags({ role }: { role: Role }) {
   const { t } = useTranslation();
+  const { can } = useCapabilities();
   return (
     <>
+      {/* Délégation calculée par le serveur : hors du périmètre de l'utilisateur courant. */}
+      {can('users.role.manage') && !role.delegable && (
+        <StatusBadge tone="neutral" icon="pi pi-eye-slash" label={t('roles.notDelegable')} />
+      )}
       {role.is_system && <StatusBadge tone="info" label={t('roles.system')} />}
       {role.protected && (
         <StatusBadge tone="warning" icon="pi pi-lock" label={t('roles.protected')} />
@@ -97,12 +103,19 @@ function RoleMembers({ role }: { role: Role }) {
 function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { can, capabilities } = useCapabilities();
+  const { can } = useCapabilities();
   const permissions = usePermissions();
   const save = useSaveRole();
-  const readOnly = role !== null && (role.is_system || !can('users.role.manage'));
+  const delegable = useDelegablePermissions();
+  // Hors périmètre : rôle contenant des permissions que l'utilisateur ne peut pas accorder
+  // (le serveur refuserait toute modification).
+  const outOfScope = role !== null && !role.is_system && !role.delegable;
+  const readOnly =
+    role !== null && (role.is_system || !can('users.role.manage') || !role.delegable);
+  const delegableCodes = new Set((delegable.data ?? []).map((p) => p.code));
   const available = new Set((permissions.data ?? []).map((p) => p.code));
-  // Permissions enregistrées d'un module sorti de l'offre : sans effet, retirées à l'enregistrement.
+  // Permissions enregistrées devenues hors de l'offre (ex. plan réduit) : conservées par le
+  // serveur, sans effet tant que l'offre ne les inclut pas.
   const outOfOffer = permissions.data
     ? (role?.permission_codes ?? []).filter((c) => !available.has(c))
     : [];
@@ -122,7 +135,7 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
         input: {
           name: values.name,
           description: values.description,
-          permissions: values.permissions.filter((c) => available.has(c)),
+          permissions: values.permissions,
         },
       },
       {
@@ -143,6 +156,9 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
   const details = (
     <form onSubmit={onSubmit} className="sm-form" noValidate>
       {role?.is_system && <Message severity="info" text={t('roles.systemReadOnly')} />}
+      {outOfScope && can('users.role.manage') && (
+        <Message severity="info" text={t('roles.outOfScope')} data-testid="role-out-of-scope" />
+      )}
       <div className="sm-form-grid">
         <FormField
           id="role-name"
@@ -171,8 +187,8 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
               value={field.value}
               onChange={field.onChange}
               readOnly={readOnly}
-              // Anti-escalade (ergonomie) : seul le propriétaire accorde ce qu'il n'a pas.
-              canGrant={(code) => capabilities.is_owner || can(code)}
+              // Délégation calculée par le serveur (le serveur refuse de toute façon le reste).
+              canGrant={(code) => delegableCodes.has(code)}
             />
           )}
         />
@@ -312,8 +328,8 @@ export default function RolesPage() {
       actions={[
         {
           key: 'open',
-          label: t(r.is_system || !canManage ? 'roles.view' : 'actions.edit'),
-          icon: r.is_system || !canManage ? 'pi pi-eye' : 'pi pi-pencil',
+          label: t(r.is_system || !canManage || !r.delegable ? 'roles.view' : 'actions.edit'),
+          icon: r.is_system || !canManage || !r.delegable ? 'pi pi-eye' : 'pi pi-pencil',
           onClick: () => setEditing(r),
         },
         {
@@ -321,7 +337,8 @@ export default function RolesPage() {
           label: t('roles.duplicate'),
           icon: 'pi pi-copy',
           onClick: () => setDuplicating(r),
-          hidden: !canManage,
+          // Dupliquer = accorder les mêmes permissions : seulement dans son périmètre.
+          hidden: !canManage || !r.delegable,
         },
         {
           key: 'status',
@@ -329,7 +346,7 @@ export default function RolesPage() {
           icon: r.is_active ? 'pi pi-ban' : 'pi pi-check-circle',
           danger: r.is_active,
           onClick: () => toggle(r),
-          hidden: !canManage || r.protected,
+          hidden: !canManage || r.protected || !r.delegable,
         },
       ]}
     />

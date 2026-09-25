@@ -36,5 +36,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0027](0027-identite-documentaire.md) | Identité documentaire : le tenant source unique, en-tête (`DocumentIdentity`) construit par le serveur, jamais « N/A » | Acceptée |
 | [0028](0028-fuseau-horaire-du-tenant.md) | Fuseau horaire du tenant obligatoire : référence du temps métier (dates, caisse, rapports, documents) | Acceptée |
 | [0029](0029-identite-globale-et-appartenance.md) | Identité globale (`User`) ≠ appartenance au tenant (`TenantMembership`) : l'administrateur du tenant ne gère que l'appartenance | Acceptée |
+| [0030](0030-delegation-rbac.md) | Délégation RBAC calculée par le serveur (`/permissions/delegable`, `/roles/delegable`), contrôle sur les permissions réellement accordées dans l'offre | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

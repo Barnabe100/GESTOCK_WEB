@@ -54,6 +54,11 @@ export interface Role {
   protected: boolean;
   member_count: number;
   permission_codes: string[];
+  /**
+   * Calculé par le serveur : l'utilisateur courant peut accorder ce rôle sur tout le tenant (et,
+   * s'il est personnalisé, le modifier, le dupliquer, l'activer ou le désactiver). ADR-0030.
+   */
+  delegable: boolean;
 }
 
 export interface RoleMember {
@@ -122,6 +127,28 @@ export function useRoles() {
   return useQuery({
     queryKey: userKeys.roles,
     queryFn: ({ signal }) => api.get<Role[]>('/roles', signal),
+  });
+}
+
+/**
+ * Délégation calculée par le serveur (jamais par l'interface) : permissions et rôles actifs que
+ * l'utilisateur courant peut accorder sur tout le tenant, ou pour un site de son périmètre.
+ */
+export function useDelegablePermissions(siteId: string | null = null, enabled = true) {
+  return useQuery({
+    queryKey: [...userKeys.roles, 'delegable-permissions', siteId],
+    queryFn: ({ signal }) =>
+      api.get<Permission[]>(`/permissions/delegable${siteId ? `?site_id=${siteId}` : ''}`, signal),
+    enabled,
+  });
+}
+
+export function useDelegableRoles(siteId: string | null = null, enabled = true) {
+  return useQuery({
+    queryKey: [...userKeys.roles, 'delegable', siteId],
+    queryFn: ({ signal }) =>
+      api.get<Role[]>(`/roles/delegable${siteId ? `?site_id=${siteId}` : ''}`, signal),
+    enabled,
   });
 }
 

@@ -13,7 +13,10 @@ import MembersPage from './MembersPage';
 const ROLES: Partial<Role>[] = [
   { id: 'r-resp', name: 'Responsable boutique', is_system: false, is_active: true },
   { id: 'r-old', name: 'Ancien rôle', is_system: false, is_active: false },
+  { id: 'r-dir', name: 'Directeur', is_system: false, is_active: true },
 ];
+// Délégation calculée par le serveur : « Directeur » n'est pas attribuable par l'utilisateur.
+const DELEGABLE = [ROLES[0]];
 
 const MEMBER: Member = {
   id: 'm1',
@@ -63,6 +66,7 @@ describe('page Utilisateurs', () => {
     fetchMock.mockImplementation(async (url, init) => {
       const path = String(url);
       if (init?.method === 'PATCH' || init?.method === 'POST') return jsonResponse(MEMBER);
+      if (path.includes('/roles/delegable')) return jsonResponse(DELEGABLE);
       if (path.endsWith('/roles')) return jsonResponse(ROLES);
       if (path.endsWith('/sites')) return jsonResponse(SITES);
       return jsonResponse(page([OWNER, MEMBER, INACTIVE]));
@@ -207,6 +211,7 @@ describe('page Utilisateurs', () => {
       const path = String(url);
       if (init?.method === 'PATCH')
         return jsonResponse({ code: 'permission_escalation', detail: 'x' }, 403);
+      if (path.includes('/roles/delegable')) return jsonResponse(DELEGABLE);
       if (path.endsWith('/roles')) return jsonResponse(ROLES);
       if (path.endsWith('/sites')) return jsonResponse(SITES);
       return jsonResponse(page([MEMBER]));
@@ -237,6 +242,7 @@ describe('page Utilisateurs', () => {
   it('seul utilisateur : invitation à ajouter son équipe', async () => {
     fetchMock.mockImplementation(async (url) => {
       const path = String(url);
+      if (path.includes('/roles/delegable')) return jsonResponse(DELEGABLE);
       if (path.endsWith('/roles')) return jsonResponse(ROLES);
       if (path.endsWith('/sites')) return jsonResponse(SITES);
       return jsonResponse(page([OWNER]));
@@ -245,5 +251,20 @@ describe('page Utilisateurs', () => {
     expect((await screen.findByTestId('members-alone')).textContent).toContain(
       'Vous êtes le seul utilisateur',
     );
+  });
+
+  it('attribution : seuls les rôles délégables (selon le serveur) sont proposés', async () => {
+    render();
+    await screen.findByText('Paul');
+    fireEvent.click(screen.getByRole('button', { name: 'Nouvel utilisateur' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(dialog.querySelector('#member-roles')?.closest('.p-multiselect') as Element);
+    const director = await screen.findByRole('option', {
+      name: /Directeur \(hors de votre périmètre\)/,
+      hidden: true,
+    });
+    expect(director.className).toContain('p-disabled');
+    const resp = screen.getByRole('option', { name: /^Responsable boutique/, hidden: true });
+    expect(resp.className).not.toContain('p-disabled');
   });
 });

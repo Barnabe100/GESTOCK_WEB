@@ -23,13 +23,13 @@ from app.platform.access.service import (
     RoleKind,
     RoleService,
     member_out,
-    role_out,
 )
 from app.platform.context import (
     DbSession,
     RegistryDep,
     RequestContext,
     SettingsDep,
+    require_any_permission,
     require_permission,
 )
 from app.platform.onboarding.service import OnboardingService
@@ -45,6 +45,11 @@ MemberView = Annotated[RequestContext, Depends(require_permission("users.member.
 MemberManage = Annotated[RequestContext, Depends(require_permission("users.member.manage"))]
 RoleView = Annotated[RequestContext, Depends(require_permission("users.role.view"))]
 RoleManage = Annotated[RequestContext, Depends(require_permission("users.role.manage"))]
+# Délégation : utile à qui compose des rôles ou attribue des rôles à des membres.
+Delegation = Annotated[
+    RequestContext,
+    Depends(require_any_permission("users.role.manage", "users.member.manage")),
+]
 
 
 @router.get("/members", response_model=Page[MemberOut])
@@ -156,9 +161,18 @@ def list_roles(
 ) -> list[RoleOut]:
     service = RoleService(db, ctx, registry)
     counts = service.member_counts()
-    return [
-        role_out(r, registry, counts.get(r.id, 0)) for r in service.list_all(kind, status_filter)
-    ]
+    return [service.out(r, counts) for r in service.list_all(kind, status_filter)]
+
+
+@router.get("/roles/delegable", response_model=list[RoleOut])
+def list_delegable_roles(
+    ctx: Delegation, db: DbSession, registry: RegistryDep, site_id: uuid.UUID | None = None
+) -> list[RoleOut]:
+    """Rôles actifs que l'utilisateur courant peut attribuer sur tout le tenant, ou pour le
+    site ``site_id`` de son périmètre (vide sinon). Calculé par le serveur (ADR-0030)."""
+    service = RoleService(db, ctx, registry)
+    counts = service.member_counts()
+    return [service.out(r, counts) for r in service.delegable_roles(site_id)]
 
 
 @router.post("/roles", response_model=RoleOut, status_code=status.HTTP_201_CREATED)
@@ -255,3 +269,12 @@ def create_role_from_template(
 @router.get("/permissions", response_model=list[PermissionOut])
 def list_permissions(ctx: RoleView, db: DbSession, registry: RegistryDep) -> list[PermissionOut]:
     return RoleService(db, ctx, registry).available_permissions()
+
+
+@router.get("/permissions/delegable", response_model=list[PermissionOut])
+def list_delegable_permissions(
+    ctx: Delegation, db: DbSession, registry: RegistryDep, site_id: uuid.UUID | None = None
+) -> list[PermissionOut]:
+    """Permissions de l'offre que l'utilisateur courant peut accorder (tout le tenant, ou le
+    site ``site_id``) : exactement celles que les contrôles anti-escalade acceptent."""
+    return RoleService(db, ctx, registry).delegable_permission_list(site_id)

@@ -73,6 +73,9 @@ class RoleOut(BaseModel):
     # Membres titulaires du rôle (toutes portées : tenant ou site).
     member_count: int
     permission_codes: list[str]
+    # L'utilisateur courant peut-il accorder ce rôle sur tout le tenant (et, pour un rôle
+    # personnalisé, le modifier, l'activer, le désactiver) ? Calculé par le serveur (ADR-0030).
+    delegable: bool = False
 
 
 class RoleTemplateOut(BaseModel):

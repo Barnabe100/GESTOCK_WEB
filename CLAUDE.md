@@ -30,7 +30,10 @@ sur la page, futur moteur de reçus ([ADR-0027](docs/adr/0027-identite-documenta
 3.2-D livrée — administration des utilisateurs (`/members` paginé : recherche, filtres statut /
 rôle / site ; ajout avec réutilisation du compte global ; accès = rôles, sites, statut ;
 `POST /members/{id}/activate|deactivate` ; identité globale en lecture seule, aucune
-réinitialisation de mot de passe par le tenant ; audit dédié ; ADR-0029).
+réinitialisation de mot de passe par le tenant ; audit dédié ; ADR-0029) ; 3.2-E livrée — délégation RBAC **calculée par le serveur**
+(`GET /permissions/delegable`, `GET /roles/delegable`, `RoleOut.delegable`) sur la même base
+que l'anti-escalade : permissions qu'un rôle accorde réellement dans l'offre du tenant ;
+permissions hors offre conservées, jamais ajoutées ; l'interface n'en décide jamais (ADR-0030).
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
@@ -107,7 +110,8 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
    **RBAC** ([ADR-0015](docs/adr/0015-rbac-roles-de-base-et-personnalises.md)) : les rôles ne
    sont que des regroupements de permissions ; **jamais** de test sur un nom ou un code de rôle.
    Rôles de base (données : `role_templates.toml`) + rôles personnalisés du tenant ; aucun
-   rôle supprimé (désactivation) ; anti-escalade par portée (tenant / site) et par sites.
+   rôle supprimé (désactivation) ; anti-escalade par portée (tenant / site) et par sites ;
+   ce qui est délégable est calculé par le serveur ([ADR-0030](docs/adr/0030-delegation-rbac.md)).
 4. **Jamais de `if business_type == "…"`** ni de test d'un code de profil ou de secteur
    (ni backend, ni frontend ; tests statiques). Tester une
    capacité : `require_module(...)`, `require_permission(...)`, `can(...)` côté client.

@@ -37,7 +37,14 @@ import { ServerTable } from '@/shared/ui/ServerTable';
 import { StatusFilter } from '@/shared/ui/StatusFilter';
 import { RowActions } from '@/shared/ui/RowActions';
 
-import { useMembers, useRoles, useSaveMember, useSetMemberActive, type Member } from './api';
+import {
+  useDelegableRoles,
+  useMembers,
+  useRoles,
+  useSaveMember,
+  useSetMemberActive,
+  type Member,
+} from './api';
 
 const schema = z.object({
   email: z.string().trim().email(),
@@ -51,6 +58,42 @@ const schema = z.object({
   status: z.enum(['active', 'suspended']),
 });
 type FormValues = z.infer<typeof schema>;
+
+/**
+ * Rôle limité à un site : options attribuables pour CE site, selon le serveur (un rôle limité à
+ * un site se délègue avec les droits détenus sur ce site).
+ */
+function SiteRoleDropdown({
+  siteId,
+  value,
+  onChange,
+  options,
+  placeholder,
+  ariaLabel,
+  invalid,
+}: {
+  siteId: string | null;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; disabled: boolean }[];
+  placeholder: string;
+  ariaLabel: string;
+  invalid: boolean;
+}) {
+  const delegable = useDelegableRoles(siteId, siteId !== null);
+  const ids = new Set((delegable.data ?? []).map((r) => r.id));
+  return (
+    <Dropdown
+      value={value}
+      onChange={(e) => onChange(e.value as string)}
+      options={options.map((o) => ({ ...o, disabled: siteId === null || !ids.has(o.value) }))}
+      optionDisabled="disabled"
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      invalid={invalid}
+    />
+  );
+}
 
 function MemberDialog({ member, onClose }: { member: Member | null; onClose: () => void }) {
   const { t } = useTranslation();
@@ -78,16 +121,27 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
   const errors = form.formState.errors;
   const allSites = useWatch({ control: form.control, name: 'all_sites' });
   const siteRoles = useFieldArray({ control: form.control, name: 'site_roles' });
+  const siteRoleSites = (useWatch({ control: form.control, name: 'site_roles' }) ?? []).map(
+    (r) => r?.site_id ?? '',
+  );
   const { capabilities } = useCapabilities();
 
   // Rôles proposés : actifs ; un rôle désactivé déjà attribué reste affiché (et conservé).
+  // Attribuables : ceux que le serveur déclare délégables (tout le tenant ; par site pour les
+  // rôles limités à un site) — le serveur refuse de toute façon le reste.
   const assigned = new Set(member?.roles.map((r) => r.role_id) ?? []);
+  const delegable = useDelegableRoles();
+  const delegableIds = new Set((delegable.data ?? []).map((r) => r.id));
   const roleOptions = (roles.data ?? [])
     .filter((r) => r.is_active || assigned.has(r.id))
     .map((r) => ({
       value: r.id,
-      label: r.is_active ? r.name : `${r.name} (${t('common.inactive').toLowerCase()})`,
-      disabled: !r.is_active,
+      label: !r.is_active
+        ? `${r.name} (${t('common.inactive').toLowerCase()})`
+        : delegableIds.has(r.id)
+          ? r.name
+          : `${r.name} (${t('roles.notDelegable').toLowerCase()})`,
+      disabled: !r.is_active || !delegableIds.has(r.id),
     }));
   // Sites proposés : ceux de l'utilisateur courant (le backend refuse tout autre site).
   const siteNames = new Map((sites.data ?? []).map((s) => [s.id, s.name]));
@@ -257,13 +311,13 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
                 control={form.control}
                 name={`site_roles.${index}.role_id`}
                 render={({ field: f }) => (
-                  <Dropdown
+                  <SiteRoleDropdown
+                    siteId={siteRoleSites[index] || null}
                     value={f.value}
-                    onChange={(e) => f.onChange(e.value)}
+                    onChange={f.onChange}
                     options={roleOptions}
-                    optionDisabled="disabled"
                     placeholder={t('members.chooseRole')}
-                    aria-label={t('members.roles')}
+                    ariaLabel={t('members.roles')}
                     invalid={Boolean(errors.site_roles?.[index]?.role_id)}
                   />
                 )}

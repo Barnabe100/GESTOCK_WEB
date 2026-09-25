@@ -53,15 +53,17 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | PATCH | `/members/{id}` | `users.member.manage` | **Accès seulement** (ADR-0029) : rôles (tenant ou site), sites, statut ; toute clé d'identité (nom, e-mail, mot de passe…) → `422 validation_error` ; `403 owner_protected`, `self_modification`, `permission_escalation`, `site_escalation` |
 | POST | `/members/{id}/activate` | `users.member.manage` | Réactiver l'appartenance (limite `max_users` : `422 plan_limit_reached`) |
 | POST | `/members/{id}/deactivate` | `users.member.manage` | Désactiver l'appartenance à **ce** tenant seulement (compte global et autres tenants inchangés ; rôles, sites et historique conservés) |
-| GET | `/roles` | `users.role.view` | Rôles du tenant ; filtres `kind` (`system` \| `custom`), `status` ; `is_active`, `protected`, `member_count` |
+| GET | `/roles` | `users.role.view` | Rôles du tenant ; filtres `kind` (`system` \| `custom`), `status` ; `is_active`, `protected`, `member_count`, `delegable` (l'utilisateur courant peut attribuer ce rôle sur tout le tenant et, s'il est personnalisé, le modifier ; ADR-0030) |
 | POST | `/roles` | `users.role.manage` | Créer un rôle personnalisé |
 | GET | `/roles/{id}` | `users.role.view` | Détail (rôle de base : nom, description et permissions issus du modèle) |
-| PATCH | `/roles/{id}` | `users.role.manage` | Modifier un rôle personnalisé (rôles de base : `403 system_role`) |
+| PATCH | `/roles/{id}` | `users.role.manage` | Modifier un rôle personnalisé (rôles de base : `403 system_role` ; hors du périmètre : `403 permission_escalation`) ; permissions enregistrées devenues hors offre conservées, jamais ajoutées (`422 unknown_permission`) |
 | POST | `/roles/{id}/duplicate` | `users.role.manage` | `{name, description?}` : nouveau rôle personnalisé reprenant les permissions (de l'offre) |
 | POST | `/roles/{id}/activate` | `users.role.manage` | Réactiver (rétablit les droits des titulaires) |
 | POST | `/roles/{id}/deactivate` | `users.role.manage` | `{confirm}` ; rôle attribué sans confirmation : `409 role_in_use` (membres listés) ; rôle protégé : `403 role_protected` |
 | GET | `/roles/{id}/members` | `users.role.view` **et** `users.member.view` | Titulaires (membre, portée : tenant ou site) |
 | GET | `/permissions` | `users.role.view` | Permissions des modules effectifs (`code`, `module`, `access`, `resource`, `action`) |
+| GET | `/permissions/delegable` | `users.role.manage` **ou** `users.member.manage` | Permissions que l'utilisateur courant peut accorder (Phase 3.2-E, ADR-0030) : tout le tenant, ou `site_id` (site de son périmètre ; sinon liste vide ; `404 site_not_found`) — exactement ce que l'anti-escalade accepte |
+| GET | `/roles/delegable` | `users.role.manage` **ou** `users.member.manage` | Rôles actifs attribuables par l'utilisateur courant sur tout le tenant, ou pour `site_id` |
 | GET | `/role-templates` | `users.role.view` | Modèles de rôles de base (instanciés ou non) |
 | POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle de base manquant |
 | GET | `/subscription` | `subscription.subscription.view` | Offre, statut effectif, période, limites, utilisation |

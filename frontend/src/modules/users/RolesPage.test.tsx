@@ -35,6 +35,7 @@ const role = (overrides: Partial<Role>): Role => ({
   protected: false,
   member_count: 0,
   permission_codes: [],
+  delegable: true,
   ...overrides,
 });
 
@@ -73,6 +74,8 @@ describe('page Rôles', () => {
       const path = String(url);
       if (path.endsWith('/role-templates')) return jsonResponse([]);
       if (path.endsWith('/permissions')) return jsonResponse(PERMISSIONS);
+      // Délégation (calculée par le serveur) : ici, tout est délégable.
+      if (path.includes('/permissions/delegable')) return jsonResponse(PERMISSIONS);
       if (path.endsWith('/deactivate')) {
         const body = JSON.parse(String(init?.body ?? '{}')) as { confirm?: boolean };
         return body.confirm
@@ -153,6 +156,79 @@ describe('page Rôles', () => {
         .filter(([url]) => String(url).endsWith('/roles/r-cash/deactivate'))
         .map(([, init]) => String(init?.body));
       expect(bodies).toEqual(['{"confirm":false}', '{"confirm":true}']);
+    });
+  });
+
+  it("l'éditeur n'offre que les permissions délégables selon le serveur (jamais selon l'écran)", async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith('/role-templates')) return jsonResponse([]);
+      if (path.endsWith('/permissions')) return jsonResponse(PERMISSIONS);
+      if (path.includes('/permissions/delegable')) return jsonResponse([PERMISSIONS[0]]);
+      return jsonResponse(ROLES);
+    });
+    // L'utilisateur détient « Créer un article » dans le site courant : sans effet ici.
+    renderWithCapabilities(<RolesPage />, {
+      permissions: [...MANAGE, 'catalog.article.view', 'catalog.article.create'],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Nouveau rôle' }));
+    const create = (await screen.findByLabelText('Créer un article')) as HTMLInputElement;
+    await waitFor(() => expect(create.disabled).toBe(true));
+    expect((screen.getByLabelText('Consulter le catalogue') as HTMLInputElement).disabled).toBe(
+      false,
+    );
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).endsWith('/permissions/delegable')),
+    ).toBe(true);
+  });
+
+  it('rôle hors périmètre : signalé, consultable seulement', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith('/role-templates')) return jsonResponse([]);
+      if (path.endsWith('/permissions') || path.includes('/permissions/delegable'))
+        return jsonResponse(PERMISSIONS);
+      if (path.includes('/members')) return jsonResponse([]);
+      return jsonResponse([...ROLES.slice(0, 2), { ...ROLES[2], delegable: false }]);
+    });
+    renderWithCapabilities(<RolesPage />, { permissions: MANAGE });
+    const custom = await screen.findByRole('region', { name: 'Rôles personnalisés' });
+    const row = (await within(custom).findByText('Caissier')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Hors de votre périmètre')).toBeTruthy();
+    expect(within(row).queryByRole('button', { name: 'Désactiver' })).toBeNull();
+    expect(within(row).queryByRole('button', { name: 'Dupliquer' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'Consulter' }));
+    expect(await screen.findByTestId('role-out-of-scope')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull();
+  });
+
+  it('conserve les permissions hors offre à l’enregistrement', async () => {
+    const legacy = role({
+      id: 'r-log',
+      name: 'Logistique',
+      permission_codes: ['catalog.article.view', 'stock.transfer.create'],
+    });
+    fetchMock.mockImplementation(async (url, init) => {
+      const path = String(url);
+      if (init?.method === 'PATCH') return jsonResponse(legacy);
+      if (path.endsWith('/role-templates')) return jsonResponse([]);
+      if (path.endsWith('/permissions') || path.includes('/permissions/delegable'))
+        return jsonResponse(PERMISSIONS);
+      if (path.includes('/members')) return jsonResponse([]);
+      return jsonResponse([...ROLES, legacy]);
+    });
+    renderWithCapabilities(<RolesPage />, { permissions: MANAGE, isOwner: true });
+    const custom = await screen.findByRole('region', { name: 'Rôles personnalisés' });
+    const row = (await within(custom).findByText('Logistique')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Modifier' }));
+    expect(await screen.findByText(/conservées sans effet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+      expect(JSON.parse(String(patch?.[1]?.body)).permissions).toEqual([
+        'catalog.article.view',
+        'stock.transfer.create',
+      ]);
     });
   });
 });
