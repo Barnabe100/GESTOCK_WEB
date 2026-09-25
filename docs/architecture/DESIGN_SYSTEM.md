@@ -90,6 +90,9 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
   obligatoires » / « Informations recommandées » / « Facultatif » (sous-titres thématiques
   `sm-form-subsection` à l'intérieur, ex. page Entreprise) ; rappel « Les champs marqués d'un *
   sont obligatoires. ». Un champ fixé (ex. devise) est affiché désactivé avec son explication.
+- Donnée affichée mais non modifiable par nature (ex. identité globale d'un utilisateur dans
+  l'administration d'un tenant) : bloc en lecture seule (`sm-identity-readonly`, liste `dl`) avec
+  son explication — jamais un champ de saisie simplement désactivé.
 - Messages d'erreur : toujours traduits (`validation.*`) ; jamais le texte brut du validateur
   client ; un refus du serveur (`validation_error`) est rattaché à son champ.
 - Grille `sm-form-grid` (2 colonnes, 1 sur mobile) ; sections `FormSection`.

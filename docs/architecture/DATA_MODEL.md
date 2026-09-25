@@ -59,7 +59,7 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 | `sites` | `tenant_id`, `name`, `code`, `kind` (store/warehouse/restaurant/other), `address`, `phone`, `is_active` | `UNIQUE(tenant_id, code)`, `UNIQUE(tenant_id, id)` |
 | `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
 | `subscriptions` | `tenant_id` (unique), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at` | |
-| `tenant_memberships` | `tenant_id`, `user_id`, `status`, `is_owner`, `all_sites` | `UNIQUE(tenant_id, user_id)` |
+| `tenant_memberships` | `tenant_id`, `user_id`, `status` (`active` / `suspended` = « Inactif »), `is_owner`, `all_sites` — **appartenance au tenant**, seule ressource administrée par le tenant ; `users` = identité globale, jamais modifiée par un administrateur de tenant (ADR-0029) | `UNIQUE(tenant_id, user_id)` ; jamais supprimée (désactivation) |
 | `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system`, `is_active` | nom des rôles personnalisés unique par tenant, casse ignorée (index partiel `lower(name)`) ; un exemplaire par modèle (`(tenant_id, template_code)`) ; `CHECK is_system = (template_code IS NOT NULL)` ; rôle de base : nom, description et permissions résolus depuis son modèle (ADR-0013, ADR-0015) ; jamais supprimé (désactivé) |
 | `role_permissions` | `tenant_id`, `role_id`, `permission_code` | FK `(tenant_id, role_id)` |
 | `membership_roles` | `tenant_id`, `membership_id`, `role_id`, `site_id` (nullable) | FK composites vers membre, rôle et site du **même tenant** ; unicité `NULLS NOT DISTINCT` |

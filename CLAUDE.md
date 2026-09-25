@@ -26,7 +26,11 @@ l'abonnement, champs obligatoires marqués `*` en cohérence avec le backend
 (obligatoires `*` : nom, pays du référentiel, devise figée affichée ; recommandées ;
 facultatives), **le `Tenant` est la source unique de l'identité de l'entreprise** : en-tête
 documentaire construit par le serveur (`GET /tenant/document-identity`, jamais « N/A »), aperçu
-sur la page, futur moteur de reçus ([ADR-0027](docs/adr/0027-identite-documentaire.md)).
+sur la page, futur moteur de reçus ([ADR-0027](docs/adr/0027-identite-documentaire.md)) ;
+3.2-D livrée — administration des utilisateurs (`/members` paginé : recherche, filtres statut /
+rôle / site ; ajout avec réutilisation du compte global ; accès = rôles, sites, statut ;
+`POST /members/{id}/activate|deactivate` ; identité globale en lecture seule, aucune
+réinitialisation de mot de passe par le tenant ; audit dédié ; ADR-0029).
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
@@ -96,6 +100,10 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
 3. Chaîne de contrôle : **User → Tenant → Membership → Rôle(s) → Permission → Site →
    Resource**, via les dépendances de `app/platform/context.py` (`TenantContext`,
    `require_permission`, `require_module`). Chaque endpoint tenant-scoped exige une permission.
+   **`User` = identité globale** (nom, e-mail, mot de passe) partagée entre tenants ;
+   **`TenantMembership` = appartenance** (statut, rôles, sites) : un tenant n'administre que
+   l'appartenance, jamais l'identité ; désactiver = suspendre l'appartenance à ce tenant
+   seulement ([ADR-0029](docs/adr/0029-identite-globale-et-appartenance.md)).
    **RBAC** ([ADR-0015](docs/adr/0015-rbac-roles-de-base-et-personnalises.md)) : les rôles ne
    sont que des regroupements de permissions ; **jamais** de test sur un nom ou un code de rôle.
    Rôles de base (données : `role_templates.toml`) + rôles personnalisés du tenant ; aucun

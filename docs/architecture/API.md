@@ -47,10 +47,12 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | PATCH | `/sites/{id}` | `organization.site.manage` | Modifier / désactiver |
 | GET | `/modules` | `organization.module.view` | Modules du profil : inclus au plan, activés, effectifs |
 | PUT | `/modules/{code}` | `organization.module.manage` | Activer / désactiver (dépendances contrôlées) |
-| GET | `/members` | `users.member.view` | Membres du tenant |
-| POST | `/members` | `users.member.manage` | Ajouter (nouveau compte + mot de passe provisoire, ou compte existant) |
-| GET | `/members/{id}` | `users.member.view` | Détail |
-| PATCH | `/members/{id}` | `users.member.manage` | Rôles (tenant ou site), sites, statut |
+| GET | `/members` | `users.member.view` | Appartenances du tenant, **paginées** (Phase 3.2-D) : `search` (nom, e-mail), `status` (`active`/`inactive`/`all`), `role_id`, `site_id` (tous les sites, site attribué ou rôle limité au site) ; tri `full_name` (défaut), `email`, `created_at` (ajout au tenant), `status` |
+| POST | `/members` | `users.member.manage` | Ajouter : nouveau compte global (mot de passe provisoire haché, changement imposé) ou compte existant **réutilisé tel quel** (nom et mot de passe ignorés) ; `409 member_exists` ; anti-escalade |
+| GET | `/members/{id}` | `users.member.view` | Détail (identifiant d'appartenance) |
+| PATCH | `/members/{id}` | `users.member.manage` | **Accès seulement** (ADR-0029) : rôles (tenant ou site), sites, statut ; toute clé d'identité (nom, e-mail, mot de passe…) → `422 validation_error` ; `403 owner_protected`, `self_modification`, `permission_escalation`, `site_escalation` |
+| POST | `/members/{id}/activate` | `users.member.manage` | Réactiver l'appartenance (limite `max_users` : `422 plan_limit_reached`) |
+| POST | `/members/{id}/deactivate` | `users.member.manage` | Désactiver l'appartenance à **ce** tenant seulement (compte global et autres tenants inchangés ; rôles, sites et historique conservés) |
 | GET | `/roles` | `users.role.view` | Rôles du tenant ; filtres `kind` (`system` \| `custom`), `status` ; `is_active`, `protected`, `member_count` |
 | POST | `/roles` | `users.role.manage` | Créer un rôle personnalisé |
 | GET | `/roles/{id}` | `users.role.view` | Détail (rôle de base : nom, description et permissions issus du modèle) |

@@ -95,7 +95,7 @@ def test_owner_and_self_are_protected(provision: Any, api_for: Any, client: Any)
     provision("alpha")
     owner = api_for("owner@alpha.example.com")
     roles = _roles(owner)
-    owner_membership = owner.get("/members").json()[0]
+    owner_membership = owner.get("/members").json()["items"][0]
     admin = owner.post(
         "/members",
         json={

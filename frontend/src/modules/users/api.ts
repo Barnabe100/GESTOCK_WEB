@@ -1,12 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/core/api/client';
+import type { Page } from '@/shared/lib/serverTable';
 
 export interface RoleAssignment {
   role_id: string;
   site_id: string | null;
 }
 
+/**
+ * Appartenance au tenant (ressource administrée). `email` et `full_name` appartiennent au compte
+ * global de l'utilisateur : lecture seule ici (ADR-0029). `created_at` : ajout au tenant.
+ */
 export interface Member {
   id: string;
   user_id: string;
@@ -81,10 +86,22 @@ export const userKeys = {
   permissions: ['users', 'permissions'] as const,
 };
 
-export function useMembers() {
+/** Liste paginée côté serveur : recherche (nom, e-mail), statut, rôle, site, tri. */
+export function useMembers(query: string) {
   return useQuery({
-    queryKey: userKeys.members,
-    queryFn: ({ signal }) => api.get<Member[]>('/members', signal),
+    queryKey: [...userKeys.members, 'list', query],
+    queryFn: ({ signal }) => api.get<Page<Member>>(`/members?${query}`, signal),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Activer / désactiver l'appartenance à CE tenant (jamais le compte global). */
+export function useSetMemberActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      api.post<Member>(`/members/${id}/${active ? 'activate' : 'deactivate'}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: userKeys.members }),
   });
 }
 

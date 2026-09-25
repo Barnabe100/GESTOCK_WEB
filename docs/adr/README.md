@@ -35,5 +35,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0026](0026-onboarding-persistant.md) | Onboarding persistant : étapes déclarées par les modules, validation automatique, statuts qui n'avancent que, onboarding ≠ activation | Acceptée |
 | [0027](0027-identite-documentaire.md) | Identité documentaire : le tenant source unique, en-tête (`DocumentIdentity`) construit par le serveur, jamais « N/A » | Acceptée |
 | [0028](0028-fuseau-horaire-du-tenant.md) | Fuseau horaire du tenant obligatoire : référence du temps métier (dates, caisse, rapports, documents) | Acceptée |
+| [0029](0029-identite-globale-et-appartenance.md) | Identité globale (`User`) ≠ appartenance au tenant (`TenantMembership`) : l'administrateur du tenant ne gère que l'appartenance | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

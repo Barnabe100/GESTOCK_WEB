@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -48,6 +48,7 @@ from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import current_plan
 from app.platform.tenancy.models import Site
+from app.shared.pagination import PageParams, apply_sort, paginate, search_filter, text_sort
 from app.shared.schemas import StatusFilter
 
 
@@ -451,14 +452,54 @@ class MemberService(_AccessBase):
         super().__init__(db, ctx, registry)
         self.settings = settings
 
-    def list_all(self) -> list[TenantMembership]:
-        return list(
-            self.db.scalars(
-                select(TenantMembership)
-                .join(User, User.id == TenantMembership.user_id)
-                .order_by(TenantMembership.is_owner.desc(), User.full_name)
+    # Tri des appartenances (liste blanche).
+    SORTS: dict[str, Any] = {
+        "full_name": text_sort(User.full_name),
+        "email": User.email,
+        "created_at": TenantMembership.created_at,
+        "status": TenantMembership.status,
+    }
+
+    def search(
+        self,
+        params: PageParams,
+        search: str | None = None,
+        status: StatusFilter = StatusFilter.ALL,
+        role_id: uuid.UUID | None = None,
+        site_id: uuid.UUID | None = None,
+    ) -> tuple[list[TenantMembership], int]:
+        """Appartenances du tenant (RLS) : recherche nom / e-mail, statut, rôle détenu (toute
+        portée), accès à un site (tous les sites, site attribué ou rôle limité au site)."""
+        stmt = select(TenantMembership).join(User, User.id == TenantMembership.user_id)
+        conditions = [search_filter(search, User.full_name, User.email)]
+        if status is StatusFilter.ACTIVE:
+            conditions.append(TenantMembership.status == MembershipStatus.ACTIVE)
+        elif status is StatusFilter.INACTIVE:
+            conditions.append(TenantMembership.status != MembershipStatus.ACTIVE)
+        if role_id is not None:
+            conditions.append(
+                exists().where(
+                    MembershipRole.membership_id == TenantMembership.id,
+                    MembershipRole.role_id == role_id,
+                )
             )
-        )
+        if site_id is not None:
+            conditions.append(
+                or_(
+                    TenantMembership.all_sites.is_(True),
+                    exists().where(
+                        MembershipSite.membership_id == TenantMembership.id,
+                        MembershipSite.site_id == site_id,
+                    ),
+                    exists().where(
+                        MembershipRole.membership_id == TenantMembership.id,
+                        MembershipRole.site_id == site_id,
+                    ),
+                )
+            )
+        stmt = stmt.where(*(c for c in conditions if c is not None))
+        stmt = apply_sort(stmt, params.sort, self.SORTS, "full_name", TenantMembership.id)
+        return paginate(self.db, stmt, params)
 
     def get(self, membership_id: uuid.UUID) -> TenantMembership:
         membership = self.db.get(TenantMembership, membership_id)
@@ -525,13 +566,27 @@ class MemberService(_AccessBase):
             )
 
         wanted_sites = set(site_ids)
+        removed_sites = []
         for site_link in list(membership.site_links):
             if site_link.site_id not in wanted_sites:
+                removed_sites.append(site_link.site_id)
                 membership.site_links.remove(site_link)
         existing_sites = {link.site_id for link in membership.site_links}
-        for site_id in sorted(wanted_sites - existing_sites):
+        added_sites = sorted(wanted_sites - existing_sites)
+        for site_id in added_sites:
             membership.site_links.append(MembershipSite(tenant_id=tenant_id, site_id=site_id))
         self.db.flush()
+        for action, site_changes in (
+            ("member.site_removed", sorted(removed_sites)),
+            ("member.site_assigned", added_sites),
+        ):
+            for site_id in site_changes:
+                self._audit(
+                    action,
+                    "membership",
+                    membership.id,
+                    {"user_id": str(membership.user_id), "site_id": str(site_id)},
+                )
 
         names = {r.id: r.name for r in self.db.scalars(select(Role))}
         for action, changes in (("member.role_removed", removed), ("member.role_assigned", added)):
@@ -639,7 +694,31 @@ class MemberService(_AccessBase):
             self._audit(
                 "member.updated", "membership", membership.id, {"before": before, "after": after}
             )
+        if before["status"] != after["status"]:
+            # Appartenance à CE tenant seulement : le compte global et les autres tenants de
+            # l'utilisateur ne changent pas ; rôles, sites et historique sont conservés.
+            self._audit(
+                "member.activated"
+                if membership.status == MembershipStatus.ACTIVE
+                else "member.deactivated",
+                "membership",
+                membership.id,
+                {
+                    "user_id": str(membership.user_id),
+                    "before": before["status"],
+                    "after": after["status"],
+                },
+            )
         return membership
+
+    def set_active(self, membership_id: uuid.UUID, active: bool) -> TenantMembership:
+        """Activer / désactiver l'appartenance (mêmes garde-fous que ``update`` : propriétaire
+        protégé, pas soi-même, accès du membre dans le périmètre de l'acteur, limite du plan à
+        la réactivation)."""
+        return self.update(
+            membership_id,
+            MemberUpdate(status=MembershipStatus.ACTIVE if active else MembershipStatus.SUSPENDED),
+        )
 
     @staticmethod
     def _access_snapshot(membership: TenantMembership) -> dict[str, Any]:

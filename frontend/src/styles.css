@@ -1915,3 +1915,27 @@ a {
   align-items: center;
   gap: var(--sm-space-2);
 }
+
+/* --- Utilisateurs (Phase 3.2-D) : identité globale en lecture seule ----------------------- */
+.sm-identity-readonly {
+  padding: var(--sm-space-3) var(--sm-space-4);
+  background: var(--sm-surface-subtle);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+}
+.sm-identity-readonly h3 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-sm);
+  font-weight: var(--sm-weight-bold);
+}
+.sm-identity-readonly p {
+  margin: var(--sm-space-2) 0 0;
+}
+.sm-message-with-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-3);
+  width: 100%;
+}

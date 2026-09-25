@@ -356,9 +356,9 @@ def test_site_scoped_role_only_applies_on_its_site(
         all_sites=False,
         site_ids=[str(t.site_id)],
     )
-    member_id = [m for m in owner.get("/members").json() if m["email"] == "resp@example.com"][0][
-        "id"
-    ]
+    member_id = [
+        m for m in owner.get("/members").json()["items"] if m["email"] == "resp@example.com"
+    ][0]["id"]
     owner.patch(
         f"/members/{member_id}",
         json={"roles": [{"role_id": boss["id"], "site_id": str(t.site_id)}]},

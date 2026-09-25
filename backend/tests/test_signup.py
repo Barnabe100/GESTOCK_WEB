@@ -176,7 +176,7 @@ def test_signup_creates_owner_admin_tenant_pending_activation(
         assert permission in caps["permissions"]
 
     # Propriétaire ET administrateur principal (rôle protégé), sur tout le tenant.
-    member = api.get("/members").json()[0]
+    member = api.get("/members").json()["items"][0]
     roles = {r["id"]: r for r in api.get("/roles").json()}
     assert member["is_owner"] is True and member["all_sites"] is True
     assert [roles[r["role_id"]]["protected"] for r in member["roles"]] == [True]
@@ -402,7 +402,7 @@ def test_signed_up_tenants_are_isolated(client: TestClient, offers: None) -> Non
     b = _api(client, b_response)
     assert a.get("/tenant").json()["name"] == "Supérette Awa SARL"
     assert b.get("/tenant").json()["name"] == "Autre SARL"
-    assert [m["email"] for m in a.get("/members").json()] == ["a@exemple.example"]
+    assert [m["email"] for m in a.get("/members").json()["items"]] == ["a@exemple.example"]
     # Le compte A ne peut pas ouvrir l'entreprise B.
     denied = login(client, "a@exemple.example", PASSWORD, b_response.json()["tenant_id"])
     assert denied.status_code == 403

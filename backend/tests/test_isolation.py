@@ -61,13 +61,17 @@ LIST_ENDPOINTS = ["/sites", "/roles", "/members", "/modules"]
 def test_lists_only_contain_own_tenant_data(world: World, path: str) -> None:
     body_a = world.api_a.get(path).json()
     body_b = world.api_b.get(path).json()
+    # Listes paginées (ex. /members) : éléments dans ``items``.
+    body_a = body_a["items"] if isinstance(body_a, dict) else body_a
+    body_b = body_b["items"] if isinstance(body_b, dict) else body_b
+    assert body_a and body_b
     ids_b = {item.get("id") for item in body_b if item.get("id")}
     ids_a = {item.get("id") for item in body_a if item.get("id")}
     assert ids_a.isdisjoint(ids_b)
 
 
 def test_member_list_does_not_leak_other_tenant_users(world: World) -> None:
-    emails = {m["email"] for m in world.api_a.get("/members").json()}
+    emails = {m["email"] for m in world.api_a.get("/members").json()["items"]}
     assert emails == {"owner@alpha.example.com"}
 
 

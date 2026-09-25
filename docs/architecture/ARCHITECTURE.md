@@ -72,8 +72,13 @@ Plateforme (TechNova)
     │   ├── stocks, ventes, caisses, inventaires  (données "site-scoped")
     │   └── accès utilisateurs par site
     ├── Données partagées du tenant (catalogue, clients, fournisseurs…)
-    └── Utilisateurs, rôles, permissions
+    └── Appartenances (membres), rôles, permissions
 ```
+
+**Identité globale ≠ appartenance** ([ADR-0029](../adr/0029-identite-globale-et-appartenance.md)) :
+un `User` (nom, e-mail, mot de passe) peut appartenir à plusieurs tenants ; chaque tenant
+n'administre que son `TenantMembership` (statut, rôles, sites) — jamais l'identité globale.
+Désactiver un membre suspend son appartenance à ce tenant seulement.
 
 ### 4.2 Stratégie d'isolation — [ADR-0002](../adr/0002-strategie-multi-tenant.md)
 

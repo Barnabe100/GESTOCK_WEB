@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, EmailStr, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 from app.platform.access.models import MembershipStatus
 
@@ -14,6 +14,10 @@ class RoleAssignment(BaseModel):
 
 
 class MemberOut(BaseModel):
+    """Appartenance au tenant (ressource administrée) ; ``email`` et ``full_name`` : identité
+    globale de l'utilisateur, en lecture seule ici (ADR-0029). ``created_at`` : ajout au
+    tenant."""
+
     id: uuid.UUID
     user_id: uuid.UUID
     email: str
@@ -28,6 +32,12 @@ class MemberOut(BaseModel):
 
 
 class MemberCreate(BaseModel):
+    """Nouvel utilisateur : compte global créé (mot de passe provisoire, changement imposé).
+    E-mail déjà connu : compte existant réutilisé tel quel (nom et mot de passe ignorés, jamais
+    modifiés) ; seule l'appartenance est créée."""
+
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=150)
     # Mot de passe provisoire : requis seulement si l'email est inconnu de la plateforme.
@@ -39,6 +49,11 @@ class MemberCreate(BaseModel):
 
 
 class MemberUpdate(BaseModel):
+    """Accès au tenant seulement (rôles, sites, statut). Toute clé d'identité globale (nom,
+    e-mail, mot de passe…) est refusée : ``extra="forbid"`` (ADR-0029)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     roles: list[RoleAssignment] | None = None
     site_ids: list[uuid.UUID] | None = None
     all_sites: bool | None = None

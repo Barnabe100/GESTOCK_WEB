@@ -2,10 +2,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Checkbox } from 'primereact/checkbox';
 import { Column } from 'primereact/column';
-import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
+import { Message } from 'primereact/message';
 import { MultiSelect } from 'primereact/multiselect';
 import { Password } from 'primereact/password';
 import { useState } from 'react';
@@ -16,16 +16,28 @@ import { z } from 'zod';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { useSites } from '@/modules/organization/api';
 import { translateError } from '@/shared/lib/errors';
+import { formatDate } from '@/shared/lib/format';
+import {
+  INITIAL_TABLE,
+  toQueryString,
+  useDebouncedValue,
+  type StatusFilterValue,
+  type TableState,
+} from '@/shared/lib/serverTable';
 import { useCreateRequest } from '@/shared/lib/useCreateRequest';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
+import { confirmAction } from '@/shared/ui/confirm';
+import { ListEmpty } from '@/shared/ui/EmptyState';
+import { FilterBar } from '@/shared/ui/FilterBar';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
-import { EmptyState } from '@/shared/ui/EmptyState';
+import { SearchInput } from '@/shared/ui/SearchInput';
+import { ServerTable } from '@/shared/ui/ServerTable';
+import { StatusFilter } from '@/shared/ui/StatusFilter';
 import { RowActions } from '@/shared/ui/RowActions';
 
-import { useMembers, useRoles, useSaveMember, type Member } from './api';
+import { useMembers, useRoles, useSaveMember, useSetMemberActive, type Member } from './api';
 
 const schema = z.object({
   email: z.string().trim().email(),
@@ -124,34 +136,49 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
 
   return (
     <Dialog
-      header={t(editing ? 'members.edit' : 'members.new')}
+      header={t(editing ? 'members.editAccess' : 'members.new')}
       visible
       onHide={onClose}
       className="sm-dialog sm-dialog-wide"
     >
       <form onSubmit={onSubmit} className="sm-form" noValidate>
-        <FormField
-          id="member-email"
-          label={t('members.email')}
-          required
-          error={errors.email && t('validation.email')}
-        >
-          <InputText
-            id="member-email"
-            type="email"
-            {...form.register('email')}
-            disabled={editing}
-            autoFocus
-          />
-        </FormField>
-        <FormField
-          id="member-name"
-          label={t('members.name')}
-          required
-          error={errors.full_name && t('validation.required')}
-        >
-          <InputText id="member-name" {...form.register('full_name')} disabled={editing} />
-        </FormField>
+        {editing ? (
+          // Identité globale : affichée, jamais modifiable depuis une entreprise (ADR-0029).
+          <section className="sm-identity-readonly" aria-labelledby="member-identity">
+            <h3 id="member-identity">{t('members.identity')}</h3>
+            <dl className="sm-details">
+              <div>
+                <dt>{t('members.name')}</dt>
+                <dd data-testid="member-identity-name">{member.full_name}</dd>
+              </div>
+              <div>
+                <dt>{t('members.email')}</dt>
+                <dd data-testid="member-identity-email">{member.email}</dd>
+              </div>
+            </dl>
+            <p className="sm-help">{t('members.identityHelp')}</p>
+          </section>
+        ) : (
+          <>
+            <FormField
+              id="member-email"
+              label={t('members.email')}
+              required
+              help={t('members.emailHelp')}
+              error={errors.email && t('validation.email')}
+            >
+              <InputText id="member-email" type="email" {...form.register('email')} autoFocus />
+            </FormField>
+            <FormField
+              id="member-name"
+              label={t('members.name')}
+              required
+              error={errors.full_name && t('validation.required')}
+            >
+              <InputText id="member-name" {...form.register('full_name')} />
+            </FormField>
+          </>
+        )}
         {!editing && (
           <FormField
             id="member-password"
@@ -277,7 +304,7 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
           </div>
         </fieldset>
         {editing && (
-          <FormField id="member-status" label={t('members.status')}>
+          <FormField id="member-status" label={t('members.status')} help={t('members.statusHelp')}>
             <Controller
               control={form.control}
               name="status"
@@ -304,10 +331,35 @@ function MemberDialog({ member, onClose }: { member: Member | null; onClose: () 
   );
 }
 
+/** Activation / désactivation de l'appartenance (désactivation confirmée), avec retour. */
+function useMemberStatus() {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const setActive = useSetMemberActive();
+  const run = (member: Member, active: boolean) =>
+    setActive.mutate(
+      { id: member.id, active },
+      {
+        onSuccess: () => toast.success(t(active ? 'members.activated' : 'members.deactivated')),
+        onError: (error) => toast.error(translateError(t, error)),
+      },
+    );
+  return (member: Member) => {
+    if (member.status !== 'active') return run(member, true);
+    confirmAction(t, {
+      header: t('members.deactivateTitle'),
+      message: t('members.deactivateConfirm', { name: member.full_name }),
+      acceptLabel: t('actions.deactivate'),
+      danger: true,
+      onAccept: () => run(member, false),
+    });
+  };
+}
+
 export default function MembersPage() {
   const { t } = useTranslation();
   const { can, capabilities } = useCapabilities();
-  const members = useMembers();
+  const { locale, timezone } = capabilities.tenant;
   const roles = useRoles();
   const sites = useSites();
   const canManage = can('users.member.manage');
@@ -315,6 +367,21 @@ export default function MembersPage() {
   const [editing, setEditing] = useState<Member | null | undefined>(
     createRequested ? null : undefined,
   );
+  const [table, setTable] = useState<TableState>({
+    ...INITIAL_TABLE,
+    sortField: 'full_name',
+    sortOrder: 1,
+  });
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<StatusFilterValue>('all');
+  const [roleId, setRoleId] = useState<string | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(null);
+  const debounced = useDebouncedValue(search);
+  const members = useMembers(
+    toQueryString(table, { search: debounced, status, role_id: roleId, site_id: siteId }),
+  );
+  const toggle = useMemberStatus();
+
   const roleNames = new Map(
     (roles.data ?? []).map((r) => [
       r.id,
@@ -322,102 +389,184 @@ export default function MembersPage() {
     ]),
   );
   const siteNames = new Map((sites.data ?? []).map((s) => [s.id, s.name]));
+  const resetPage = () => setTable((state) => ({ ...state, first: 0 }));
+  const filtered = search !== '' || status !== 'all' || roleId !== null || siteId !== null;
+  const resetFilters = () => {
+    setSearch('');
+    setStatus('all');
+    setRoleId(null);
+    setSiteId(null);
+    resetPage();
+  };
+  // Seul le propriétaire (ou l'utilisateur courant) : inviter à ajouter l'équipe.
+  const alone = !filtered && members.data !== undefined && members.data.total <= 1;
+  const addButton = (outlined = false) =>
+    canManage && (
+      <Button
+        icon="pi pi-user-plus"
+        label={t('members.new')}
+        outlined={outlined}
+        onClick={() => setEditing(null)}
+      />
+    );
 
   return (
     <>
       <PageHeader
         title={t('members.title')}
         description={t('members.subtitle')}
-        actions={
-          canManage && (
-            <Button
-              icon="pi pi-user-plus"
-              label={t('members.new')}
-              onClick={() => setEditing(null)}
-            />
-          )
-        }
+        actions={addButton()}
       />
-      {members.isError ? (
-        <ErrorMessage error={members.error} onRetry={() => void members.refetch()} />
-      ) : (
-        <DataTable
-          className="sm-table"
-          value={members.data ?? []}
-          loading={members.isPending}
-          dataKey="id"
-          rowHover
-          tableStyle={{ minWidth: '44rem' }}
-          emptyMessage={<EmptyState icon="pi pi-users" title={t('members.empty')} />}
-        >
+      <FilterBar onReset={resetFilters} active={filtered}>
+        <SearchInput
+          value={search}
+          placeholder={t('members.search')}
+          onChange={(v) => {
+            setSearch(v);
+            resetPage();
+          }}
+        />
+        <Dropdown
+          value={roleId}
+          onChange={(e) => {
+            setRoleId((e.value as string | undefined) ?? null);
+            resetPage();
+          }}
+          options={(roles.data ?? []).map((r) => ({ value: r.id, label: roleNames.get(r.id) }))}
+          placeholder={t('members.allRoles')}
+          showClear
+          filter
+          aria-label={t('members.roles')}
+        />
+        <Dropdown
+          value={siteId}
+          onChange={(e) => {
+            setSiteId((e.value as string | undefined) ?? null);
+            resetPage();
+          }}
+          options={(sites.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+          placeholder={t('members.allSitesFilter')}
+          showClear
+          aria-label={t('members.sites')}
+        />
+        <StatusFilter
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            resetPage();
+          }}
+        />
+      </FilterBar>
+      {alone && (
+        <Message
+          severity="info"
+          className="sm-block"
+          data-testid="members-alone"
+          content={
+            <div className="sm-message-with-action">
+              <span>{t('members.alone')}</span>
+              {addButton(true)}
+            </div>
+          }
+        />
+      )}
+      <ServerTable
+        query={members}
+        table={table}
+        onTableChange={setTable}
+        empty={
+          <ListEmpty filtered={filtered} title={t('members.empty')} action={addButton(true)} />
+        }
+      >
+        <Column
+          field="full_name"
+          header={t('members.name')}
+          sortable
+          body={(m: Member) => (
+            <div>
+              <div>{m.full_name}</div>
+              <small className="sm-muted">{m.email}</small>
+            </div>
+          )}
+        />
+        <Column
+          header={t('members.roles')}
+          body={(m: Member) =>
+            m.is_owner ? (
+              <StatusBadge tone="info" icon="pi pi-star" label={t('auth.owner')} />
+            ) : (
+              m.roles
+                .map(
+                  (r) =>
+                    roleNames.get(r.role_id) +
+                    (r.site_id ? ` (${siteNames.get(r.site_id) ?? '…'})` : ''),
+                )
+                .join(', ') || t('common.none')
+            )
+          }
+        />
+        <Column
+          header={t('members.sites')}
+          body={(m: Member) =>
+            m.is_owner || m.all_sites
+              ? t('common.all')
+              : m.site_ids.map((id) => siteNames.get(id) ?? '…').join(', ') || t('common.none')
+          }
+        />
+        <Column
+          field="status"
+          header={t('members.status')}
+          sortable
+          body={(m: Member) => (
+            <div className="sm-tags">
+              <StatusBadge
+                tone={m.status === 'active' ? 'success' : 'neutral'}
+                label={t(`members.statuses.${m.status}`)}
+              />
+              {m.must_change_password && (
+                <StatusBadge tone="warning" label={t('members.mustChange')} />
+              )}
+            </div>
+          )}
+        />
+        <Column
+          field="created_at"
+          header={t('members.addedAt')}
+          sortable
+          bodyClassName="sm-nowrap"
+          body={(m: Member) => formatDate(m.created_at, locale, timezone)}
+        />
+        {canManage && (
           <Column
-            header={t('members.name')}
-            body={(m: Member) => (
-              <div>
-                <div>{m.full_name}</div>
-                <small className="sm-muted">{m.email}</small>
-              </div>
-            )}
-          />
-          <Column
-            header={t('members.roles')}
-            body={(m: Member) =>
-              m.is_owner ? (
-                <StatusBadge tone="info" icon="pi pi-star" label={t('auth.owner')} />
-              ) : (
-                m.roles
-                  .map(
-                    (r) =>
-                      roleNames.get(r.role_id) +
-                      (r.site_id ? ` (${siteNames.get(r.site_id) ?? '…'})` : ''),
-                  )
-                  .join(', ') || t('common.none')
-              )
-            }
-          />
-          <Column
-            header={t('members.sites')}
-            body={(m: Member) =>
-              m.is_owner || m.all_sites
-                ? t('common.all')
-                : m.site_ids.map((id) => siteNames.get(id) ?? '…').join(', ') || t('common.none')
-            }
-          />
-          <Column
-            header={t('members.status')}
-            body={(m: Member) => (
-              <div className="sm-tags">
-                <StatusBadge
-                  tone={m.status === 'active' ? 'success' : 'neutral'}
-                  label={t(`members.statuses.${m.status}`)}
-                />
-                {m.must_change_password && (
-                  <StatusBadge tone="warning" label={t('members.mustChange')} />
-                )}
-              </div>
-            )}
-          />
-          {canManage && (
-            <Column
-              header={t('common.actions')}
-              body={(m: Member) => (
+            header={t('common.actions')}
+            body={(m: Member) => {
+              // Ni le propriétaire ni son propre accès (refusés aussi par le serveur).
+              const locked = m.is_owner || m.user_id === capabilities.user.id;
+              return (
                 <RowActions
                   actions={[
                     {
                       key: 'edit',
-                      label: t('actions.edit'),
+                      label: t('members.editAccess'),
                       icon: 'pi pi-pencil',
                       onClick: () => setEditing(m),
-                      // Ni le propriétaire ni son propre compte (anti-escalade côté serveur).
-                      hidden: m.is_owner || m.user_id === capabilities.user.id,
+                      hidden: locked,
+                    },
+                    {
+                      key: 'status',
+                      label: t(m.status === 'active' ? 'actions.deactivate' : 'actions.activate'),
+                      icon: m.status === 'active' ? 'pi pi-ban' : 'pi pi-check-circle',
+                      danger: m.status === 'active',
+                      onClick: () => toggle(m),
+                      hidden: locked,
                     },
                   ]}
                 />
-              )}
-            />
-          )}
-        </DataTable>
-      )}
+              );
+            }}
+          />
+        )}
+      </ServerTable>
       {editing !== undefined && (
         <MemberDialog
           member={editing}

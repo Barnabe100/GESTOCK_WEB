@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
+from app.core.config import Settings
 from app.platform.access.schemas import (
     MemberCreate,
     MemberOut,
@@ -32,9 +33,13 @@ from app.platform.context import (
     require_permission,
 )
 from app.platform.onboarding.service import OnboardingService
-from app.shared.schemas import StatusFilter
+from app.platform.registry import ModuleRegistry
+from app.shared.pagination import PageParams, page_params
+from app.shared.schemas import Page, StatusFilter
 
 router = APIRouter(tags=["users"])
+
+Paging = Annotated[PageParams, Depends(page_params)]
 
 MemberView = Annotated[RequestContext, Depends(require_permission("users.member.view"))]
 MemberManage = Annotated[RequestContext, Depends(require_permission("users.member.manage"))]
@@ -42,11 +47,26 @@ RoleView = Annotated[RequestContext, Depends(require_permission("users.role.view
 RoleManage = Annotated[RequestContext, Depends(require_permission("users.role.manage"))]
 
 
-@router.get("/members", response_model=list[MemberOut])
+@router.get("/members", response_model=Page[MemberOut])
 def list_members(
-    ctx: MemberView, db: DbSession, registry: RegistryDep, settings: SettingsDep
-) -> list[MemberOut]:
-    return [member_out(m) for m in MemberService(db, ctx, registry, settings).list_all()]
+    ctx: MemberView,
+    db: DbSession,
+    registry: RegistryDep,
+    settings: SettingsDep,
+    paging: Paging,
+    search: str | None = None,
+    status_filter: Annotated[StatusFilter, Query(alias="status")] = StatusFilter.ALL,
+    role_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+) -> Page[MemberOut]:
+    """Appartenances du tenant : recherche (nom, e-mail), statut, rôle, site ; tri
+    ``full_name`` (défaut), ``email``, ``created_at``, ``status``."""
+    items, total = MemberService(db, ctx, registry, settings).search(
+        paging, search, status_filter, role_id, site_id
+    )
+    return Page(
+        items=[member_out(m) for m in items], total=total, limit=paging.limit, offset=paging.offset
+    )
 
 
 @router.post("/members", response_model=MemberOut, status_code=status.HTTP_201_CREATED)
@@ -86,6 +106,44 @@ def update_member(
     membership = MemberService(db, ctx, registry, settings).update(membership_id, body)
     db.commit()
     return member_out(membership)
+
+
+def _set_active(
+    membership_id: uuid.UUID,
+    active: bool,
+    ctx: RequestContext,
+    db: DbSession,
+    registry: ModuleRegistry,
+    settings: Settings,
+) -> MemberOut:
+    membership = MemberService(db, ctx, registry, settings).set_active(membership_id, active)
+    db.commit()
+    return member_out(membership)
+
+
+@router.post("/members/{membership_id}/activate", response_model=MemberOut)
+def activate_member(
+    membership_id: uuid.UUID,
+    ctx: MemberManage,
+    db: DbSession,
+    registry: RegistryDep,
+    settings: SettingsDep,
+) -> MemberOut:
+    """Réactive l'appartenance à CE tenant (limite d'utilisateurs du plan vérifiée)."""
+    return _set_active(membership_id, True, ctx, db, registry, settings)
+
+
+@router.post("/members/{membership_id}/deactivate", response_model=MemberOut)
+def deactivate_member(
+    membership_id: uuid.UUID,
+    ctx: MemberManage,
+    db: DbSession,
+    registry: RegistryDep,
+    settings: SettingsDep,
+) -> MemberOut:
+    """Désactive l'appartenance à CE tenant seulement : compte global et autres entreprises de
+    l'utilisateur inchangés ; rôles, sites et historique conservés."""
+    return _set_active(membership_id, False, ctx, db, registry, settings)
 
 
 @router.get("/roles", response_model=list[RoleOut])
