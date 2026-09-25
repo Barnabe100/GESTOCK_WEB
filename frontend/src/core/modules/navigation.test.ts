@@ -163,7 +163,10 @@ describe('navigation pilotée par le profil UX', () => {
       ['sales', ['sales', 'customers']],
       // Rubriques par défaut créées à la suite, dans l'ordre des modules.
       ['stock', ['stock-alerts']],
-      ['admin', ['company', 'sites', 'modules', 'members', 'roles', 'subscription', 'audit']],
+      [
+        'admin',
+        ['onboarding', 'company', 'sites', 'modules', 'members', 'roles', 'subscription', 'audit'],
+      ],
     ]);
   });
 

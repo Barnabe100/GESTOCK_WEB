@@ -64,6 +64,7 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 | `role_permissions` | `tenant_id`, `role_id`, `permission_code` | FK `(tenant_id, role_id)` |
 | `membership_roles` | `tenant_id`, `membership_id`, `role_id`, `site_id` (nullable) | FK composites vers membre, rôle et site du **même tenant** ; unicité `NULLS NOT DISTINCT` |
 | `membership_sites` | `tenant_id`, `membership_id`, `site_id` | FK composites |
+| `onboarding_steps` | `tenant_id`, `step_code`, `status` (`NOT_STARTED`/`IN_PROGRESS`/`COMPLETED`), `completed_at`, `completed_by` → `users` (nul : constat par évaluation), `metadata` (JSONB : `trigger`, démarrage manuel) | `UNIQUE(tenant_id, step_code)` ; `CHECK` : `completed_at` renseigné si et seulement si `COMPLETED` ; déclencheur `onboarding_steps_forward_only` (statut qui n'avance que, `COMPLETED` définitif) ; RLS ; rôle applicatif sans `DELETE` ; lignes créées au premier accès (Phase 3.2-B, ADR-0026) |
 | `audit_logs` | `tenant_id` (nullable), `site_id`, `user_id`, `action`, `entity_type`, `entity_id`, `data` (JSONB), `ip_address`, `user_agent`, `occurred_at` | Index `(tenant_id, occurred_at)` |
 
 ### Catalogue et fournisseurs (Phase 2.1, isolés par RLS)

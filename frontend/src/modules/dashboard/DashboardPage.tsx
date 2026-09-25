@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { OnboardingBanner } from '@/modules/organization/OnboardingBanner';
 import { profileLabel, sectorLabel } from '@/core/capabilities/profile';
 import { formatDate } from '@/shared/lib/format';
 import { PageHeader } from '@/shared/ui/PageHeader';
@@ -57,6 +58,7 @@ export default function DashboardPage() {
           site: caps.site?.name ?? t('layout.allSites'),
         })}
       />
+      <OnboardingBanner />
       {caps.subscription.status === 'pending_activation' ? (
         <Message
           severity="warn"

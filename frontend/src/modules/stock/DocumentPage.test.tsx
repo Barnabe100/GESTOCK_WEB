@@ -71,7 +71,7 @@ describe('document de stock', () => {
     const confirm = await screen.findAllByRole('button', { name: 'Annuler le document' });
     // Motif obligatoire (5 caractères) avant confirmation.
     expect((confirm.at(-1) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Motif d'annulation"), {
+    fireEvent.change(screen.getByLabelText(/^Motif d'annulation/), {
       target: { value: 'Erreur de saisie' },
     });
     expect((confirm.at(-1) as HTMLButtonElement).disabled).toBe(false);

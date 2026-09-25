@@ -1,3 +1,4 @@
+from app.modules.catalog.onboarding import CATALOG_STEPS
 from app.modules.catalog.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
@@ -16,4 +17,5 @@ MANIFEST = ModuleManifest(
         PermissionDef("catalog.article.status", W),
     ),
     router=router,
+    onboarding=CATALOG_STEPS,
 )

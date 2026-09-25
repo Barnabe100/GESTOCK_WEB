@@ -6,6 +6,14 @@ export const organizationModule: FrontendModule = {
   code: 'organization',
   navigation: [
     {
+      key: 'onboarding',
+      labelKey: 'nav.onboarding',
+      group: 'admin',
+      icon: 'pi pi-flag',
+      path: '/onboarding',
+      permission: 'organization.onboarding.view',
+    },
+    {
       key: 'company',
       labelKey: 'nav.company',
       group: 'admin',
@@ -31,6 +39,11 @@ export const organizationModule: FrontendModule = {
     },
   ],
   routes: [
+    {
+      path: 'onboarding',
+      component: lazy(() => import('./OnboardingPage')),
+      permission: 'organization.onboarding.view',
+    },
     {
       path: 'organization/company',
       component: lazy(() => import('./CompanyPage')),

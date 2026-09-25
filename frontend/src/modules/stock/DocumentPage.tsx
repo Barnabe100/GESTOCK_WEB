@@ -252,6 +252,7 @@ function CancelDialog({
           id="cancel-reason"
           label={t('stock.cancellationReason')}
           help={t('stock.cancellationReasonHelp')}
+          required
         >
           <InputTextarea
             id="cancel-reason"
@@ -501,6 +502,7 @@ function DocumentForm({
               <FormField
                 id={`line-${index}-quantity`}
                 label={article ? `${t('stock.quantity')} (${article.unit})` : t('stock.quantity')}
+                required
                 error={lineErrors?.quantity && t('stock.invalidQuantity')}
               >
                 <InputText
@@ -513,6 +515,7 @@ function DocumentForm({
                 <FormField
                   id={`line-${index}-cost`}
                   label={t('entries.unitCost')}
+                  required
                   error={lineErrors?.unit_cost && t('articles.invalidMoney')}
                 >
                   <InputText

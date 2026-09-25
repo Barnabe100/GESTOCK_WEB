@@ -29,6 +29,7 @@ from app.platform.catalog.models import (
     SubscriptionAccessPolicy,
 )
 from app.platform.identity.models import AuthSession, User
+from app.platform.onboarding.models import OnboardingStep
 from app.platform.ratelimit.models import RateLimitHit
 from app.platform.sequences.models import DocumentSequence
 from app.platform.subscriptions.models import Subscription
@@ -54,6 +55,7 @@ __all__ = [
     "GeoCountry",
     "MembershipRole",
     "MembershipSite",
+    "OnboardingStep",
     "Plan",
     "PlanModule",
     "RateLimitHit",

@@ -268,6 +268,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
               <FormField
                 id={`line-${index}-quantity`}
                 label={article ? `${t('stock.quantity')} (${article.unit})` : t('stock.quantity')}
+                required
                 error={lineErrors?.quantity && t('stock.invalidQuantity')}
               >
                 <InputText
@@ -429,6 +430,7 @@ function CancelDialog({ transfer, onClose }: { transfer: StockTransfer; onClose:
           id="cancel-reason"
           label={t('stock.cancellationReason')}
           help={t('stock.cancellationReasonHelp')}
+          required
         >
           <InputTextarea
             id="cancel-reason"

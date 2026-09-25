@@ -81,7 +81,13 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
 
 - Dialogue pour les fiches simples (`sm-dialog`, `sm-dialog-wide`) ; page pour les documents
   (entrées, sorties, transferts, ventes) et les réglages (`sm-form-card`).
-- Champs obligatoires marqués (`required` sur `FormField`), cohérents avec le schéma Zod.
+- Champs obligatoires marqués d'une **étoile `*`** (`required` sur `FormField`) — et seulement
+  eux : un champ recommandé ou facultatif n'en porte jamais. Le marquage est **cohérent avec la
+  validation du backend** (un champ marqué est refusé vide par l'API, et inversement) et avec le
+  schéma Zod. Un champ à valeur par défaut côté serveur (ex. type de site) ou obligatoire
+  seulement sous condition (ex. mot de passe provisoire d'un compte inconnu) n'est pas marqué.
+- Formulaires à plusieurs niveaux d'importance : sections `FormSection` « Informations
+  obligatoires » / « Informations recommandées » / « Facultatif ».
 - Grille `sm-form-grid` (2 colonnes, 1 sur mobile) ; sections `FormSection`.
 - Actions en bas à droite (`sm-dialog-actions` / `sm-form-actions`) : secondaire (texte) puis
   **principale en dernier** ; action destructive `severity="danger"`.

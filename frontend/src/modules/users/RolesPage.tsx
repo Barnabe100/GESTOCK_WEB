@@ -229,7 +229,7 @@ function DuplicateDialog({ role, onClose }: { role: Role; onClose: () => void })
     <Dialog header={t('roles.duplicate')} visible onHide={onClose} className="sm-dialog">
       <div className="sm-form">
         <p className="sm-help">{t('roles.duplicateHelp', { name: role.name })}</p>
-        <FormField id="duplicate-name" label={t('roles.name')}>
+        <FormField id="duplicate-name" label={t('roles.name')} required>
           <InputText
             id="duplicate-name"
             value={name}

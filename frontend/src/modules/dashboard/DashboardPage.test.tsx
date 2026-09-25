@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { jsonResponse, pageOf, renderWithCapabilities } from '@/shared/testing';
@@ -214,5 +214,69 @@ describe('abonnement en attente d’activation', () => {
     );
     expect(screen.getByText("En attente d'activation")).toBeTruthy();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("bandeau d'installation", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const onboarding = (completed: boolean) => ({
+    status: completed ? 'COMPLETED' : 'IN_PROGRESS',
+    completed,
+    progress: { completed: 3, total: 8, percentage: 37, required_completed: 3, required_total: 5 },
+    current_step: 'first_site',
+    next_action: null,
+    subscription_status: 'active',
+    steps: [
+      {
+        code: 'first_site',
+        order: 50,
+        required: true,
+        title: 'onboarding.steps.first_site.title',
+        description: 'onboarding.steps.first_site.description',
+        status: 'NOT_STARTED',
+        completed_at: null,
+        action: null,
+      },
+    ],
+  });
+
+  const stub = (completed: boolean) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('/onboarding') ? jsonResponse(onboarding(completed)) : pageOf([]),
+      ),
+    );
+
+  it("tant que l'installation n'est pas terminée : progression, prochaine étape, Continuer", async () => {
+    stub(false);
+    renderWithCapabilities(<DashboardPage />, {
+      permissions: ['organization.onboarding.view'],
+      extraRoutes: [{ path: '/onboarding', element: <p>Page installation</p> }],
+    });
+    const banner = within(await screen.findByTestId('onboarding-banner'));
+    expect(banner.getByText('Installation terminée à 37 %')).toBeTruthy();
+    expect(banner.getByText('Votre premier site')).toBeTruthy();
+    fireEvent.click(banner.getByRole('button', { name: "Continuer l'installation" }));
+    expect(await screen.findByText('Page installation')).toBeTruthy();
+  });
+
+  it('installation terminée ou permission absente : aucun bandeau', async () => {
+    stub(true);
+    renderWithCapabilities(<DashboardPage />, { permissions: ['organization.onboarding.view'] });
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+    expect(screen.queryByTestId('onboarding-banner')).toBeNull();
+    cleanup();
+
+    stub(false);
+    renderWithCapabilities(<DashboardPage />, { permissions: [] });
+    expect(screen.queryByTestId('onboarding-banner')).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/onboarding'))).toBe(
+      false,
+    );
   });
 });

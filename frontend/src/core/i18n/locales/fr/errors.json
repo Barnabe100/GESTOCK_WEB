@@ -121,5 +121,7 @@
   "unknown_country": "Pays inconnu ou non disponible.",
   "invalid_currency": "Devise invalide.",
   "country_required": "Le pays est obligatoire.",
-  "invalid_timezone": "Fuseau horaire inconnu."
+  "invalid_timezone": "Fuseau horaire inconnu.",
+  "onboarding_transition_not_allowed": "Une étape se termine automatiquement lorsque sa condition est remplie.",
+  "onboarding_step_not_found": "Étape d'installation introuvable."
 }

@@ -16,7 +16,13 @@ commerciaux des plans (TechNova, jamais écrasés par `catalog sync`), inscripti
 (`POST /public/signup` : compte + entreprise sans site, propriétaire **et** administrateur,
 abonnement `trial` ou **`pending_activation`** — accès administratif seulement ; chaîne
 plan → abonnement → paiement → licence → activation, ADR-0025 ; limitation de fréquence
-persistante, réponse générique si l'e-mail existe). Phase 3.1 livrée : profils d'activité et
+persistante, réponse générique si l'e-mail existe) ; 3.2-B livrée — onboarding persistant
+(`onboarding_steps`, `GET /onboarding`, page `/onboarding` et bandeau du tableau de bord) :
+étapes déclarées par les manifestes des modules, **validation automatique** sur les données
+réelles, statuts `NOT_STARTED` → `IN_PROGRESS` → `COMPLETED` (définitif, jamais régressé ; pas
+de `SKIPPED`), terminé = étapes obligatoires faites, **onboarding ≠ activation** de
+l'abonnement, champs obligatoires marqués `*` en cohérence avec le backend
+([ADR-0026](docs/adr/0026-onboarding-persistant.md)). Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
 du catalogue ; expérience effective limitée aux modules effectifs et implémentés, modules

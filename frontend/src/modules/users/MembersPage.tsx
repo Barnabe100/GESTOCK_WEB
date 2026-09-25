@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { useSites } from '@/modules/organization/api';
 import { translateError } from '@/shared/lib/errors';
+import { useCreateRequest } from '@/shared/lib/useCreateRequest';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
@@ -309,8 +310,11 @@ export default function MembersPage() {
   const members = useMembers();
   const roles = useRoles();
   const sites = useSites();
-  const [editing, setEditing] = useState<Member | null | undefined>(undefined);
   const canManage = can('users.member.manage');
+  const [createRequested, clearCreate] = useCreateRequest(canManage);
+  const [editing, setEditing] = useState<Member | null | undefined>(
+    createRequested ? null : undefined,
+  );
   const roleNames = new Map(
     (roles.data ?? []).map((r) => [
       r.id,
@@ -415,7 +419,13 @@ export default function MembersPage() {
         </DataTable>
       )}
       {editing !== undefined && (
-        <MemberDialog member={editing} onClose={() => setEditing(undefined)} />
+        <MemberDialog
+          member={editing}
+          onClose={() => {
+            setEditing(undefined);
+            clearCreate();
+          }}
+        />
       )}
     </>
   );

@@ -135,7 +135,7 @@ describe('saisie et consultation d’un transfert', () => {
     await waitFor(() => expect(screen.getAllByText('Champ obligatoire')).toHaveLength(2));
     expect(screen.getByText('Ajoutez au moins un article.').className).toContain('p-error');
     fireEvent.click(screen.getByRole('button', { name: 'Ajouter une ligne' }));
-    fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText(/^Quantité/), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
     expect(await screen.findByText(/Quantité invalide/)).toBeTruthy();
     expect(methodCalls(fetchMock, 'POST')).toHaveLength(0);
@@ -162,7 +162,7 @@ describe('saisie et consultation d’un transfert', () => {
     expect(levelsUrl).toContain('site_id=s1');
     expect(levelsUrl).toContain('article_id=a1');
     expect(levelsUrl).toContain('limit=200'); // taille de page maximale de l'API
-    fireEvent.change(screen.getByLabelText('Quantité (sac)'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText(/^Quantité \(sac\)/), { target: { value: '10' } });
     await waitFor(() => expect(screen.getByTestId('available-0').className).toContain('sm-muted'));
     // Le site source d'un brouillon existant n'est plus modifiable.
     expect(
@@ -287,7 +287,7 @@ describe('saisie et consultation d’un transfert', () => {
     expect(await screen.findByText(/remises sur le site source/)).toBeTruthy();
     const confirm = screen.getAllByRole('button', { name: 'Annuler le transfert' }).at(-1);
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Motif d'annulation"), {
+    fireEvent.change(screen.getByLabelText(/^Motif d'annulation/), {
       target: { value: 'Erreur de destination' },
     });
     expect((confirm as HTMLButtonElement).disabled).toBe(false);

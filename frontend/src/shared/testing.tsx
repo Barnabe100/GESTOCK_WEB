@@ -37,6 +37,7 @@ export function renderWithCapabilities(
     ux,
     modules = [],
     subscriptionStatus = 'active',
+    extraRoutes = [],
   }: {
     permissions: string[];
     sites?: typeof SITES;
@@ -49,6 +50,8 @@ export function renderWithCapabilities(
     ux?: Capabilities['ux'];
     modules?: Capabilities['modules'];
     subscriptionStatus?: Capabilities['subscription']['status'];
+    /** Autres écrans atteignables (vérifier une navigation). */
+    extraRoutes?: { path: string; element: ReactNode }[];
   },
 ) {
   const caps = {
@@ -93,6 +96,9 @@ export function renderWithCapabilities(
         <MemoryRouter initialEntries={[route]}>
           <Routes>
             <Route path={path} element={element} />
+            {extraRoutes.map((r) => (
+              <Route key={r.path} path={r.path} element={r.element} />
+            ))}
           </Routes>
         </MemoryRouter>
         {/* Comme la coquille de l'application : un seul dialogue de confirmation. */}

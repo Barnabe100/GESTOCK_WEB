@@ -1749,3 +1749,102 @@ a {
     display: none;
   }
 }
+
+/* --- Onboarding (Phase 3.2-B) ------------------------------------------------------------ */
+.sm-onboarding-progress {
+  display: grid;
+  gap: var(--sm-space-2);
+}
+.sm-onboarding-progress p {
+  margin: 0;
+}
+.sm-onboarding-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-3);
+  margin-top: var(--sm-space-4);
+  padding-top: var(--sm-space-4);
+  border-top: 1px solid var(--sm-border);
+}
+.sm-onboarding-next p {
+  margin: 0;
+}
+.sm-onboarding-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sm-space-3);
+}
+.sm-onboarding-step {
+  display: flex;
+  gap: var(--sm-space-3);
+  padding: var(--sm-space-4);
+  background: var(--sm-surface);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+}
+.sm-onboarding-step--current {
+  border-color: var(--sm-primary);
+  box-shadow: inset 3px 0 0 var(--sm-primary);
+}
+.sm-onboarding-step-icon {
+  font-size: 1.25rem;
+  margin-top: 0.1rem;
+  color: var(--sm-text-muted);
+}
+.sm-onboarding-step--completed .sm-onboarding-step-icon {
+  color: var(--sm-success-fg);
+}
+.sm-onboarding-step--current .sm-onboarding-step-icon {
+  color: var(--sm-primary);
+}
+.sm-onboarding-step-body {
+  display: grid;
+  gap: var(--sm-space-2);
+  min-width: 0;
+  flex: 1;
+}
+.sm-onboarding-step-body p {
+  margin: 0;
+}
+.sm-onboarding-step-body .p-button {
+  justify-self: start;
+}
+.sm-onboarding-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-2);
+}
+.sm-onboarding-step-head h3 {
+  margin: 0;
+  font-size: var(--sm-text-md);
+  font-weight: var(--sm-weight-bold);
+}
+.sm-onboarding-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-4);
+  padding: var(--sm-space-4) var(--sm-space-5);
+  background: var(--sm-highlight-bg);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+}
+.sm-onboarding-banner-text {
+  display: grid;
+  gap: var(--sm-space-2);
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.sm-onboarding-banner-text h2 {
+  margin: 0;
+  font-size: var(--sm-text-lg);
+}
+.sm-onboarding-banner-text p {
+  margin: 0;
+}

@@ -88,7 +88,7 @@ export function BusinessProfileSection() {
       </dl>
       {canManage && (
         <div className="sm-form-grid">
-          <FormField id="new-business-profile" label={t('company.newProfile')}>
+          <FormField id="new-business-profile" label={t('company.newProfile')} required>
             <Dropdown
               inputId="new-business-profile"
               value={selected}

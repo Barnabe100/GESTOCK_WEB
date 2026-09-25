@@ -125,7 +125,7 @@ export function CustomerDialog({
     >
       <form onSubmit={onSubmit} className="sm-form" noValidate>
         <div className="sm-form-grid">
-          <FormField id="customer-type" label={t('customers.type')}>
+          <FormField id="customer-type" label={t('customers.type')} required>
             <Controller
               control={form.control}
               name="customer_type"

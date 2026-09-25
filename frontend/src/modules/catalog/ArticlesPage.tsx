@@ -21,6 +21,7 @@ import {
   type StatusFilterValue,
   type TableState,
 } from '@/shared/lib/serverTable';
+import { useCreateRequest } from '@/shared/lib/useCreateRequest';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
@@ -258,7 +259,10 @@ export default function ArticlesPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilterValue>('all');
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Article | null | undefined>(undefined);
+  const [createRequested, clearCreate] = useCreateRequest(can('catalog.article.create'));
+  const [editing, setEditing] = useState<Article | null | undefined>(
+    createRequested ? null : undefined,
+  );
   const debounced = useDebouncedValue(search);
   const categories = useCategories(OPTIONS_QUERY);
   const articles = useArticles(
@@ -401,7 +405,13 @@ export default function ArticlesPage() {
         />
       </ServerTable>
       {editing !== undefined && (
-        <ArticleDialog article={editing} onClose={() => setEditing(undefined)} />
+        <ArticleDialog
+          article={editing}
+          onClose={() => {
+            setEditing(undefined);
+            clearCreate();
+          }}
+        />
       )}
     </>
   );

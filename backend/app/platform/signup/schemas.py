@@ -28,14 +28,15 @@ class SignupAccount(BaseModel):
 
 
 class SignupCompany(BaseModel):
-    """Obligatoires : raison sociale et pays ; devise : celle du pays par défaut. Les autres
-    informations sont recommandées ou facultatives et ne bloquent jamais l'inscription."""
+    """Obligatoires (marqués « * » dans le formulaire) : raison sociale, pays et devise
+    (l'interface propose celle du pays). Les autres informations sont recommandées ou
+    facultatives et ne bloquent jamais l'inscription."""
 
     model_config = _STRICT
 
     name: Required150
     country_code: str = Field(pattern=r"^[A-Za-z]{2}$")
-    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
     trade_name: Optional150 = None
     email: OptionalEmail = None
     phone: OptionalPhone = None

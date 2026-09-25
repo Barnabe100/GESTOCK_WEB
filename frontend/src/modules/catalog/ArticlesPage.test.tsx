@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Capabilities } from '@/core/api/types';
@@ -57,7 +58,10 @@ function renderPage(permissions: string[]) {
           setSiteId: () => undefined,
         }}
       >
-        <ArticlesPage />
+        {/* La page lit `?create=1` (lien d'onboarding) : routeur requis. */}
+        <MemoryRouter>
+          <ArticlesPage />
+        </MemoryRouter>
       </CapabilitiesContext.Provider>
     </QueryClientProvider>,
   );

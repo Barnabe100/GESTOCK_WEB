@@ -144,20 +144,20 @@ describe('saisie et consultation d’une vente', () => {
       money('3000.00'),
     );
     expect(screen.getByText(`Prix unitaire : ${money('1500.00')}`)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Quantité (boîte)'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/^Quantité \(boîte\)/), { target: { value: '3' } });
     await waitFor(() =>
       expect(screen.getByTestId('sale-total').textContent?.replace(/\s/g, ' ')).toBe(
         money('4500.00'),
       ),
     );
     // Quantité décimale : 2,5 × 1 500 = 3 750.
-    fireEvent.change(screen.getByLabelText('Quantité (boîte)'), { target: { value: '2,5' } });
+    fireEvent.change(screen.getByLabelText(/^Quantité \(boîte\)/), { target: { value: '2,5' } });
     await waitFor(() =>
       expect(screen.getByTestId('sale-total').textContent?.replace(/\s/g, ' ')).toBe(
         money('3750.00'),
       ),
     );
-    fireEvent.change(screen.getByLabelText('Quantité (boîte)'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/^Quantité \(boîte\)/), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
     await waitFor(() => expect(methodCalls(fetchMock, 'PUT')).toHaveLength(1));
     const [url, init] = methodCalls(fetchMock, 'PUT')[0] ?? [];
@@ -315,7 +315,7 @@ describe('saisie et consultation d’une vente', () => {
     expect(await screen.findByText(/remises en stock/)).toBeTruthy();
     const confirm = screen.getAllByRole('button', { name: 'Annuler la vente' }).at(-1);
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Motif d'annulation"), {
+    fireEvent.change(screen.getByLabelText(/^Motif d'annulation/), {
       target: { value: 'Erreur de caisse' },
     });
     expect((confirm as HTMLButtonElement).disabled).toBe(false);

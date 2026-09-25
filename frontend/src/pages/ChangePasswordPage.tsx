@@ -75,6 +75,7 @@ export function ChangePasswordPage() {
         <FormField
           id="current"
           label={t('auth.currentPassword')}
+          required
           error={errors.current && t('auth.passwordRequired')}
         >
           {passwordField('current', 'current', 'current-password')}
@@ -82,6 +83,7 @@ export function ChangePasswordPage() {
         <FormField
           id="next"
           label={t('auth.newPassword')}
+          required
           help={t('auth.passwordMin', { count: MIN_LENGTH })}
           error={errors.next && t('auth.passwordMin', { count: MIN_LENGTH })}
         >
@@ -90,6 +92,7 @@ export function ChangePasswordPage() {
         <FormField
           id="confirm"
           label={t('auth.confirmPassword')}
+          required
           error={errors.confirm && t('auth.passwordMismatch')}
         >
           {passwordField('confirm', 'confirm', 'new-password')}

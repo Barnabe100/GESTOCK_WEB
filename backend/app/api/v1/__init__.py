@@ -6,6 +6,7 @@ from app.platform.audit.router import router as audit_router
 from app.platform.capabilities.router import router as capabilities_router
 from app.platform.context import require_module
 from app.platform.identity.router import router as identity_router
+from app.platform.onboarding.router import router as onboarding_router
 from app.platform.profiles.router import router as profiles_router
 from app.platform.public.router import router as public_router
 from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
@@ -37,5 +38,6 @@ def build_api_router(registry: ModuleRegistry | None = None) -> APIRouter:
     api_router.include_router(access_router)
     api_router.include_router(subscription_router)
     api_router.include_router(audit_router)
+    api_router.include_router(onboarding_router)
     mount_module_routers(api_router, registry or get_registry())
     return api_router

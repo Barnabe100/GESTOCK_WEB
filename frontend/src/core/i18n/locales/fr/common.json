@@ -90,7 +90,8 @@
     "cashRegisters": "Caisses",
     "cashSessions": "Sessions de caisse",
     "cashJournal": "Journal de caisse",
-    "pos": "Point de vente"
+    "pos": "Point de vente",
+    "onboarding": "Installation"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -377,7 +378,9 @@
     "cash_register.movement.create": "Enregistrer des entrées et sorties de caisse",
     "pos.terminal.use": "Utiliser le point de vente",
     "organization.profile.view": "Consulter les profils d'activité",
-    "organization.profile.manage": "Changer le profil d'activité"
+    "organization.profile.manage": "Changer le profil d'activité",
+    "organization.onboarding.view": "Consulter l'installation (onboarding)",
+    "organization.onboarding.manage": "Démarrer les étapes de l'installation"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -1232,5 +1235,74 @@
     "next": "Suivant",
     "submit": "Créer mon entreprise",
     "haveAccount": "Déjà un compte ?"
+  },
+  "onboarding": {
+    "title": "Votre installation",
+    "welcome": "Bienvenue dans StockManager ! Configurons votre entreprise ensemble : les étapes obligatoires préparent votre environnement, les étapes recommandées peuvent être faites plus tard.",
+    "progressTitle": "Votre progression",
+    "percentage": "Installation terminée à {{percentage}} %",
+    "counts": "{{completed}} étapes terminées sur {{total}}",
+    "requiredCounts": "étapes obligatoires : {{completed}}/{{total}}",
+    "nextStep": "Prochaine étape :",
+    "nextRecommendation": "Recommandation :",
+    "continue": "Continuer l'installation",
+    "bannerTitle": "Votre installation n'est pas terminée",
+    "required": "Obligatoire",
+    "recommended": "Recommandée",
+    "status": {
+      "NOT_STARTED": "À faire",
+      "IN_PROGRESS": "En cours",
+      "COMPLETED": "Terminée"
+    },
+    "completed": "Installation terminée : les étapes obligatoires sont faites. Les recommandations restantes peuvent être complétées à tout moment.",
+    "completedPending": "Installation terminée. Votre abonnement reste en attente d'activation : les opérations (ventes, stock, catalogue…) seront disponibles après la confirmation de votre paiement et l'activation de votre licence par TechNova.",
+    "blocked": {
+      "subscription_restricted": "Disponible après l'activation de votre abonnement.",
+      "permission_denied": "Réservé aux utilisateurs autorisés."
+    },
+    "steps": {
+      "label": "Étapes de l'installation",
+      "account": {
+        "title": "Votre compte",
+        "description": "Compte du propriétaire créé et actif."
+      },
+      "company": {
+        "title": "Votre entreprise",
+        "description": "Informations obligatoires : nom, pays et devise de l'entreprise."
+      },
+      "business_profile": {
+        "title": "Votre activité",
+        "description": "Profil d'activité choisi à l'inscription : il adapte la navigation et le vocabulaire."
+      },
+      "subscription": {
+        "title": "Votre abonnement",
+        "description": "Offre souscrite. L'activation de l'abonnement est distincte de l'installation et gérée par TechNova."
+      },
+      "first_site": {
+        "title": "Votre premier site",
+        "description": "Boutique, dépôt ou point de vente où se déroulent vos opérations."
+      },
+      "catalogue": {
+        "title": "$t(terminology:catalog.items)",
+        "description": "Premiers éléments de votre catalogue : ce que vous vendez ou stockez."
+      },
+      "users": {
+        "title": "Votre équipe",
+        "description": "Ajoutez vos collaborateurs et attribuez-leur un rôle."
+      },
+      "configuration": {
+        "title": "Finaliser la configuration",
+        "description": "Informations recommandées utilisées sur vos documents : nom commercial, logo, téléphone, e-mail, adresse, ville, région, IFU, RCCM."
+      }
+    },
+    "actions": {
+      "company": "Modifier l'entreprise",
+      "business_profile": "Voir l'activité",
+      "subscription": "Voir l'abonnement",
+      "first_site": "Créer mon premier site",
+      "catalogue": "Compléter le catalogue",
+      "users": "Ajouter un utilisateur",
+      "configuration": "Compléter les informations"
+    }
   }
 }

@@ -32,14 +32,16 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | GET | `/public/geo/countries` | public | Pays actifs (ISO 3166-1) : devise, indicatif, fuseau par défaut |
 | GET | `/public/business-profiles` | public | Secteurs et profils actifs (inscription) |
 | GET | `/public/plans` | public | Offres publiées par TechNova : périodes ouvertes, prix seulement s'ils sont affichés, offre sur contact, essai, limites ; adresse commerciale |
-| POST | `/public/signup` | public, limité par IP | Compte + entreprise (propriétaire et administrateur), sans site ; abonnement `trial` ou `pending_activation` ; `201` + session. Erreurs : `plan_not_available`, `signup_unavailable` (générique), `unknown_profile`, `unknown_country`, `invalid_currency`, `password_too_short`, `validation_error` (champ inconnu refusé), `429 rate_limited`, `403 signup_closed` |
+| POST | `/public/signup` | public, limité par IP | Compte + entreprise (nom, pays et **devise** obligatoires), propriétaire et administrateur, sans site ; étapes d'onboarding créées et évaluées ; abonnement `trial` ou `pending_activation` ; `201` + session. Erreurs : `plan_not_available`, `signup_unavailable` (générique), `unknown_profile`, `unknown_country`, `invalid_currency`, `password_too_short`, `validation_error` (champ inconnu refusé), `429 rate_limited`, `403 signup_closed` |
 | GET | `/business-profiles` | `organization.profile.view` | Catalogue : secteurs actifs et profils actifs (classés), modules proposés |
 | GET | `/business-profiles/{code}` | `organization.profile.view` | Configuration **par défaut** d'un profil (profil UX + surcharges), modules « à venir » ; `404 unknown_profile` |
 | PUT | `/tenant/business-profile` | `organization.profile.manage` | Changer le profil du tenant du jeton : `422 unknown_profile`, `409 profile_change_incompatible` (`modules`) ; données conservées, audité |
 | GET | `/tenant` | `organization.tenant.view` | Informations de l'entreprise |
-| PATCH | `/tenant` | `organization.tenant.update` | Modifier nom / fuseau horaire |
+| PATCH | `/tenant` | `organization.tenant.update` | Modifier les informations de l'entreprise (nom, fuseau, pays, informations recommandées) ; réévalue l'onboarding |
 | GET | `/sites` | `organization.site.view` | Liste des sites |
-| POST | `/sites` | `organization.site.manage` | Créer un site (limite `max_sites` du plan) |
+| POST | `/sites` | `organization.site.manage` | Créer un site (limite `max_sites` du plan) ; réévalue l'onboarding (`first_site`) |
+| GET | `/onboarding` | `organization.onboarding.view` | Onboarding persistant (Phase 3.2-B, ADR-0026) : `status` (`NOT_STARTED`/`IN_PROGRESS`/`COMPLETED`), `completed` (étapes obligatoires terminées), `progress` (`completed`, `total`, `percentage`, `required_completed`, `required_total`), `current_step`, `next_action`, `subscription_status`, `steps` (code, ordre, obligatoire, clés i18n, statut, `completed_at`, action : écran, permission, `available`, `blocked_reason`). Crée les étapes manquantes et enregistre les progrès constatés (idempotent) |
+| PATCH | `/onboarding/steps/{code}` | `organization.onboarding.manage` | Seule transition manuelle : `{"status": "IN_PROGRESS"}` (démarrer une étape ; sans effet sur une étape en cours ou terminée). `422 onboarding_transition_not_allowed` pour toute autre valeur (une étape n'est jamais déclarée terminée par le client), `404 onboarding_step_not_found`, `validation_error` (champ inconnu) |
 | GET | `/sites/{id}` | `organization.site.view` | Détail |
 | PATCH | `/sites/{id}` | `organization.site.manage` | Modifier / désactiver |
 | GET | `/modules` | `organization.module.view` | Modules du profil : inclus au plan, activés, effectifs |

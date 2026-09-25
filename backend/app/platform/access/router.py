@@ -31,6 +31,7 @@ from app.platform.context import (
     SettingsDep,
     require_permission,
 )
+from app.platform.onboarding.service import OnboardingService
 from app.shared.schemas import StatusFilter
 
 router = APIRouter(tags=["users"])
@@ -57,6 +58,7 @@ def create_member(
     settings: SettingsDep,
 ) -> MemberOut:
     membership = MemberService(db, ctx, registry, settings).create(body)
+    OnboardingService(db, registry).refresh_for(ctx, "member.created")
     db.commit()
     return member_out(membership)
 

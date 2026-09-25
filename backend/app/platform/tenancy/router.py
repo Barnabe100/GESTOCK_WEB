@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
+from app.platform.onboarding.service import OnboardingService
 from app.platform.tenancy.schemas import (
     ModuleOut,
     ModuleToggle,
@@ -34,8 +35,11 @@ def get_tenant(ctx: TenantView) -> TenantOut:
 
 
 @router.patch("/tenant", response_model=TenantOut)
-def update_tenant(body: TenantUpdate, ctx: TenantUpdateCtx, db: DbSession) -> TenantOut:
+def update_tenant(
+    body: TenantUpdate, ctx: TenantUpdateCtx, db: DbSession, registry: RegistryDep
+) -> TenantOut:
     TenantService(db, ctx).update(body)
+    OnboardingService(db, registry).refresh_for(ctx, "tenant.updated")
     db.commit()
     return TenantOut.model_validate(ctx.tenant)
 
@@ -46,8 +50,9 @@ def list_sites(ctx: SiteView, db: DbSession) -> list[SiteOut]:
 
 
 @router.post("/sites", response_model=SiteOut, status_code=status.HTTP_201_CREATED)
-def create_site(body: SiteCreate, ctx: SiteManage, db: DbSession) -> SiteOut:
+def create_site(body: SiteCreate, ctx: SiteManage, db: DbSession, registry: RegistryDep) -> SiteOut:
     site = SiteService(db, ctx).create(body)
+    OnboardingService(db, registry).refresh_for(ctx, "site.created")
     db.commit()
     return SiteOut.model_validate(site)
 
@@ -58,8 +63,11 @@ def get_site(site_id: uuid.UUID, ctx: SiteView, db: DbSession) -> SiteOut:
 
 
 @router.patch("/sites/{site_id}", response_model=SiteOut)
-def update_site(site_id: uuid.UUID, body: SiteUpdate, ctx: SiteManage, db: DbSession) -> SiteOut:
+def update_site(
+    site_id: uuid.UUID, body: SiteUpdate, ctx: SiteManage, db: DbSession, registry: RegistryDep
+) -> SiteOut:
     site = SiteService(db, ctx).update(site_id, body)
+    OnboardingService(db, registry).refresh_for(ctx, "site.updated")
     db.commit()
     return SiteOut.model_validate(site)
 

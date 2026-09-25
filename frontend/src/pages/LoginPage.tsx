@@ -49,6 +49,7 @@ export function LoginPage() {
         <FormField
           id="email"
           label={t('auth.email')}
+          required
           error={errors.email && t('auth.emailInvalid')}
         >
           <InputText
@@ -62,6 +63,7 @@ export function LoginPage() {
         <FormField
           id="password"
           label={t('auth.password')}
+          required
           error={errors.password && t('auth.passwordRequired')}
         >
           <Controller

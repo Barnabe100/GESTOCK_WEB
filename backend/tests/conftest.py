@@ -46,6 +46,7 @@ PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
     "rate_limit_hits",
+    "onboarding_steps",
     "cash_movements",
     "cash_sessions",
     "cash_registers",

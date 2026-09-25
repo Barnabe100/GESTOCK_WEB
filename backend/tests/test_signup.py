@@ -55,6 +55,7 @@ def _body(email: str = "awa@superette.example", **overrides: Any) -> dict[str, A
         "company": {
             "name": "Supérette Awa SARL",
             "country_code": "BF",
+            "currency": "XOF",
             "trade_name": "Chez Awa",
             "phone": "+226 70 11 22 33",
             "city": "Ouagadougou",
@@ -280,6 +281,8 @@ def test_closed_period_or_unpublished_plan_is_refused(
     "overrides",
     [
         {"company": {"country_code": None}},
+        # Devise obligatoire (marquée « * » dans le formulaire, proposée selon le pays).
+        {"company": {"currency": None}},
         {"company": {"name": ""}},
         {"account": {"email": "pas-un-email"}},
         {"company": {"logo_url": "http://exemple.com/logo.png"}},

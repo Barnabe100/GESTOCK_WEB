@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.platform.catalog.models import BusinessProfile
 from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
+from app.platform.onboarding.service import OnboardingService
 from app.platform.profiles.registry import BusinessProfileRegistry
 from app.platform.profiles.schemas import (
     BusinessProfileCatalogOut,
@@ -81,5 +82,6 @@ def change_tenant_business_profile(
         user_id=ctx.user.id,
         meta=ctx.meta,
     )
+    OnboardingService(db, registry).refresh_for(ctx, "business_profile.changed")
     db.commit()
     return TenantOut.model_validate(ctx.tenant)

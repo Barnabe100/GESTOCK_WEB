@@ -13,6 +13,7 @@ propriétaire et administrateur principal.
 
 import secrets
 import unicodedata
+import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -23,11 +24,13 @@ from app.core.config import Settings
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError
 from app.core.security import hash_password
 from app.platform.audit.service import RequestMeta
+from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.loader import role_templates
-from app.platform.catalog.models import Plan
+from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.identity.service import AuthService, IssuedSession
+from app.platform.onboarding.service import Actor, OnboardingService
 from app.platform.provisioning.service import (
     ProvisionTenantCommand,
     SubscriptionStart,
@@ -37,6 +40,7 @@ from app.platform.ratelimit.service import RateLimiter
 from app.platform.registry import ModuleRegistry
 from app.platform.signup.schemas import SignupRequest
 from app.platform.subscriptions.models import BillingPeriod
+from app.platform.tenancy.models import Tenant
 
 RATE_LIMIT_BUCKET = "signup"
 UNAVAILABLE = (
@@ -130,7 +134,23 @@ class SignupService:
         except ConflictError as exc:  # identifiant court déjà pris (hasard)
             self.db.rollback()
             raise BusinessRuleError(UNAVAILABLE, code="signup_unavailable") from exc
+        # Onboarding : étapes créées et évaluées dès l'inscription (compte, entreprise, profil,
+        # abonnement…), attribuées au propriétaire qui vient de les renseigner.
+        self._init_onboarding(result.tenant_id, result.owner_user_id, plan, meta)
         self.db.commit()
         return AuthService(self.db, self.settings, self.now).login(
             email, data.account.password, result.tenant_id, meta
+        )
+
+    def _init_onboarding(
+        self, tenant_id: uuid.UUID, owner_id: uuid.UUID, plan: Plan, meta: RequestMeta
+    ) -> None:
+        tenant = self.db.get(Tenant, tenant_id)
+        profile = self.db.get(BusinessProfile, tenant.business_profile_code) if tenant else None
+        if tenant is None or profile is None:
+            return
+        modules = CapabilityService(self.db, self.registry).effective_modules(profile, plan)
+        onboarding = OnboardingService(self.db, self.registry)
+        onboarding.refresh(
+            onboarding.env(tenant, frozenset(modules)), Actor(owner_id, "signup", meta)
         )

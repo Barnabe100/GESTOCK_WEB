@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { SiteKind } from '@/core/api/types';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { translateError } from '@/shared/lib/errors';
+import { useCreateRequest } from '@/shared/lib/useCreateRequest';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
@@ -147,8 +148,12 @@ export default function SitesPage() {
   const { t } = useTranslation();
   const { can } = useCapabilities();
   const sites = useSites();
-  const [editing, setEditing] = useState<Site | null | undefined>(undefined);
   const canManage = can('organization.site.manage');
+  // Action « Créer mon premier site » de l'onboarding : formulaire ouvert d'emblée.
+  const [createRequested, clearCreate] = useCreateRequest(canManage);
+  const [editing, setEditing] = useState<Site | null | undefined>(
+    createRequested ? null : undefined,
+  );
 
   return (
     <>
@@ -199,7 +204,15 @@ export default function SitesPage() {
           )}
         </DataTable>
       )}
-      {editing !== undefined && <SiteDialog site={editing} onClose={() => setEditing(undefined)} />}
+      {editing !== undefined && (
+        <SiteDialog
+          site={editing}
+          onClose={() => {
+            setEditing(undefined);
+            clearCreate();
+          }}
+        />
+      )}
     </>
   );
 }

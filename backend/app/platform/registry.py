@@ -15,6 +15,8 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
+from app.platform.onboarding.definitions import STEP_CODE_RE, OnboardingStepDef
+
 if TYPE_CHECKING:
     from fastapi import APIRouter
     from sqlalchemy.orm import Session
@@ -82,6 +84,8 @@ class ModuleManifest:
     extra_routers: "tuple[tuple[str, APIRouter], ...]" = field(
         default=(), compare=False, hash=False
     )
+    # Étapes d'onboarding portées par le module (proposées si le module est effectif).
+    onboarding: tuple[OnboardingStepDef, ...] = field(default=(), compare=False, hash=False)
 
     @property
     def url_prefix(self) -> str:
@@ -102,6 +106,7 @@ class ModuleRegistry:
         self._permissions: dict[str, tuple[ModuleManifest, PermissionDef]] = {}
         self._limits: dict[str, tuple[ModuleManifest, LimitDef]] = {}
         self._features: dict[str, ModuleManifest] = {}
+        self._steps: dict[str, tuple[ModuleManifest, OnboardingStepDef]] = {}
         self._validate()
 
     def _validate(self) -> None:
@@ -142,7 +147,21 @@ class ModuleRegistry:
             for extra_prefix, _ in manifest.extra_routers:
                 if not extra_prefix.startswith("/") or extra_prefix.endswith("/"):
                     raise RegistryError(f"préfixe d'URL invalide : {extra_prefix}")
+        self._validate_onboarding()
         self._check_cycles()
+
+    def _validate_onboarding(self) -> None:
+        for manifest in self._modules.values():
+            for step in manifest.onboarding:
+                if not STEP_CODE_RE.match(step.code):
+                    raise RegistryError(f"code d'étape d'onboarding invalide : {step.code}")
+                if step.code in self._steps:
+                    raise RegistryError(f"étape d'onboarding en double : {step.code}")
+                if step.action is not None and step.action.permission not in self._permissions:
+                    raise RegistryError(
+                        f"étape {step.code} : permission inconnue {step.action.permission}"
+                    )
+                self._steps[step.code] = (manifest, step)
 
     def _check_cycles(self) -> None:
         visiting: set[str] = set()
@@ -214,6 +233,17 @@ class ModuleRegistry:
     def module_of_feature(self, code: str) -> str | None:
         manifest = self._features.get(code)
         return manifest.code if manifest else None
+
+    def onboarding_steps(self, module_codes: Iterable[str]) -> list[OnboardingStepDef]:
+        """Étapes d'onboarding des modules donnés (modules effectifs), dans l'ordre déclaré."""
+        codes = set(module_codes)
+        steps = [step for manifest, step in self._steps.values() if manifest.code in codes]
+        return sorted(steps, key=lambda s: (s.order, s.code))
+
+    def onboarding_step(self, code: str) -> tuple[str, OnboardingStepDef] | None:
+        """Étape et code de son module."""
+        entry = self._steps.get(code)
+        return (entry[0].code, entry[1]) if entry else None
 
     def resolve_dependencies(self, candidates: Iterable[str]) -> set[str]:
         """Retire itérativement les modules dont une dépendance n'est pas présente."""
