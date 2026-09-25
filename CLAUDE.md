@@ -10,7 +10,10 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 2 — catalogue, stock et ventes.** Sous-phases livrées : 2.1 (modules `catalog` et
+**Phase actuelle : 3 — ventes et encaissement.** Phase 3.0 livrée : point de vente générique
+(module `pos`, aucune logique propre : `POST /pos/checkout` → `SaleService.checkout`, création +
+validation + paiements en une transaction, idempotent ; canal `POS` ; [`POS.md`](docs/architecture/POS.md),
+ADR-0023). Sous-phases 2 livrées : 2.1 (modules `catalog` et
 `suppliers`), 2.2 (modules `stock` — niveaux et CMUP par site, entrées, sorties, motifs,
 journal des mouvements, seuils par site — et `alerts`), consolidation du RBAC (rôles de
 base Administrateur / Gestionnaire / Vendeur / Consultant, rôles personnalisés, ADR-0015),
@@ -34,9 +37,10 @@ client, `credit_limit NULL` = non configurée ; encaissement immédiat à la val
 caisse d'un site, sessions `OPEN`/`CLOSED` — une seule ouverte par caisse —, mouvements
 append-only, **solde calculé** à partir des mouvements, clôture avec écart calculé par le
 serveur ; un paiement `CASH` exige une session ouverte du site de la vente et crée son mouvement
-dans la même transaction ; `sales` dépend de `cash_register`,
+dans la même transaction ; **la vente ne dépend pas de la caisse** : `cash_register` dépend de
+`sales` et implémente son port `sales/cash_port.py`,
 [`CASH_REGISTER.md`](docs/architecture/CASH_REGISTER.md), ADR-0022).
-Autres modules métier (POS, paiements électroniques, restaurant…) :
+Autres modules métier (paiements électroniques, restaurant…) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

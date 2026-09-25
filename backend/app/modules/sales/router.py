@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.errors import ForbiddenError
-from app.modules.sales.models import SalePaymentStatus, SaleStatus
+from app.modules.sales.models import SaleChannel, SalePaymentStatus, SaleStatus
 from app.modules.sales.payment_router import router as payment_router
 from app.modules.sales.schemas import SaleCancel, SaleCreate, SaleInput, SaleOut, SaleValidate
 from app.modules.sales.service import SaleService
@@ -36,6 +36,7 @@ def list_sales(
     date_from: date | None = None,
     date_to: date | None = None,
     payment_status: SalePaymentStatus | None = None,
+    channel: SaleChannel | None = None,
 ) -> Page[SaleOut]:
     service = SaleService(db, ctx, now)
     items, total = service.search(
@@ -47,6 +48,7 @@ def list_sales(
         date_from=date_from,
         date_to=date_to,
         payment=payment_status,
+        channel=channel,
     )
     return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
 

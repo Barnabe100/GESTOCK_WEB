@@ -137,6 +137,9 @@ La validation contrôle la limite de crédit du client (exposition projetée = r
 ventes validées + reste dû de la vente) sous le verrou du client, et accepte des
 encaissements immédiats (`{payments: […]}`) dans la même transaction.
 
+**Point de vente** : Phase 3.0 — [`POS.md`](POS.md) : `SaleService.checkout` (création +
+validation + paiements en une transaction, idempotent), canal `POS` ; mêmes règles.
+
 **Caisse** : réalisée en Phase 2.9 — [`CASH_REGISTER.md`](CASH_REGISTER.md) (un paiement
 espèces exige une session de caisse ouverte sur le site de la vente).
 

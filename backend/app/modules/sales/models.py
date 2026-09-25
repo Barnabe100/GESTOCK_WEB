@@ -31,6 +31,13 @@ class SaleStatus(StrEnum):
     CANCELLED = "CANCELLED"  # abandonnée (brouillon) ou annulée (mouvements inverses)
 
 
+class SaleChannel(StrEnum):
+    """Canal de saisie de la vente (dimension de reporting) : même règles métier partout."""
+
+    BACKOFFICE = "BACKOFFICE"  # écrans de gestion des ventes
+    POS = "POS"  # point de vente (encaissement en une étape)
+
+
 class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     """Vente comptant d'un site, client facultatif. Jamais supprimée."""
 
@@ -40,6 +47,8 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         UniqueConstraint("tenant_id", "id"),
         # Cible de la FK composite des paiements : même tenant ET même site que la vente.
         UniqueConstraint("tenant_id", "id", "site_id"),
+        # Encaissement en une étape (POS) : une seule vente par clé d'idempotence et par tenant.
+        UniqueConstraint("tenant_id", "idempotency_key"),
         # Références du même tenant uniquement (FK composites).
         ForeignKeyConstraint(
             ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
@@ -72,6 +81,14 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     subtotal: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     total: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(500))
+    channel: Mapped[SaleChannel] = mapped_column(
+        str_enum(SaleChannel, "sale_channel"),
+        default=SaleChannel.BACKOFFICE,
+        server_default=SaleChannel.BACKOFFICE.value,
+        nullable=False,
+    )
+    # Clé fournie par le client pour un encaissement en une étape (double soumission).
+    idempotency_key: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))

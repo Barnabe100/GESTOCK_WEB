@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.modules.sales.models import (
     PaymentMethod,
     PaymentStatus,
+    SaleChannel,
     SalePaymentStatus,
     SaleStatus,
 )
@@ -67,6 +68,7 @@ class SaleOut(BaseModel):
     customer_code: str | None
     customer_name: str | None
     status: SaleStatus
+    channel: SaleChannel
     sale_date: date
     notes: str | None
     subtotal: Money
@@ -146,3 +148,19 @@ class SalePaymentsOut(BaseModel):
     sale_status: SaleStatus
     summary: PaymentSummary | None
     items: list[PaymentOut]
+
+
+class SaleCheckout(SaleCreate):
+    """Encaissement en une étape (POS) : création, validation et paiements immédiats dans UNE
+    transaction (``SaleService.checkout``). ``idempotency_key`` : générée par le client pour
+    un panier ; une seconde soumission renvoie la vente déjà enregistrée."""
+
+    payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
+    idempotency_key: uuid.UUID
+
+
+class CheckoutOut(BaseModel):
+    sale: SaleOut
+    payments: list[PaymentOut]
+    # Vrai si la clé avait déjà été traitée (réponse rejouée, aucune nouvelle écriture).
+    replayed: bool

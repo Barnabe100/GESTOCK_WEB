@@ -771,17 +771,52 @@ def test_expired_subscription_keeps_consultation(priced: World, owner_db: Sessio
         assert response.json()["code"] == "subscription_restricted"
 
 
-def test_module_deactivation(priced: World, owner_db: Session) -> None:
-    # Les ventes dépendent de la caisse : désactivation refusée tant que les ventes sont actives.
-    refused = priced.owner.put("/modules/cash_register", json={"enabled": False})
-    assert refused.status_code == 409 and refused.json()["code"] == "module_has_dependents"
-    owner_db.execute(
-        text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'cash_register'")
-    )
-    owner_db.commit()
+def test_sales_do_not_depend_on_the_cash_module(priced: World, owner_db: Session) -> None:
+    """Règle (Phase 3.0) : la vente ne dépend pas de la caisse ; seul un paiement espèces en a
+    besoin. Module Caisse désactivé : ventes et paiements électroniques possibles, espèces
+    refusées ; module Ventes désactivé : la caisse (qui en dépend) l'est aussi."""
+    session = _opened(priced.owner, _register(priced), "1000")
+    cash_sale = _sale(priced, 10000)
+    _paid(priced.owner, cash_sale, "10000")
+    assert priced.owner.put("/modules/cash_register", json={"enabled": False}).status_code == 204
     for path in ("/cash/registers", "/cash/sessions", "/cash/movements"):
         denied = priced.owner.get(path)
         assert denied.status_code == 403 and denied.json()["code"] == "module_unavailable"
+    sale = _sale(priced, 30000)
+    _paid(priced.owner, sale, "10000", "MOBILE_MONEY")
+    _paid(priced.owner, sale, "10000", "CARD")
+    refused = _pay(priced.owner, sale, "10000")
+    assert refused.status_code == 422 and refused.json()["code"] == "cash_session_required"
+    # Un encaissement espèces déjà enregistré reste inversé à l'annulation du paiement.
+    payment = priced.owner.get(f"/sales/{cash_sale['id']}/payments").json()["items"][0]
+    cancelled = priced.owner.post(
+        f"/sales/{cash_sale['id']}/payments/{payment['id']}/cancel", json={"reason": "Erreur"}
+    )
+    assert cancelled.status_code == 200
+    assert priced.owner.put("/modules/cash_register", json={"enabled": True}).status_code == 204
+    assert _session(priced.owner, session)["theoretical_balance"] == "1000.00"
+    # Les ventes ne peuvent pas être désactivées tant que la caisse (qui en dépend) est active.
+    busy = priced.owner.put("/modules/sales", json={"enabled": False})
+    assert busy.status_code == 409 and busy.json()["code"] == "module_has_dependents"
+    owner_db.execute(text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'sales'"))
+    owner_db.commit()
+    assert priced.owner.get("/cash/registers").json()["code"] == "module_unavailable"
+
+
+def test_inactive_register_never_blocks_sales_or_electronic_payments(priced: World) -> None:
+    register = _register(priced)
+    assert priced.owner.post(f"/cash/registers/{register['id']}/deactivate").status_code == 200
+    draft = _sale(priced, 20000, validate=False)
+    validated = priced.owner.post(
+        f"/sales/{draft['id']}/validate",
+        json={"payments": [{"amount": "20000", "method": "BANK_TRANSFER"}]},
+    )
+    assert validated.status_code == 200 and validated.json()["payment_status"] == "PAID"
+    unpaid = _sale(priced, 10000)
+    assert unpaid["payment_status"] == "UNPAID"
+    assert _pay(priced.owner, unpaid, "5000").json()["code"] == "cash_session_required"
+    # L'historique de la caisse désactivée reste consultable.
+    assert priced.owner.get(f"/cash/registers/{register['id']}").status_code == 200
 
 
 def test_audit_trail(priced: World) -> None:

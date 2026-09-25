@@ -30,6 +30,7 @@ from app.modules.sales.models import (
     Payment,
     PaymentStatus,
     Sale,
+    SaleChannel,
     SaleLine,
     SalePaymentStatus,
     SaleStatus,
@@ -38,6 +39,7 @@ from app.modules.sales.payment_service import ZERO as MONEY_ZERO
 from app.modules.sales.payment_service import paid_amounts, paid_subquery, payment_status
 from app.modules.sales.schemas import (
     PaymentCreate,
+    SaleCheckout,
     SaleCreate,
     SaleInput,
     SaleLineOut,
@@ -94,6 +96,7 @@ class SaleService:
         date_from: date | None = None,
         date_to: date | None = None,
         payment: SalePaymentStatus | None = None,
+        channel: SaleChannel | None = None,
     ) -> tuple[list[Sale], int]:
         # Périmètre : ventes des sites visibles par le membre (site sélectionné ou ses sites).
         stmt: Select[tuple[Sale]] = select(Sale).where(Sale.site_id.in_(visible_site_ids(self.ctx)))
@@ -114,6 +117,7 @@ class SaleService:
             Sale.customer_id == customer_id if customer_id else None,
             Sale.sale_date >= date_from if date_from else None,
             Sale.sale_date <= date_to if date_to else None,
+            Sale.channel == channel if channel else None,
         ]
         for condition in conditions:
             if condition is not None:
@@ -288,20 +292,53 @@ class SaleService:
 
     # --- Écritures ----------------------------------------------------------------------------
 
-    def create(self, data: SaleCreate) -> Sale:
+    def create(
+        self,
+        data: SaleCreate,
+        *,
+        channel: SaleChannel = SaleChannel.BACKOFFICE,
+        idempotency_key: uuid.UUID | None = None,
+    ) -> Sale:
         site_id = operation_site(self.ctx, data.site_id)
         sale = Sale(
             tenant_id=self.ctx.tenant_id,
             site_id=site_id,
             number=next_number(self.db, self.ctx.tenant_id, SEQUENCE_KEY, PREFIX),
             status=SaleStatus.DRAFT,
+            channel=channel,
+            idempotency_key=idempotency_key,
             created_by=self.ctx.user.id,
         )
         self._apply_input(sale, data)
         self.db.add(sale)
         self.db.flush()
-        self._audit("created", sale, {"status": sale.status.value, **self._snapshot(sale)})
+        self._audit(
+            "created",
+            sale,
+            {"status": sale.status.value, "channel": channel.value, **self._snapshot(sale)},
+        )
         return sale
+
+    def checkout(
+        self, data: SaleCheckout, channel: SaleChannel = SaleChannel.POS
+    ) -> tuple[Sale, bool]:
+        """Encaissement en une étape (POS, ADR-0023) : ``create`` puis ``validate`` (stock via
+        StockService, limite de crédit, paiements immédiats via PaymentService — caisse pour
+        les espèces) dans la transaction de la requête. Toute erreur annule tout : ni
+        brouillon, ni stock, ni paiement, ni mouvement de caisse. Idempotent : la même clé
+        renvoie la vente déjà enregistrée ``(vente, rejouée)``."""
+        # Deux soumissions simultanées de la même clé s'exécutent l'une après l'autre.
+        self.db.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(str(data.idempotency_key), 0)))
+        )
+        existing = self.db.scalars(
+            select(Sale).where(Sale.idempotency_key == data.idempotency_key)
+        ).one_or_none()
+        if existing is not None:
+            ensure_document_site(self.ctx, existing.site_id, "sale_not_found")
+            return existing, True
+        sale = self.create(data, channel=channel, idempotency_key=data.idempotency_key)
+        return self.validate(sale.id, data.payments), False
 
     def update(self, sale_id: uuid.UUID, data: SaleInput) -> Sale:
         """Brouillon seulement ; lignes remplacées et prix relus dans le catalogue."""
@@ -469,6 +506,7 @@ class SaleService:
                     customer_code=customer.code if customer else None,
                     customer_name=customer.name if customer else None,
                     status=sale.status,
+                    channel=sale.channel,
                     sale_date=sale.sale_date,
                     notes=sale.notes,
                     subtotal=sale.subtotal,

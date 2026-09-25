@@ -1,14 +1,19 @@
 from app.modules.cash_register.router import router
+from app.modules.cash_register.service import CashService
+from app.modules.sales.api import register_cash_ledger
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
+
+# Paiements espèces : la caisse implémente le port des ventes (la vente ne dépend pas d'elle).
+register_cash_ledger(CashService)
 
 R, W = AccessKind.READ, AccessKind.WRITE
 P = "cash_register"
 
 MANIFEST = ModuleManifest(
     code="cash_register",
-    # Stock : périmètre des sites (stock.api). Aucune dépendance aux ventes : c'est le module
-    # Ventes qui enregistre ses encaissements espèces via l'API publique de la caisse.
-    depends_on=("stock",),
+    # Ventes : encaissements espèces des paiements (port ``sales.cash_port``, FK vers
+    # ``payments``) ; stock : périmètre des sites (stock.api).
+    depends_on=("sales", "stock"),
     permissions=(
         PermissionDef(f"{P}.register.view", R),
         PermissionDef(f"{P}.register.manage", W),  # créer, modifier, activer / désactiver

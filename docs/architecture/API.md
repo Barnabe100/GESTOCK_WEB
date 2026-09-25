@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7), créances (2.8) et caisse (2.9)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7), créances (2.8), caisse (2.9) et point de vente (3.0)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -294,6 +294,19 @@ champ facultatif `cash_register_id` (aussi dans `payments` de la validation). Co
 `cash_session_already_open`, `cash_register_inactive`, `cash_register_has_open_session`,
 `idempotency_key_reused` (409), `cash_register_not_found`, `cash_session_not_found` (404).
 Aucune suppression. Abonnement expiré : consultation seule.
+
+### Point de vente (module `pos`) — Phase 3.0
+
+Règles : [`POS.md`](POS.md) ; décisions : [ADR-0023](../adr/0023-point-de-vente.md). Aucune
+logique propre : orchestration de `SaleService` (et, par lui, `StockService`,
+`PaymentService`, caisse pour les espèces, limite de crédit).
+
+| Méthode | Chemin | Permissions | Rôle |
+|---|---|---|---|
+| GET | `/pos/articles` | `pos.terminal.use` | Articles du site (`site_id`, `search`, `limit` ≤ 50) : prix du catalogue, stock du site, actif |
+| POST | `/pos/checkout` | `pos.terminal.use` + `sales.sale.create` + `sales.sale.validate` (+ `sales.payment.create`) | Création + validation + paiements en une transaction ; `idempotency_key` obligatoire (201 ; 200 `replayed` pour une clé déjà traitée) |
+
+Ventes : `SaleOut.channel` (`BACKOFFICE` \| `POS`), filtre `GET /sales?channel=`.
 
 ## Routes des modules métier
 

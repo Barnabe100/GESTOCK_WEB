@@ -105,7 +105,8 @@ montant, moyen, date. Aucune donnée sensible (pas de numéro de carte).
   « payé » (paiements `COMPLETED`), sans modifier les règles de paiement.
 - **Caisse** : réalisée en Phase 2.9 ([`CASH_REGISTER.md`](CASH_REGISTER.md)) : un paiement
   `CASH` exige une session de caisse ouverte sur le site de la vente et crée son mouvement de
-  caisse dans la même transaction ; son annulation crée la sortie inverse (session ouverte).
+  caisse dans la même transaction (port `sales/cash_port.py` : la vente et les autres moyens
+  ne dépendent jamais de la caisse) ; son annulation crée la sortie inverse (session ouverte).
 - **Encaissements asynchrones** (Mobile Money par API, TPE) : statut `PENDING` réservé, déjà
   compté dans le solde engagé pour empêcher un doublon ; confirmation → `COMPLETED`. Le module
   planifié `payments` (« Paiements électroniques ») accueillera ces intégrations.

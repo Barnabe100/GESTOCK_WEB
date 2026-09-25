@@ -67,8 +67,7 @@ def test_disabled_dependency_removes_dependents(
     owner_db.commit()
     modules = _module_codes(_caps(api_for("owner@alpha.example.com")))
     assert "sales" not in modules
-    assert not {"payments", "pos"} & modules  # fermeture sur les dépendances
-    assert "cash_register" in modules  # la caisse ne dépend pas des ventes (l'inverse)
+    assert not {"payments", "cash_register", "pos"} & modules  # fermeture sur les dépendances
     assert "stock" in modules
 
 

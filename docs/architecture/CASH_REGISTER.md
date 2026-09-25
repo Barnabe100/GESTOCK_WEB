@@ -125,7 +125,8 @@ Rôles personnalisés : chaque permission séparément. RLS `ENABLE` + `FORCE` s
 (rôle applicatif sans `BYPASSRLS` ; mouvements : `SELECT, INSERT` seulement). Sites : caisses,
 sessions et mouvements d'un site non accessible introuvables (404), autre site sélectionné :
 403. Abonnement expiré : consultation seule (`403 subscription_restricted`). Module désactivé :
-`403 module_unavailable` (les ventes en dépendent). Audit : `cash_register.created`,
+`403 module_unavailable` ; la caisse dépend des ventes, pas l'inverse : sans caisse, seules les
+espèces sont refusées (`cash_session_required`), ventes et paiements électroniques continuent. Audit : `cash_register.created`,
 `.updated` (avant / après), `.activated`, `.deactivated`, `cash_session.opened` (fond),
 `cash_session.closed` (théorique, compté, écart, observation), `cash_movement.created` (type,
 montant, nature, motif, solde après) ; `payment.created` / `.completed` portent la session.

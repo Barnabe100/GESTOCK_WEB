@@ -28,6 +28,7 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0019](0019-inventaires.md) | Inventaires : écart sur le stock courant, ajustements via StockService, module `inventory_count` | Proposée |
 | [0020](0020-paiements-des-ventes.md) | Paiements des ventes : module `sales`, solde calculé, verrou de la vente, clé d'idempotence | Proposée |
 | [0021](0021-creances-comptes-clients.md) | Créances / comptes clients : calculées sans table, limite de crédit à la validation sous verrou du client | Acceptée |
-| [0022](0022-caisse.md) | Caisse : caisse de site, sessions, mouvements append-only, encaissements espèces dans la transaction du paiement | Proposée |
+| [0022](0022-caisse.md) | Caisse : caisse de site, sessions, mouvements append-only, encaissements espèces dans la transaction du paiement (révisée 3.0 : la vente ne dépend pas de la caisse) | Proposée |
+| [0023](0023-point-de-vente.md) | Point de vente : interface au-dessus des services métier, encaissement en une étape idempotent | Proposée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

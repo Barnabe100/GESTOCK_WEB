@@ -86,6 +86,11 @@ la suite peut être rejouée sur la même base.
   espèces sans caisse ouverte refusé ; idempotence (un paiement, un mouvement) ; mobile.
   `payments.e2e.ts` et `receivables.e2e.ts` ouvrent au besoin la caisse « Caisse E2E » de la
   boutique (`ensureCashOpen`).
+- `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
+  au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
+  Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,
+  seconde vente refusée par la limite), paiement mixte 40 000 espèces + 60 000 Mobile Money,
+  mobile (onglets Articles / Panier).
 - `ui.e2e.ts` (Phase 2.5-B, Design System) : navigation groupée, tableau de bord (indicateurs,
   actions rapides), liste standard (recherche, « Aucun résultat », réinitialisation),
   désactivation confirmée (annuler puis confirmer), entrée de stock saisie et validée par

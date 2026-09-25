@@ -16,7 +16,8 @@ constitue une créance (phase ultérieure).
   renvoie le paiement déjà créé (réponse rejouée) au lieu d'un doublon.
 - **Espèces et caisse** (Phase 2.9, ADR-0022) : un paiement ``CASH`` exige une session de
   caisse ouverte sur le site de la vente ; le paiement et son mouvement de caisse sont créés
-  dans la MÊME transaction (tout ou rien). Son annulation crée la sortie inverse dans la même
+  dans la MÊME transaction (tout ou rien), via le port ``cash_port`` (la vente ne dépend pas
+  de la caisse). Son annulation crée la sortie inverse dans la même
   session, si elle est encore ouverte. Les autres moyens ne touchent jamais la caisse.
 """
 
@@ -30,7 +31,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
-from app.modules.cash_register.api import CashService
+from app.modules.sales.cash_port import cash_ledger
 from app.modules.sales.models import (
     Payment,
     PaymentMethod,
@@ -207,7 +208,15 @@ class PaymentService:
         cash: dict[str, Any] = {}
         if payment.method is PaymentMethod.CASH:
             # Espèces : mouvement de caisse dans la même transaction (sinon rien n'est créé).
-            movement = CashService(self.db, self.ctx, self.now).record_sale_cash_in(
+            # Sans caisse disponible (module Caisse inactif) : refus, jamais d'espèces hors
+            # caisse ; les autres moyens de paiement ne dépendent jamais de la caisse.
+            ledger = cash_ledger(self.db, self.ctx, self.now, require_module=True)
+            if ledger is None:
+                raise BusinessRuleError(
+                    "Aucune caisse disponible pour encaisser en espèces",
+                    code="cash_session_required",
+                )
+            movement = ledger.record_sale_cash_in(
                 site_id=sale.site_id,
                 payment_id=payment.id,
                 payment_number=payment.number,
@@ -234,9 +243,9 @@ class PaymentService:
         previous = payment.status
         if payment.method is PaymentMethod.CASH and previous is PaymentStatus.COMPLETED:
             # Espèces rendues : sortie inverse dans la session d'origine (encore ouverte).
-            CashService(self.db, self.ctx, self.now).record_sale_cash_reversal(
-                payment_id=payment.id, reason=reason
-            )
+            ledger = cash_ledger(self.db, self.ctx, self.now, require_module=False)
+            if ledger is not None:
+                ledger.record_sale_cash_reversal(payment_id=payment.id, reason=reason)
         payment.status = PaymentStatus.CANCELLED
         payment.cancelled_at = self.now
         payment.cancelled_by = self.ctx.user.id

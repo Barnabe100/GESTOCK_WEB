@@ -1,7 +1,7 @@
 # ADR-0022 — Caisse : caisse de site, sessions, mouvements append-only, encaissements espèces dans la transaction du paiement
 
 - **Statut** : Proposée (implémentée et testée en Phase 2.9 ; validation TechNova en attente)
-- **Date** : 2026-09-25
+- **Date** : 2026-09-25 — **révisée en Phase 3.0** (décision 6 : dépendance inversée)
 
 ## Contexte
 
@@ -34,15 +34,21 @@ comptabilité.
    `OPENING_FLOAT`, `SALE_CASH_IN`, `MANUAL_CASH_IN`, `MANUAL_CASH_OUT` et
    **`SALE_CASH_REVERSAL`** (ajouté : l'annulation d'un paiement espèces, qui existe depuis la
    2.7, doit sortir l'argent de la caisse). Une sortie ne rend jamais le solde négatif.
-6. **Encaissement espèces = même transaction que le paiement** : le module `sales` dépend
-   désormais de `cash_register` et appelle son API publique (`CashService.record_sale_cash_in`)
-   dans `PaymentService.create`, après le verrou de la vente : paiement et mouvement sont créés
-   ensemble ou pas du tout. Le mouvement référence le paiement par FK composite
+6. **Encaissement espèces = même transaction que le paiement** — *révisée en Phase 3.0* :
+   **une vente ne dépend pas de la caisse**, seul un paiement `CASH` en a besoin. Le module
+   `sales` déclare un port (`sales/cash_port.py` : `CashLedger`, `register_cash_ledger`) ;
+   le module `cash_register`, qui **dépend de `sales`**, l'implémente (`CashService`) et
+   l'enregistre au chargement. `PaymentService.create` l'appelle après le verrou de la vente :
+   paiement et mouvement sont créés ensemble ou pas du tout. Sans caisse (module Caisse inactif
+   pour le tenant), un paiement `CASH` est refusé (`422 cash_session_required`) ; ventes et
+   paiements non espèces restent possibles. Une annulation de paiement espèces inverse toujours
+   son mouvement s'il existe. *(Version initiale 2.9 : `sales` dépendait de `cash_register` —
+   désactiver la caisse désactivait les ventes ; corrigé.)* Le mouvement référence le paiement par FK composite
    `(tenant_id, payment_id, site_id) → payments` (nouvelle unicité `(tenant_id, id, site_id)`
    sur `payments`) : même tenant et même site garantis en base ; au plus un encaissement et une
    annulation par paiement. Aucun mouvement pour `MOBILE_MONEY`, `CARD`, `BANK_TRANSFER`,
-   `OTHER`. La caisse ne dépend pas des ventes (numéro de vente copié, comme les mouvements de
-   stock) : pas de cycle.
+   `OTHER`. Aucun cycle : `cash_register → sales` seulement (le numéro de vente est copié,
+   comme dans les mouvements de stock).
 7. **Choix de la caisse par le serveur** : session ouverte d'une caisse active **du site de la
    vente** ; celle demandée (`cash_register_id`, vérifiée), sinon celle ouverte par
    l'utilisateur, sinon l'unique session ouverte du site ; plusieurs possibles sans choix :
@@ -74,8 +80,11 @@ comptabilité.
 
 - Un paiement espèces (ou un encaissement espèces à la validation) exige une session de caisse
   ouverte sur le site de la vente ; les tests et E2E des phases 2.7 / 2.8 ouvrent une caisse.
-- Désactiver la caisse désactive aussi les ventes (dépendance) ; l'API d'administration refuse
-  de la désactiver tant que les ventes sont actives (`module_has_dependents`).
+- Désactiver le module Caisse ne touche pas aux ventes : seules les espèces deviennent
+  impossibles. Désactiver les ventes désactive la caisse (qui en dépend) ; l'API
+  d'administration refuse de désactiver les ventes tant que la caisse est active
+  (`module_has_dependents`). Une **caisse** désactivée n'empêche que les nouveaux paiements
+  espèces sur elle ; son historique reste consultable.
 - Les paiements espèces antérieurs à la 2.9 n'ont pas de mouvement : leur annulation ne touche
   pas la caisse.
 - Migration `0011` (tables, RLS, droits minimaux, index partiel, unicité sur `payments`).
@@ -87,7 +96,8 @@ comptabilité.
 - **Solde stocké et mis à jour** : seconde source de vérité ; le verrou de la session et
   l'agrégation suffisent.
 - **Mouvement automatique d'écart à la clôture** : décision comptable reportée.
-- **Caisse dépendant des ventes et « crochet » d'extension** : mécanisme d'inversion inutile ;
-  la dépendance directe ventes → caisse est explicite, comme ventes → stock.
+- **Dépendance directe ventes → caisse** (version initiale 2.9) : rendait toute vente
+  dépendante du module Caisse, y compris les ventes payées par Mobile Money ; remplacée par
+  le port (Phase 3.0).
 - **Caisse choisie par le client sans contrôle** : le serveur vérifie site, caisse active et
   session ouverte.

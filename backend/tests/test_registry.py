@@ -66,8 +66,11 @@ def test_feature_permissions_are_available_only_with_the_feature() -> None:
 
 def test_resolve_dependencies_drops_modules_with_missing_dependencies() -> None:
     registry = get_registry()
-    # pos exige sales, payments et cash_register.
-    assert "pos" not in registry.resolve_dependencies({"pos", "sales", "payments", "catalog"})
+    # pos exige sales, catalog et stock ; cash_register exige sales (la vente ne dépend pas de
+    # la caisse : Phase 3.0, ADR-0022 révisée).
+    assert "pos" not in registry.resolve_dependencies({"pos", "sales", "catalog"})
+    assert "cash_register" not in registry.resolve_dependencies({"cash_register", "stock"})
+    assert "sales" in registry.resolve_dependencies({"sales", "catalog", "stock", "customers"})
     # sales exige catalog, stock et customers.
     full = {"pos", "sales", "payments", "cash_register", "catalog", "stock", "customers"}
     assert registry.resolve_dependencies(full) == full

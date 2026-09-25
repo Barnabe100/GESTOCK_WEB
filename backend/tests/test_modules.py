@@ -18,7 +18,8 @@ def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) 
     modules = _by_code(api_for("owner@resto.example.com"))
     assert modules["restaurant.qr"]["in_profile"] is True
     assert modules["restaurant.qr"]["in_plan"] is False
-    assert modules["pos"]["enabled"] is True and modules["pos"]["status"] == "planned"
+    assert modules["pos"]["enabled"] is True and modules["pos"]["status"] == "available"
+    assert modules["restaurant.menu"]["status"] == "planned"
     assert modules["users"]["core"] is True
     assert "stock" in modules
 

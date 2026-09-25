@@ -16,9 +16,9 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     # Core commercial (V1)
     # Paiements électroniques : intégrations fournisseurs (Mobile Money, TPE, banques). Les
     # encaissements des ventes font partie du module ``sales`` depuis la Phase 2.7 (ADR-0020),
-    # la caisse (``cash_register``) est implémentée depuis la Phase 2.9 (ADR-0022).
+    # la caisse (``cash_register``) depuis la Phase 2.9 (ADR-0022), le point de vente (``pos``)
+    # depuis la Phase 3.0 (ADR-0023).
     _planned("payments", "sales"),
-    _planned("pos", "sales", "payments", "cash_register"),
     _planned("reports"),
     # Restauration (V2)
     _planned("restaurant.menu", "catalog"),

@@ -129,6 +129,9 @@ Référence `CLI-000001` : séquence `customer` de `document_sequences`. Détail
 | `sales` | `tenant_id`, `number` (`VTE-000001`), `site_id`, `customer_id` (nullable : vente comptant anonyme), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, `created_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, id)` (cible des futurs paiements) ; FK composites vers `sites` et `customers` ; `CHECK` montants ≥ 0, validée ⇒ `validated_at`, annulée ⇒ motif ; index `(tenant_id, sale_date)` |
 | `sale_lines` | `tenant_id`, `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price` (copié du catalogue), `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
 
+Phase 3.0 : `channel` (`BACKOFFICE` par défaut \| `POS`, dimension de reporting) et
+`idempotency_key` (`UNIQUE (tenant_id, idempotency_key)`, encaissement en une étape du POS).
+
 Numéro : séquence `sale` de `document_sequences`. Le stock n'est jamais modifié par ces
 tables : la validation passe par `StockService` (mouvements `SALE`, `source_type = 'sale'`).
 Détails : [`SALES.md`](SALES.md).

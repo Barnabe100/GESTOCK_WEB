@@ -15,7 +15,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue, fournisseurs, clients, ventes, encaissements et créances (consultation), caisses (sessions, entrées et sorties), stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue, fournisseurs, clients, ventes, encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -24,6 +24,7 @@ permissions = [
   "sales.payment.view", "sales.payment.create",
   "receivables.receivable.view",
   "cash_register.*",
+  "pos.*",
   "stock.level.view", "stock.threshold.manage",
   "stock.movement.view",
   "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
@@ -36,7 +37,7 @@ permissions = [
 
 [roles.seller]
 name = "Vendeur"
-description = "Vente comptant (création, modification et validation des ventes, encaissement, ouverture et clôture de caisse), consultation des articles, du stock, des alertes, des inventaires, des clients et des créances ; sans annulation."
+description = "Vente comptant (création, modification et validation des ventes, encaissement, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients et des créances ; sans annulation."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
@@ -46,6 +47,7 @@ permissions = [
   "receivables.receivable.view",
   "cash_register.register.view", "cash_register.session.view",
   "cash_register.session.open", "cash_register.session.close",
+  "pos.terminal.use",
   "stock.level.view",
   "alerts.stock.view",
   "inventory_count.inventory.view",

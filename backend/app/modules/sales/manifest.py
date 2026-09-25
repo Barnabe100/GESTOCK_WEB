@@ -5,9 +5,9 @@ R, W = AccessKind.READ, AccessKind.WRITE
 
 MANIFEST = ModuleManifest(
     code="sales",
-    # Stock : sortie via StockService ; clients : client facultatif (API publique, FK) ;
-    # caisse : encaissements espèces (API publique cash_register.api, Phase 2.9).
-    depends_on=("catalog", "stock", "customers", "cash_register"),
+    # Stock : sortie via StockService ; clients : client facultatif (API publique, FK). La
+    # caisse n'est PAS une dépendance : elle implémente le port ``cash_port`` (paiements CASH).
+    depends_on=("catalog", "stock", "customers"),
     permissions=(
         PermissionDef("sales.sale.view", R),
         PermissionDef("sales.sale.create", W),
