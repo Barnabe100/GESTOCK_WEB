@@ -1,0 +1,6 @@
+code = "distribution.distributeur"
+sector = "distribution"
+ux_profile = "distribution.default"
+name = "Distributeur"
+description = "Distribution de marques sur un territoire."
+sort_order = 20

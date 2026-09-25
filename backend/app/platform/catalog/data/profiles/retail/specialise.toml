@@ -1,0 +1,6 @@
+code = "retail.specialise"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Autres commerces spécialisés"
+description = "Boutiques et commerces spécialisés non listés."
+sort_order = 110

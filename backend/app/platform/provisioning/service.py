@@ -84,8 +84,16 @@ class TenantProvisioningService:
         self, cmd: ProvisionTenantCommand, *, actor: str, meta: RequestMeta | None = None
     ) -> ProvisionResult:
         self._validate(cmd)
+        # Profil actif (donc classé : secteur et profil UX, contrainte en base) dans un secteur
+        # actif. Ses modules proposés (déjà résolus depuis le profil UX) sont initialisés
+        # ci-dessous dans les limites du plan : défaut ≠ effectif.
         profile = self.db.get(BusinessProfile, cmd.profile_code)
-        if profile is None or not profile.is_active:
+        if (
+            profile is None
+            or not profile.is_active
+            or profile.sector is None
+            or not profile.sector.is_active
+        ):
             raise BusinessRuleError(f"Profil inconnu : {cmd.profile_code}", code="unknown_profile")
         plan = self.db.get(Plan, cmd.plan_code)
         if plan is None or not plan.is_active:
@@ -141,6 +149,8 @@ class TenantProvisioningService:
             data={
                 "actor": actor,
                 "profile": profile.code,
+                "sector": profile.sector_code,
+                "ux_profile": profile.ux_profile_code,
                 "plan": plan.code,
                 "billing_period": cmd.billing_period.value,
                 "owner_email": owner.email,

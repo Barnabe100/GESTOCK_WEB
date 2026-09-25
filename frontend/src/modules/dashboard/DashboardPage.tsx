@@ -1,139 +1,52 @@
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
-import { Column } from 'primereact/column';
-import { DataTable } from 'primereact/datatable';
 import { Message } from 'primereact/message';
-import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import type { Sale } from '@/modules/sales/api';
-import { formatMoney } from '@/shared/lib/decimal';
+import { profileLabel, sectorLabel } from '@/core/capabilities/profile';
 import { formatDate } from '@/shared/lib/format';
-import { EmptyState } from '@/shared/ui/EmptyState';
-import { ErrorMessage } from '@/shared/ui/ErrorMessage';
-import { MetricCard } from '@/shared/ui/MetricCard';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { DocumentStatusBadge, StatusBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
+import { StatusBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
 
-import { useAlertSummary, useDocumentCount, useRecentSales } from './api';
+import { DASHBOARD_SHORTCUTS, DASHBOARD_WIDGETS, selectDashboardItems } from './widgets';
 
-const TRANSFERS_FEATURE = 'stock.transfers';
-
-interface Shortcut {
-  key: string;
-  label: string;
-  icon: string;
-  to: string;
-  visible: boolean;
-}
-
-/** Valeur d'un indicateur : tiret pendant le chargement ou en cas d'erreur. */
-function metricValue(value: number | undefined): string | number {
-  return value ?? '—';
-}
-
+/**
+ * Tableau de bord configurable : widgets et raccourcis déclarés par le profil UX du tenant
+ * (`caps.ux.dashboard`), affichés selon les permissions et fonctionnalités effectives
+ * (jamais selon le plan, le rôle ou le secteur).
+ */
 export default function DashboardPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { can, capabilities: caps } = useCapabilities();
-  const { currency, locale } = caps.tenant;
+  const { locale } = caps.tenant;
 
-  // Tout est piloté par les permissions et fonctionnalités effectives (jamais par le plan,
-  // le rôle ou le secteur d'activité).
-  const canAlerts = can('alerts.stock.view');
-  const canSales = can('sales.sale.view');
-  const canTransfers = can('stock.transfer.view');
-  const transfersActive = caps.features.includes(TRANSFERS_FEATURE);
+  const widgets = selectDashboardItems(
+    DASHBOARD_WIDGETS,
+    caps.ux?.dashboard.widgets,
+    can,
+    caps.features,
+  );
+  const metrics = widgets.filter((w) => w.kind === 'metric');
+  const panels = widgets.filter((w) => w.kind === 'panel');
+  const shortcuts = selectDashboardItems(
+    DASHBOARD_SHORTCUTS,
+    caps.ux?.dashboard.shortcuts,
+    can,
+    caps.features,
+  );
 
-  const alerts = useAlertSummary(canAlerts);
-  const draftSales = useDocumentCount('/sales', 'status=DRAFT', canSales);
-  const draftTransfers = useDocumentCount('/stock/transfers', 'status=DRAFT', canTransfers);
-  const recentSales = useRecentSales(canSales);
-
-  const shortcuts: Shortcut[] = [
-    {
-      key: 'sale',
-      label: t('sales.new'),
-      icon: 'pi pi-shopping-cart',
-      to: '/sales/new',
-      visible: can('sales.sale.create'),
-    },
-    {
-      key: 'entry',
-      label: t('entries.new'),
-      icon: 'pi pi-download',
-      to: '/stock/entries/new',
-      visible: can('stock.entry.create'),
-    },
-    {
-      key: 'exit',
-      label: t('exits.new'),
-      icon: 'pi pi-upload',
-      to: '/stock/exits/new',
-      visible: can('stock.exit.create'),
-    },
-    {
-      key: 'transfer',
-      label: t('transfers.new'),
-      icon: 'pi pi-arrow-right-arrow-left',
-      to: '/stock/transfers/new',
-      visible: transfersActive && can('stock.transfer.create'),
-    },
-  ].filter((s) => s.visible);
-
-  const metrics: ReactNode[] = [];
-  if (canAlerts) {
-    const out = alerts.data?.out;
-    const low = alerts.data?.low;
-    metrics.push(
-      <MetricCard
-        key="out"
-        icon="pi pi-times-circle"
-        tone={out ? 'danger' : 'success'}
-        value={metricValue(out)}
-        label={t('dashboard.outOfStock')}
-        hint={t('dashboard.seeAlerts')}
-        to="/alerts/stock"
-      />,
-      <MetricCard
-        key="low"
-        icon="pi pi-exclamation-triangle"
-        tone={low ? 'warning' : 'success'}
-        value={metricValue(low)}
-        label={t('dashboard.lowStock')}
-        hint={t('dashboard.seeAlerts')}
-        to="/alerts/stock"
-      />,
-    );
-  }
-  if (canSales) {
-    metrics.push(
-      <MetricCard
-        key="sales"
-        icon="pi pi-file-edit"
-        tone="info"
-        value={metricValue(draftSales.data)}
-        label={t('dashboard.draftSales')}
-        to="/sales"
-      />,
-    );
-  }
-  if (canTransfers) {
-    metrics.push(
-      <MetricCard
-        key="transfers"
-        icon="pi pi-arrow-right-arrow-left"
-        tone="info"
-        value={metricValue(draftTransfers.data)}
-        label={t('dashboard.draftTransfers')}
-        to="/stock/transfers"
-      />,
-    );
-  }
-
-  const offer = caps.modules.filter((m) => !m.core);
+  // Offre : modules utilisables. À venir : modules planifiés du profil (et de l'offre),
+  // annoncés comme tels — information, jamais un accès.
+  const offer = caps.modules.filter((m) => !m.core && m.status === 'available');
+  const upcoming = [
+    ...new Set([
+      ...(caps.ux?.upcoming ?? []),
+      ...caps.modules.filter((m) => !m.core && m.status === 'planned').map((m) => m.code),
+    ]),
+  ];
 
   return (
     <>
@@ -149,75 +62,37 @@ export default function DashboardPage() {
       )}
       {metrics.length > 0 && (
         <section className="sm-metrics" aria-label={t('dashboard.indicators')}>
-          {metrics}
+          {metrics.map(({ id, component: Widget }) => (
+            <Widget key={id} />
+          ))}
         </section>
       )}
       <div className="sm-dashboard-grid">
         <div className="sm-stack">
-          {canSales && (
-            <Card title={t('dashboard.recentSales')}>
-              {recentSales.isError ? (
-                <ErrorMessage
-                  error={recentSales.error}
-                  onRetry={() => void recentSales.refetch()}
-                />
-              ) : (
-                <DataTable
-                  className="sm-table sm-table--compact"
-                  value={recentSales.data?.items ?? []}
-                  loading={recentSales.isPending}
-                  dataKey="id"
-                  rowHover
-                  rowClassName={() => 'sm-row-clickable'}
-                  onRowClick={(e) => void navigate(`/sales/${(e.data as Sale).id}`)}
-                  tableStyle={{ minWidth: '30rem' }}
-                  emptyMessage={<EmptyState icon="pi pi-shopping-cart" title={t('sales.empty')} />}
-                >
-                  <Column field="number" header={t('sales.number')} />
-                  <Column
-                    header={t('sales.date')}
-                    body={(s: Sale) => formatDate(s.sale_date, locale)}
-                  />
-                  <Column
-                    header={t('sales.customer')}
-                    body={(s: Sale) => s.customer_name ?? t('sales.anonymousShort')}
-                  />
-                  <Column
-                    header={t('sales.total')}
-                    headerClassName="sm-num"
-                    bodyClassName="sm-num"
-                    body={(s: Sale) => formatMoney(s.total, currency, locale)}
-                  />
-                  <Column
-                    header={t('sales.status')}
-                    body={(s: Sale) => (
-                      <DocumentStatusBadge labels="sales.statuses" status={s.status} />
-                    )}
-                  />
-                </DataTable>
-              )}
-              <div className="sm-form-actions">
-                <Button
-                  label={t('dashboard.allSales')}
-                  icon="pi pi-arrow-right"
-                  iconPos="right"
-                  text
-                  onClick={() => void navigate('/sales')}
-                />
-              </div>
-            </Card>
-          )}
+          {panels.map(({ id, component: Widget }) => (
+            <Widget key={id} />
+          ))}
           <Card title={t('dashboard.offer')}>
             <ul className="sm-chips" aria-label={t('dashboard.offer')}>
               {offer.map((module) => (
                 <li key={module.code}>
                   <span>{t(`modules.${module.code}`)}</span>
-                  {module.status === 'planned' && (
-                    <StatusBadge tone="neutral" label={t('common.comingSoon')} />
-                  )}
                 </li>
               ))}
             </ul>
+            {upcoming.length > 0 && (
+              <div className="sm-upcoming">
+                <h3 id="dashboard-upcoming">{t('dashboard.upcoming')}</h3>
+                <ul className="sm-chips" aria-labelledby="dashboard-upcoming">
+                  {upcoming.map((code) => (
+                    <li key={code}>
+                      <span>{t(`modules.${code}`)}</span>
+                      <StatusBadge tone="neutral" label={t('common.comingSoon')} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Card>
         </div>
         <div className="sm-stack">
@@ -226,9 +101,9 @@ export default function DashboardPage() {
               <nav className="sm-quick-actions" aria-label={t('dashboard.shortcuts')}>
                 {shortcuts.map((s) => (
                   <Button
-                    key={s.key}
+                    key={s.id}
                     icon={s.icon}
-                    label={s.label}
+                    label={t(s.labelKey)}
                     outlined
                     onClick={() => void navigate(s.to)}
                   />
@@ -254,9 +129,15 @@ export default function DashboardPage() {
                 <dt>{t('dashboard.periodEnd')}</dt>
                 <dd>{formatDate(caps.subscription.current_period_end, locale)}</dd>
               </div>
+              {caps.profile.sector && (
+                <div>
+                  <dt>{t('dashboard.sector')}</dt>
+                  <dd>{sectorLabel(t, caps.profile.sector)}</dd>
+                </div>
+              )}
               <div>
                 <dt>{t('dashboard.profile')}</dt>
-                <dd>{caps.profile.name}</dd>
+                <dd>{profileLabel(t, caps.profile)}</dd>
               </div>
             </dl>
           </Card>

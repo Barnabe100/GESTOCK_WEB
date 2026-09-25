@@ -1,0 +1,6 @@
+code = "automobile.garage"
+sector = "automobile"
+ux_profile = "automobile.default"
+name = "Garage"
+description = "Entretien et réparation de véhicules, vente de pièces."
+sort_order = 20

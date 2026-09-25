@@ -1,7 +1,10 @@
 import type { ComponentType, LazyExoticComponent } from 'react';
 
-/** Rubrique de la barre latérale (ordre : NAV_GROUPS). */
-export type NavGroup = 'home' | 'catalog' | 'stock' | 'sales' | 'cash' | 'admin';
+/**
+ * Rubrique de la barre latérale : identifiant libre (libellé i18n `navGroups.<id>`). L'ordre et
+ * le contenu viennent du profil UX (`caps.ux.navigation`) ; `NAV_GROUPS` sert de repli.
+ */
+export type NavGroup = string;
 
 export interface NavItem {
   /** Identifiant unique de l'entrée. */
@@ -15,7 +18,7 @@ export interface NavItem {
   permission?: string;
   /** Fonctionnalité de plan requise en plus (ex. `stock.transfers`). */
   feature?: string;
-  /** Rubrique d'affichage (défaut : `home`). */
+  /** Rubrique par défaut, si le profil UX ne place pas le module (défaut : `home`). */
   group?: NavGroup;
 }
 
@@ -40,4 +43,12 @@ export interface UiCapabilities {
   navigation: string[];
   /** Fonctionnalités optionnelles du plan (absentes = aucune). */
   features?: string[];
+  /** Rubriques du profil UX (absentes : regroupement par rubrique par défaut des entrées). */
+  ux?: { navigation: { group: string; modules: string[] }[] };
+}
+
+/** Rubrique construite : entrées autorisées, dans l'ordre du profil UX. */
+export interface NavSection {
+  group: NavGroup;
+  items: NavItem[];
 }

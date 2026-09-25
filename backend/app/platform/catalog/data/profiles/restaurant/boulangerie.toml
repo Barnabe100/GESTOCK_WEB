@@ -1,0 +1,6 @@
+code = "restaurant.boulangerie"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Boulangerie / Pâtisserie"
+description = "Fabrication et vente de pains et pâtisseries."
+sort_order = 70

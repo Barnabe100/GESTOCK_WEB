@@ -111,5 +111,7 @@
   "cash_register_has_open_session": "Clôturez d'abord la session ouverte de cette caisse.",
   "cash_insufficient_balance": "Solde de caisse insuffisant pour cette sortie (solde : {{balance}}).",
   "cash_movement_type_invalid": "Seules les entrées et sorties manuelles peuvent être saisies.",
-  "cash_movement_category_invalid": "Nature incompatible avec le sens du mouvement."
+  "cash_movement_category_invalid": "Nature incompatible avec le sens du mouvement.",
+  "unknown_profile": "Profil d'activité inconnu ou inactif.",
+  "profile_change_incompatible": "Ce profil ne propose pas certains modules activés : désactivez-les d'abord (leurs données sont conservées)."
 }

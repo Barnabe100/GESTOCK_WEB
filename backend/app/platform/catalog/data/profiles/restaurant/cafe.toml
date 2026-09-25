@@ -1,0 +1,6 @@
+code = "restaurant.cafe"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Café / Salon de thé"
+description = "Boissons chaudes, pâtisseries, petite restauration."
+sort_order = 40

@@ -1,0 +1,6 @@
+code = "distribution.depot"
+sector = "distribution"
+ux_profile = "distribution.default"
+name = "Dépôt"
+description = "Dépôt de marchandises et vente sur place."
+sort_order = 40

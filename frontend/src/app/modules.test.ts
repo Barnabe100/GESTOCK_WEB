@@ -90,3 +90,39 @@ describe('registre des modules frontend', () => {
     expect(buildNavigation(FRONTEND_MODULES, { ...caps, modules: [] })).toEqual([]);
   });
 });
+
+describe('aucune condition par secteur ou par profil (Phase 3.1)', () => {
+  const sources = import.meta.glob<string>(
+    ['/src/**/*.{ts,tsx}', '!/src/**/*.test.{ts,tsx}', '!/src/shared/testing.tsx'],
+    {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    },
+  );
+  const profileCodes = Object.entries(frCommon.businessProfiles).flatMap(([sector, profiles]) =>
+    Object.keys(profiles).map((name) => `${sector}.${name}`),
+  );
+
+  it('le code applicatif ne compare jamais un code de profil ou de secteur', () => {
+    const offenders = Object.entries(sources)
+      .filter(
+        ([, source]) =>
+          /(profile|sector|business_?[Pp]rofile_?[Cc]ode|businessType)(\.code)?\s*[!=]==?\s*['"]/.test(
+            source,
+          ) || profileCodes.some((code) => source.includes(`'${code}'`)),
+      )
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
+  it('chaque profil du catalogue a un libellé traduit', () => {
+    expect(profileCodes.length).toBeGreaterThanOrEqual(28);
+    expect(Object.keys(frCommon.sectors)).toEqual([
+      'retail',
+      'restaurant',
+      'automobile',
+      'distribution',
+    ]);
+  });
+});

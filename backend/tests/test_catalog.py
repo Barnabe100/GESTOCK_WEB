@@ -15,9 +15,15 @@ from app.platform.registry import get_registry
 def test_catalog_files_are_valid() -> None:
     catalog = load_catalog(get_registry())
     assert set(catalog.plans) == {"STANDARD", "ENTREPRISE"}
-    assert {"alimentation", "quincaillerie", "restaurant"} <= set(catalog.profiles)
+    assert {"retail", "restaurant", "automobile", "distribution"} == set(catalog.sectors)
+    assert {
+        "retail.alimentation",
+        "retail.quincaillerie",
+        "restaurant.restaurant",
+        "restaurant.maquis",
+    } <= set(catalog.profiles)
     # Une quincaillerie ne se voit proposer aucun module restaurant.
-    quincaillerie = catalog.profiles["quincaillerie"]
+    quincaillerie = catalog.profiles["retail.quincaillerie"]
     assert not [m for m in quincaillerie.modules if m.startswith("restaurant.")]
 
 
@@ -29,15 +35,15 @@ def _copy_data(tmp_path: Path) -> Path:
 
 def test_unknown_module_in_profile_is_rejected(tmp_path: Path) -> None:
     data = _copy_data(tmp_path)
-    path = data / "profiles" / "quincaillerie.toml"
-    path.write_text(path.read_text().replace('"catalog",', '"catalog", "teleportation",', 1))
+    path = data / "profiles" / "retail" / "quincaillerie.toml"
+    path.write_text(path.read_text() + 'modules = ["catalog", "teleportation"]\n')
     with pytest.raises(CatalogError, match="teleportation"):
         load_catalog(get_registry(), data)
 
 
 def test_profile_must_offer_dependencies(tmp_path: Path) -> None:
     data = _copy_data(tmp_path)
-    path = data / "profiles" / "quincaillerie.toml"
+    path = data / "ux_profiles" / "retail.default.toml"
     path.write_text(path.read_text().replace('"catalog", ', "", 1))
     with pytest.raises(CatalogError, match="dépend"):
         load_catalog(get_registry(), data)
@@ -78,11 +84,11 @@ def test_sync_deactivates_removed_profiles(
     owner_db: Session, tmp_path: Path, clean_db: Any
 ) -> None:
     data = _copy_data(tmp_path)
-    (data / "profiles" / "commerce_general.toml").unlink()
+    (data / "profiles" / "retail" / "sport.toml").unlink()
     report = sync_catalog(owner_db, load_catalog(get_registry(), data))
-    assert report.deactivated_profiles == ["commerce_general"]
+    assert "retail.sport" in report.deactivated_profiles
     profile = owner_db.scalars(
-        select(BusinessProfile).where(BusinessProfile.code == "commerce_general")
+        select(BusinessProfile).where(BusinessProfile.code == "retail.sport")
     ).one()
     assert profile.is_active is False
     owner_db.rollback()

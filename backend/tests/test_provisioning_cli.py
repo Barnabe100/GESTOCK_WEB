@@ -11,12 +11,12 @@ from app.core.errors import BusinessRuleError, ConflictError
 
 
 def test_provisioning_creates_complete_tenant(provision: Any, owner_db: Session) -> None:
-    result = provision("alpha", profile="restaurant", plan="ENTREPRISE", trial_days=30)
+    result = provision("alpha", profile="restaurant.restaurant", plan="ENTREPRISE", trial_days=30)
     row = owner_db.execute(
         text("SELECT business_profile_code, currency, locale FROM tenants WHERE id = :t"),
         {"t": result.tenant_id},
     ).one()
-    assert tuple(row) == ("restaurant", "XOF", "fr")
+    assert tuple(row) == ("restaurant.restaurant", "XOF", "fr")
     status = owner_db.execute(
         text("SELECT status FROM subscriptions WHERE tenant_id = :t"), {"t": result.tenant_id}
     ).scalar_one()
@@ -74,7 +74,7 @@ def test_cli_create_tenant(
             "--slug",
             "boutique-cli",
             "--profile",
-            "commerce_general",
+            "retail.specialise",
             "--plan",
             "STANDARD",
             "--billing",
@@ -115,7 +115,7 @@ def test_cli_reports_errors(
             "--slug",
             "x-shop",
             "--profile",
-            "alimentation",
+            "retail.alimentation",
             "--plan",
             "STANDARD",
             "--owner-email",
@@ -135,7 +135,8 @@ def test_cli_catalog_commands(
 ) -> None:
     assert main(["catalog", "check"], settings) == 0
     assert main(["catalog", "sync"], settings) == 0
-    assert "Catalogue synchronisé : 4 profils, 2 plans" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Catalogue synchronisé : 4 secteurs, 4 profils UX, 28 profils, 2 plans" in out
 
 
 def test_cli_change_plan_keeps_data_and_audits(

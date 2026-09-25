@@ -1,0 +1,6 @@
+code = "automobile.moto"
+sector = "automobile"
+ux_profile = "automobile.default"
+name = "Moto"
+description = "Vente et réparation de motos et cyclomoteurs."
+sort_order = 30

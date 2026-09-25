@@ -13,7 +13,7 @@ from tests.conftest import PASSWORD, Api, login
 
 @pytest.fixture
 def owner(provision: Any, api_for: Any) -> Api:
-    provision("alpha", profile="quincaillerie", plan="ENTREPRISE")
+    provision("alpha", profile="retail.quincaillerie", plan="ENTREPRISE")
     api: Api = api_for("owner@alpha.example.com")
     return api
 

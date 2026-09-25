@@ -1,0 +1,65 @@
+# Profil UX de la restauration (voir retail.default.toml pour le format).
+#
+# Salle / tables, commandes, cuisine, menu et recettes sont des modules PLANIFIÉS : déclarés
+# ici pour préparer l'interface, ils n'apparaissent ni au menu ni au tableau de bord tant
+# qu'ils ne sont pas implémentés (statut `available`), inclus au plan et activés.
+
+code = "restaurant.default"
+name = "Restauration — présentation standard"
+description = "Service et encaissement au premier plan ; produits et stock en appui."
+
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "cash_register", "pos", "reports", "alerts",
+  "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
+  "restaurant.recipes",
+]
+optional_modules = ["restaurant.qr"]
+
+[[navigation]]
+group = "home"
+modules = ["dashboard"]
+
+[[navigation]]
+group = "restaurant"
+modules = [
+  "restaurant.tables", "restaurant.orders", "restaurant.kitchen", "restaurant.menu",
+  "restaurant.recipes", "restaurant.qr",
+]
+
+[[navigation]]
+group = "sales"
+modules = ["pos", "sales", "customers", "receivables"]
+
+[[navigation]]
+group = "cash"
+modules = ["cash_register"]
+
+[[navigation]]
+group = "stock"
+modules = ["catalog", "stock", "inventory_count", "alerts", "suppliers"]
+
+[[navigation]]
+group = "reports"
+modules = ["reports"]
+
+[[navigation]]
+group = "admin"
+modules = ["organization", "users", "subscription", "audit"]
+
+[dashboard]
+# Les indicateurs de salle et de cuisine s'afficheront avec leurs modules.
+widgets = [
+  "sales:today", "cash_register:open_sessions", "restaurant.tables:occupied",
+  "restaurant.orders:in_progress", "restaurant.kitchen:ready", "receivables:outstanding",
+  "alerts:out_of_stock", "alerts:low_stock", "sales:recent",
+]
+shortcuts = ["pos:open", "sales:new", "stock:entry"]
+
+[terminology.fr.catalog]
+item = "Produit"
+items = "Produits"
+
+[theme]
+accent = "orange"
+density = "comfortable"

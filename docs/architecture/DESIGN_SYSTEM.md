@@ -33,7 +33,8 @@ bibliothèque d'interface, pas d'animation décorative ni de graphique superflu.
 | Espacements | `--sm-space-1` … `--sm-space-6` (0,25 → 2 rem), `--sm-gap` | Échelle unique. |
 | Formes | `--sm-radius-{sm,,lg,pill}`, `--sm-shadow-{sm,,lg}` | |
 | Focus | `--sm-focus-ring` | Anneau visible au clavier (`:focus-visible`). |
-| Densité | `--sm-control-padding-{x,y}` | Contrôles PrimeReact compacts. |
+| Densité | `--sm-control-padding-{x,y}`, `--sm-cell-padding` | Contrôles PrimeReact compacts ; variante `data-density="compact"` du profil UX. |
+| Accent (profil UX) | `--sm-accent`, `--sm-accent-text`, `--sm-accent-soft`, `--sm-accent-strong` | Logo et entrée active ; palette `blue`, `green`, `orange`, `teal`, `indigo` (`data-accent`), texte blanc ≥ 4,5 : 1. |
 | Coquille | `--sm-sidebar-width`, `--sm-topbar-height`, `--sm-content-max` | |
 
 Règle : **aucune valeur visuelle en dur** dans un composant ; ajouter un jeton si besoin.
@@ -114,12 +115,13 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
 ## 8. Navigation et tableau de bord
 
 - Barre latérale générée depuis le registre des modules, filtrée par permissions et
-  fonctionnalités, **groupée** : Tableau de bord · Catalogue · Stock · Ventes et clients ·
-  Administration (`NavItem.group`, `NAV_GROUPS`). Un groupe sans entrée visible disparaît.
-- Tableau de bord : indicateurs (ruptures, sous le seuil, ventes et transferts en brouillon),
-  dernières ventes, actions rapides, abonnement — chaque bloc conditionné par sa permission
-  (et la fonctionnalité `stock.transfers` pour « Nouveau transfert »). Aucune requête n'est
-  lancée sans la permission correspondante.
+  fonctionnalités, **groupée** selon le profil UX du tenant (`caps.ux.navigation` : rubriques
+  et ordre ; repli : `NavItem.group`, `NAV_GROUPS`). Une rubrique sans entrée visible
+  disparaît ; titres textuels liés aux listes (`aria-labelledby`).
+- Tableau de bord : widgets et raccourcis déclarés par le profil UX
+  ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md) §6), chacun conditionné par sa permission
+  (et sa fonctionnalité de plan) ; aucune requête sans la permission correspondante. Modules
+  planifiés du profil : « À venir pour votre activité », badge neutre, sans lien.
 
 ## 9. Responsive
 

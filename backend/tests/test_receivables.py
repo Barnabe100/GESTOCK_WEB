@@ -624,7 +624,7 @@ def test_consultation_writes_no_audit(priced: World) -> None:
 def test_isolation_between_tenants_api(priced: World, provision: Any, api_for: Any) -> None:
     customer = _customer(priced)
     sale = _sale(priced, 50000, customer)
-    provision("beta", profile="quincaillerie", plan="ENTREPRISE")
+    provision("beta", profile="retail.quincaillerie", plan="ENTREPRISE")
     beta: Api = api_for("owner@beta.example.com")
     assert _receivables(beta)["total"] == 0
     assert beta.get("/receivables/summary").json()["total_receivables"] == "0.00"

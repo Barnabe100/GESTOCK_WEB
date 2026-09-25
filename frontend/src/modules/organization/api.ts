@@ -106,3 +106,45 @@ export function useToggleModule() {
     },
   });
 }
+
+/** Catalogue des profils d'activité (global, identique pour tous les tenants). */
+export interface BusinessProfileSummary {
+  code: string;
+  name: string;
+  description: string | null;
+  sector: string | null;
+  ux_profile: string | null;
+  sort_order: number;
+  is_active: boolean;
+  default_modules: string[];
+  optional_modules: string[];
+}
+
+export interface BusinessProfileCatalog {
+  sectors: { code: string; name: string; icon: string | null; sort_order: number }[];
+  profiles: BusinessProfileSummary[];
+}
+
+export function useBusinessProfiles(enabled: boolean) {
+  return useQuery({
+    queryKey: ['organization', 'business-profiles'],
+    queryFn: ({ signal }) => api.get<BusinessProfileCatalog>('/business-profiles', signal),
+    // Catalogue stable : aucune relecture pendant la session.
+    staleTime: Infinity,
+    enabled,
+  });
+}
+
+/** Changement de profil : le serveur contrôle, audite et ne supprime aucune donnée. */
+export function useChangeBusinessProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => api.put<Tenant>('/tenant/business-profile', { code }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: orgKeys.tenant });
+      void qc.invalidateQueries({ queryKey: orgKeys.modules });
+      // Menu, tableau de bord, terminologie et thème sont relus depuis les capacités.
+      void qc.invalidateQueries({ queryKey: ['capabilities'] });
+    },
+  });
+}

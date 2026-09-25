@@ -165,7 +165,7 @@ def provision(app_engine: Engine, owner_engine: Engine, settings: Settings) -> A
     def _provision(
         slug: str,
         *,
-        profile: str = "alimentation",
+        profile: str = "retail.alimentation",
         plan: str = "ENTREPRISE",
         owner_email: str | None = None,
         password: str = PASSWORD,

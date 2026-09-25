@@ -1,0 +1,6 @@
+code = "restaurant.pizzeria"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Pizzeria"
+description = "Pizzas sur place, à emporter ou en livraison."
+sort_order = 60

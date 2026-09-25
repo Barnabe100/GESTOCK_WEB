@@ -1,0 +1,6 @@
+code = "retail.ameublement"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Meubles / Ameublement"
+description = "Mobilier, literie et agencement."
+sort_order = 80

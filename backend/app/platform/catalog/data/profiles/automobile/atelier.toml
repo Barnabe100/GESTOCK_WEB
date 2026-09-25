@@ -1,0 +1,6 @@
+code = "automobile.atelier"
+sector = "automobile"
+ux_profile = "automobile.default"
+name = "Atelier / Maintenance"
+description = "Maintenance mécanique et interventions."
+sort_order = 50

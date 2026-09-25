@@ -9,6 +9,8 @@ from sqlalchemy import select
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.context import DbSession, RegistryDep, TenantContext
 from app.platform.identity.schemas import UserOut
+from app.platform.profiles.registry import BusinessProfileRegistry
+from app.platform.profiles.schemas import SectorInfo, UxOut
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import get_subscription
 from app.platform.tenancy.models import Site, SiteKind
@@ -19,6 +21,16 @@ router = APIRouter(tags=["capabilities"])
 class NamedCode(BaseModel):
     code: str
     name: str
+
+
+class ProfileInfo(BaseModel):
+    """Profil d'activité du tenant, avec son secteur et son profil UX (classification et
+    présentation seulement)."""
+
+    code: str
+    name: str
+    sector: SectorInfo | None
+    ux_profile: str | None
 
 
 class TenantInfo(BaseModel):
@@ -59,7 +71,7 @@ class CapabilitiesOut(BaseModel):
     user: UserOut
     tenant: TenantInfo
     is_owner: bool
-    profile: NamedCode
+    profile: ProfileInfo
     plan: NamedCode
     subscription: SubscriptionInfo
     site: SiteInfo | None
@@ -67,18 +79,24 @@ class CapabilitiesOut(BaseModel):
     modules: list[ModuleInfo]
     permissions: list[str]
     restricted_permissions: list[str]
+    # Ordre plat des modules (compatibilité) ; présentation complète : ``ux``.
     navigation: list[str]
     terminology: dict[str, Any]
+    # Expérience effective : rubriques, widgets et raccourcis des seuls modules effectifs et
+    # implémentés ; modules planifiés du profil listés à part (« à venir »).
+    ux: UxOut
     features: list[str]
     limits: dict[str, LimitInfo]
 
 
 @router.get("/me/capabilities", response_model=CapabilitiesOut)
 def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -> CapabilitiesOut:
-    """Capacités effectives de l'utilisateur dans le tenant (et le site ``X-Site-Id``).
+    """Contexte consolidé de l'utilisateur dans le tenant (et le site ``X-Site-Id``) :
+    tenant, profil (secteur, profil UX), plan, abonnement, sites, modules, permissions,
+    fonctionnalités, limites et expérience (navigation, tableau de bord, terminologie, thème).
 
-    Le frontend construit menus et routes à partir de cette réponse ; le backend applique
-    indépendamment les mêmes règles sur chaque requête."""
+    Le frontend construit menus, routes et tableau de bord à partir de cette seule réponse ;
+    le backend applique indépendamment les mêmes règles sur chaque requête."""
     caps = ctx.capabilities
     profile = db.get(BusinessProfile, caps.profile_code)
     plan = db.get(Plan, caps.plan_code)
@@ -88,6 +106,8 @@ def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -
         select(Site).where(Site.id.in_(caps.accessible_site_ids)).order_by(Site.name)
     ).all()
 
+    experience = BusinessProfileRegistry(db, registry).effective(profile, caps.modules)
+
     def site_info(site: Site) -> SiteInfo:
         return SiteInfo(id=site.id, name=site.name, code=site.code, kind=site.kind)
 
@@ -95,7 +115,12 @@ def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -
         user=UserOut.model_validate(ctx.user),
         tenant=TenantInfo.model_validate(ctx.tenant, from_attributes=True),
         is_owner=ctx.membership.is_owner,
-        profile=NamedCode(code=profile.code, name=profile.name),
+        profile=ProfileInfo(
+            code=profile.code,
+            name=profile.name,
+            sector=SectorInfo.model_validate(profile.sector) if profile.sector else None,
+            ux_profile=profile.ux_profile_code,
+        ),
         plan=NamedCode(code=plan.code, name=plan.name),
         subscription=SubscriptionInfo(
             status=caps.subscription_status.value,
@@ -112,8 +137,9 @@ def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -
         ],
         permissions=sorted(caps.permissions),
         restricted_permissions=sorted(caps.restricted_permissions),
-        navigation=list(caps.navigation),
-        terminology=caps.terminology,
+        navigation=list(experience.module_order),
+        terminology=experience.terminology,
+        ux=UxOut.from_experience(experience),
         features=sorted(caps.features),
         limits={
             code: LimitInfo(limit=usage.limit, used=usage.used)

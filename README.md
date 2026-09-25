@@ -32,6 +32,7 @@ utilisateur.
 - [Créances / comptes clients : définition, limite de crédit](docs/architecture/RECEIVABLES.md)
 - [Caisse : sessions, mouvements, solde, clôture](docs/architecture/CASH_REGISTER.md)
 - [Point de vente (POS)](docs/architecture/POS.md)
+- [Profils d'activité et profils UX](docs/architecture/BUSINESS_PROFILES.md)
 - [Design System (interface)](docs/architecture/DESIGN_SYSTEM.md)
 - [Décisions d'architecture (ADR)](docs/adr/README.md)
 - [Consignes pour les assistants IA](CLAUDE.md)
@@ -71,11 +72,13 @@ docker compose up --build        # base, migrations + catalogue, API, frontend
 
 # Créer une première entreprise (le mot de passe provisoire est demandé)
 docker compose run --rm -it backend stockmanager create-tenant \
-  --name "Maquis Le Baobab" --slug baobab --profile restaurant --plan STANDARD \
+  --name "Maquis Le Baobab" --slug baobab --business-profile restaurant.maquis --plan STANDARD \
   --owner-email gerant@example.com --owner-name "Awa Traoré"
 ```
 
-Profils disponibles : `alimentation`, `commerce_general`, `quincaillerie`, `restaurant`.
+Profils d'activité : `<secteur>.<activité>` — 28 profils en 4 secteurs (`retail.alimentation`,
+`retail.quincaillerie`, `restaurant.maquis`, `automobile.garage`, `distribution.grossiste`…) :
+`stockmanager catalog check` les liste ([`BUSINESS_PROFILES.md`](docs/architecture/BUSINESS_PROFILES.md)).
 Plans : `STANDARD`, `ENTREPRISE` (`--billing monthly|annual`, `--trial-days N`).
 
 - Frontend : http://localhost:5173
@@ -94,7 +97,7 @@ cd backend
 uv sync
 uv run alembic upgrade head
 uv run stockmanager catalog sync
-uv run stockmanager create-tenant --name "…" --slug … --profile alimentation \
+uv run stockmanager create-tenant --name "…" --slug … --business-profile retail.alimentation \
     --plan STANDARD --owner-email … --owner-name "…"
 uv run uvicorn app.main:app --reload --port 8000
 

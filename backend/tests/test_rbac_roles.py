@@ -14,7 +14,7 @@ TEMPORARY = "Provisoire-123"
 
 @pytest.fixture
 def owner(provision: Any, api_for: Any) -> Api:
-    provision("alpha", profile="quincaillerie", plan="ENTREPRISE")
+    provision("alpha", profile="retail.quincaillerie", plan="ENTREPRISE")
     api: Api = api_for("owner@alpha.example.com")
     return api
 
@@ -337,7 +337,7 @@ def test_custom_role_never_bypasses_plan_or_subscription(
 def test_site_scoped_role_only_applies_on_its_site(
     provision: Any, api_for: Any, client: Any
 ) -> None:
-    t = provision("gamma", profile="quincaillerie", plan="ENTREPRISE")
+    t = provision("gamma", profile="retail.quincaillerie", plan="ENTREPRISE")
     owner: Api = api_for("owner@gamma.example.com")
     site_b = owner.post("/sites", json={"name": "Dépôt", "code": "DEP", "kind": "warehouse"})
     site_b_id = site_b.json()["id"]

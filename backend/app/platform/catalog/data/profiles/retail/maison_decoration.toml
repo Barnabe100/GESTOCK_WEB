@@ -1,0 +1,6 @@
+code = "retail.maison_decoration"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Maison / Décoration"
+description = "Articles de maison, décoration, arts de la table."
+sort_order = 90

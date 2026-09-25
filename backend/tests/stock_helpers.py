@@ -21,7 +21,7 @@ class World:
 
 
 def make_world(provision: Any, api_for: Any) -> World:
-    t = provision("alpha", profile="quincaillerie", plan="ENTREPRISE")
+    t = provision("alpha", profile="retail.quincaillerie", plan="ENTREPRISE")
     owner: Api = api_for("owner@alpha.example.com")
     site2 = owner.post("/sites", json={"name": "Dépôt", "code": "DEPOT", "kind": "warehouse"})
     category = owner.post("/catalog/categories", json={"name": "Divers"}).json()

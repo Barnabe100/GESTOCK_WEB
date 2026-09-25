@@ -1,0 +1,6 @@
+code = "restaurant.bar"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Bar"
+description = "Boissons, service au comptoir et en salle."
+sort_order = 50

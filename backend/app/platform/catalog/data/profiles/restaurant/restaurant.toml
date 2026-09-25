@@ -1,0 +1,6 @@
+code = "restaurant.restaurant"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Restaurant"
+description = "Service en salle, commandes, cuisine, menu."
+sort_order = 10

@@ -1,0 +1,6 @@
+code = "restaurant.maquis"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Maquis"
+description = "Restauration et boissons en service rapide ou en salle."
+sort_order = 20

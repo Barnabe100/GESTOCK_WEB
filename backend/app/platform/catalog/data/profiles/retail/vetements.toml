@@ -1,0 +1,6 @@
+code = "retail.vetements"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Vêtements / Prêt-à-porter"
+description = "Boutiques de vêtements et de mode."
+sort_order = 20

@@ -17,6 +17,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 
 import { useTenant, useUpdateTenant } from './api';
+import { BusinessProfileSection } from './BusinessProfileSection';
 
 const schema = z.object({
   name: z.string().trim().min(1).max(150),
@@ -92,6 +93,9 @@ export default function CompanyPage() {
             </div>
           )}
         </form>
+      </Card>
+      <Card className="sm-form-card">
+        <BusinessProfileSection />
       </Card>
     </>
   );

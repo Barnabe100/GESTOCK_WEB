@@ -1,0 +1,66 @@
+# Profil UX : comment l'application se présente à un métier (Phase 3.1, ADR-0024).
+#
+#   - modules / optional_modules : modules proposés par défaut aux profils qui l'utilisent
+#     (activés / désactivés à la création du tenant ; toujours limités par le plan) ;
+#   - [[navigation]]            : rubriques du menu, dans l'ordre ; chaque rubrique liste des
+#     modules (toutes leurs entrées, dans l'ordre du module). Un module absent, non souscrit,
+#     non activé ou seulement planifié n'apparaît pas ; libellé : `navGroups.<group>` ;
+#   - [dashboard]               : widgets et raccourcis (`<module>:<identifiant>`) du tableau
+#     de bord, affichés seulement si le module est effectif et la permission détenue ;
+#   - [terminology.<langue>]    : vocabulaire métier (espace i18n `terminology`) ;
+#   - [theme]                   : accent (palette contrôlée), densité, icône.
+# Ne définit AUCUNE permission : la sécurité reste RBAC + module + plan + abonnement + RLS.
+
+code = "retail.default"
+name = "Commerce — présentation standard"
+description = "Catalogue et stock au premier plan, vente en caisse ou au comptoir."
+
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "cash_register", "pos", "reports", "alerts",
+]
+optional_modules = []
+
+[[navigation]]
+group = "home"
+modules = ["dashboard"]
+
+[[navigation]]
+group = "catalog"
+modules = ["catalog", "suppliers"]
+
+[[navigation]]
+group = "stock"
+modules = ["stock", "inventory_count", "alerts"]
+
+[[navigation]]
+group = "sales"
+modules = ["pos", "sales", "customers", "receivables"]
+
+[[navigation]]
+group = "cash"
+modules = ["cash_register"]
+
+[[navigation]]
+group = "reports"
+modules = ["reports"]
+
+[[navigation]]
+group = "admin"
+modules = ["organization", "users", "subscription", "audit"]
+
+[dashboard]
+widgets = [
+  "alerts:out_of_stock", "alerts:low_stock", "sales:today", "sales:drafts",
+  "stock:draft_transfers", "receivables:outstanding", "cash_register:open_sessions",
+  "sales:recent",
+]
+shortcuts = ["pos:open", "sales:new", "stock:entry", "stock:exit", "stock:transfer"]
+
+[terminology.fr.catalog]
+item = "Article"
+items = "Articles"
+
+[theme]
+accent = "blue"
+density = "comfortable"

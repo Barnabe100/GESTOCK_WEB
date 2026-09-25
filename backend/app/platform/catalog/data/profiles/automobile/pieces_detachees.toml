@@ -1,0 +1,12 @@
+code = "automobile.pieces_detachees"
+sector = "automobile"
+ux_profile = "automobile.default"
+name = "Pièces détachées"
+description = "Vente de pièces automobiles au comptoir et aux garages."
+sort_order = 10
+
+# Vente de pièces sans atelier : modules du commerce seulement.
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "cash_register", "pos", "reports", "alerts",
+]

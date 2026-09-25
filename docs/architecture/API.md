@@ -1,4 +1,4 @@
-# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7), créances (2.8), caisse (2.9) et point de vente (3.0)
+# API REST — socle plateforme (Phase 1), catalogue (2.1), stock (2.2), clients (2.3), ventes (2.4), transferts (2.5) inventaires (2.6), paiements des ventes (2.7), créances (2.8), caisse (2.9) point de vente (3.0) et profils d'activité (3.1)
 
 Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/api/v1/openapi.json`
 
@@ -28,7 +28,10 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | POST | `/auth/logout` | cookie | Révoque la session |
 | GET | `/me` | authentifié | Utilisateur et ses appartenances (tous tenants) |
 | POST | `/me/password` | authentifié | Changement de mot de passe (y compris obligatoire) |
-| GET | `/me/capabilities` | tenant | **Capacités effectives** : profil, plan, abonnement, sites accessibles, modules, permissions, navigation, terminologie |
+| GET | `/me/capabilities` | tenant | **Contexte consolidé** : profil (secteur, profil UX), plan, abonnement, sites accessibles, modules, permissions, fonctionnalités, limites, navigation, terminologie, `ux` (rubriques, widgets, raccourcis, thème, modules « à venir ») |
+| GET | `/business-profiles` | `organization.profile.view` | Catalogue : secteurs actifs et profils actifs (classés), modules proposés |
+| GET | `/business-profiles/{code}` | `organization.profile.view` | Configuration **par défaut** d'un profil (profil UX + surcharges), modules « à venir » ; `404 unknown_profile` |
+| PUT | `/tenant/business-profile` | `organization.profile.manage` | Changer le profil du tenant du jeton : `422 unknown_profile`, `409 profile_change_incompatible` (`modules`) ; données conservées, audité |
 | GET | `/tenant` | `organization.tenant.view` | Informations de l'entreprise |
 | PATCH | `/tenant` | `organization.tenant.update` | Modifier nom / fuseau horaire |
 | GET | `/sites` | `organization.site.view` | Liste des sites |

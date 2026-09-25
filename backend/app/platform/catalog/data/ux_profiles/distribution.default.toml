@@ -1,0 +1,54 @@
+# Profil UX de la distribution (voir retail.default.toml pour le format).
+
+code = "distribution.default"
+name = "Distribution — présentation standard"
+description = "Stock multi-sites et transferts au premier plan, ventes en volume ; affichage dense."
+
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "cash_register", "pos", "reports", "alerts",
+]
+optional_modules = []
+
+[[navigation]]
+group = "home"
+modules = ["dashboard"]
+
+[[navigation]]
+group = "stock"
+modules = ["stock", "inventory_count", "alerts"]
+
+[[navigation]]
+group = "catalog"
+modules = ["catalog", "suppliers"]
+
+[[navigation]]
+group = "sales"
+modules = ["sales", "customers", "receivables", "pos"]
+
+[[navigation]]
+group = "cash"
+modules = ["cash_register"]
+
+[[navigation]]
+group = "reports"
+modules = ["reports"]
+
+[[navigation]]
+group = "admin"
+modules = ["organization", "users", "subscription", "audit"]
+
+[dashboard]
+widgets = [
+  "stock:draft_transfers", "alerts:out_of_stock", "alerts:low_stock", "sales:drafts",
+  "sales:today", "receivables:outstanding", "sales:recent",
+]
+shortcuts = ["stock:transfer", "stock:entry", "stock:exit", "sales:new"]
+
+[terminology.fr.catalog]
+item = "Produit"
+items = "Produits"
+
+[theme]
+accent = "indigo"
+density = "compact"

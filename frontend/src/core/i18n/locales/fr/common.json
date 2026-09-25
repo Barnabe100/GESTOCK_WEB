@@ -95,7 +95,10 @@
     "stock": "Stock",
     "sales": "Ventes et clients",
     "admin": "Administration",
-    "cash": "Caisse"
+    "cash": "Caisse",
+    "restaurant": "Restaurant",
+    "reports": "Rapports",
+    "workshop": "Atelier"
   },
   "modules": {
     "dashboard": "Tableau de bord",
@@ -120,7 +123,9 @@
     "restaurant.kitchen": "Cuisine",
     "restaurant.qr": "Menu QR",
     "restaurant.recipes": "Recettes",
-    "receivables": "Créances"
+    "receivables": "Créances",
+    "automobile.workshop": "Atelier (ordres de réparation)",
+    "automobile.vehicles": "Véhicules des clients"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -134,15 +139,22 @@
     "restricted": "Votre abonnement limite certaines actions. Consultez la page Abonnement.",
     "subtitle": "{{tenant}} · {{site}}",
     "indicators": "Indicateurs",
-    "outOfStock": "Articles en rupture",
-    "lowStock": "Articles sous le seuil",
+    "outOfStock": "$t(terminology:catalog.items) en rupture",
+    "lowStock": "$t(terminology:catalog.items) sous le seuil",
     "seeAlerts": "Voir les alertes",
     "draftSales": "Ventes en brouillon",
     "draftTransfers": "Transferts en brouillon",
     "recentSales": "Dernières ventes",
     "allSales": "Toutes les ventes",
     "shortcuts": "Actions rapides",
-    "periodEnd": "Échéance"
+    "periodEnd": "Échéance",
+    "salesToday": "Ventes validées aujourd'hui",
+    "receivables": "Créances ouvertes",
+    "debtors_one": "{{count}} client débiteur",
+    "debtors_other": "{{count}} clients débiteurs",
+    "openCashSessions": "Caisses ouvertes",
+    "upcoming": "À venir pour votre activité",
+    "sector": "Secteur d'activité"
   },
   "subscriptionStatus": {
     "trial": "Essai",
@@ -195,7 +207,17 @@
     "subtitle": "Informations générales de l'entreprise.",
     "identity": "Identité",
     "fixed": "Paramètres fixés à la création",
-    "fixedHelp": "Ces valeurs ne sont pas modifiables depuis cet écran."
+    "fixedHelp": "Ces valeurs ne sont pas modifiables depuis cet écran.",
+    "profileSection": "Profil d'activité",
+    "profileHelp": "Le profil adapte le menu, le tableau de bord et le vocabulaire à votre métier. Les droits, l'offre et les données ne changent pas.",
+    "sector": "Secteur",
+    "profile": "Profil",
+    "newProfile": "Nouveau profil",
+    "changeProfile": "Changer de profil",
+    "confirmProfileTitle": "Changer de profil d'activité ?",
+    "confirmProfile": "Passer au profil « {{profile}} » ? Le menu, le tableau de bord et le vocabulaire s'adapteront. Aucune donnée n'est supprimée.",
+    "profileChanged": "Profil d'activité modifié",
+    "profileIncompatible": "Ce profil ne propose pas des modules activés : {{modules}}. Désactivez-les d'abord (leurs données sont conservées)."
   },
   "moduleAdmin": {
     "title": "Modules",
@@ -349,7 +371,9 @@
     "cash_register.session.open": "Ouvrir une session de caisse",
     "cash_register.session.close": "Clôturer une session de caisse (comptage)",
     "cash_register.movement.create": "Enregistrer des entrées et sorties de caisse",
-    "pos.terminal.use": "Utiliser le point de vente"
+    "pos.terminal.use": "Utiliser le point de vente",
+    "organization.profile.view": "Consulter les profils d'activité",
+    "organization.profile.manage": "Changer le profil d'activité"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -1083,5 +1107,49 @@
     "unpaidWithoutCustomer": "Vente non soldée sans client : le reste dû restera une créance sans débiteur identifié.",
     "saleRecorded": "Vente {{number}} enregistrée",
     "newSale": "Nouvelle vente"
+  },
+  "sectors": {
+    "retail": "Commerce de détail",
+    "restaurant": "Restauration",
+    "automobile": "Automobile",
+    "distribution": "Distribution"
+  },
+  "businessProfiles": {
+    "retail": {
+      "alimentation": "Alimentation / Supérette",
+      "vetements": "Vêtements / Prêt-à-porter",
+      "chaussures": "Chaussures",
+      "cosmetique": "Cosmétique / Beauté",
+      "electronique": "Électronique / Téléphonie",
+      "librairie": "Librairie / Papeterie",
+      "quincaillerie": "Quincaillerie",
+      "ameublement": "Meubles / Ameublement",
+      "maison_decoration": "Maison / Décoration",
+      "sport": "Sport",
+      "specialise": "Autres commerces spécialisés"
+    },
+    "restaurant": {
+      "restaurant": "Restaurant",
+      "maquis": "Maquis",
+      "fast_food": "Fast-food",
+      "cafe": "Café / Salon de thé",
+      "bar": "Bar",
+      "pizzeria": "Pizzeria",
+      "boulangerie": "Boulangerie / Pâtisserie",
+      "traiteur": "Traiteur"
+    },
+    "automobile": {
+      "pieces_detachees": "Pièces détachées",
+      "garage": "Garage",
+      "moto": "Moto",
+      "pneumatique": "Pneumatique",
+      "atelier": "Atelier / Maintenance"
+    },
+    "distribution": {
+      "grossiste": "Grossiste",
+      "distributeur": "Distributeur",
+      "entrepot": "Entrepôt",
+      "depot": "Dépôt"
+    }
   }
 }

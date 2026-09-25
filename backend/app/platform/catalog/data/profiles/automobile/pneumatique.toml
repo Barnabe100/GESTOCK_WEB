@@ -1,0 +1,10 @@
+code = "automobile.pneumatique"
+sector = "automobile"
+ux_profile = "automobile.default"
+name = "Pneumatique"
+description = "Vente et montage de pneus."
+sort_order = 40
+
+[terminology.fr.catalog]
+item = "Pneu"
+items = "Pneus"

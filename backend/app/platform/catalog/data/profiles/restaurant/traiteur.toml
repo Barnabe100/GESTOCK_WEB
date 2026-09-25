@@ -1,0 +1,6 @@
+code = "restaurant.traiteur"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Traiteur"
+description = "Préparations sur commande et événements."
+sort_order = 80

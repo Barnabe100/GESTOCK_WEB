@@ -1,0 +1,6 @@
+code = "restaurant.fast_food"
+sector = "restaurant"
+ux_profile = "restaurant.default"
+name = "Fast-food"
+description = "Restauration rapide, sur place ou à emporter."
+sort_order = 30

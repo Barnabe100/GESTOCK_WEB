@@ -17,15 +17,18 @@ def _module_codes(caps: dict[str, Any]) -> set[str]:
 
 
 def test_profiles_drive_modules_navigation_and_terminology(provision: Any, api_for: Any) -> None:
-    provision("resto", profile="restaurant")
-    provision("quinc", profile="quincaillerie")
+    provision("resto", profile="restaurant.restaurant")
+    provision("quinc", profile="retail.quincaillerie")
     resto = _caps(api_for("owner@resto.example.com"))
     quinc = _caps(api_for("owner@quinc.example.com"))
 
     assert {"restaurant.tables", "restaurant.kitchen"} <= _module_codes(resto)
     assert not [m for m in _module_codes(quinc) if m.startswith("restaurant.")]
-    assert resto["navigation"][:3] == ["dashboard", "restaurant.tables", "restaurant.orders"]
-    assert "restaurant.tables" not in quinc["navigation"]
+    # Salle, commandes, cuisine : modules planifiés, jamais proposés comme accessibles.
+    assert resto["navigation"][:3] == ["dashboard", "pos", "sales"]
+    for caps in (resto, quinc):
+        assert not [m for m in caps["navigation"] if m.startswith("restaurant.")]
+    assert {"restaurant.tables", "restaurant.kitchen"} <= set(resto["ux"]["upcoming"])
     assert resto["terminology"]["fr"]["catalog"]["item"] == "Produit"
     assert quinc["terminology"]["fr"]["catalog"]["item"] == "Article"
     # Les modules core sont toujours présents.
@@ -36,8 +39,8 @@ def test_profiles_drive_modules_navigation_and_terminology(provision: Any, api_f
 
 
 def test_plan_filters_modules(provision: Any, api_for: Any, owner_db: Session) -> None:
-    std = provision("std", profile="restaurant", plan="STANDARD")
-    ent = provision("ent", profile="restaurant", plan="ENTREPRISE")
+    std = provision("std", profile="restaurant.restaurant", plan="STANDARD")
+    ent = provision("ent", profile="restaurant.restaurant", plan="ENTREPRISE")
     # restaurant.qr est optionnel dans le profil : on l'active dans les deux tenants.
     for t in (std, ent):
         owner_db.execute(
@@ -56,7 +59,7 @@ def test_plan_filters_modules(provision: Any, api_for: Any, owner_db: Session) -
 def test_disabled_dependency_removes_dependents(
     provision: Any, api_for: Any, owner_db: Session
 ) -> None:
-    t = provision("alpha", profile="alimentation")
+    t = provision("alpha", profile="retail.alimentation")
     owner_db.execute(
         text(
             "UPDATE tenant_modules SET enabled = false "

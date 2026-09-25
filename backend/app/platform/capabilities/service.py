@@ -3,12 +3,16 @@
 modules effectifs   = modules core ∪ fermeture_dépendances(profil ∩ plan ∩ activations tenant)
 permissions         = permissions accordées (propriétaire : toutes) ∩ permissions des modules
                       effectifs, puis filtrées par la politique du statut d'abonnement.
+
+Le profil d'activité ne fait que **proposer** des modules : il n'accorde aucune permission et
+ne contourne ni le plan, ni l'abonnement, ni les rôles. La présentation (navigation, tableau
+de bord, terminologie, thème) est résolue à part, pour l'interface seulement
+(``app.platform.profiles.registry``, ADR-0024).
 """
 
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +30,9 @@ from app.platform.tenancy.models import Site, Tenant, TenantModule
 @dataclass(frozen=True)
 class Capabilities:
     profile_code: str
+    # Classification du profil (reporting, présentation) ; jamais une règle d'accès.
+    sector_code: str | None
+    ux_profile_code: str | None
     plan_code: str
     subscription_status: SubscriptionStatus
     allowed_access: frozenset[str]
@@ -33,8 +40,6 @@ class Capabilities:
     permissions: frozenset[str]
     # Accordées mais bloquées par le statut de l'abonnement.
     restricted_permissions: frozenset[str]
-    navigation: tuple[str, ...]
-    terminology: dict[str, Any]
     # Fonctionnalités optionnelles du plan, pour les modules effectifs.
     features: frozenset[str]
     accessible_site_ids: frozenset[uuid.UUID]
@@ -131,21 +136,16 @@ class CapabilityService:
         candidates = self.held_permissions(membership, site_id, modules, features)
         permitted = {c for c in candidates if module_permissions[c].access.value in access}
 
-        navigation = tuple(code for code in profile.navigation if code in modules)
-        navigation += tuple(
-            code for code in sorted(self.registry.core_codes()) if code not in navigation
-        )
-
         return Capabilities(
             profile_code=profile.code,
+            sector_code=profile.sector_code,
+            ux_profile_code=profile.ux_profile_code,
             plan_code=plan.code,
             subscription_status=status,
             allowed_access=access,
             modules=frozenset(modules),
             permissions=frozenset(permitted),
             restricted_permissions=frozenset(candidates - permitted),
-            navigation=navigation,
-            terminology=profile.terminology,
             features=features,
             accessible_site_ids=self.accessible_site_ids(membership),
         )

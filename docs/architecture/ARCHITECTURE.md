@@ -142,7 +142,9 @@ Une ressource d'un autre tenant répond **404** (on ne révèle pas son existenc
 | Concept | Rôle | Exemple |
 |---|---|---|
 | **Module** | Unité fonctionnelle déployable, avec code, dépendances, permissions, navigation | `catalog`, `stock`, `pos`, `restaurant.tables` |
-| **Business Profile** | Configuration déclarative d'un secteur : modules proposés, terminologie, préréglages | `alimentation`, `quincaillerie`, `restaurant` |
+| **Secteur** | Classification (grande catégorie), sans règle métier | `retail`, `restaurant`, `automobile`, `distribution` |
+| **Business Profile** | Activité précise d'un secteur : modules proposés, profil UX, surcharges | `retail.alimentation`, `restaurant.maquis` |
+| **Profil UX** | Présentation d'un métier : navigation, tableau de bord, terminologie, thème | `retail.default`, `restaurant.default` |
 | **Subscription Plan** | Ce que le client a acheté : modules autorisés, limites | `STANDARD`, `ENTREPRISE` (mensuel / annuel) |
 | **Activated Modules** | Modules effectivement activés par le tenant (dans les limites ci-dessus) | un maquis qui n'active pas `restaurant.qr` |
 | **Permission** | Droit d'un utilisateur sur une action | `sales.sale.validate` |
@@ -173,14 +175,22 @@ celles qui sont bloquées sont exposées dans `restricted_permissions`. Il sert 
 ```json
 {
   "tenant": { "id": "…", "name": "Entreprise ABC" },
-  "profile": { "code": "restaurant", "name": "Restaurant / Maquis / Café / Bar / Fast-food" },
+  "profile": { "code": "restaurant.restaurant", "name": "Restaurant",
+               "sector": { "code": "restaurant", "name": "Restauration", "icon": "pi pi-shop" },
+               "ux_profile": "restaurant.default" },
   "plan": { "code": "ENTREPRISE", "billing_period": "monthly", "status": "active" },
   "site": { "id": "…", "name": "Maquis Ouaga 2000" },
   "modules": ["dashboard", "catalog", "stock", "pos", "restaurant.tables", "restaurant.kitchen"],
   "permissions": ["organization.site.view", "users.member.manage", "…"],
   "restricted_permissions": [],
-  "navigation": ["dashboard", "restaurant.tables", "restaurant.orders", "restaurant.kitchen", "pos", "…"],
-  "terminology": { "fr": { "catalog": { "item": "Produit", "items": "Produits" } } }
+  "navigation": ["dashboard", "pos", "sales", "customers", "…"],
+  "terminology": { "fr": { "catalog": { "item": "Produit", "items": "Produits" } } },
+  "ux": {
+    "navigation": [{ "group": "sales", "modules": ["pos", "sales", "customers", "receivables"] }, "…"],
+    "dashboard": { "widgets": ["sales:today", "cash_register:open_sessions", "…"], "shortcuts": ["pos:open"] },
+    "theme": { "accent": "orange", "density": "comfortable" },
+    "upcoming": ["restaurant.tables", "restaurant.orders", "restaurant.kitchen", "…"]
+  }
 }
 ```
 
@@ -219,34 +229,24 @@ Règles de dépendance :
   **service public** (`modules/<m>/service.py` ou interface dédiée) ;
 - pas de dépendance circulaire (contrôle automatisé prévu, ex. `import-linter`).
 
-### 5.4 Business Profiles
+### 5.4 Secteurs, Business Profiles et profils UX — [ADR-0024](../adr/0024-profils-activite-et-profils-ux.md)
 
-Les profils sont des **données** : un fichier TOML par profil dans
-`backend/app/platform/catalog/data/profiles/`, validé contre le registre puis synchronisé en
-base (`stockmanager catalog sync`). Profils livrés : `alimentation`, `commerce_general`,
-`quincaillerie`, `restaurant`.
+Détail : [`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md). Tout est **donnée** du catalogue
+(`backend/app/platform/catalog/data/`), validé contre le registre puis synchronisé en base
+(`stockmanager catalog sync`) :
 
-```toml
-# backend/app/platform/catalog/data/profiles/restaurant.toml (extrait)
-code = "restaurant"
-name = "Restaurant / Maquis / Café / Bar / Fast-food"
-modules = ["catalog", "stock", "sales", "payments", "cash_register", "pos",
-           "restaurant.menu", "restaurant.tables", "restaurant.orders",
-           "restaurant.kitchen", "restaurant.recipes", "..."]
-optional_modules = ["restaurant.qr"]   # proposé, désactivé à la création
-navigation = ["dashboard", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
-              "pos", "restaurant.menu", "..."]
+- `sectors.toml` : 4 secteurs (`retail`, `restaurant`, `automobile`, `distribution`) ;
+- `ux_profiles/<code>.toml` : présentation (rubriques de navigation, widgets et raccourcis du
+  tableau de bord, terminologie, accent et densité) et modules proposés par défaut ;
+- `profiles/<secteur>/<activité>.toml` : 28 profils `<secteur>.<activité>` (secteur, profil
+  UX, surcharges éventuelles).
 
-[terminology.fr.catalog]
-item = "Produit"
-items = "Produits"
-```
+`/me/capabilities` expose l'expérience **effective** (`ux`) : seulement les modules effectifs
+et implémentés ; les modules planifiés du profil sont annoncés « à venir », jamais routés. Le
+profil ne donne aucune permission.
 
-La validation refuse un module inconnu, une dépendance non proposée ou une entrée de
-navigation hors profil.
-
-**Ajouter un secteur** = ajouter un profil (et, si besoin, un nouveau module).
-Aucune modification du Core ni de conditions dispersées.
+**Ajouter une activité** = un fichier de profil + ses traductions ; **un secteur** = une entrée
+de `sectors.toml` + un profil UX. Aucune modification du Core ni de conditions dispersées.
 
 ### 5.5 Plans d'abonnement
 
@@ -521,7 +521,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · 2.5-B ✅ Design System de l'interface ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)) · 2.6 ✅ inventaires ([`INVENTORY.md`](INVENTORY.md), ADR-0019) | V1 |
-| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) | V1 |
+| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 

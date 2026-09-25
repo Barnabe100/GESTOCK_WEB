@@ -65,6 +65,12 @@
   --sm-control-padding-x: 0.75rem;
   --sm-cell-padding: 0.65rem 0.85rem;
 
+  /* Accent du profil UX (défaut : bleu de l'identité) ; variantes sur .sm-shell[data-accent] */
+  --sm-accent: #1d4ed8;
+  --sm-accent-text: #fff;
+  --sm-accent-soft: var(--sm-highlight-bg);
+  --sm-accent-strong: var(--sm-highlight-text);
+
   /* Mise en page */
   --sm-sidebar-width: 16rem;
   --sm-topbar-height: 3.5rem;
@@ -350,8 +356,8 @@ a {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: var(--sm-radius);
-  background: var(--sm-primary);
-  color: var(--sm-primary-text);
+  background: var(--sm-accent);
+  color: var(--sm-accent-text);
   font-weight: 700;
   font-size: var(--sm-text-sm);
 }
@@ -458,13 +464,13 @@ a {
 }
 
 .sm-nav a.active {
-  background: var(--sm-highlight-bg);
-  color: var(--sm-highlight-text);
+  background: var(--sm-accent-soft);
+  color: var(--sm-accent-strong);
   font-weight: var(--sm-weight-bold);
 }
 
 .sm-nav a.active .pi {
-  color: var(--sm-highlight-text);
+  color: var(--sm-accent-strong);
 }
 
 .sm-main {
@@ -1585,4 +1591,61 @@ a {
   .sm-pos-tiles {
     grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
   }
+}
+
+/* --- Profil UX : accent et densité (Phase 3.1, ADR-0024) ------------------------------------
+   Palette contrôlée (texte blanc sur accent ≥ 4,5:1 ; texte foncé sur fond doux ≥ 7:1).
+   Seules l'identité (logo, entrée active) et la densité varient : composants inchangés. */
+
+.sm-shell[data-accent='green'] {
+  --sm-accent: #15803d;
+  --sm-accent-soft: #e8f5ec;
+  --sm-accent-strong: #14532d;
+}
+
+.sm-shell[data-accent='orange'] {
+  --sm-accent: #c2410c;
+  --sm-accent-soft: #fff1e6;
+  --sm-accent-strong: #7c2d12;
+}
+
+.sm-shell[data-accent='teal'] {
+  --sm-accent: #0f766e;
+  --sm-accent-soft: #e6f6f4;
+  --sm-accent-strong: #134e4a;
+}
+
+.sm-shell[data-accent='indigo'] {
+  --sm-accent: #4338ca;
+  --sm-accent-soft: #eef0fe;
+  --sm-accent-strong: #312e81;
+}
+
+.sm-shell[data-density='compact'] {
+  --sm-control-padding-y: 0.4rem;
+  --sm-control-padding-x: 0.6rem;
+  --sm-cell-padding: 0.45rem 0.65rem;
+  --sm-gap: var(--sm-space-3);
+}
+
+.sm-brand-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sm-space-1);
+}
+
+.sm-brand-profile .pi {
+  color: var(--sm-accent);
+  font-size: var(--sm-text-xs);
+}
+
+.sm-upcoming {
+  margin-top: var(--sm-space-4);
+}
+
+.sm-upcoming h3 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-sm);
+  font-weight: var(--sm-weight-bold);
+  color: var(--sm-text-muted);
 }

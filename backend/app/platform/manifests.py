@@ -37,6 +37,9 @@ PLATFORM_MODULES: tuple[ModuleManifest, ...] = (
             PermissionDef("organization.site.manage", A),
             PermissionDef("organization.module.view", R),
             PermissionDef("organization.module.manage", A),
+            # Profil d'activité (Phase 3.1) : consulter le catalogue / changer de profil.
+            PermissionDef("organization.profile.view", R),
+            PermissionDef("organization.profile.manage", A),
         ),
         limits=(LimitDef("max_sites", _count_active_sites),),
     ),

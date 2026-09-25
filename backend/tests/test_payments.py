@@ -483,7 +483,7 @@ def test_audit_trail(priced: World) -> None:
 def test_isolation_between_tenants_api(priced: World, provision: Any, api_for: Any) -> None:
     sale = _sale(priced)
     payment = _paid(priced.owner, sale, "10000")
-    provision("beta", profile="quincaillerie", plan="ENTREPRISE")
+    provision("beta", profile="retail.quincaillerie", plan="ENTREPRISE")
     beta: Api = api_for("owner@beta.example.com")
     for response in (
         beta.get(f"/sales/{sale['id']}/payments"),

@@ -1,0 +1,33 @@
+# Secteurs d'activité : grande catégorie de classification (Phase 3.1, ADR-0024).
+#
+# Un secteur ne porte aucune règle métier : il regroupe des profils d'activité
+# (data/profiles/<secteur>/*.toml) pour le choix du profil, l'affichage et le futur reporting.
+#   - name / description : libellés de repli (l'interface traduit `sectors.<code>`) ;
+#   - sort_order         : ordre d'affichage ;
+#   - icon               : icône PrimeIcons ;
+#   - is_active          : un secteur inactif ne propose plus ses profils (défaut : actif).
+# Source de vérité : ce fichier, synchronisé en base par `stockmanager catalog sync`.
+
+[sectors.retail]
+name = "Commerce de détail"
+description = "Magasins et boutiques : vente au comptoir ou en caisse, stock par site."
+sort_order = 10
+icon = "pi pi-shopping-bag"
+
+[sectors.restaurant]
+name = "Restauration"
+description = "Restaurants, maquis, cafés, bars, boulangeries, traiteurs."
+sort_order = 20
+icon = "pi pi-shop"
+
+[sectors.automobile]
+name = "Automobile"
+description = "Pièces détachées, garages, motos, pneumatiques, ateliers."
+sort_order = 30
+icon = "pi pi-car"
+
+[sectors.distribution]
+name = "Distribution"
+description = "Grossistes, distributeurs, entrepôts et dépôts."
+sort_order = 40
+icon = "pi pi-truck"

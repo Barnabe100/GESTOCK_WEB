@@ -1,0 +1,6 @@
+code = "retail.quincaillerie"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Quincaillerie"
+description = "Quincaillerie, matériaux, pièces : ventes au détail et au mètre/kg, dépôts."
+sort_order = 70

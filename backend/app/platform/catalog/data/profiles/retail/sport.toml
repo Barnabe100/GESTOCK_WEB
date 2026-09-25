@@ -1,0 +1,6 @@
+code = "retail.sport"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Sport"
+description = "Articles et équipements de sport."
+sort_order = 100

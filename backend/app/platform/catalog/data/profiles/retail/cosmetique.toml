@@ -1,0 +1,6 @@
+code = "retail.cosmetique"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Cosmétique / Beauté"
+description = "Parfumeries, cosmétiques, produits de beauté."
+sort_order = 40

@@ -495,7 +495,7 @@ OPERATION_PERMISSIONS = TRANSFER_PERMISSIONS - {"stock.transfer.view"}
 
 
 def test_standard_plan_allows_consultation_only(provision: Any, api_for: Any) -> None:
-    provision("std", profile="quincaillerie", plan="STANDARD")
+    provision("std", profile="retail.quincaillerie", plan="STANDARD")
     owner: Api = api_for("owner@std.example.com")
     caps = owner.get("/me/capabilities").json()
     assert "stock.transfers" not in caps["features"]
@@ -580,7 +580,7 @@ def test_downgrade_to_standard_keeps_history_read_only(
     assert shop.get(url).status_code == 404
 
     # RLS : une autre entreprise ne voit toujours rien.
-    provision("beta", profile="quincaillerie", plan="STANDARD")
+    provision("beta", profile="retail.quincaillerie", plan="STANDARD")
     beta: Api = api_for("owner@beta.example.com")
     assert beta.get("/stock/transfers").json()["total"] == 0
     assert beta.get(url).status_code == 404
@@ -760,7 +760,7 @@ def test_audit_trail(world: World) -> None:
 def test_isolation_between_tenants_api(world: World, provision: Any, api_for: Any) -> None:
     sh.validated_entry(world, [(0, "10", "100")])
     a_transfer = _transfer(world, [(0, "1")])
-    provision("beta", profile="quincaillerie", plan="ENTREPRISE")
+    provision("beta", profile="retail.quincaillerie", plan="ENTREPRISE")
     beta: Api = api_for("owner@beta.example.com")
     assert beta.get("/stock/transfers").json()["total"] == 0
     url = f"/stock/transfers/{a_transfer['id']}"

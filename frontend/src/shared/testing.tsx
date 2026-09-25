@@ -34,6 +34,8 @@ export function renderWithCapabilities(
     route = '/',
     isOwner = false,
     features = [],
+    ux,
+    modules = [],
   }: {
     permissions: string[];
     sites?: typeof SITES;
@@ -42,13 +44,21 @@ export function renderWithCapabilities(
     isOwner?: boolean;
     /** Fonctionnalités du plan (ex. `stock.transfers`). */
     features?: string[];
+    /** Expérience du profil UX (absente : ordre des registres). */
+    ux?: Capabilities['ux'];
+    modules?: Capabilities['modules'];
   },
 ) {
   const caps = {
     user: { id: 'u-me', email: 'me@example.com', full_name: 'Moi' },
     tenant: { id: 't', name: 'T', slug: 't', currency: 'XOF', locale: 'fr', timezone: 'UTC' },
     is_owner: isOwner,
-    profile: { code: 'retail', name: 'Commerce' },
+    profile: {
+      code: 'retail.alimentation',
+      name: 'Alimentation',
+      sector: { code: 'retail', name: 'Commerce de détail', icon: 'pi pi-shopping-bag' },
+      ux_profile: 'retail.default',
+    },
     plan: { code: 'STANDARD', name: 'Standard' },
     subscription: {
       status: 'active',
@@ -59,8 +69,9 @@ export function renderWithCapabilities(
     restricted_permissions: [],
     site: null,
     sites,
-    modules: [],
+    modules,
     features,
+    ux,
   } as unknown as Capabilities;
   const set = new Set(permissions);
   return render(

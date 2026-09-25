@@ -1,0 +1,6 @@
+code = "retail.chaussures"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Chaussures"
+description = "Magasins de chaussures et de maroquinerie."
+sort_order = 30

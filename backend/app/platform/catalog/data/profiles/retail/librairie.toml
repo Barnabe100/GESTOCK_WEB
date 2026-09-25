@@ -1,0 +1,6 @@
+code = "retail.librairie"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Librairie / Papeterie"
+description = "Livres, fournitures scolaires et de bureau."
+sort_order = 60

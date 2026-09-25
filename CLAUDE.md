@@ -10,7 +10,12 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 3 — ventes et encaissement.** Phase 3.0 livrée : point de vente générique
+**Phase actuelle : 3 — ventes et encaissement.** Phase 3.1 livrée : profils d'activité et
+profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
+`<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
+du catalogue ; expérience effective limitée aux modules effectifs et implémentés, modules
+planifiés « à venir » ; le profil n'accorde aucune permission ;
+[`BUSINESS_PROFILES.md`](docs/architecture/BUSINESS_PROFILES.md), ADR-0024). Phase 3.0 livrée : point de vente générique
 (module `pos`, aucune logique propre : `POST /pos/checkout` → `SaleService.checkout`, création +
 validation + paiements en une transaction, idempotent ; canal `POS` ; [`POS.md`](docs/architecture/POS.md),
 ADR-0023). Sous-phases 2 livrées : 2.1 (modules `catalog` et
@@ -78,9 +83,10 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
    sont que des regroupements de permissions ; **jamais** de test sur un nom ou un code de rôle.
    Rôles de base (données : `role_templates.toml`) + rôles personnalisés du tenant ; aucun
    rôle supprimé (désactivation) ; anti-escalade par portée (tenant / site) et par sites.
-4. **Jamais de `if business_type == "…"`** (ni backend, ni frontend). Tester une
+4. **Jamais de `if business_type == "…"`** ni de test d'un code de profil ou de secteur
+   (ni backend, ni frontend ; tests statiques). Tester une
    capacité : `require_module(...)`, `require_permission(...)`, `can(...)` côté client.
-   Profils, plans et politiques d'abonnement sont des **données**
+   Secteurs, profils, profils UX, plans et politiques d'abonnement sont des **données**
    (`backend/app/platform/catalog/data/*.toml`). Toute permission déclare sa nature
    (`read`/`write`/`export`/`admin`/`billing`) : c'est elle que la politique d'abonnement filtre.
 5. **Stock** : uniquement via `StockService` ; mouvements append-only ; stock jamais négatif
@@ -135,8 +141,9 @@ docker compose up -d db          # crée aussi le rôle stockmanager_app
 uv sync
 uv run alembic upgrade head                 # rôle propriétaire (SM_MIGRATION_DATABASE_URL)
 uv run stockmanager catalog sync            # profils, plans, politiques
-uv run stockmanager create-tenant --name "…" --slug … --profile restaurant \
+uv run stockmanager create-tenant --name "…" --slug … --business-profile restaurant.maquis \
     --plan STANDARD --owner-email … --owner-name "…"
+uv run stockmanager change-profile --tenant-id … --profile retail.alimentation  # audité
 uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données conservées, audité
 uv run uvicorn app.main:app --reload --port 8000
 uv run pytest        # PostgreSQL requis : SM_TEST_DATABASE_URL / SM_TEST_MIGRATION_DATABASE_URL

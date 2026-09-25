@@ -80,8 +80,88 @@ export function tenantOf(token: string): string {
  * certaines opérations (changement de plan) n'existent pas dans l'API des entreprises.
  */
 export function adminCli(...args: string[]): string {
+  return adminCliWithInput('', ...args);
+}
+
+/** Idem, avec une entrée standard (ex. mot de passe provisoire `--owner-password-stdin`). */
+export function adminCliWithInput(input: string, ...args: string[]): string {
   const cwd = process.env.E2E_BACKEND_DIR ?? resolve(process.cwd(), '../backend');
-  return execFileSync('uv', ['run', 'stockmanager', ...args], { cwd, encoding: 'utf8' });
+  return execFileSync('uv', ['run', 'stockmanager', ...args], { cwd, encoding: 'utf8', input });
+}
+
+/**
+ * Nouvelle entreprise d'un profil d'activité donné (provisioning TechNova, plan ENTREPRISE),
+ * dont le propriétaire a déjà remplacé son mot de passe provisoire. Un propriétaire existant
+ * reçoit une appartenance de plus (son mot de passe est conservé).
+ */
+export async function provisionTenant(
+  request: APIRequestContext,
+  {
+    name,
+    profile,
+    email,
+    password,
+  }: { name: string; profile: string; email: string; password: string },
+): Promise<void> {
+  const temporary = 'Provisoire-Profil-2026';
+  let output: string;
+  try {
+    output = adminCliWithInput(
+      `${temporary}\n`,
+      'create-tenant',
+      '--name',
+      name,
+      '--slug',
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, ''),
+      '--business-profile',
+      profile,
+      '--plan',
+      'ENTREPRISE',
+      '--owner-email',
+      email,
+      '--owner-name',
+      `Propriétaire ${name}`,
+      '--owner-password-stdin',
+    );
+  } catch (error) {
+    // Déjà créée par un autre projet Playwright (même nom, même exécution).
+    if (String((error as { stderr?: string }).stderr).includes('déjà utilisé')) return;
+    throw error;
+  }
+  if (!output.includes('(créé)')) return;
+  const login = await request.post('/api/v1/auth/login', {
+    data: { email, password: temporary },
+  });
+  expect(login.ok(), await login.text()).toBeTruthy();
+  const { access_token: token } = (await login.json()) as { access_token: string };
+  const changed = await request.post('/api/v1/me/password', {
+    headers: bearer(token),
+    data: { current_password: temporary, new_password: password },
+  });
+  expect(changed.status()).toBe(204);
+}
+
+/** Jeton d'un compte pour une entreprise donnée (par son nom). */
+export async function tokenFor(
+  request: APIRequestContext,
+  email: string,
+  password: string,
+  tenant: string,
+): Promise<string> {
+  const login = async (tenantId?: string) => {
+    const response = await request.post('/api/v1/auth/login', {
+      data: { email, password, ...(tenantId ? { tenant_id: tenantId } : {}) },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return (await response.json()) as Session;
+  };
+  const session = await login();
+  const membership = session.memberships.find((m) => m.tenant_name === tenant);
+  expect(membership, `entreprise « ${tenant} » introuvable`).toBeTruthy();
+  return (await login(membership?.tenant_id)).access_token;
 }
 
 /** Crée un membre avec un rôle de base (tous sites) et fixe son mot de passe définitif. */

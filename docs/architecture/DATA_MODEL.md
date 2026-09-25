@@ -33,7 +33,9 @@ Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` 
 
 | Table | Clé | Contenu |
 |---|---|---|
-| `business_profiles` | `code` | Nom, navigation (JSONB), terminologie par langue (JSONB), réglages |
+| `business_sectors` | `code` | Secteur (Phase 3.1) : nom, description, ordre, icône, `is_active` |
+| `ux_profiles` | `code` | Profil UX : navigation (rubriques), tableau de bord (widgets, raccourcis), terminologie, thème (JSONB) |
+| `business_profiles` | `code` (`<secteur>.<activité>`) | Nom, `sector_code` → `business_sectors`, `ux_profile_code` → `ux_profiles`, ordre ; surcharges : navigation, tableau de bord, terminologie, thème (JSONB) ; réglages. `CHECK` : un profil actif a secteur et profil UX |
 | `business_profile_modules` | `profile_code, module_code` | Modules proposés ; `default_enabled` |
 | `plans` | `code` | Nom, limites (JSONB, codes déclarés par les modules), fonctionnalités (JSONB), `grace_days` |
 | `plan_modules` | `plan_code, module_code` | Modules inclus |

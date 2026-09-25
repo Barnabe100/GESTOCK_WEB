@@ -405,7 +405,7 @@ def test_tenant_isolation(
     priced: World, provision: Any, api_for: Any, app_engine: Engine, owner_db: Session
 ) -> None:
     sale = _done(priced.owner, _body(priced, [(0, "1")]))["sale"]
-    b = provision("beta", profile="quincaillerie", plan="ENTREPRISE")
+    b = provision("beta", profile="retail.quincaillerie", plan="ENTREPRISE")
     beta: Api = api_for("owner@beta.example.com")
     assert beta.get("/pos/articles", params={"site_id": str(b.site_id)}).json() == []
     stolen = _checkout(beta, _body(priced, [(0, "1")], site_id=str(b.site_id)))

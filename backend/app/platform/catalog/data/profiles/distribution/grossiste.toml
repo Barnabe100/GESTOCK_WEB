@@ -1,0 +1,6 @@
+code = "distribution.grossiste"
+sector = "distribution"
+ux_profile = "distribution.default"
+name = "Grossiste"
+description = "Vente en gros aux revendeurs."
+sort_order = 10

@@ -13,15 +13,16 @@ from collections.abc import Sequence
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.core.db import create_db_engine, create_session_factory
-from app.core.errors import AppError
+from app.core.db import create_db_engine, create_session_factory, set_db_context
+from app.core.errors import AppError, NotFoundError
 from app.platform.catalog.loader import CatalogError, load_catalog
 from app.platform.catalog.sync import sync_catalog
+from app.platform.profiles.service import change_business_profile
 from app.platform.provisioning.service import ProvisionTenantCommand, TenantProvisioningService
 from app.platform.registry import get_registry
 from app.platform.subscriptions.models import BillingPeriod
 from app.platform.subscriptions.service import change_plan
-from app.platform.tenancy.models import SiteKind
+from app.platform.tenancy.models import SiteKind, Tenant
 from app.shared.clock import utcnow
 
 
@@ -36,9 +37,14 @@ def cmd_catalog_sync(args: argparse.Namespace, settings: Settings) -> int:
         report = sync_catalog(session, catalog)
         session.commit()
     print(
-        f"Catalogue synchronisé : {report.profiles} profils, {report.plans} plans, "
+        f"Catalogue synchronisé : {report.sectors} secteurs, {report.ux_profiles} profils UX, "
+        f"{report.profiles} profils, {report.plans} plans, "
         f"{report.policies} politiques d'abonnement."
     )
+    for code in report.deactivated_sectors:
+        print(f"  secteur désactivé : {code}")
+    for code in report.deactivated_ux_profiles:
+        print(f"  profil UX désactivé : {code}")
     for code in report.deactivated_profiles:
         print(f"  profil désactivé : {code}")
     for code in report.deactivated_plans:
@@ -49,8 +55,14 @@ def cmd_catalog_sync(args: argparse.Namespace, settings: Settings) -> int:
 def cmd_catalog_check(args: argparse.Namespace, settings: Settings) -> int:
     catalog = load_catalog(get_registry())
     print("Catalogue valide.")
-    print("Profils :", ", ".join(sorted(catalog.profiles)))
-    print("Plans    :", ", ".join(sorted(catalog.plans)))
+    for sector in sorted(catalog.sectors.values(), key=lambda s: s.sort_order):
+        profiles = sorted(
+            (p for p in catalog.profiles.values() if p.sector == sector.code),
+            key=lambda p: p.sort_order,
+        )
+        print(f"{sector.code:<13}: {', '.join(p.code for p in profiles)}")
+    print("Profils UX   :", ", ".join(sorted(catalog.ux_profiles)))
+    print("Plans        :", ", ".join(sorted(catalog.plans)))
     return 0
 
 
@@ -114,6 +126,23 @@ def cmd_change_plan(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_change_profile(args: argparse.Namespace, settings: Settings) -> int:
+    with _session(settings.database_url, settings) as session:
+        set_db_context(session, tenant_id=args.tenant_id, user_id=None)
+        tenant = session.get(Tenant, args.tenant_id)
+        if tenant is None:
+            raise NotFoundError("Tenant introuvable", code="tenant_not_found")
+        change = change_business_profile(session, get_registry(), tenant, args.profile, actor="cli")
+        session.commit()
+    if not change.changed:
+        print(f"Profil inchangé : {change.profile}")
+    else:
+        print(f"Profil modifié : {change.previous} → {change.profile} (données conservées)")
+        if change.enabled_modules:
+            print(f"  modules activés : {', '.join(change.enabled_modules)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stockmanager", description="Administration TechNova")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -130,7 +159,13 @@ def build_parser() -> argparse.ArgumentParser:
     create = sub.add_parser("create-tenant", help="Provisionner une nouvelle entreprise")
     create.add_argument("--name", required=True, help="Raison sociale")
     create.add_argument("--slug", required=True, help="Identifiant court unique (ex. abc-ouaga)")
-    create.add_argument("--profile", required=True, help="Profil d'activité (ex. alimentation)")
+    create.add_argument(
+        "--profile",
+        "--business-profile",
+        dest="profile",
+        required=True,
+        help="Profil d'activité <secteur>.<activité> (ex. retail.alimentation)",
+    )
     create.add_argument("--plan", required=True, choices=["STANDARD", "ENTREPRISE"])
     create.add_argument("--billing", default="monthly", choices=[p.value for p in BillingPeriod])
     create.add_argument("--trial-days", type=int, default=None, help="Démarrer en essai N jours")
@@ -151,6 +186,19 @@ def build_parser() -> argparse.ArgumentParser:
     change.add_argument("--tenant-id", required=True, type=uuid.UUID)
     change.add_argument("--plan", required=True, choices=["STANDARD", "ENTREPRISE"])
     change.set_defaults(func=cmd_change_plan)
+
+    profile = sub.add_parser(
+        "change-profile", help="Changer le profil d'activité d'une entreprise (données conservées)"
+    )
+    profile.add_argument("--tenant-id", required=True, type=uuid.UUID)
+    profile.add_argument(
+        "--profile",
+        "--business-profile",
+        dest="profile",
+        required=True,
+        help="ex. restaurant.maquis",
+    )
+    profile.set_defaults(func=cmd_change_profile)
     return parser
 
 

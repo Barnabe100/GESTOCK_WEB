@@ -27,4 +27,7 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     _planned("restaurant.kitchen", "restaurant.orders"),
     _planned("restaurant.qr", "restaurant.orders"),
     _planned("restaurant.recipes", "catalog", "stock"),
+    # Automobile (profils d'activité de la Phase 3.1 ; hors plans tant qu'ils sont planifiés)
+    _planned("automobile.vehicles", "customers"),
+    _planned("automobile.workshop", "catalog", "stock", "customers", "automobile.vehicles"),
 )

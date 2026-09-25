@@ -1,0 +1,61 @@
+# Profil UX de l'automobile (voir retail.default.toml pour le format).
+#
+# Atelier (ordres de réparation) et véhicules des clients sont des modules PLANIFIÉS.
+
+code = "automobile.default"
+name = "Automobile — présentation standard"
+description = "Pièces et stock au premier plan, vente au comptoir ; atelier à venir."
+
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "cash_register", "pos", "reports", "alerts",
+  "automobile.workshop", "automobile.vehicles",
+]
+optional_modules = []
+
+[[navigation]]
+group = "home"
+modules = ["dashboard"]
+
+[[navigation]]
+group = "workshop"
+modules = ["automobile.workshop", "automobile.vehicles"]
+
+[[navigation]]
+group = "catalog"
+modules = ["catalog", "suppliers"]
+
+[[navigation]]
+group = "stock"
+modules = ["stock", "inventory_count", "alerts"]
+
+[[navigation]]
+group = "sales"
+modules = ["sales", "pos", "customers", "receivables"]
+
+[[navigation]]
+group = "cash"
+modules = ["cash_register"]
+
+[[navigation]]
+group = "reports"
+modules = ["reports"]
+
+[[navigation]]
+group = "admin"
+modules = ["organization", "users", "subscription", "audit"]
+
+[dashboard]
+widgets = [
+  "alerts:out_of_stock", "alerts:low_stock", "automobile.workshop:open_orders", "sales:today",
+  "sales:drafts", "receivables:outstanding", "stock:draft_transfers", "sales:recent",
+]
+shortcuts = ["sales:new", "pos:open", "stock:entry", "stock:transfer"]
+
+[terminology.fr.catalog]
+item = "Pièce"
+items = "Pièces"
+
+[theme]
+accent = "teal"
+density = "comfortable"

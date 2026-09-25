@@ -7,7 +7,8 @@ import { NavLink, useNavigate } from 'react-router';
 
 import { useAuth } from '@/core/auth/AuthContext';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { buildNavigation, groupNavigation } from '@/core/modules/registry';
+import { profileLabel } from '@/core/capabilities/profile';
+import { buildNavigationSections } from '@/core/modules/registry';
 import type { FrontendModule } from '@/core/modules/types';
 
 const ALL_SITES = '__all__';
@@ -21,7 +22,7 @@ function initials(name: string): string {
     .join('');
 }
 
-/** Menu construit à partir des capacités, regroupé par rubrique (ordre : NAV_GROUPS). */
+/** Menu construit à partir des capacités : rubriques et ordre du profil UX du tenant. */
 export function Sidebar({
   modules,
   onNavigate,
@@ -32,7 +33,7 @@ export function Sidebar({
   const { t } = useTranslation();
   const { capabilities } = useCapabilities();
   const sections = useMemo(
-    () => groupNavigation(buildNavigation(modules, capabilities)),
+    () => buildNavigationSections(modules, capabilities),
     [modules, capabilities],
   );
   return (
@@ -82,13 +83,21 @@ export function AppLayout({
     return () => window.removeEventListener('keydown', onKey);
   }, [menuOpen]);
 
+  // Thème du profil UX : accent (palette contrôlée) et densité ; présentation seulement.
+  const theme = capabilities.ux?.theme;
+  const sectorIcon = theme?.icon ?? capabilities.profile.sector?.icon ?? 'pi pi-briefcase';
+
   const siteOptions = [
     { value: ALL_SITES, label: t('layout.allSites') },
     ...capabilities.sites.map((s) => ({ value: s.id, label: s.name })),
   ];
 
   return (
-    <div className={`sm-shell${menuOpen ? ' sm-menu-open' : ''}`}>
+    <div
+      className={`sm-shell${menuOpen ? ' sm-menu-open' : ''}`}
+      data-accent={theme?.accent ?? 'blue'}
+      data-density={theme?.density ?? 'comfortable'}
+    >
       <a className="sm-skip-link" href="#main-content">
         {t('layout.skipToContent')}
       </a>
@@ -100,7 +109,10 @@ export function AppLayout({
           <div className="sm-brand-text">
             <span className="sm-brand-product">{t('app.name')}</span>
             <div className="sm-strong">{capabilities.tenant.name}</div>
-            <small className="sm-muted">{capabilities.profile.name}</small>
+            <small className="sm-muted sm-brand-profile" data-testid="business-profile">
+              <i className={sectorIcon} aria-hidden />
+              <span>{profileLabel(t, capabilities.profile)}</span>
+            </small>
           </div>
         </div>
         <Sidebar modules={modules} onNavigate={() => setMenuOpen(false)} />

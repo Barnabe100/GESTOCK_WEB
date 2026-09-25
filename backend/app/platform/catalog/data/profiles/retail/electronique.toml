@@ -1,0 +1,6 @@
+code = "retail.electronique"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Électronique / Téléphonie"
+description = "Téléphones, informatique, accessoires et électroménager."
+sort_order = 50

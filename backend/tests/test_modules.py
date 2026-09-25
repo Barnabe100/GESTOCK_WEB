@@ -14,7 +14,7 @@ def _by_code(api: Any) -> dict[str, dict[str, Any]]:
 
 
 def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) -> None:
-    provision("resto", profile="restaurant", plan="STANDARD")
+    provision("resto", profile="restaurant.restaurant", plan="STANDARD")
     modules = _by_code(api_for("owner@resto.example.com"))
     assert modules["restaurant.qr"]["in_profile"] is True
     assert modules["restaurant.qr"]["in_plan"] is False
@@ -25,7 +25,7 @@ def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) 
 
 
 def test_toggle_optional_module(provision: Any, api_for: Any) -> None:
-    provision("resto", profile="restaurant", plan="ENTREPRISE")
+    provision("resto", profile="restaurant.restaurant", plan="ENTREPRISE")
     api = api_for("owner@resto.example.com")
     assert _by_code(api)["restaurant.qr"]["enabled"] is False
     assert api.put("/modules/restaurant.qr", json={"enabled": True}).status_code == 204
@@ -35,8 +35,8 @@ def test_toggle_optional_module(provision: Any, api_for: Any) -> None:
 
 
 def test_toggle_rules(provision: Any, api_for: Any) -> None:
-    provision("resto", profile="restaurant", plan="STANDARD")
-    provision("quinc", profile="quincaillerie")
+    provision("resto", profile="restaurant.restaurant", plan="STANDARD")
+    provision("quinc", profile="retail.quincaillerie")
     resto = api_for("owner@resto.example.com")
     assert resto.put("/modules/restaurant.qr", json={"enabled": True}).json()["code"] == (
         "module_not_offered"
@@ -61,7 +61,7 @@ def test_module_routers_are_guarded_by_module_activation(
 ) -> None:
     """Un routeur de module métier n'est joignable que si le module est effectif pour le
     tenant : la garde require_module est ajoutée automatiquement au montage."""
-    t = provision("alpha", profile="alimentation")
+    t = provision("alpha", profile="retail.alimentation")
     api = api_for("owner@alpha.example.com")
     assert api.get("/catalog/categories").status_code == 200
 

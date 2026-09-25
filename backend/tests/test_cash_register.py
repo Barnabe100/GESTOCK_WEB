@@ -869,7 +869,7 @@ def test_audit_trail(priced: World) -> None:
 def test_isolation_between_tenants_api(priced: World, provision: Any, api_for: Any) -> None:
     register = _register(priced)
     session = _opened(priced.owner, register, "1000")
-    provision("beta", profile="quincaillerie", plan="ENTREPRISE")
+    provision("beta", profile="retail.quincaillerie", plan="ENTREPRISE")
     beta: Api = api_for("owner@beta.example.com")
     for path in ("/cash/registers", "/cash/sessions", "/cash/movements"):
         assert beta.get(path).json()["total"] == 0

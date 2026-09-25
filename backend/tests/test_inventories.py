@@ -752,7 +752,7 @@ def test_expired_subscription_allows_read_only(world: World, owner_db: Session) 
 
 
 def test_standard_plan_includes_inventories(provision: Any, api_for: Any) -> None:
-    provision("gamma", profile="quincaillerie", plan="STANDARD")
+    provision("gamma", profile="retail.quincaillerie", plan="STANDARD")
     api: Api = api_for("owner@gamma.example.com")
     caps = api.get("/me/capabilities").json()
     assert "inventory_count" in {m["code"] for m in caps["modules"] if m["status"] == "available"}
@@ -845,7 +845,7 @@ def test_audit_trail(world: World) -> None:
 def test_isolation_between_tenants_api(world: World, provision: Any, api_for: Any) -> None:
     sh.validated_entry(world, [(0, "10", "100")])
     inventory = _ready(world, {0: "9"})
-    provision("beta", profile="quincaillerie", plan="ENTREPRISE")
+    provision("beta", profile="retail.quincaillerie", plan="ENTREPRISE")
     beta: Api = api_for("owner@beta.example.com")
     assert beta.get(BASE).json()["total"] == 0
     url = f"{BASE}/{inventory['id']}"

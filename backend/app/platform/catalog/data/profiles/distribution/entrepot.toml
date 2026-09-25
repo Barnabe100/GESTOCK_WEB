@@ -1,0 +1,12 @@
+code = "distribution.entrepot"
+sector = "distribution"
+ux_profile = "distribution.default"
+name = "Entrepôt"
+description = "Stockage et préparation, transferts entre sites."
+sort_order = 30
+
+# Stockage sans vente au comptoir : ni point de vente ni caisse.
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "reports", "alerts",
+]

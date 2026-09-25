@@ -1,0 +1,38 @@
+code = "retail.alimentation"
+sector = "retail"
+ux_profile = "retail.default"
+name = "Alimentation / Supérette"
+description = "Commerce alimentaire : caisse rapide, stock, fournisseurs, inventaires."
+sort_order = 10
+
+# Caisse rapide : point de vente et caisse avant le catalogue.
+[[navigation]]
+group = "home"
+modules = ["dashboard"]
+
+[[navigation]]
+group = "sales"
+modules = ["pos", "sales", "customers", "receivables"]
+
+[[navigation]]
+group = "cash"
+modules = ["cash_register"]
+
+[[navigation]]
+group = "catalog"
+modules = ["catalog", "suppliers"]
+
+[[navigation]]
+group = "stock"
+modules = ["stock", "inventory_count", "alerts"]
+
+[[navigation]]
+group = "reports"
+modules = ["reports"]
+
+[[navigation]]
+group = "admin"
+modules = ["organization", "users", "subscription", "audit"]
+
+[theme]
+accent = "green"
