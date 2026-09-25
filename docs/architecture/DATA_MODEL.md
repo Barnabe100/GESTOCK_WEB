@@ -39,6 +39,7 @@ Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` 
 | `business_profile_modules` | `profile_code, module_code` | Modules proposés ; `default_enabled` |
 | `plans` | `code` | Nom, limites (JSONB, codes déclarés par les modules), fonctionnalités (JSONB), `grace_days` |
 | `plan_modules` | `plan_code, module_code` | Modules inclus |
+| `geo_countries` | `code` (ISO 3166-1 alpha-2) | Pays : nom, devise, indicatif, fuseau par défaut, `is_active` (inscription) |
 | `subscription_access_policies` | `status` | Natures d'accès autorisées (`text[]`) |
 
 Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockmanager catalog sync`.
@@ -54,7 +55,7 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 
 | Table | Colonnes principales | Contraintes notables |
 |---|---|---|
-| `tenants` | `name`, `slug` (unique), `status`, `business_profile_code`, `currency` (XOF), `locale` (fr), `timezone` | RLS sur `id` |
+| `tenants` | `name` (raison sociale), `slug` (unique), `status`, `business_profile_code`, `country_code` → `geo_countries` (obligatoire pour tout nouveau tenant), `currency` (figée), `locale`, `timezone` ; entreprise : `trade_name`, `email`, `phone`, `address`, `city`, `region`, `website`, `tax_id` (IFU), `trade_register` (RCCM), `description`, `logo_url` (https) | RLS sur `id` |
 | `sites` | `tenant_id`, `name`, `code`, `kind` (store/warehouse/restaurant/other), `address`, `phone`, `is_active` | `UNIQUE(tenant_id, code)`, `UNIQUE(tenant_id, id)` |
 | `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
 | `subscriptions` | `tenant_id` (unique), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at` | |

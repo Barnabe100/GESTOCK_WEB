@@ -342,6 +342,16 @@ a {
   width: min(26rem, 100%);
 }
 
+.sm-auth-card--wide {
+  width: min(52rem, 100%);
+}
+
+.sm-auth-switch {
+  margin: var(--sm-space-4) 0 0;
+  text-align: center;
+  color: var(--sm-text-muted);
+}
+
 .sm-auth-brand,
 .sm-brand {
   display: flex;
@@ -1648,4 +1658,94 @@ a {
   font-size: var(--sm-text-sm);
   font-weight: var(--sm-weight-bold);
   color: var(--sm-text-muted);
+}
+
+/* --- Inscription publique (Phase 3.2) --------------------------------------------------------- */
+
+.sm-signup-steps {
+  margin: var(--sm-space-4) 0 var(--sm-space-5);
+}
+
+.sm-signup-steps .p-steps-title {
+  white-space: normal;
+  text-align: center;
+}
+
+.sm-sector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--sm-space-3);
+  margin-bottom: var(--sm-space-4);
+}
+
+.sm-sector-grid .p-button {
+  justify-content: center;
+  min-height: 3rem;
+}
+
+.sm-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--sm-gap);
+}
+
+.sm-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-3);
+  padding: var(--sm-space-4);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  background: var(--sm-surface);
+}
+
+.sm-plan-card--selected {
+  border-color: var(--sm-accent);
+  box-shadow: 0 0 0 2px var(--sm-accent-soft);
+}
+
+.sm-plan-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+}
+
+.sm-plan-card h3 {
+  margin: 0;
+  font-size: var(--sm-text-lg);
+}
+
+.sm-plan-card p {
+  margin: 0;
+}
+
+.sm-plan-prices,
+.sm-plan-features {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-plan-prices {
+  font-weight: var(--sm-weight-bold);
+}
+
+.sm-plan-features {
+  color: var(--sm-text-muted);
+  font-size: var(--sm-text-sm);
+}
+
+.sm-plan-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-2);
+  margin-top: auto;
+}
+
+@media (max-width: 480px) {
+  .sm-signup-steps .p-steps-title {
+    display: none;
+  }
 }

@@ -196,3 +196,23 @@ describe('tableau de bord selon le profil UX', () => {
     expect(called(fetchMock, '/receivables')).toBe(false);
   });
 });
+
+describe('abonnement en attente d’activation', () => {
+  afterEach(cleanup);
+
+  it('explique ce qui reste possible, sans message générique', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => pageOf([])),
+    );
+    renderWithCapabilities(<DashboardPage />, {
+      permissions: ['organization.site.manage'],
+      subscriptionStatus: 'pending_activation',
+    });
+    expect(screen.getByTestId('pending-activation').textContent).toContain(
+      "en attente d'activation",
+    );
+    expect(screen.getByText("En attente d'activation")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+});

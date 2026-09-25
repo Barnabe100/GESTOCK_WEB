@@ -116,6 +116,7 @@ describe('coquille selon le profil UX', () => {
             tenantId: 't',
             memberships: [],
             login: async () => undefined,
+            signup: async () => undefined,
             logout: async () => undefined,
             selectTenant: async () => undefined,
             changePassword: async () => undefined,

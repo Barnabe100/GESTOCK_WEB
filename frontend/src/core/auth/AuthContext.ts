@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-import type { MembershipSummary, UserInfo } from '@/core/api/types';
+import type { MembershipSummary, SignupInput, UserInfo } from '@/core/api/types';
 
 export type AuthStatus = 'loading' | 'anonymous' | 'authenticated';
 
@@ -13,6 +13,8 @@ export interface AuthState {
 
 export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
+  /** Inscription publique : crée compte + entreprise et ouvre la session sur celle-ci. */
+  signup: (input: SignupInput) => Promise<void>;
   logout: () => Promise<void>;
   selectTenant: (tenantId: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;

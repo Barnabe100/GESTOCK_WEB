@@ -29,6 +29,10 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | GET | `/me` | authentifié | Utilisateur et ses appartenances (tous tenants) |
 | POST | `/me/password` | authentifié | Changement de mot de passe (y compris obligatoire) |
 | GET | `/me/capabilities` | tenant | **Contexte consolidé** : profil (secteur, profil UX), plan, abonnement, sites accessibles, modules, permissions, fonctionnalités, limites, navigation, terminologie, `ux` (rubriques, widgets, raccourcis, thème, modules « à venir ») |
+| GET | `/public/geo/countries` | public | Pays actifs (ISO 3166-1) : devise, indicatif, fuseau par défaut |
+| GET | `/public/business-profiles` | public | Secteurs et profils actifs (inscription) |
+| GET | `/public/plans` | public | Offres publiées par TechNova : périodes ouvertes, prix seulement s'ils sont affichés, offre sur contact, essai, limites ; adresse commerciale |
+| POST | `/public/signup` | public, limité par IP | Compte + entreprise (propriétaire et administrateur), sans site ; abonnement `trial` ou `pending_activation` ; `201` + session. Erreurs : `plan_not_available`, `signup_unavailable` (générique), `unknown_profile`, `unknown_country`, `invalid_currency`, `password_too_short`, `validation_error` (champ inconnu refusé), `429 rate_limited`, `403 signup_closed` |
 | GET | `/business-profiles` | `organization.profile.view` | Catalogue : secteurs actifs et profils actifs (classés), modules proposés |
 | GET | `/business-profiles/{code}` | `organization.profile.view` | Configuration **par défaut** d'un profil (profil UX + surcharges), modules « à venir » ; `404 unknown_profile` |
 | PUT | `/tenant/business-profile` | `organization.profile.manage` | Changer le profil du tenant du jeton : `422 unknown_profile`, `409 profile_change_incompatible` (`modules`) ; données conservées, audité |

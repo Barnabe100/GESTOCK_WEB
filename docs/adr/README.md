@@ -31,5 +31,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0022](0022-caisse.md) | Caisse : caisse de site, sessions, mouvements append-only, encaissements espèces dans la transaction du paiement (révisée 3.0 : la vente ne dépend pas de la caisse) | Proposée |
 | [0023](0023-point-de-vente.md) | Point de vente : interface au-dessus des services métier, encaissement en une étape idempotent | Proposée |
 | [0024](0024-profils-activite-et-profils-ux.md) | Profils d'activité : secteurs, Business Profiles, profils UX (complète 0003 et 0009) | Proposée |
+| [0025](0025-inscription-publique-et-activation.md) | Inscription publique, abonnement `pending_activation`, chaîne plan → abonnement → paiement → licence → activation | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

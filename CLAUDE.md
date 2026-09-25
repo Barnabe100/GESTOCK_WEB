@@ -10,7 +10,13 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 3 — ventes et encaissement.** Phase 3.1 livrée : profils d'activité et
+**Phase actuelle : 3 — ventes et encaissement.** Phase 3.2 en cours (SaaS) : 3.2-A livrée —
+référentiel des pays (`countries.toml` → `geo_countries`), informations d'entreprise, paramètres
+commerciaux des plans (TechNova, jamais écrasés par `catalog sync`), inscription publique
+(`POST /public/signup` : compte + entreprise sans site, propriétaire **et** administrateur,
+abonnement `trial` ou **`pending_activation`** — accès administratif seulement ; chaîne
+plan → abonnement → paiement → licence → activation, ADR-0025 ; limitation de fréquence
+persistante, réponse générique si l'e-mail existe). Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
 du catalogue ; expérience effective limitée aux modules effectifs et implémentés, modules

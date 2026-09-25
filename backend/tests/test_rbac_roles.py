@@ -224,7 +224,10 @@ def test_deactivation_keeps_assignments_and_reactivation_restores(
     assert owner.get(f"/members/{member['id']}").json()["roles"] == [
         {"role_id": role["id"], "site_id": None}
     ]
-    assert owner_db.execute(text("SELECT count(*) FROM membership_roles")).scalar_one() == 1
+    kept = owner_db.execute(
+        text("SELECT count(*) FROM membership_roles WHERE role_id = :r"), {"r": role["id"]}
+    )
+    assert kept.scalar_one() == 1
     assert set(_roles(owner, status="inactive")) == {"Caissier"}
 
     # Rôle inactif : aucune nouvelle attribution…

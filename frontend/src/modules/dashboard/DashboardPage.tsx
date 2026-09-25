@@ -57,8 +57,17 @@ export default function DashboardPage() {
           site: caps.site?.name ?? t('layout.allSites'),
         })}
       />
-      {caps.restricted_permissions.length > 0 && (
-        <Message severity="warn" text={t('dashboard.restricted')} className="sm-block" />
+      {caps.subscription.status === 'pending_activation' ? (
+        <Message
+          severity="warn"
+          text={t('dashboard.pendingActivation')}
+          className="sm-block"
+          data-testid="pending-activation"
+        />
+      ) : (
+        caps.restricted_permissions.length > 0 && (
+          <Message severity="warn" text={t('dashboard.restricted')} className="sm-block" />
+        )
       )}
       {metrics.length > 0 && (
         <section className="sm-metrics" aria-label={t('dashboard.indicators')}>

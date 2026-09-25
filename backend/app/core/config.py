@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     refresh_cookie_name: str = "sm_refresh"
     refresh_cookie_secure: bool = True
 
+    # Inscription publique (Phase 3.2) : ouverte ou non ; limite par adresse IP du client
+    # (derrière un reverse proxy, uvicorn doit recevoir l'IP réelle : --proxy-headers et
+    # --forwarded-allow-ips, sinon toutes les inscriptions partagent l'IP du proxy).
+    signup_enabled: bool = True
+    signup_rate_limit_attempts: int = 5
+    signup_rate_limit_window_minutes: int = 60
+    # Adresse commerciale affichée pour les offres sur contact (« Contacter TechNova »).
+    sales_contact_email: str | None = None
+
     password_min_length: int = 8
     login_max_failures: int = 5
     login_lockout_minutes: int = 15

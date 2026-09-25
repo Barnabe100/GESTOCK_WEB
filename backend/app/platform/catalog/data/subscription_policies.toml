@@ -4,6 +4,10 @@
 #
 # Règle : l'expiration ne supprime jamais de données. La connexion reste toujours possible.
 
+[policies.pending_activation]
+description = "En attente d'activation (inscription sans essai, aucun paiement confirmé ni licence activée) : configuration et administration seulement, aucune opération métier."
+allowed_access = ["read", "admin", "billing"]
+
 [policies.trial]
 description = "Période d'essai : accès complet."
 allowed_access = ["read", "write", "export", "admin", "billing"]

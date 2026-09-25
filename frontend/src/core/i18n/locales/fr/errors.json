@@ -113,5 +113,13 @@
   "cash_movement_type_invalid": "Seules les entrées et sorties manuelles peuvent être saisies.",
   "cash_movement_category_invalid": "Nature incompatible avec le sens du mouvement.",
   "unknown_profile": "Profil d'activité inconnu ou inactif.",
-  "profile_change_incompatible": "Ce profil ne propose pas certains modules activés : désactivez-les d'abord (leurs données sont conservées)."
+  "profile_change_incompatible": "Ce profil ne propose pas certains modules activés : désactivez-les d'abord (leurs données sont conservées).",
+  "signup_unavailable": "Inscription impossible avec ces informations. Si vous avez déjà un compte, connectez-vous.",
+  "signup_closed": "Les inscriptions en ligne sont momentanément fermées.",
+  "plan_not_available": "Cette offre n'est pas disponible en ligne. Choisissez une autre offre ou contactez TechNova.",
+  "rate_limited": "Trop de tentatives. Réessayez plus tard.",
+  "unknown_country": "Pays inconnu ou non disponible.",
+  "invalid_currency": "Devise invalide.",
+  "country_required": "Le pays est obligatoire.",
+  "invalid_timezone": "Fuseau horaire inconnu."
 }

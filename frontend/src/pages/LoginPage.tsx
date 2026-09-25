@@ -6,7 +6,7 @@ import { Password } from 'primereact/password';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { z } from 'zod';
 
 import { useAuth } from '@/core/auth/AuthContext';
@@ -81,6 +81,9 @@ export function LoginPage() {
         </FormField>
         <Button type="submit" label={t('auth.submit')} loading={form.formState.isSubmitting} />
       </form>
+      <p className="sm-auth-switch">
+        {t('auth.noAccount')} <Link to="/signup">{t('auth.createCompany')}</Link>
+      </p>
     </AuthCard>
   );
 }

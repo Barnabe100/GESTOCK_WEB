@@ -43,7 +43,7 @@ echo 'Provisoire-E2E-Retro-1' | uv run stockmanager create-tenant --name "Démo 
 ## Exécution
 
 ```bash
-cd backend && uv run uvicorn app.main:app --port 8000     # terminal 1
+cd backend && SM_SIGNUP_RATE_LIMIT_ATTEMPTS=1000 uv run uvicorn app.main:app --port 8000  # terminal 1
 cd frontend && npm run dev                                  # terminal 2
 cd frontend && npm run e2e                                  # terminal 3
 ```
@@ -86,6 +86,11 @@ la suite peut être rejouée sur la même base.
   espèces sans caisse ouverte refusé ; idempotence (un paiement, un mouvement) ; mobile.
   `payments.e2e.ts` et `receivables.e2e.ts` ouvrent au besoin la caisse « Caisse E2E » de la
   boutique (`ensureCashOpen`).
+- `signup.e2e.ts` (Phase 3.2-A) : publie le plan STANDARD le temps du test (SQL propriétaire,
+  `../backend` ou `E2E_BACKEND_DIR`), inscription complète depuis la page de connexion,
+  abonnement en attente d'activation (site accepté, catégorie refusée), refus générique d'un
+  e-mail existant, mobile. Démarrer le backend avec une limite d'inscriptions suffisante :
+  `SM_SIGNUP_RATE_LIMIT_ATTEMPTS=1000 uv run uvicorn app.main:app --port 8000`.
 - `profiles.e2e.ts` (Phase 3.1) : crée à chaque exécution, par `stockmanager create-tenant`
   (`../backend` ou `E2E_BACKEND_DIR`), une supérette (`retail.alimentation`) et un restaurant
   (`restaurant.restaurant`) du même propriétaire ; menus et thèmes propres, vente au point de

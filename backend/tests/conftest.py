@@ -91,6 +91,9 @@ def settings() -> Settings:
         migration_database_url=OWNER_URL,
         refresh_cookie_secure=False,
         db_pool_size=5,
+        # Inscriptions de test nombreuses depuis la même adresse ; limite testée à part.
+        signup_rate_limit_attempts=10_000,
+        sales_contact_email="ventes@technova.example",
     )
 
 

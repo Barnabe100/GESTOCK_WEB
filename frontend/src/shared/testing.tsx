@@ -36,6 +36,7 @@ export function renderWithCapabilities(
     features = [],
     ux,
     modules = [],
+    subscriptionStatus = 'active',
   }: {
     permissions: string[];
     sites?: typeof SITES;
@@ -47,6 +48,7 @@ export function renderWithCapabilities(
     /** Expérience du profil UX (absente : ordre des registres). */
     ux?: Capabilities['ux'];
     modules?: Capabilities['modules'];
+    subscriptionStatus?: Capabilities['subscription']['status'];
   },
 ) {
   const caps = {
@@ -61,7 +63,7 @@ export function renderWithCapabilities(
     },
     plan: { code: 'STANDARD', name: 'Standard' },
     subscription: {
-      status: 'active',
+      status: subscriptionStatus,
       billing_period: 'monthly',
       current_period_end: '2026-12-31T00:00:00Z',
       allowed_access: ['read', 'write', 'export', 'admin', 'billing'],

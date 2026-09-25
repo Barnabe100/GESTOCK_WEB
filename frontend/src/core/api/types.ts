@@ -22,6 +22,30 @@ export interface SessionResponse {
   memberships: MembershipSummary[];
 }
 
+/** Inscription publique (`POST /public/signup`) : aucun champ d'état ni de paiement. */
+export interface SignupInput {
+  account: { full_name: string; email: string; password: string };
+  company: {
+    name: string;
+    country_code: string;
+    currency?: string;
+    trade_name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    region?: string;
+    website?: string;
+    tax_id?: string;
+    trade_register?: string;
+    description?: string;
+    logo_url?: string;
+  };
+  business_profile: string;
+  plan_code: string;
+  billing_period: 'monthly' | 'annual';
+}
+
 export type SiteKind = 'store' | 'warehouse' | 'restaurant' | 'other';
 
 export interface SiteInfo {
@@ -32,7 +56,7 @@ export interface SiteInfo {
 }
 
 export type SubscriptionStatus =
-  'trial' | 'active' | 'past_due' | 'expired' | 'suspended' | 'cancelled';
+  'pending_activation' | 'trial' | 'active' | 'past_due' | 'expired' | 'suspended' | 'cancelled';
 
 /** Secteur d'activité (classification : commerce, restauration…). */
 export interface SectorInfo {

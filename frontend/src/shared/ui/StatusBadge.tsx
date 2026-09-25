@@ -18,6 +18,7 @@ export const DOCUMENT_TONES: Record<DocumentStatus, Tone> = {
 };
 
 export const SUBSCRIPTION_TONES: Record<SubscriptionStatus, Tone> = {
+  pending_activation: 'warning',
   trial: 'info',
   active: 'success',
   past_due: 'warning',

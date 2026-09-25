@@ -241,3 +241,19 @@ export async function ensureCashOpen(
   expect(session.status(), await session.text()).toBe(201);
   return (await session.json()) as OpenSession;
 }
+
+/**
+ * SQL exécuté avec le rôle propriétaire de la base (préparation de données de test que
+ * seule l'administration TechNova peut modifier, ex. paramètres commerciaux d'un plan).
+ */
+export function ownerSql(sql: string): void {
+  const cwd = process.env.E2E_BACKEND_DIR ?? resolve(process.cwd(), '../backend');
+  const script = [
+    'import sys',
+    'from sqlalchemy import create_engine, text',
+    'from app.core.config import get_settings',
+    'with create_engine(get_settings().migration_database_url).begin() as c:',
+    '    c.execute(text(sys.stdin.read()))',
+  ].join('\n');
+  execFileSync('uv', ['run', 'python', '-c', script], { cwd, encoding: 'utf8', input: sql });
+}

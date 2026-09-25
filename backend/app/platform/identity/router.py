@@ -50,7 +50,7 @@ def _set_refresh_cookie(response: Response, token: str, settings: Settings) -> N
     )
 
 
-def _session_response(
+def session_response(
     issued: IssuedSession, response: Response, settings: Settings
 ) -> SessionResponse:
     if issued.refresh_token is not None:
@@ -76,7 +76,7 @@ def login(
 ) -> SessionResponse:
     issued = AuthService(db, settings, now).login(body.email, body.password, body.tenant_id, meta)
     db.commit()
-    return _session_response(issued, response, settings)
+    return session_response(issued, response, settings)
 
 
 @router.post("/auth/refresh", response_model=SessionResponse)
@@ -93,7 +93,7 @@ def refresh(
         request.cookies.get(settings.refresh_cookie_name), body.tenant_id if body else None, meta
     )
     db.commit()
-    return _session_response(issued, response, settings)
+    return session_response(issued, response, settings)
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)

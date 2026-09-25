@@ -52,7 +52,9 @@
     "selectTenantTitle": "Choisissez une entreprise",
     "selectTenantIntro": "Votre compte donne accès à plusieurs entreprises.",
     "noTenant": "Votre compte n'est rattaché à aucune entreprise active.",
-    "owner": "Propriétaire"
+    "owner": "Propriétaire",
+    "noAccount": "Nouveau sur StockManager ?",
+    "createCompany": "Créer votre entreprise"
   },
   "layout": {
     "site": "Site",
@@ -154,9 +156,11 @@
     "debtors_other": "{{count}} clients débiteurs",
     "openCashSessions": "Caisses ouvertes",
     "upcoming": "À venir pour votre activité",
-    "sector": "Secteur d'activité"
+    "sector": "Secteur d'activité",
+    "pendingActivation": "Votre abonnement est en attente d'activation : vous pouvez configurer votre entreprise, vos sites et votre équipe. Les opérations commerciales (ventes, stock, caisse) seront disponibles dès l'activation par TechNova."
   },
   "subscriptionStatus": {
+    "pending_activation": "En attente d'activation",
     "trial": "Essai",
     "active": "Actif",
     "past_due": "Échéance dépassée",
@@ -1151,5 +1155,82 @@
       "entrepot": "Entrepôt",
       "depot": "Dépôt"
     }
+  },
+  "signup": {
+    "title": "Créer votre entreprise",
+    "intro": "Créez votre compte et votre entreprise en quelques étapes. Vous deviendrez propriétaire et administrateur de l'entreprise.",
+    "stepOf": "Étape {{current}} sur {{total}}",
+    "steps": {
+      "account": "Compte",
+      "company": "Entreprise",
+      "activity": "Activité",
+      "plan": "Offre",
+      "confirm": "Confirmation"
+    },
+    "fullName": "Nom complet",
+    "companyName": "Nom de l'entreprise (raison sociale)",
+    "companyRequired": "Informations obligatoires",
+    "companyRecommended": "Informations recommandées",
+    "companyRecommendedHelp": "Utiles pour vos reçus et documents ; vous pourrez les compléter plus tard.",
+    "companyOptional": "Facultatif",
+    "country": "Pays",
+    "chooseCountry": "Choisissez un pays",
+    "currency": "Devise",
+    "currencyHelp": "Proposée selon le pays ; elle ne pourra plus être modifiée ensuite.",
+    "logoHelp": "Adresse https d'une image (l'envoi de fichiers viendra plus tard).",
+    "fields": {
+      "trade_name": "Nom commercial",
+      "company_email": "Email professionnel",
+      "phone": "Téléphone",
+      "address": "Adresse",
+      "city": "Ville",
+      "region": "Région",
+      "tax_id": "IFU",
+      "trade_register": "RCCM",
+      "logo_url": "Logo (adresse https)",
+      "website": "Site web",
+      "description": "Description"
+    },
+    "activityHelp": "Votre activité adapte le menu, le tableau de bord et le vocabulaire. Elle ne donne aucun droit et peut être changée plus tard.",
+    "sector": "Secteur d'activité",
+    "sectorRequired": "Choisissez un secteur.",
+    "profile": "Activité",
+    "chooseProfile": "Choisissez votre activité",
+    "noPlan": "Aucune offre n'est disponible en ligne pour le moment.",
+    "noPlanContact": "Contactez TechNova : {{email}}",
+    "priceOnRequest": "Tarification sur demande",
+    "pricePer": {
+      "monthly": "{{price}} / mois",
+      "annual": "{{price}} / an"
+    },
+    "trial_one": "Essai gratuit de {{count}} jour",
+    "trial_other": "Essai gratuit de {{count}} jours",
+    "limits": {
+      "max_sites_one": "{{count}} site",
+      "max_sites_other": "{{count}} sites",
+      "max_sitesUnlimited": "Sites illimités",
+      "max_users_one": "{{count}} utilisateur",
+      "max_users_other": "{{count}} utilisateurs",
+      "max_usersUnlimited": "Utilisateurs illimités"
+    },
+    "period": "Période de facturation de l'offre {{plan}}",
+    "choosePlan": "Choisir cette offre",
+    "planSelected": "Offre choisie",
+    "planRequired": "Choisissez une offre.",
+    "contactRequired": "Cette offre est proposée sur contact commercial.",
+    "contactTechnova": "Contacter TechNova",
+    "summary": {
+      "account": "Compte",
+      "company": "Entreprise",
+      "activity": "Activité",
+      "plan": "Offre"
+    },
+    "trialNotice_one": "Votre essai gratuit de {{count}} jour commence dès la création.",
+    "trialNotice_other": "Votre essai gratuit de {{count}} jours commence dès la création.",
+    "pendingNotice": "Votre abonnement sera en attente d'activation : vous pourrez configurer votre entreprise, vos sites et votre équipe ; les opérations commerciales seront disponibles après confirmation de votre paiement et activation par TechNova.",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "submit": "Créer mon entreprise",
+    "haveAccount": "Déjà un compte ?"
   }
 }

@@ -15,6 +15,11 @@ class BillingPeriod(StrEnum):
 
 
 class SubscriptionStatus(StrEnum):
+    # Souscription commerciale enregistrée (inscription publique sans essai) : aucun paiement
+    # confirmé, aucune licence activée. Accès administratif seulement (politique d'accès) ;
+    # passe à ACTIVE par l'activation d'une licence après paiement confirmé par TechNova
+    # (PLAN → SUBSCRIPTION → PAYMENT → LICENCE → ACTIVATION, ADR-0025).
+    PENDING_ACTIVATION = "pending_activation"
     TRIAL = "trial"
     ACTIVE = "active"
     PAST_DUE = "past_due"  # période échue, dans le délai de grâce

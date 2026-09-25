@@ -104,6 +104,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.clear();
         applySession(session);
       },
+      async signup(input) {
+        const session = await apiRequest<SessionResponse>('/public/signup', {
+          method: 'POST',
+          body: input,
+          skipRefresh: true,
+        });
+        queryClient.clear();
+        applySession(session);
+      },
       async logout() {
         try {
           await apiRequest('/auth/logout', { method: 'POST', skipRefresh: true });

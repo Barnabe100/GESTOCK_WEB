@@ -14,6 +14,18 @@ et [l'API](../docs/architecture/API.md).
 Le rôle applicatif est créé par `docker/postgres/init/01-app-role.sh` ; ses droits sont
 accordés par les migrations (`SM_DB_APP_ROLE`).
 
+Inscription publique (Phase 3.2, ADR-0025) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `SM_SIGNUP_ENABLED` | `true` | Ouvre ou ferme `POST /api/v1/public/signup` |
+| `SM_SIGNUP_RATE_LIMIT_ATTEMPTS` | `5` | Inscriptions tentées par adresse IP et par fenêtre |
+| `SM_SIGNUP_RATE_LIMIT_WINDOW_MINUTES` | `60` | Durée de la fenêtre |
+| `SM_SALES_CONTACT_EMAIL` | — | Adresse « Contacter TechNova » des offres sur contact |
+
+Derrière un reverse proxy, lancez uvicorn avec `--proxy-headers --forwarded-allow-ips <IP du
+proxy>` : sinon toutes les inscriptions partagent l'adresse du proxy (et sa limite).
+
 ## Commandes
 
 ```bash
