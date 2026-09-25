@@ -20,23 +20,12 @@ from app.platform.onboarding.definitions import (
 )
 from app.platform.subscriptions.models import SubscriptionStatus
 from app.platform.subscriptions.service import get_subscription
-from app.platform.tenancy.models import Site
-
-# Informations d'entreprise obligatoires (étape ``company``) et recommandées (étape
-# ``configuration`` ; elles ne bloquent jamais l'onboarding). Site web et description sont
-# facultatifs et n'interviennent dans aucune étape.
-REQUIRED_COMPANY_FIELDS = ("name", "country_code", "currency")
-RECOMMENDED_COMPANY_FIELDS = (
-    "trade_name",
-    "logo_url",
-    "phone",
-    "email",
-    "address",
-    "city",
-    "region",
-    "tax_id",
-    "trade_register",
+from app.platform.tenancy.identity import (
+    RECOMMENDED_COMPANY_FIELDS,
+    REQUIRED_COMPANY_FIELDS,
+    filled,
 )
+from app.platform.tenancy.models import Site
 
 # Abonnement enregistré (étape administrative) : une souscription en attente d'activation
 # suffit — l'onboarding ne dit rien de l'activation, qui reste gouvernée par l'abonnement.
@@ -79,10 +68,6 @@ def step(
     )
 
 
-def _filled(value: object) -> bool:
-    return value is not None and (not isinstance(value, str) or bool(value.strip()))
-
-
 def _active_members(env: OnboardingEnv) -> int:
     return (
         env.db.scalar(
@@ -113,8 +98,8 @@ def evaluate_account(env: OnboardingEnv) -> OnboardingStatus:
 
 def evaluate_company(env: OnboardingEnv) -> OnboardingStatus:
     """Nom, pays et devise renseignés (pays NULL : tenant historique, incomplet — G4)."""
-    filled = [_filled(getattr(env.tenant, f)) for f in REQUIRED_COMPANY_FIELDS]
-    return status_from(all(filled), any(filled))
+    present = [filled(getattr(env.tenant, f)) for f in REQUIRED_COMPANY_FIELDS]
+    return status_from(all(present), any(present))
 
 
 def evaluate_business_profile(env: OnboardingEnv) -> OnboardingStatus:
@@ -149,8 +134,8 @@ def users_applicable(env: OnboardingEnv) -> bool:
 def evaluate_configuration(env: OnboardingEnv) -> OnboardingStatus:
     """Informations recommandées de l'entreprise (reçus, factures, documents) : toutes
     renseignées → terminée ; une partie → en cours."""
-    filled = [_filled(getattr(env.tenant, f)) for f in RECOMMENDED_COMPANY_FIELDS]
-    return status_from(all(filled), any(filled))
+    present = [filled(getattr(env.tenant, f)) for f in RECOMMENDED_COMPANY_FIELDS]
+    return status_from(all(present), any(present))
 
 
 # Étapes par module du socle (le registre les collecte depuis les manifestes).

@@ -3,14 +3,56 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/core/api/client';
 import type { SiteKind } from '@/core/api/types';
 
-export interface Tenant {
+/** Informations d'entreprise modifiables : recommandées (reçus, documents) et facultatives. */
+export const RECOMMENDED_COMPANY_FIELDS = [
+  'trade_name',
+  'logo_url',
+  'email',
+  'phone',
+  'address',
+  'city',
+  'region',
+  'tax_id',
+  'trade_register',
+] as const;
+export const OPTIONAL_COMPANY_FIELDS = ['website', 'description'] as const;
+export type CompanyField =
+  (typeof RECOMMENDED_COMPANY_FIELDS)[number] | (typeof OPTIONAL_COMPANY_FIELDS)[number];
+
+/** Entreprise : source unique de son identité (documents, reçus). */
+export interface Tenant extends Record<CompanyField, string | null> {
   id: string;
   name: string;
   slug: string;
   business_profile_code: string;
+  /** Figée à la création. */
   currency: string;
   locale: string;
   timezone: string;
+  /** Nul : entreprise antérieure à la 3.2, pays à renseigner. */
+  country_code: string | null;
+}
+
+/** Champ omis : inchangé ; `null` : effacé (champs recommandés et facultatifs seulement). */
+export type TenantInput = Partial<Record<CompanyField, string | null>> & {
+  name?: string;
+  timezone?: string;
+  country_code?: string;
+};
+
+export interface IdentityLine {
+  kind: 'phone' | 'email' | 'address' | 'locality' | 'tax_id' | 'trade_register';
+  value: string;
+}
+
+/** En-tête documentaire construit par le serveur à partir du tenant (lignes absentes omises). */
+export interface DocumentIdentity {
+  name: string;
+  trade_name: string | null;
+  logo_url: string | null;
+  contact: IdentityLine[];
+  identifiers: IdentityLine[];
+  missing_recommended: string[];
 }
 
 export interface Site {
@@ -46,6 +88,7 @@ export interface TenantModule {
 
 export const orgKeys = {
   tenant: ['organization', 'tenant'] as const,
+  documentIdentity: ['organization', 'tenant', 'document-identity'] as const,
   sites: ['organization', 'sites'] as const,
   modules: ['organization', 'modules'] as const,
 };
@@ -57,13 +100,21 @@ export function useTenant() {
   });
 }
 
+export function useDocumentIdentity() {
+  return useQuery({
+    queryKey: orgKeys.documentIdentity,
+    queryFn: ({ signal }) => api.get<DocumentIdentity>('/tenant/document-identity', signal),
+  });
+}
+
 export function useUpdateTenant() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name?: string; timezone?: string }) =>
-      api.patch<Tenant>('/tenant', input),
+    mutationFn: (input: TenantInput) => api.patch<Tenant>('/tenant', input),
     onSuccess: () => {
+      // Préfixe commun : entreprise et identité documentaire.
       void qc.invalidateQueries({ queryKey: orgKeys.tenant });
+      void qc.invalidateQueries({ queryKey: ['organization', 'onboarding'] });
       void qc.invalidateQueries({ queryKey: ['capabilities'] });
     },
   });

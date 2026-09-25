@@ -2,15 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { api } from '@/core/api/client';
 
-/** Données publiques de l'inscription : servies par le backend, jamais embarquées. */
-
-export interface PublicCountry {
-  code: string;
-  name: string;
-  currency: string;
-  calling_code: number | null;
-  timezone: string;
-}
+/** Données publiques de l'inscription : servies par le backend, jamais embarquées (pays :
+ * `@/core/api/geo`). */
 
 export interface PublicSector {
   code: string;
@@ -46,14 +39,6 @@ export interface PublicPlan {
 }
 
 const STABLE = { staleTime: Infinity, retry: 1 } as const;
-
-export function usePublicCountries() {
-  return useQuery({
-    queryKey: ['public', 'countries'],
-    queryFn: ({ signal }) => api.get<PublicCountry[]>('/public/geo/countries', signal),
-    ...STABLE,
-  });
-}
 
 export function usePublicProfiles() {
   return useQuery({

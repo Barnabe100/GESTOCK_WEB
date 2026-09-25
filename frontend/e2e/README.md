@@ -91,6 +91,11 @@ la suite peut être rejouée sur la même base.
   abonnement en attente d'activation (site accepté, catégorie refusée), refus générique d'un
   e-mail existant, mobile. Démarrer le backend avec une limite d'inscriptions suffisante :
   `SM_SIGNUP_RATE_LIMIT_ATTEMPTS=1000 uv run uvicorn app.main:app --port 8000`.
+- `company.e2e.ts` (Phase 3.2-C) : même préparation que `signup.e2e.ts` ; page Entreprise
+  (étoiles des obligatoires, devise figée), informations recommandées → étape `configuration`
+  en cours puis terminée (et définitive), aperçu documentaire sans « N/A », entreprise créée
+  par la CLI puis rendue « historique » (pays NULL, SQL propriétaire) : pays renseigné depuis
+  la page → étape `company` terminée ; mobile.
 - `onboarding.e2e.ts` (Phase 3.2-B) : même préparation que `signup.e2e.ts` ; inscription par
   l'API, bandeau du tableau de bord, page d'installation, création du premier site depuis son
   étape (`?create=1`), installation terminée mais abonnement toujours en attente d'activation

@@ -13,6 +13,7 @@ import { Link, Navigate, useNavigate } from 'react-router';
 import { z } from 'zod';
 
 import { ApiError } from '@/core/api/client';
+import { usePublicCountries } from '@/core/api/geo';
 import type { SignupInput } from '@/core/api/types';
 import { useAuth } from '@/core/auth/AuthContext';
 import { profileLabel, sectorLabel } from '@/core/capabilities/profile';
@@ -23,7 +24,7 @@ import { FormSection } from '@/shared/ui/FormSection';
 import { LoadingState } from '@/shared/ui/LoadingState';
 
 import { AuthCard } from './AuthCard';
-import { usePublicCountries, usePublicPlans, usePublicProfiles } from './signup/api';
+import { usePublicPlans, usePublicProfiles } from './signup/api';
 import { PeriodPrice, PlanChoice } from './signup/PlanChoice';
 
 const optional = (max: number) => z.string().trim().max(max);

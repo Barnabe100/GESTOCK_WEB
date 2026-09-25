@@ -22,7 +22,12 @@ persistante, réponse générique si l'e-mail existe) ; 3.2-B livrée — onboar
 réelles, statuts `NOT_STARTED` → `IN_PROGRESS` → `COMPLETED` (définitif, jamais régressé ; pas
 de `SKIPPED`), terminé = étapes obligatoires faites, **onboarding ≠ activation** de
 l'abonnement, champs obligatoires marqués `*` en cohérence avec le backend
-([ADR-0026](docs/adr/0026-onboarding-persistant.md)). Phase 3.1 livrée : profils d'activité et
+([ADR-0026](docs/adr/0026-onboarding-persistant.md)) ; 3.2-C livrée — page Entreprise complète
+(obligatoires `*` : nom, pays du référentiel, devise figée affichée ; recommandées ;
+facultatives), **le `Tenant` est la source unique de l'identité de l'entreprise** : en-tête
+documentaire construit par le serveur (`GET /tenant/document-identity`, jamais « N/A »), aperçu
+sur la page, futur moteur de reçus ([ADR-0027](docs/adr/0027-identite-documentaire.md)).
+Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
 du catalogue ; expérience effective limitée aux modules effectifs et implémentés, modules

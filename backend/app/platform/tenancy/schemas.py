@@ -14,6 +14,7 @@ from app.shared.text import (
     OptionalEmail,
     OptionalHttpsUrl,
     OptionalPhone,
+    Required150,
 )
 
 
@@ -46,7 +47,8 @@ class TenantUpdate(BaseModel):
     """Champ omis : inchangé. Champ facultatif à ``null`` (ou vide) : effacé. Le nom, le fuseau
     horaire et le pays ne s'effacent jamais ; la devise est fixée à la création."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=150)
+    # Nom : espaces retirés ; vide ou blanc refusé (obligatoire), ``null`` ignoré.
+    name: Required150 | None = None
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     country_code: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
     trade_name: Optional150 = None
@@ -94,7 +96,8 @@ class SiteCreate(BaseModel):
 
 
 class SiteUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=150)
+    # Nom : espaces retirés ; vide ou blanc refusé (obligatoire), ``null`` ignoré.
+    name: Required150 | None = None
     code: str | None = Field(default=None, min_length=1, max_length=30, pattern=r"^[A-Za-z0-9_-]+$")
     kind: SiteKind | None = None
     address: str | None = Field(default=None, max_length=255)
@@ -115,3 +118,24 @@ class ModuleOut(BaseModel):
 
 class ModuleToggle(BaseModel):
     enabled: bool
+
+
+class IdentityLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: str  # phone, email, address, locality, tax_id, trade_register
+    value: str
+
+
+class DocumentIdentityOut(BaseModel):
+    """En-tête documentaire (aperçu aujourd'hui, reçus et documents demain) : construit
+    depuis le tenant, lignes absentes omises (jamais « N/A »)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    trade_name: str | None
+    logo_url: str | None
+    contact: list[IdentityLineOut]
+    identifiers: list[IdentityLineOut]
+    missing_recommended: list[str]

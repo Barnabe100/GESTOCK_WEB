@@ -87,7 +87,11 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
   schéma Zod. Un champ à valeur par défaut côté serveur (ex. type de site) ou obligatoire
   seulement sous condition (ex. mot de passe provisoire d'un compte inconnu) n'est pas marqué.
 - Formulaires à plusieurs niveaux d'importance : sections `FormSection` « Informations
-  obligatoires » / « Informations recommandées » / « Facultatif ».
+  obligatoires » / « Informations recommandées » / « Facultatif » (sous-titres thématiques
+  `sm-form-subsection` à l'intérieur, ex. page Entreprise) ; rappel « Les champs marqués d'un *
+  sont obligatoires. ». Un champ fixé (ex. devise) est affiché désactivé avec son explication.
+- Messages d'erreur : toujours traduits (`validation.*`) ; jamais le texte brut du validateur
+  client ; un refus du serveur (`validation_error`) est rattaché à son champ.
 - Grille `sm-form-grid` (2 colonnes, 1 sur mobile) ; sections `FormSection`.
 - Actions en bas à droite (`sm-dialog-actions` / `sm-form-actions`) : secondaire (texte) puis
   **principale en dernier** ; action destructive `severity="danger"`.

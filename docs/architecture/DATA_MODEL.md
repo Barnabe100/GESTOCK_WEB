@@ -55,7 +55,7 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 
 | Table | Colonnes principales | Contraintes notables |
 |---|---|---|
-| `tenants` | `name` (raison sociale), `slug` (unique), `status`, `business_profile_code`, `country_code` → `geo_countries` (obligatoire pour tout nouveau tenant), `currency` (figée), `locale`, `timezone` ; entreprise : `trade_name`, `email`, `phone`, `address`, `city`, `region`, `website`, `tax_id` (IFU), `trade_register` (RCCM), `description`, `logo_url` (https) | RLS sur `id` |
+| `tenants` | `name` (raison sociale), `slug` (unique), `status`, `business_profile_code`, `country_code` → `geo_countries` (obligatoire pour tout nouveau tenant), `currency` (figée), `locale`, `timezone` ; entreprise : `trade_name`, `email`, `phone`, `address`, `city`, `region`, `website`, `tax_id` (IFU), `trade_register` (RCCM), `description`, `logo_url` (https) — **source unique de l'identité de l'entreprise** pour les documents (projection `DocumentIdentity`, ADR-0027 ; aucune copie) | RLS sur `id` |
 | `sites` | `tenant_id`, `name`, `code`, `kind` (store/warehouse/restaurant/other), `address`, `phone`, `is_active` | `UNIQUE(tenant_id, code)`, `UNIQUE(tenant_id, id)` |
 | `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
 | `subscriptions` | `tenant_id` (unique), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at` | |

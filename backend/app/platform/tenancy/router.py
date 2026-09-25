@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, status
 
 from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
 from app.platform.onboarding.service import OnboardingService
+from app.platform.tenancy.identity import document_identity
 from app.platform.tenancy.schemas import (
+    DocumentIdentityOut,
     ModuleOut,
     ModuleToggle,
     SiteCreate,
@@ -32,6 +34,12 @@ ModuleManage = Annotated[RequestContext, Depends(require_permission("organizatio
 @router.get("/tenant", response_model=TenantOut)
 def get_tenant(ctx: TenantView) -> TenantOut:
     return TenantOut.model_validate(ctx.tenant)
+
+
+@router.get("/tenant/document-identity", response_model=DocumentIdentityOut)
+def get_document_identity(ctx: TenantView, db: DbSession) -> DocumentIdentityOut:
+    """Identité de l'entreprise telle qu'elle figurera sur les documents (source : tenant)."""
+    return DocumentIdentityOut.model_validate(document_identity(db, ctx.tenant))
 
 
 @router.patch("/tenant", response_model=TenantOut)

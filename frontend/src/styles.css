@@ -1848,3 +1848,70 @@ a {
 .sm-onboarding-banner-text p {
   margin: 0;
 }
+
+/* --- Entreprise et identité documentaire (Phase 3.2-C) ----------------------------------- */
+.sm-company-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--sm-gap);
+  align-items: start;
+  margin-bottom: var(--sm-gap);
+}
+.sm-company-layout > .sm-form-card {
+  margin: 0;
+}
+@media (max-width: 1024px) {
+  .sm-company-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.sm-form-subsection + .sm-form-subsection {
+  margin-top: var(--sm-space-4);
+}
+.sm-form-subsection h3 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-sm);
+  font-weight: var(--sm-weight-bold);
+  color: var(--sm-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.sm-identity-preview {
+  display: grid;
+  justify-items: center;
+  gap: var(--sm-space-1);
+  padding: var(--sm-space-4);
+  text-align: center;
+  border: 1px dashed var(--sm-border);
+  border-radius: var(--sm-radius);
+  background: var(--sm-surface-subtle);
+  overflow-wrap: anywhere;
+}
+.sm-identity-preview img {
+  max-width: 8rem;
+  max-height: 4rem;
+  object-fit: contain;
+}
+.sm-identity-name {
+  font-size: var(--sm-text-lg);
+  text-transform: uppercase;
+}
+.sm-identity-block {
+  display: grid;
+  gap: 0.125rem;
+  margin-top: var(--sm-space-2);
+  font-size: var(--sm-text-sm);
+}
+.sm-plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sm-space-2);
+}
+.sm-plain-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sm-space-2);
+}
