@@ -526,11 +526,28 @@ travail : une requête = une transaction, commit à la fin si succès).
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · 2.5-B ✅ Design System de l'interface ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)) · 2.6 ✅ inventaires ([`INVENTORY.md`](INVENTORY.md), ADR-0019) | V1 |
-| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) | V1 |
+| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 🔄 SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E rôles, permissions et délégation RBAC · 3.2-F administration TechNova des plans · 3.2-G E2E, sécurité, documentation | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 
 Chaque phase démarre **après validation explicite**.
+
+### Fonctionnalités futures identifiées (hors Phase 3.2, à ne pas oublier)
+
+Explicitement reportées par TechNova ; chacune fera l'objet d'une phase ou sous-phase dédiée,
+validée avant d'être commencée.
+
+| Domaine | Fonctionnalité | Origine |
+|---|---|---|
+| Identité et compte (« Mon profil ») | Espace de l'utilisateur sur son **identité globale** : changement du nom, changement de l'e-mail (avec vérification), changement du mot de passe hors première connexion | ADR-0029 (jamais depuis l'administration d'un tenant) |
+| Identité et compte | **Récupération de compte** (mot de passe oublié) par un mécanisme sécurisé, sans administrateur de tenant | ADR-0029 |
+| Identité et compte | **Invitations par e-mail** (`PENDING` / `ACCEPTED` / `EXPIRED` / `CANCELLED`), en remplacement du mot de passe provisoire ; vérification de l'e-mail à l'inscription (supprime le risque résiduel d'énumération) | 3.2 (arbitrage 4), ADR-0025 |
+| Identité et compte | **SSO** et **MFA** | 3.2-D |
+| Tenant | **Transfert de propriété** du tenant (procédure spécifique, propriétaire protégé en attendant) | 3.2-D, ADR-0029 |
+| Abonnement | Chaîne **paiement → licence `.lic` → activation** (paiements `PENDING`/`CONFIRMED`/`REJECTED` confirmés par TechNova, licence signée par la clé privée TechNova et vérifiée par clé publique) | ADR-0025 |
+| Documents | **Moteur documentaire** (reçus, factures, PDF) consommant la projection `DocumentIdentity` ; identité figée à l'émission si nécessaire | ADR-0027 |
+| Documents | **Stockage de fichiers** (logo téléversé alimentant `logo_url`) | ADR-0027 |
+| Temps | Fuseau horaire **par site** (tenant réparti sur plusieurs fuseaux) | ADR-0028 |
 
 ## 14. Questions ouvertes (à trancher par TechNova)
 
