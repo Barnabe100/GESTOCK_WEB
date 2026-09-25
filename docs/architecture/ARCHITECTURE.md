@@ -429,7 +429,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 |---|---|
 | Identifiants | UUIDv7 générés par l'application (`app/shared/ids.py`) : triables, générables hors ligne (POS offline, mobile) |
 | Colonnes communes | `id`, `tenant_id`, (`site_id`), `created_at`, `updated_at`, `created_by` |
-| Dates | `timestamptz` stockées en UTC ; fuseau d'affichage par tenant |
+| Dates | `timestamptz` stockées en UTC ; dates métier, périodes et affichage dans le fuseau du tenant (obligatoire, ADR-0028) |
 | Montants | `NUMERIC(18,2)` ↔ `Decimal` ; devise par tenant (XOF par défaut, hypothèse à confirmer) |
 | Quantités | `NUMERIC(18,3)` ↔ `Decimal` (vente au kg, au litre, au mètre) |
 | API | montants/quantités sérialisés en **chaînes** |

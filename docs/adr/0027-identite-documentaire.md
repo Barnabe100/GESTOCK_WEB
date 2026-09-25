@@ -21,7 +21,7 @@ le futur moteur de rendu.
    réutilisée par l'onboarding) :
    - obligatoires (« * », refusées vides par l'API) : nom, pays, devise — la devise, fixée à la
      création, est affichée sans être modifiable ; le fuseau horaire, déjà non effaçable, porte
-     aussi « * » ;
+     aussi « * » (règle formalisée par l'ADR-0028) ;
    - recommandées (jamais bloquantes) : nom commercial, logo, téléphone, e-mail, adresse,
      ville, région, IFU, RCCM ;
    - facultatives : site web, description (hors en-tête).

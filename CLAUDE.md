@@ -123,7 +123,13 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
 13. **Textes d'interface** : toujours via i18n (`t(...)`), jamais en dur ; vocabulaire métier
     via l'espace de noms `terminology` (surchargé par le profil). Erreurs API = `code` stable
     traduit dans `errors.json`.
-14. **Interface** : suivre le Design System ([`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md)) —
+14. **Temps** ([ADR-0028](docs/adr/0028-fuseau-horaire-du-tenant.md)) : horodatages stockés en
+    UTC (`timestamptz`) ; toute date **métier** (« aujourd'hui », jour d'une vente, d'une
+    opération, d'une session de caisse, filtres par jour, périodes jour / semaine / mois des
+    rapports, dates des documents) se calcule dans le fuseau du tenant (`tenants.timezone`,
+    IANA, **obligatoire**) — jamais celui du serveur ni du navigateur (`tenant_today`, bornes
+    locales converties en UTC).
+15. **Interface** : suivre le Design System ([`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md)) —
     jetons `--sm-*`, composants de `shared/ui` (`PageHeader`, `FilterBar`, `ServerTable`,
     `RowActions`, `StatusBadge`, `EmptyState`, `confirmAction`…), statuts à tonalité unique,
     confirmation des actions sensibles. PrimeReact uniquement.
