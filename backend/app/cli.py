@@ -12,6 +12,12 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
+from app.console.admins import (
+    create_platform_admin,
+    list_platform_admins,
+    revoke_platform_admin,
+)
+from app.console.audit import CLI_ACTOR, PlatformActor
 from app.core.config import Settings, get_settings
 from app.core.db import create_db_engine, create_session_factory, set_db_context
 from app.core.errors import AppError, NotFoundError
@@ -146,6 +152,66 @@ def cmd_change_profile(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _cli_actor() -> PlatformActor:
+    """Auteur des actions de la CLI dans le journal de la plateforme (compte système)."""
+    try:
+        return PlatformActor(user_id=None, label=f"cli:{getpass.getuser()}")
+    except (KeyError, OSError):
+        return CLI_ACTOR
+
+
+def _read_admin_password(args: argparse.Namespace) -> str:
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = os.environ.get("SM_PLATFORM_ADMIN_PASSWORD", "")
+        if not password and sys.stdin.isatty():
+            password = getpass.getpass("Mot de passe de l'administrateur TechNova : ")
+            if getpass.getpass("Confirmation : ") != password:
+                raise AppError("Les mots de passe ne correspondent pas", code="password_mismatch")
+    if not password:
+        raise AppError("Mot de passe requis", code="password_required")
+    return password
+
+
+def cmd_platform_admin_create(args: argparse.Namespace, settings: Settings) -> int:
+    password = _read_admin_password(args)
+    # Rôle propriétaire : ni le rôle applicatif ni celui de la console ne peuvent attribuer
+    # le statut d'administrateur TechNova.
+    with _session(settings.migration_database_url, settings) as session:
+        user = create_platform_admin(
+            session,
+            settings,
+            email=args.email,
+            full_name=args.name,
+            password=password,
+            actor=_cli_actor(),
+        )
+        session.commit()
+    print(f"Administrateur TechNova créé : {user.email} ({user.id})")
+    print("  Accès : console TechNova uniquement (aucune entreprise).")
+    return 0
+
+
+def cmd_platform_admin_revoke(args: argparse.Namespace, settings: Settings) -> int:
+    with _session(settings.migration_database_url, settings) as session:
+        user = revoke_platform_admin(session, email=args.email, actor=_cli_actor())
+        session.commit()
+    print(f"Statut retiré et compte fermé : {user.email} (sessions de la console révoquées)")
+    return 0
+
+
+def cmd_platform_admin_list(args: argparse.Namespace, settings: Settings) -> int:
+    with _session(settings.migration_database_url, settings) as session:
+        admins = list_platform_admins(session)
+    if not admins:
+        print("Aucun administrateur TechNova.")
+    for user in admins:
+        state = "actif" if user.is_active else "inactif"
+        print(f"{user.email:<40} {user.full_name} ({state})")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stockmanager", description="Administration TechNova")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -205,6 +271,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="ex. restaurant.maquis",
     )
     profile.set_defaults(func=cmd_change_profile)
+
+    admins = sub.add_parser(
+        "platform-admin", help="Administrateurs TechNova (console d'administration)"
+    )
+    admins_sub = admins.add_subparsers(dest="platform_admin_command", required=True)
+    create_admin = admins_sub.add_parser("create", help="Créer un compte TechNova dédié")
+    create_admin.add_argument("--email", required=True)
+    create_admin.add_argument("--name", required=True, help="Nom complet")
+    create_admin.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Lire le mot de passe sur l'entrée standard (sinon SM_PLATFORM_ADMIN_PASSWORD "
+        "ou saisie masquée)",
+    )
+    create_admin.set_defaults(func=cmd_platform_admin_create)
+    revoke_admin = admins_sub.add_parser(
+        "revoke", help="Retirer le statut (compte fermé, sessions révoquées)"
+    )
+    revoke_admin.add_argument("--email", required=True)
+    revoke_admin.set_defaults(func=cmd_platform_admin_revoke)
+    admins_sub.add_parser("list", help="Lister les administrateurs TechNova").set_defaults(
+        func=cmd_platform_admin_list
+    )
     return parser
 
 

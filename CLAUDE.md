@@ -33,7 +33,17 @@ rôle / site ; ajout avec réutilisation du compte global ; accès = rôles, sit
 réinitialisation de mot de passe par le tenant ; audit dédié ; ADR-0029) ; 3.2-E livrée — délégation RBAC **calculée par le serveur**
 (`GET /permissions/delegable`, `GET /roles/delegable`, `RoleOut.delegable`) sur la même base
 que l'anti-escalade : permissions qu'un rôle accorde réellement dans l'offre du tenant ;
-permissions hors offre conservées, jamais ajoutées ; l'interface n'en décide jamais (ADR-0030).
+permissions hors offre conservées, jamais ajoutées ; l'interface n'en décide jamais (ADR-0030) ;
+3.2-F livrée — **console TechNova** (`backend/app/console/`, `frontend/src/console/`,
+[`TECHNOVA_CONSOLE.md`](docs/architecture/TECHNOVA_CONSOLE.md), ADR-0031) : processus distinct
+`app.console.main` (`/platform-api/v1`, interface `/tech-admin`), rôle SQL
+`stockmanager_platform` aux droits minimaux (**aucune donnée de tenant**), administrateurs
+TechNova = comptes dédiés `users.is_platform_admin` attribués **par la CLI seulement**
+(`stockmanager platform-admin`) et invisibles pour l'application des tenants (RLS), journal
+`platform_audit_logs` append-only, catalogue technique en **lecture seule** (TOML / code),
+**paramètres commerciaux** des plans modifiables (raison obligatoire, confirmation, audit
+avant / après) et lus par `/public/plans`. Suite : 3.2-G tenants et abonnements, 3.2-H clôture,
+3.3 paiements et licences — non commencées sans validation.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
@@ -112,6 +122,12 @@ Documents clés : [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MOD
    Rôles de base (données : `role_templates.toml`) + rôles personnalisés du tenant ; aucun
    rôle supprimé (désactivation) ; anti-escalade par portée (tenant / site) et par sites ;
    ce qui est délégable est calculé par le serveur ([ADR-0030](docs/adr/0030-delegation-rbac.md)).
+   **TechNova ≠ tenant** ([ADR-0031](docs/adr/0031-console-technova.md)) : l'administration de la
+   plateforme vit dans la console (processus et rôle SQL distincts) ; jamais de route TechNova
+   dans l'API des tenants, jamais de privilège ajouté au rôle applicatif pour la console, jamais
+   d'attribution de `is_platform_admin` hors CLI, jamais d'accès de la console aux données
+   métier des tenants. Le catalogue technique reste versionné ; seuls les paramètres
+   commerciaux sont modifiables en base.
 4. **Jamais de `if business_type == "…"`** ni de test d'un code de profil ou de secteur
    (ni backend, ni frontend ; tests statiques). Tester une
    capacité : `require_module(...)`, `require_permission(...)`, `can(...)` côté client.
@@ -153,6 +169,7 @@ backend/app/
   core/       config, BD, sécurité, logs (aucune règle métier)
   api/v1/     agrégation des routeurs
   platform/   tenants, sites, users, auth, RBAC, plans, profils, registre, capacités, audit
+  console/    console TechNova (processus distinct : app.console.main), CLI platform-admin
   modules/    modules métier : <module>/{manifest,router,schemas,service,models,api}.py
               (api.py = interface publique utilisée par les autres modules)
   shared/     types valeur, identifiants, erreurs
@@ -162,6 +179,7 @@ frontend/src/
   modules/    un dossier par module (même code que le backend)
   shared/     composants UI et utilitaires génériques
   pages/      pages hors module
+  console/    console TechNova (/tech-admin), application distincte chargée à la demande
 docker/       Dockerfiles ; docker-compose.yml à la racine
 docs/         architecture/ et adr/
 ```
@@ -169,8 +187,8 @@ docs/         architecture/ et adr/
 ## Commandes
 
 ```bash
-# PostgreSQL local : deux rôles (propriétaire + applicatif sans BYPASSRLS)
-docker compose up -d db          # crée aussi le rôle stockmanager_app
+# PostgreSQL local : trois rôles (propriétaire, applicatif et console, sans BYPASSRLS)
+docker compose up -d db          # crée aussi stockmanager_app et stockmanager_platform
 
 # Backend (depuis backend/)
 uv sync
@@ -181,14 +199,17 @@ uv run stockmanager create-tenant --name "…" --slug … --business-profile res
 uv run stockmanager change-profile --tenant-id … --profile retail.alimentation  # audité
 uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données conservées, audité
 uv run uvicorn app.main:app --reload --port 8000
+uv run stockmanager platform-admin create --email … --name "…"   # compte TechNova (CLI seule)
+uv run uvicorn app.console.main:app --reload --port 8001   # console TechNova (SM_PLATFORM_*)
 uv run pytest        # PostgreSQL requis : SM_TEST_DATABASE_URL / SM_TEST_MIGRATION_DATABASE_URL
+                     #   / SM_TEST_PLATFORM_DATABASE_URL
 uv run ruff check . && uv run ruff format --check .
 uv run mypy app
 uv run alembic check                        # aucune dérive modèles / migrations
 
 # Frontend (depuis frontend/)
 npm install
-npm run dev          # proxy /api -> http://localhost:8000
+npm run dev          # proxy /api -> :8000, /platform-api -> :8001 (console)
 npm run lint && npm run format:check
 npm run typecheck
 npm test

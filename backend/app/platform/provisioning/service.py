@@ -367,6 +367,14 @@ class TenantProvisioningService:
             password_hash=hash_password(cmd.owner_password),
             must_change_password=not cmd.owner_password_is_final,
         )
-        self.db.add(user)
-        self.db.flush()
+        try:
+            with self.db.begin_nested():
+                self.db.add(user)
+                self.db.flush()
+        except IntegrityError as exc:
+            # Compte invisible pour l'application (administrateur TechNova, ADR-0031) ou créé
+            # en parallèle : jamais propriétaire d'une entreprise.
+            raise ConflictError(
+                "Ce compte ne peut pas être propriétaire", code="account_unavailable"
+            ) from exc
         return user, True

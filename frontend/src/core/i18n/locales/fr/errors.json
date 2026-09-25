@@ -123,5 +123,15 @@
   "country_required": "Le pays est obligatoire.",
   "invalid_timezone": "Fuseau horaire inconnu.",
   "onboarding_transition_not_allowed": "Une étape se termine automatiquement lorsque sa condition est remplie.",
-  "onboarding_step_not_found": "Étape d'installation introuvable."
+  "onboarding_step_not_found": "Étape d'installation introuvable.",
+  "account_unavailable": "Ce compte ne peut pas être rattaché à une entreprise.",
+  "console_header_required": "Requête refusée par la console TechNova.",
+  "plan_not_found": "Plan introuvable.",
+  "unknown_currency": "Devise inconnue du référentiel des pays.",
+  "currency_required": "Un prix exige une devise.",
+  "price_required": "Une période proposée doit avoir un prix (0 : gratuit).",
+  "price_display_without_period": "Pour afficher le prix, proposez au moins une période (mensuelle ou annuelle).",
+  "plan_inactive": "Un plan retiré du catalogue ne peut pas être publié.",
+  "plan_not_subscribable": "Un plan publié doit proposer une période ou exiger un contact commercial.",
+  "no_changes": "Aucune modification à enregistrer."
 }

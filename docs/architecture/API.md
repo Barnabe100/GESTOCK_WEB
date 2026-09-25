@@ -48,7 +48,7 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | GET | `/modules` | `organization.module.view` | Modules du profil : inclus au plan, activés, effectifs |
 | PUT | `/modules/{code}` | `organization.module.manage` | Activer / désactiver (dépendances contrôlées) |
 | GET | `/members` | `users.member.view` | Appartenances du tenant, **paginées** (Phase 3.2-D) : `search` (nom, e-mail), `status` (`active`/`inactive`/`all`), `role_id`, `site_id` (tous les sites, site attribué ou rôle limité au site) ; tri `full_name` (défaut), `email`, `created_at` (ajout au tenant), `status` |
-| POST | `/members` | `users.member.manage` | Ajouter : nouveau compte global (mot de passe provisoire haché, changement imposé) ou compte existant **réutilisé tel quel** (nom et mot de passe ignorés) ; `409 member_exists` ; anti-escalade |
+| POST | `/members` | `users.member.manage` | Ajouter : nouveau compte global (mot de passe provisoire haché, changement imposé) ou compte existant **réutilisé tel quel** (nom et mot de passe ignorés) ; `409 member_exists` ; `409 account_unavailable` (compte TechNova, ADR-0031) ; anti-escalade |
 | GET | `/members/{id}` | `users.member.view` | Détail (identifiant d'appartenance) |
 | PATCH | `/members/{id}` | `users.member.manage` | **Accès seulement** (ADR-0029) : rôles (tenant ou site), sites, statut ; toute clé d'identité (nom, e-mail, mot de passe…) → `422 validation_error` ; `403 owner_protected`, `self_modification`, `permission_escalation`, `site_escalation` |
 | POST | `/members/{id}/activate` | `users.member.manage` | Réactiver l'appartenance (limite `max_users` : `422 plan_limit_reached`) |
@@ -321,6 +321,23 @@ logique propre : orchestration de `SaleService` (et, par lui, `StockService`,
 | POST | `/pos/checkout` | `pos.terminal.use` + `sales.sale.create` + `sales.sale.validate` (+ `sales.payment.create`) | Création + validation + paiements en une transaction ; `idempotency_key` obligatoire (201 ; 200 `replayed` pour une clé déjà traitée) |
 
 Ventes : `SaleOut.channel` (`BACKOFFICE` \| `POS`), filtre `GET /sales?channel=`.
+
+## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
+
+API séparée de celle des entreprises (`app.console.main`, rôle SQL dédié), réservée aux
+administrateurs TechNova ; détail : [`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md),
+[ADR-0031](../adr/0031-console-technova.md). Session par cookie `HttpOnly`
+(`SameSite=Strict`) ; en-tête `X-TechNova-Console: 1` obligatoire sur les requêtes
+modifiantes. Aucun jeton de l'API des entreprises n'y est accepté.
+
+| Méthode | Chemin | Rôle |
+|---|---|---|
+| POST | `/auth/login` · `/auth/logout` | Session de la console (comptes `is_platform_admin` seulement) |
+| GET | `/me` · `/dashboard` | Administrateur connecté ; indicateurs des offres et du catalogue |
+| GET | `/plans` · `/plans/{code}` | Paramètres commerciaux (+ `self_service`) ; structure technique en lecture seule |
+| PATCH | `/plans/{code}/commercial` | Paramètres commerciaux seulement (`extra="forbid"`), `reason` obligatoire ; `422` : `validation_error`, `unknown_currency`, `price_required`, `currency_required`, `price_display_without_period`, `plan_not_subscribable`, `plan_inactive`, `no_changes` |
+| GET | `/catalog` | Catalogue technique (lecture seule) |
+| GET | `/audit` | Journal de la plateforme (`limit`, `offset`, `action`, `target_type`, `target_id`) |
 
 ## Routes des modules métier
 

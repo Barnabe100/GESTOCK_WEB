@@ -1939,3 +1939,37 @@ a {
   gap: var(--sm-space-3);
   width: 100%;
 }
+
+/* --- Console TechNova (Phase 3.2-F, ADR-0031) ------------------------------------------------
+   Mêmes jetons et composants que StockManager ; seule l'identité change (accent ardoise,
+   badge « Console TechNova ») pour qu'on ne confonde jamais la console et une entreprise. */
+
+.sm-console[data-accent='technova'] {
+  --sm-accent: #1e293b;
+  --sm-accent-text: #fff;
+  --sm-accent-soft: #e2e8f0;
+  --sm-accent-strong: #0f172a;
+}
+
+.sm-console .sm-logo {
+  background: var(--sm-accent);
+  color: var(--sm-accent-text);
+}
+
+.sm-console-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sm-space-1);
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--sm-radius-pill);
+  background: var(--sm-accent);
+  color: var(--sm-accent-text);
+  font-size: var(--sm-text-xs);
+  font-weight: var(--sm-weight-bold);
+  white-space: nowrap;
+}
+
+/* Récapitulatif des changements dans une confirmation : une ligne par modification. */
+.sm-dialog .p-confirm-dialog-message {
+  white-space: pre-line;
+}

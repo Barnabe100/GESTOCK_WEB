@@ -1,5 +1,6 @@
 """Import de tous les modèles : utilisé par Alembic (métadonnées complètes)."""
 
+from app.console.models import PlatformAuditLog, PlatformSession
 from app.core.db import Base
 from app.modules.catalog.models import Article, Category
 from app.modules.stock.models import (
@@ -56,6 +57,8 @@ __all__ = [
     "MembershipRole",
     "MembershipSite",
     "OnboardingStep",
+    "PlatformAuditLog",
+    "PlatformSession",
     "Plan",
     "PlanModule",
     "RateLimitHit",

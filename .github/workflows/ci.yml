@@ -34,6 +34,8 @@ jobs:
       SM_TEST_MIGRATION_DATABASE_URL: postgresql+psycopg://stockmanager:stockmanager@localhost:5432/stockmanager_test
       SM_MIGRATION_DATABASE_URL: postgresql+psycopg://stockmanager:stockmanager@localhost:5432/stockmanager_test
       SM_DB_APP_ROLE: stockmanager_app
+      SM_TEST_PLATFORM_DATABASE_URL: postgresql+psycopg://stockmanager_platform:stockmanager_platform@localhost:5432/stockmanager_test
+      SM_DB_PLATFORM_ROLE: stockmanager_platform
     defaults:
       run:
         working-directory: backend
@@ -58,6 +60,16 @@ jobs:
           POSTGRES_DB: stockmanager_test
           POSTGRES_APP_PASSWORD: stockmanager_app
         run: ./docker/postgres/init/01-app-role.sh
+
+      - name: Créer le rôle de la console TechNova (sans BYPASSRLS)
+        working-directory: .
+        env:
+          PGHOST: localhost
+          PGPASSWORD: stockmanager
+          POSTGRES_USER: stockmanager
+          POSTGRES_DB: stockmanager_test
+          POSTGRES_PLATFORM_PASSWORD: stockmanager_platform
+        run: ./docker/postgres/init/02-platform-role.sh
 
       - name: Lint (ruff)
         run: uv run ruff check . && uv run ruff format --check .

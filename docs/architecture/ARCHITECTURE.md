@@ -263,6 +263,11 @@ de `sectors.toml` + un profil UX. Aucune modification du Core ni de conditions d
   `PlanPolicy` est le seul point d'application (`ensure_capacity`, `require_feature`).
 - Valeurs validées : STANDARD = 1 site, 5 utilisateurs, sans `restaurant.qr` ;
   ENTREPRISE = illimité.
+- **Paramètres commerciaux** (publication, prix, périodes, devise, affichage du prix,
+  contact, description, ordre, essai) : en base, gérés par TechNova dans la **console
+  TechNova** (raison obligatoire, audit avant / après), jamais écrasés par `catalog sync` ;
+  la structure reste en `plans.toml` ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md),
+  [ADR-0031](../adr/0031-console-technova.md)).
 - L'abonnement a un statut (`trial`, `active`, `past_due`, `expired`, `suspended`,
   `cancelled`) ; le statut effectif est calculé à la lecture.
 - Une **politique centrale** (`subscription_policies.toml`) indique, par statut, les
@@ -308,8 +313,12 @@ Une transition invalide est refusée par le backend, quel que soit le client.
   **Anti-escalade par portée** : un non-propriétaire n'accorde que ce qu'il détient sur la
   même portée (tenant ou site) et seulement sur ses sites
   ([ADR-0015](../adr/0015-rbac-roles-de-base-et-personnalises.md)).
-- **Administration plateforme** (TechNova) : espace et identités séparés des
-  utilisateurs tenants.
+- **Administration plateforme** (TechNova, [ADR-0031](../adr/0031-console-technova.md)) :
+  console distincte (processus `app.console.main`, API `/platform-api/v1`, interface
+  `/tech-admin`), rôle SQL dédié `stockmanager_platform` aux droits minimaux (aucune donnée de
+  tenant), administrateurs TechNova = comptes dédiés `users.is_platform_admin` attribués par la
+  CLI seulement et invisibles pour l'application des tenants (RLS), journal de la plateforme
+  append-only. Restriction réseau : infrastructure ; MFA : future.
 - **Audit** : journal `audit_log` (tenant, site, utilisateur, action, entité,
   avant/après, IP, horodatage) alimenté explicitement par les services pour les
   actions sensibles (connexion, droits, stock, ventes, caisse, annulations).
@@ -494,9 +503,14 @@ travail : une requête = une transaction, commit à la fin si succès).
 - **Développement** : `docker compose up --build` (PostgreSQL 16 avec création du rôle
   applicatif, service `migrate` = migrations + catalogue, backend avec rechargement,
   frontend Vite). Sans Docker : `uv` pour le backend, `npm` pour le frontend.
-- **Deux rôles PostgreSQL** : propriétaire (`SM_MIGRATION_DATABASE_URL` : migrations,
-  catalogue) et applicatif (`SM_DATABASE_URL` : API et CLI de provisioning, sans
-  `BYPASSRLS`). Le nom du rôle applicatif est configurable (`SM_DB_APP_ROLE`).
+- **Trois rôles PostgreSQL** : propriétaire (`SM_MIGRATION_DATABASE_URL` : migrations,
+  catalogue, CLI des administrateurs TechNova), applicatif (`SM_DATABASE_URL` : API et CLI de
+  provisioning, sans `BYPASSRLS`) et console TechNova (`SM_PLATFORM_DATABASE_URL`, sans
+  `BYPASSRLS`, droits minimaux, ADR-0031). Noms configurables (`SM_DB_APP_ROLE`,
+  `SM_DB_PLATFORM_ROLE`) ; rôles créés par `docker/postgres/init/`.
+- **Console TechNova** : processus distinct (`uvicorn app.console.main:app`, service Compose
+  `console`, port publié sur la boucle locale), à exposer en production sur un réseau
+  restreint (configuration d'infrastructure).
 - **Production (à définir)** : reverse proxy (TLS) servant la SPA statique et relayant
   `/api` vers FastAPI (Uvicorn/Gunicorn), PostgreSQL managé ou dédié avec sauvegardes,
   secrets par variables d'environnement.
@@ -526,7 +540,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · 2.5-B ✅ Design System de l'interface ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)) · 2.6 ✅ inventaires ([`INVENTORY.md`](INVENTORY.md), ADR-0019) | V1 |
-| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 🔄 SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E ✅ rôles, permissions et délégation RBAC (ADR-0030) · 3.2-F administration TechNova des plans · 3.2-G E2E, sécurité, documentation | V1 |
+| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 🔄 SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E ✅ rôles, permissions et délégation RBAC (ADR-0030) · 3.2-F ✅ console TechNova : socle, offres & tarifs ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md), ADR-0031) · 3.2-G tenants et abonnements (console) · 3.2-H clôture 3.2 : E2E SaaS, sécurité, documentation · 3.3-A paiements · 3.3-B licences | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 

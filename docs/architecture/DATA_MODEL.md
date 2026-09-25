@@ -37,7 +37,7 @@ Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` 
 | `ux_profiles` | `code` | Profil UX : navigation (rubriques), tableau de bord (widgets, raccourcis), terminologie, thème (JSONB) |
 | `business_profiles` | `code` (`<secteur>.<activité>`) | Nom, `sector_code` → `business_sectors`, `ux_profile_code` → `ux_profiles`, ordre ; surcharges : navigation, tableau de bord, terminologie, thème (JSONB) ; réglages. `CHECK` : un profil actif a secteur et profil UX |
 | `business_profile_modules` | `profile_code, module_code` | Modules proposés ; `default_enabled` |
-| `plans` | `code` | Nom, limites (JSONB, codes déclarés par les modules), fonctionnalités (JSONB), `grace_days` |
+| `plans` | `code` | Structure (catalogue) : nom, limites (JSONB, codes déclarés par les modules), fonctionnalités (JSONB), `grace_days`. Paramètres commerciaux (base, console TechNova, jamais écrasés par la synchronisation) : `listed`, `price_display_enabled`, `monthly_price[_enabled]`, `annual_price[_enabled]`, `currency`, `contact_required`, `commercial_description`, `display_order`, `trial_days` |
 | `plan_modules` | `plan_code, module_code` | Modules inclus |
 | `geo_countries` | `code` (ISO 3166-1 alpha-2) | Pays : nom, devise, indicatif, fuseau par défaut, `is_active` (inscription) |
 | `subscription_access_policies` | `status` | Natures d'accès autorisées (`text[]`) |
@@ -50,6 +50,21 @@ Source : `backend/app/platform/catalog/data/*.toml`, synchronisés par `stockman
 |---|---|
 | `users` | `email` (unique, minuscules — contrainte `CHECK`), `full_name`, `password_hash` (Argon2id), `is_active`, `must_change_password`, `failed_login_count`, `locked_until`, `last_login_at`, `locale` |
 | `auth_sessions` | `user_id`, `refresh_token_hash`, `previous_token_hash`, `rotated_at`, `expires_at`, `revoked_at`, `user_agent`, `ip_address` |
+
+`users.is_platform_admin` (Phase 3.2-F, ADR-0031) : administrateur TechNova, attribué par la
+CLI seulement. RLS sur `users` (`ENABLE`, sans `FORCE`) : le rôle applicatif ne voit ni n'écrit
+que `NOT is_platform_admin` (politique `tenant_app_users`) et n'a de droits INSERT / UPDATE que
+par colonne, **sans** `is_platform_admin` ; le rôle de la console ne voit que les comptes
+TechNova (`platform_admins_read`, `platform_admins_lockout`).
+
+### Plateforme TechNova (Phase 3.2-F, hors tenant — rôle de la console seulement)
+
+| Table | Colonnes principales | Accès |
+|---|---|---|
+| `platform_sessions` | `user_id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at`, `ip_address`, `user_agent` | console : `SELECT, INSERT, UPDATE` |
+| `platform_audit_logs` | `occurred_at`, `actor_user_id`, `actor_label`, `action`, `target_type`, `target_id`, `tenant_id` (3.2-G), `before`, `after`, `reason`, `data`, `ip_address`, `user_agent` | console : `SELECT, INSERT` ; déclencheur `platform_audit_logs_append_only` (UPDATE / DELETE refusés, même au propriétaire) |
+
+Aucun droit pour le rôle applicatif des tenants sur ces tables.
 
 ### Tenant (isolés par RLS)
 
@@ -195,6 +210,12 @@ type PostgreSQL natif).
 | `SELECT, INSERT` | audit_logs, stock_movements (append-only) |
 
 Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais de données.
+
+5. **Droits du rôle de la console TechNova** (`stockmanager_platform`, sans `BYPASSRLS`,
+   ADR-0031) : `SELECT` sur le catalogue ; `UPDATE` des seules colonnes commerciales de
+   `plans` ; `SELECT` sur `users` (comptes TechNova seulement, RLS) et `UPDATE` des colonnes de
+   verrouillage ; `platform_sessions` et `platform_audit_logs` ci-dessus. **Aucun droit** sur
+   `tenants`, `subscriptions`, `audit_logs` ni aucune table métier.
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

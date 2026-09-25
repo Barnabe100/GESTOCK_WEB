@@ -42,9 +42,17 @@ OWNER_URL = os.environ.get(
     "SM_TEST_MIGRATION_DATABASE_URL",
     "postgresql+psycopg://stockmanager:stockmanager@localhost:5432/stockmanager_test",
 )
+# Rôle SQL de la console TechNova (ADR-0031) : sans BYPASSRLS, droits minimaux.
+PLATFORM_URL = os.environ.get(
+    "SM_TEST_PLATFORM_DATABASE_URL",
+    "postgresql+psycopg://stockmanager_platform:stockmanager_platform@localhost:5432/"
+    "stockmanager_test",
+)
 PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
+    "platform_audit_logs",
+    "platform_sessions",
     "rate_limit_hits",
     "onboarding_steps",
     "cash_movements",
@@ -90,7 +98,9 @@ def settings() -> Settings:
         environment="test",
         database_url=APP_URL,
         migration_database_url=OWNER_URL,
+        platform_database_url=PLATFORM_URL,
         refresh_cookie_secure=False,
+        platform_cookie_secure=False,
         db_pool_size=5,
         # Inscriptions de test nombreuses depuis la même adresse ; limite testée à part.
         signup_rate_limit_attempts=10_000,
@@ -136,7 +146,10 @@ def clean_db(request: pytest.FixtureRequest) -> None:
 
 
 def _needs_db(request: pytest.FixtureRequest) -> bool:
-    return bool({"client", "app_engine", "db", "provision", "app"} & set(request.fixturenames))
+    return bool(
+        {"client", "app_engine", "db", "provision", "app", "console", "platform_engine"}
+        & set(request.fixturenames)
+    )
 
 
 @pytest.fixture(scope="session")
@@ -276,3 +289,63 @@ def world(provision: Any, api_for: Any) -> Any:
     from tests.stock_helpers import make_world
 
     return make_world(provision, api_for)
+
+
+# --- Console TechNova (ADR-0031) : processus et rôle SQL distincts -----------------------------
+
+PLATFORM_ADMIN_EMAIL = "admin@technova.example"
+PLATFORM_ADMIN_PASSWORD = "Console-TechNova-2026"
+CONSOLE_PREFIX = "/platform-api/v1"
+CONSOLE_HEADERS = {"X-TechNova-Console": "1"}
+
+
+@pytest.fixture(scope="session")
+def platform_engine(migrated: None) -> Iterator[Engine]:
+    engine = create_engine(PLATFORM_URL)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def console_app(settings: Settings, migrated: None) -> Any:
+    from app.console.main import create_console_app
+
+    return create_console_app(settings)
+
+
+@pytest.fixture
+def console(console_app: Any) -> Iterator[TestClient]:
+    with TestClient(console_app) as c:
+        yield c
+
+
+@pytest.fixture
+def platform_admin(owner_engine: Engine, settings: Settings) -> Any:
+    """Crée un administrateur TechNova comme le fait la CLI (rôle propriétaire)."""
+    from app.console.admins import create_platform_admin
+    from app.console.audit import CLI_ACTOR
+
+    def _create(email: str = PLATFORM_ADMIN_EMAIL, name: str = "Admin TechNova") -> uuid.UUID:
+        with Session(owner_engine) as session:
+            user = create_platform_admin(
+                session,
+                settings,
+                email=email,
+                full_name=name,
+                password=PLATFORM_ADMIN_PASSWORD,
+                actor=CLI_ACTOR,
+            )
+            session.commit()
+            return user.id
+
+    return _create
+
+
+def console_login(
+    console: TestClient, email: str = PLATFORM_ADMIN_EMAIL, password: str = PLATFORM_ADMIN_PASSWORD
+) -> Any:
+    return console.post(
+        f"{CONSOLE_PREFIX}/auth/login",
+        json={"email": email, "password": password},
+        headers=CONSOLE_HEADERS,
+    )

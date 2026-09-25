@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     )
     # Rôle SQL applicatif auquel les migrations accordent les droits.
     db_app_role: str = "stockmanager_app"
+    # Console TechNova (ADR-0031) : processus distinct, rôle SQL dédié (sans BYPASSRLS, droits
+    # minimaux : aucun accès aux données des tenants).
+    platform_database_url: str = (
+        "postgresql+psycopg://stockmanager_platform:stockmanager_platform@localhost:5432/"
+        "stockmanager"
+    )
+    db_platform_role: str = "stockmanager_platform"
     db_pool_size: int = 10
     db_max_overflow: int = 10
     db_pool_timeout_seconds: int = 30
@@ -53,6 +60,14 @@ class Settings(BaseSettings):
     signup_rate_limit_window_minutes: int = 60
     # Adresse commerciale affichée pour les offres sur contact (« Contacter TechNova »).
     sales_contact_email: str | None = None
+
+    # Console TechNova : préfixe de l'API, cookie de session (HttpOnly, SameSite=Strict),
+    # expiration absolue et après inactivité.
+    platform_api_prefix: str = "/platform-api/v1"
+    platform_cookie_name: str = "sm_platform_session"
+    platform_cookie_secure: bool = True
+    platform_session_ttl_minutes: int = 480
+    platform_session_idle_minutes: int = 30
 
     password_min_length: int = 8
     login_max_failures: int = 5

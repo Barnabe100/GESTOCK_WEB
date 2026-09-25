@@ -680,8 +680,16 @@ class MemberService(_AccessBase):
                 password_hash=hash_password(data.password),
                 must_change_password=True,
             )
-            self.db.add(user)
-            self.db.flush()
+            try:
+                with self.db.begin_nested():
+                    self.db.add(user)
+                    self.db.flush()
+            except IntegrityError as exc:
+                # E-mail d'un compte invisible pour l'application (administrateur TechNova,
+                # ADR-0031) ou créé en parallèle : jamais rattaché à une entreprise.
+                raise ConflictError(
+                    "Ce compte ne peut pas être ajouté", code="account_unavailable"
+                ) from exc
             user_created = True
         else:
             # Compte existant (autre tenant) : jamais de modification de son mot de passe ni de

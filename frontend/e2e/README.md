@@ -44,9 +44,14 @@ echo 'Provisoire-E2E-Retro-1' | uv run stockmanager create-tenant --name "Démo 
 
 ```bash
 cd backend && SM_SIGNUP_RATE_LIMIT_ATTEMPTS=1000 uv run uvicorn app.main:app --port 8000  # terminal 1
-cd frontend && npm run dev                                  # terminal 2
-cd frontend && npm run e2e                                  # terminal 3
+cd backend && uv run uvicorn app.console.main:app --port 8001  # terminal 2 (console TechNova)
+cd frontend && npm run dev                                  # terminal 3
+cd frontend && npm run e2e                                  # terminal 4
 ```
+
+La console TechNova exige le rôle SQL `stockmanager_platform`
+(`docker/postgres/init/02-platform-role.sh`) ; `console.e2e.ts` crée lui-même un
+administrateur TechNova par la CLI (`stockmanager platform-admin create`).
 
 Variables : `E2E_BASE_URL` (défaut `http://localhost:5173`), `E2E_CHROMIUM_PATH` (navigateur
 déjà installé, ex. `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`). Le projet `mobile`
@@ -55,6 +60,10 @@ la suite peut être rejouée sur la même base.
 
 ## Suites
 
+- `console.e2e.ts` (Phase 3.2-F) : console TechNova — administrateur créé par la CLI,
+  connexion, offres & tarifs (publication de STANDARD, raison obligatoire, confirmation,
+  nouvelle valeur, historique, journal de la plateforme, effet sur `/public/plans`), refus d'un
+  compte d'entreprise, mobile. STANDARD est remis à ses valeurs neutres.
 - `customers.e2e.ts` (Phase 2.3) : clients, contrôle du Vendeur, mobile.
 - `sales.e2e.ts` (Phase 2.4) : prépare par l'API un article (prix 1 500), 10 unités en stock
   et un client, puis vente complète (brouillon, validation, stock 10 → 7, mouvement, audit,

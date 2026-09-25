@@ -24,6 +24,11 @@ class User(IdMixin, TimestampMixin, Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     locale: Mapped[str] = mapped_column(String(10), default="fr", nullable=False)
+    # Administrateur TechNova (console d'administration, ADR-0031) : attribué uniquement par la
+    # CLI (rôle propriétaire). Aucune valeur Python par défaut : l'INSERT de l'application
+    # n'inclut jamais la colonne (le rôle applicatif n'a aucun droit d'écriture sur elle) et
+    # ce compte est invisible pour le rôle applicatif (RLS) : jamais membre d'un tenant.
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
 
 
 class AuthSession(IdMixin, Base):
