@@ -1,0 +1,20 @@
+# Trousseau des clés PUBLIQUES de signature des licences (ADR-0034).
+#
+# - Clés publiques uniquement : la clé privée Ed25519 appartient exclusivement au Signing
+#   Service et n'entre JAMAIS dans ce dépôt (ni ailleurs dans StockManager Web).
+# - Chaque clé : key_id (repris dans les licences), algorithm = "Ed25519", public_key (32 octets
+#   bruts en base64, affichée par `signing-service-keygen`), status = "active" | "retired".
+# - Rotation : ajouter la nouvelle clé "active", passer l'ancienne en "retired" (les licences
+#   déjà émises restent vérifiables ; aucune nouvelle signature n'est acceptée avec elle).
+# - Aucune clé de production n'est encore publiée : TechNova l'ajoutera ici lors de la mise en
+#   service du Signing Service. Développement et tests : SM_LICENSE_PUBLIC_KEYS_FILE pointe vers
+#   un trousseau de clés éphémères, hors dépôt.
+#
+# Exemple :
+# [[keys]]
+# key_id = "technova-ed25519-2026-01"
+# algorithm = "Ed25519"
+# public_key = "<base64>"
+# status = "active"
+
+keys = []

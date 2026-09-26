@@ -245,7 +245,10 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
     assert writes == [
         (f"{CONSOLE_PREFIX}/auth/login", "POST"),
         (f"{CONSOLE_PREFIX}/auth/logout", "POST"),
+        (f"{CONSOLE_PREFIX}/licenses/{{license_id}}/reissue", "POST"),
+        (f"{CONSOLE_PREFIX}/licenses/{{license_id}}/revoke", "POST"),
         (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/confirm", "POST"),
+        (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/license", "POST"),
         (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/reject", "POST"),
         (f"{CONSOLE_PREFIX}/plans/{{code}}/commercial", "PATCH"),
         (f"{tenant}/reactivate", "POST"),
@@ -261,6 +264,9 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
         f"{CONSOLE_PREFIX}/payments/{{payment_id}}",
         f"{CONSOLE_PREFIX}/payments/{{payment_id}}/confirm",
         f"{CONSOLE_PREFIX}/payments/{{payment_id}}/reject",
+        # Licence générée depuis un paiement confirmé (3.3-B2).
+        f"{CONSOLE_PREFIX}/payments/{{payment_id}}/license",
+        f"{CONSOLE_PREFIX}/payments/{{payment_id}}/license-proposal",
     }
     assert {p for p in paths if "payment" in p} == subscription_payments
     forbidden = ("admin", "user", "member", "sale", "stock", "customer", "cash", "payment")

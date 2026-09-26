@@ -61,8 +61,19 @@ l'entreprise —, double audit ; rôle SQL de la console limité aux colonnes de
 au premier site), nouveau site = abonnement `pending_activation` au plan publié choisi (pas
 d'essai), capacités **par site** (sans site : union des abonnements), toute écriture sur un site
 revérifiée pour l'abonnement de CE site (`ensure_site_allows`), limites par site (`max_users`),
-console par abonnement de site. B2 (licences Ed25519, service de signature), B3 (postes),
-B4 (renouvellement, notifications) : suivent, arrêt après chaque sous-phase si non verte. Non implémentés (feuille de route §13) :
+console par abonnement de site. B2 livrée — **licences** (ADR-0034,
+[`LICENSING.md`](docs/architecture/LICENSING.md)) : **Signing Service séparé**
+(`signing-service/`, hors Compose de l'application, Ed25519, demandes HMAC + nonce) **seul
+détenteur de la clé privée** — jamais dans ce dépôt, l'API, la console, React, PostgreSQL, les
+images, la CI ni les tests (clés éphémères) ; `.lic` v1 (forme canonique, `key_id`, trousseau
+**public** versionné avec rotation) ; génération dans la console depuis un paiement
+**CONFIRMED** seulement (période calculée par le serveur, contiguë au renouvellement ; postes
+`requested_activations` confirmés ou ajustés, figés), signature vérifiée avant enregistrement,
+abonnement du site aligné ; la licence en vigueur fige modules / fonctionnalités / limites
+(`PlanTerms`) ; révocation **définitive** (site suspendu sans autre couverture), réémission =
+nouvelle licence ; table `licenses` immuable (déclencheur), l'entreprise ne fait que lire.
+B3 (postes), B4 (renouvellement, notifications) : suivent, arrêt après chaque sous-phase si non
+verte. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
@@ -200,6 +211,8 @@ frontend/src/
   shared/     composants UI et utilitaires génériques
   pages/      pages hors module
   console/    console TechNova (/tech-admin), application distincte chargée à la demande
+signing-service/  service de signature des licences (Ed25519) : déployé à part, seul détenteur
+              de la clé privée (jamais dans ce dépôt)
 docker/       Dockerfiles ; docker-compose.yml à la racine
 docs/         architecture/ et adr/
 ```
@@ -221,6 +234,10 @@ uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données c
 uv run uvicorn app.main:app --reload --port 8000
 uv run stockmanager platform-admin create --email … --name "…"   # compte TechNova (CLI seule)
 uv run uvicorn app.console.main:app --reload --port 8001   # console TechNova (SM_PLATFORM_*)
+#   licences : SM_SIGNING_SERVICE_URL, SM_SIGNING_CLIENT_SECRET, SM_LICENSE_PUBLIC_KEYS_FILE
+
+# Signing Service (depuis signing-service/, déployé À PART ; clé privée hors dépôt)
+uv sync && uv run pytest && uv run ruff check . && uv run mypy signing_service
 uv run pytest        # PostgreSQL requis : SM_TEST_DATABASE_URL / SM_TEST_MIGRATION_DATABASE_URL
                      #   / SM_TEST_PLATFORM_DATABASE_URL
 uv run ruff check . && uv run ruff format --check .

@@ -118,6 +118,9 @@ def get_capabilities(
         for s in tenant_subscriptions(db)
         if s.site_id is not None
     }
+    # Limites affichées : conditions en vigueur de l'abonnement représentatif (licence, sinon
+    # plan).
+    terms = service.grant(subscription, profile, now).terms
 
     experience = BusinessProfileRegistry(db, registry).effective(profile, caps.modules)
 
@@ -162,6 +165,8 @@ def get_capabilities(
         features=sorted(caps.features),
         limits={
             code: LimitInfo(limit=usage.limit, used=usage.used)
-            for code, usage in PlanPolicy(db, plan, registry).snapshot(subscription.site_id).items()
+            for code, usage in PlanPolicy(db, terms, registry)
+            .snapshot(subscription.site_id)
+            .items()
         },
     )

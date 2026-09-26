@@ -36,6 +36,16 @@ export const SUBSCRIPTION_PAYMENT_TONES: Record<SubscriptionPaymentStatus, Tone>
   REJECTED: 'danger',
 };
 
+/** État d'une licence (Phase 3.3-B2) : calculé par le serveur ; `REVOKED` est définitif. */
+export type LicenseState = 'NOT_YET_VALID' | 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+
+export const LICENSE_TONES: Record<LicenseState, Tone> = {
+  NOT_YET_VALID: 'info',
+  ACTIVE: 'success',
+  EXPIRED: 'warning',
+  REVOKED: 'danger',
+};
+
 export function StatusBadge({
   label,
   tone = 'neutral',
@@ -90,4 +100,9 @@ export function SubscriptionPaymentStatusBadge({ status }: { status: Subscriptio
       label={t(`subscriptionPaymentStatus.${status}`)}
     />
   );
+}
+
+export function LicenseStateBadge({ state }: { state: LicenseState }) {
+  const { t } = useTranslation();
+  return <StatusBadge tone={LICENSE_TONES[state]} label={t(`licenseState.${state}`)} />;
 }

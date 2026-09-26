@@ -6,6 +6,8 @@ import { CONSOLE_BASE, ConsoleLayout } from './ConsoleLayout';
 import { CatalogPage } from './pages/CatalogPage';
 import { ConsoleDashboardPage } from './pages/ConsoleDashboardPage';
 import { ConsoleLoginPage } from './pages/ConsoleLoginPage';
+import { LicenseDetailPage } from './pages/LicenseDetailPage';
+import { LicensesPage } from './pages/LicensesPage';
 import { PaymentDetailPage } from './pages/PaymentDetailPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { PlanDetailPage } from './pages/PlanDetailPage';
@@ -30,6 +32,8 @@ export const consoleRoutes = [
       { path: 'tenants/:id', element: <TenantDetailPage /> },
       { path: 'payments', element: <PaymentsPage /> },
       { path: 'payments/:id', element: <PaymentDetailPage /> },
+      { path: 'licenses', element: <LicensesPage /> },
+      { path: 'licenses/:id', element: <LicenseDetailPage /> },
       { path: 'audit', element: <PlatformAuditPage /> },
       { path: '*', element: <NotFound /> },
     ],

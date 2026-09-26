@@ -29,3 +29,10 @@ Thumbs.db
 # Playwright (tests de bout en bout)
 test-results/
 playwright-report/
+
+# Clés et secrets (Signing Service, ADR-0034) : la clé privée Ed25519 n'entre JAMAIS dans ce
+# dépôt ; ces motifs empêchent un ajout accidentel.
+*.pem
+*.key
+*.p8
+signing-service/secrets/

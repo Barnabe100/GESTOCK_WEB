@@ -8,7 +8,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 
 import { ApiError } from '@/core/api/client';
 import { formatMoney } from '@/shared/lib/decimal';
@@ -24,7 +24,8 @@ import { useToast } from '@/shared/ui/toast';
 
 import { AuditChanges } from '../auditDisplay';
 import { CONSOLE_BASE } from '../ConsoleLayout';
-import { useAudit, usePayment, usePaymentDecision } from '../queries';
+import { GenerateLicenseDialog } from '../LicenseDialogs';
+import { useAudit, useLicenseProposal, usePayment, usePaymentDecision } from '../queries';
 import { Details, paymentDay } from '../tenantDisplay';
 import type { ConsolePayment, PaymentDecision, PlatformAuditEntry } from '../types';
 
@@ -136,6 +137,71 @@ function DecisionDialog({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * Licence du site issue de ce paiement (3.3-B2) : générée par TechNova depuis un paiement
+ * **confirmé** seulement ; le serveur calcule la période et indique ce qui bloque.
+ */
+function PaymentLicense({ payment }: { payment: ConsolePayment }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const confirmed = payment.status === 'CONFIRMED';
+  const proposal = useLicenseProposal(payment.id, confirmed);
+  const [open, setOpen] = useState(false);
+  if (!confirmed) return null;
+  if (proposal.isError) {
+    return <ErrorMessage error={proposal.error} onRetry={() => void proposal.refetch()} />;
+  }
+  const p = proposal.data;
+  return (
+    <Card title={t('console:license.cardTitle')} data-testid="payment-license">
+      {!p ? (
+        <LoadingState />
+      ) : p.license_id ? (
+        <>
+          <p className="sm-help">{t('console:license.alreadyIssued')}</p>
+          <Link to={`${CONSOLE_BASE}/licenses/${p.license_id}`}>{t('console:license.open')}</Link>
+        </>
+      ) : p.blocking ? (
+        <Message
+          severity="warn"
+          text={t(`errors:${p.blocking}`, { defaultValue: p.blocking })}
+          data-testid="license-blocking"
+        />
+      ) : (
+        <>
+          <Details
+            items={[
+              [
+                t('console:license.validity'),
+                t('console:license.validityValue', {
+                  start: paymentDay(p.valid_from),
+                  end: paymentDay(p.valid_until),
+                }),
+              ],
+              [t('console:license.requestedActivations'), String(p.requested_activations)],
+            ]}
+          />
+          <p className="sm-help">{t('console:license.generateHelp')}</p>
+          <div className="sm-quick-actions">
+            <Button
+              icon="pi pi-key"
+              label={t('console:license.generateAction')}
+              onClick={() => setOpen(true)}
+            />
+          </div>
+        </>
+      )}
+      {open && p && (
+        <GenerateLicenseDialog
+          proposal={p}
+          onClose={() => setOpen(false)}
+          onGenerated={(license) => navigate(`${CONSOLE_BASE}/licenses/${license.id}`)}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -276,6 +342,7 @@ export function PaymentDetailPage() {
           )}
         </Card>
       </div>
+      <PaymentLicense payment={p} />
       <PaymentHistory paymentId={p.id} />
       {kind && <DecisionDialog payment={p} kind={kind} onClose={() => setKind(null)} />}
     </>

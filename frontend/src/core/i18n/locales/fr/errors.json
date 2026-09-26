@@ -148,5 +148,21 @@
   "subscription_payment_not_found": "Paiement introuvable.",
   "payment_already_decided": "Ce paiement a déjà été décidé ; la fiche a été actualisée.",
   "site_plan_required": "Choisissez l'offre et la période de facturation du site.",
-  "site_subscription_preselected": "Ce premier site reçoit l'abonnement choisi à l'inscription : aucune offre à choisir."
+  "site_subscription_preselected": "Ce premier site reçoit l'abonnement choisi à l'inscription : aucune offre à choisir.",
+  "payment_not_confirmed": "Le paiement doit être confirmé avant de générer une licence.",
+  "license_already_issued": "Une licence a déjà été générée pour ce paiement.",
+  "license_already_revoked": "Cette licence est déjà révoquée.",
+  "license_already_reissued": "Cette licence a déjà été réémise.",
+  "license_revoked": "Cette licence est révoquée : elle n'est plus distribuée.",
+  "license_expired": "Cette licence est expirée : elle ne peut être réémise.",
+  "license_not_found": "Licence introuvable.",
+  "subscription_site_required": "L'abonnement n'est rattaché à aucun site.",
+  "subscription_not_licensable": "Cet abonnement ne peut plus recevoir de licence.",
+  "subscription_license_controlled": "La période de cet abonnement est décidée par sa licence.",
+  "signing_service_unavailable": "Le service de signature est indisponible. Aucune licence n'a été créée ; réessayez plus tard.",
+  "signing_failed": "Le service de signature a refusé la demande. Aucune licence n'a été créée.",
+  "license_signature_invalid": "La signature renvoyée est invalide. Aucune licence n'a été créée.",
+  "license_key_unknown": "La clé de signature est inconnue du trousseau. Aucune licence n'a été créée.",
+  "license_key_retired": "La clé de signature est retirée. Aucune licence n'a été créée.",
+  "license_format_invalid": "Document de licence invalide."
 }

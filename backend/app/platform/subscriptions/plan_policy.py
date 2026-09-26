@@ -13,7 +13,8 @@ valeur ni règle d'offre commerciale n'y est écrite.
 """
 
 import uuid
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
@@ -28,16 +29,37 @@ class LimitUsage:
     used: int
 
 
+@dataclass(frozen=True)
+class PlanTerms:
+    """Conditions d'un abonnement : modules, fonctionnalités et limites. Celles de sa **licence
+    en vigueur** (figées à l'émission, ADR-0034) ou, sans licence en vigueur, celles du plan."""
+
+    plan_code: str
+    modules: frozenset[str]
+    features: frozenset[str]
+    limits: Mapping[str, int | None] = field(default_factory=dict)
+    license_id: uuid.UUID | None = None
+
+    @classmethod
+    def of_plan(cls, plan: Plan) -> "PlanTerms":
+        return cls(
+            plan_code=plan.code,
+            modules=frozenset(m.module_code for m in plan.modules),
+            features=frozenset(plan.features),
+            limits=dict(plan.limits),
+        )
+
+
 class PlanPolicy:
-    def __init__(self, db: Session, plan: Plan, registry: ModuleRegistry) -> None:
+    def __init__(self, db: Session, terms: Plan | PlanTerms, registry: ModuleRegistry) -> None:
         self.db = db
-        self.plan = plan
+        self.terms = terms if isinstance(terms, PlanTerms) else PlanTerms.of_plan(terms)
         self.registry = registry
 
     def limit(self, code: str) -> int | None:
         if self.registry.limit(code) is None:
             raise ValueError(f"limite inconnue du registre : {code}")
-        value = self.plan.limits.get(code)
+        value = self.terms.limits.get(code)
         return int(value) if value is not None else None
 
     def usage(self, code: str, site_id: uuid.UUID | None = None) -> int:
@@ -71,9 +93,9 @@ class PlanPolicy:
         }
 
     def features(self, effective_modules: set[str] | frozenset[str]) -> frozenset[str]:
-        """Fonctionnalités du plan dont le module est effectif pour le tenant."""
+        """Fonctionnalités (du plan ou de la licence) dont le module est effectif."""
         return frozenset(
             code
-            for code in self.plan.features
+            for code in self.terms.features
             if self.registry.module_of_feature(code) in effective_modules
         )

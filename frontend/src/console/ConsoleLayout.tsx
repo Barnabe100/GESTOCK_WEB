@@ -16,6 +16,7 @@ const NAV = [
   { to: `${CONSOLE_BASE}/catalog`, icon: 'pi pi-book', label: 'console:nav.catalog' },
   { to: `${CONSOLE_BASE}/tenants`, icon: 'pi pi-building', label: 'console:nav.tenants' },
   { to: `${CONSOLE_BASE}/payments`, icon: 'pi pi-wallet', label: 'console:nav.payments' },
+  { to: `${CONSOLE_BASE}/licenses`, icon: 'pi pi-key', label: 'console:nav.licenses' },
   { to: `${CONSOLE_BASE}/audit`, icon: 'pi pi-history', label: 'console:nav.audit' },
 ] as const;
 

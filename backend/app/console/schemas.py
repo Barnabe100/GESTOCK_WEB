@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.platform.licensing.models import MAX_ACTIVATIONS
+from app.platform.licensing.schemas import LicenseSummary
 from app.platform.registry import AccessKind, ModuleStatus
 from app.shared.schemas import Money
 
@@ -260,6 +262,8 @@ class SubscriptionActions(BaseModel):
     """Actions possibles sur cet abonnement dans l'état actuel (décidées par le serveur, qui
     revérifie tout)."""
 
+    # Activation manuelle et prolongation transitoires (3.2-G) : jamais pour un abonnement dont
+    # une licence décide de la période (ADR-0034).
     can_activate: bool
     can_extend: bool
     can_change_plan: bool
@@ -289,6 +293,8 @@ class TenantSubscriptionOut(BaseModel):
     requested_activations: int
     # Limites du plan de CET abonnement et usage du site (utilisateurs ayant accès au site).
     usage: dict[str, TenantUsage]
+    # Licence en vigueur du site, sinon la plus récente (nulle : aucune licence).
+    license: LicenseSummary | None
     actions: SubscriptionActions
 
 
@@ -372,6 +378,81 @@ class ConsolePaymentOut(BaseModel):
     decided_at: datetime | None
     decided_by_email: str | None
     rejection_reason: str | None
+
+
+# --- Licences (Phase 3.3-B2, ADR-0034) ----------------------------------------------------------
+
+
+class ConsoleLicenseOut(BaseModel):
+    """Licence d'un site vue par TechNova (contenu signé, état calculé, révocation)."""
+
+    id: uuid.UUID
+    license_number: str
+    license_version: int
+    supersedes_id: uuid.UUID | None
+    superseded_by_id: uuid.UUID | None
+    tenant_id: uuid.UUID
+    tenant_name: str
+    site_id: uuid.UUID
+    site_name: str
+    site_code: str
+    subscription_id: uuid.UUID
+    payment_id: uuid.UUID
+    plan_code: str
+    billing_period: str
+    valid_from: date
+    valid_until: date
+    timezone: str
+    max_activations: int
+    modules: list[str]
+    features: list[str]
+    limits: dict[str, int | None]
+    status: str
+    state: str
+    issued_at: datetime
+    issued_by_email: str | None
+    key_id: str
+    payload_sha256: str
+    revoked_at: datetime | None
+    revoked_by_email: str | None
+    revocation_reason: str | None
+
+
+class LicenseProposalOut(BaseModel):
+    """Licence que produirait la génération depuis ce paiement (période calculée par le
+    serveur ; postes proposés = postes demandés à la souscription). ``blocking`` : raison pour
+    laquelle la génération est impossible (``null`` : possible)."""
+
+    payment_id: uuid.UUID
+    payment_status: str
+    tenant_id: uuid.UUID
+    tenant_name: str
+    subscription_id: uuid.UUID
+    site_id: uuid.UUID | None
+    site_name: str | None
+    plan_code: str
+    billing_period: str
+    timezone: str
+    valid_from: date
+    valid_until: date
+    requested_activations: int
+    max_activations: int
+    payment_period_start: date
+    payment_period_end: date
+    blocking: str | None
+    license_id: uuid.UUID | None
+
+
+class LicenseGenerateIn(ReasonIn):
+    """Nombre de postes confirmé ou ajusté par TechNova (arbitrage Q3), figé dans la licence."""
+
+    max_activations: int = Field(ge=1, le=MAX_ACTIVATIONS)
+
+
+class LicenseReissueIn(ReasonIn):
+    """Postes conservés sauf changement commercial explicite."""
+
+    max_activations: int | None = Field(default=None, ge=1, le=MAX_ACTIVATIONS)
 
 
 DashboardOut.model_rebuild()

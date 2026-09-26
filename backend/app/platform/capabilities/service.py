@@ -27,9 +27,10 @@ from sqlalchemy.orm import Session
 from app.platform.access.models import Role, TenantMembership
 from app.platform.access.permissions import effective_role_permissions
 from app.platform.catalog.models import BusinessProfile, Plan
+from app.platform.licensing.service import subscription_terms
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
-from app.platform.subscriptions.plan_policy import PlanPolicy
+from app.platform.subscriptions.plan_policy import PlanPolicy, PlanTerms
 from app.platform.subscriptions.service import (
     allowed_access,
     effective_status,
@@ -67,6 +68,8 @@ class SubscriptionGrant:
 
     subscription: Subscription
     plan: Plan
+    # Conditions en vigueur : licence en vigueur (figées), sinon plan (ADR-0034).
+    terms: PlanTerms
     status: SubscriptionStatus
     access: frozenset[str]
     modules: frozenset[str]
@@ -100,9 +103,11 @@ class CapabilityService:
 
     # --- Modules --------------------------------------------------------------------------
 
-    def offered_modules(self, profile: BusinessProfile, plan: Plan) -> set[str]:
-        """Modules que le tenant peut activer : proposés par le profil ET inclus dans le plan."""
-        return {m.module_code for m in profile.modules} & {m.module_code for m in plan.modules}
+    def offered_modules(self, profile: BusinessProfile, plan: Plan | PlanTerms) -> set[str]:
+        """Modules que le tenant peut activer : proposés par le profil ET inclus dans le plan
+        (ou dans la licence en vigueur, qui fige ceux du plan à son émission)."""
+        terms = plan if isinstance(plan, PlanTerms) else PlanTerms.of_plan(plan)
+        return {m.module_code for m in profile.modules} & set(terms.modules)
 
     def enabled_module_codes(self) -> set[str]:
         return set(
@@ -111,7 +116,7 @@ class CapabilityService:
             )
         )
 
-    def effective_modules(self, profile: BusinessProfile, plan: Plan) -> set[str]:
+    def effective_modules(self, profile: BusinessProfile, plan: Plan | PlanTerms) -> set[str]:
         candidates = self.offered_modules(profile, plan) & self.enabled_module_codes()
         return self.registry.core_codes() | self.registry.resolve_dependencies(candidates)
 
@@ -168,14 +173,16 @@ class CapabilityService:
         if plan is None:
             raise LookupError("plan introuvable pour l'abonnement")
         status = effective_status(subscription, plan.grace_days, now)
-        modules = frozenset(self.effective_modules(profile, plan))
+        terms = subscription_terms(self.session, subscription, plan, now)
+        modules = frozenset(self.effective_modules(profile, terms))
         return SubscriptionGrant(
             subscription=subscription,
             plan=plan,
+            terms=terms,
             status=status,
             access=allowed_access(self.session, status),
             modules=modules,
-            features=PlanPolicy(self.session, plan, self.registry).features(modules),
+            features=PlanPolicy(self.session, terms, self.registry).features(modules),
         )
 
     def grants(

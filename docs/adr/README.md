@@ -40,5 +40,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0031](0031-console-technova.md) | Console TechNova : processus et rôle SQL distincts, administrateurs `is_platform_admin` par CLI, journal de la plateforme append-only, catalogue technique en lecture seule, paramètres commerciaux en base ; complétée en 3.2-G (tenants et abonnements : métadonnées seulement, activation manuelle transitoire, double audit) | Acceptée |
 | [0032](0032-paiements-abonnement.md) | Paiements d'abonnement (`SubscriptionPayment`) : déclaration idempotente par l'entreprise (permission `billing`, devise fixée par le serveur), décision définitive de TechNova (`CONFIRMED` / `REJECTED`, verrou, double audit), aucune activation | Acceptée |
 | [0033](0033-abonnement-par-site.md) | 1 site = 1 abonnement : `subscriptions.site_id` (abonnement d'inscription rattaché au premier site), capacités par site, écritures revérifiées pour le site ciblé, limites par site, console par abonnement | Acceptée |
+| [0034](0034-licences-et-signing-service.md) | Licences des sites : Signing Service séparé (Ed25519, clé privée hors StockManager, HMAC), `.lic` v1 canonique, génération depuis un paiement confirmé, conditions figées, révocation définitive, réémission, trousseau public avec rotation | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

@@ -81,6 +81,22 @@ decided_by, decided_at, rejection_reason, updated_at)` d'une ligne `PENDING` ver
 l'unicité `(tenant_id, id)`, cible de la clé étrangère composite. Un paiement confirmé ne
 modifie ni l'abonnement ni l'entreprise.
 
+### Licences (Phase 3.3-B2, isolées par RLS, [ADR-0034](../adr/0034-licences-et-signing-service.md))
+
+Licence d'un site, générée par TechNova depuis un paiement confirmé, signée (Ed25519) par le
+Signing Service — la clé privée n'est jamais en base. Voir [`LICENSING.md`](LICENSING.md).
+
+| Table | Colonnes principales | Règles |
+|---|---|---|
+| `licenses` | `tenant_id`, `site_id`, `subscription_id`, `payment_id`, `license_number` (`LIC-AAAA-NNNNN`, unique global, séquence `license_number_seq`), `license_version`, `supersedes_id`, `plan_code`, `billing_period`, `valid_from` / `valid_until` (jours inclus, fuseau de l'entreprise), `timezone`, `starts_at` / `ends_at` (instants UTC), `max_activations` (1–10 000), `modules`, `features`, `limits` (JSONB, figés), `issued_at`, `issued_by`, `key_id`, `payload` (JSONB signé), `signature`, `payload_sha256`, `status` (`ISSUED` / `REVOKED`), `revoked_at`, `revoked_by`, `revocation_reason` | FK composites `(tenant_id, site_id, subscription_id)` → `subscriptions (tenant_id, site_id, id)`, `(tenant_id, subscription_id, payment_id)` → `subscription_payments (tenant_id, subscription_id, id)`, `(tenant_id, supersedes_id)` → `licenses` ; index uniques partiels : une licence `ISSUED` par paiement, une réémission par licence ; `CHECK` (période, instants, postes, version ⇔ `supersedes_id`, révocation complète, format du numéro) ; déclencheur `licenses_final` (seule transition : `ISSUED` → `REVOKED`, aucune autre colonne modifiable, même pour le propriétaire) |
+
+Droits : rôle applicatif `SELECT` (politique `tenant_isolation`) ; rôle de la console `SELECT`
+(`platform_read`), `INSERT` d'une licence `ISSUED` (`platform_issue`), `UPDATE (status,
+revoked_at, revoked_by, revocation_reason, updated_at)` d'une licence `ISSUED` vers `REVOKED`
+(`platform_revoke`), `USAGE` de la séquence ; aucune suppression. `subscriptions` reçoit
+l'unicité `(tenant_id, site_id, id)` et `subscription_payments` l'unicité `(tenant_id,
+subscription_id, id)`, cibles des FK composites.
+
 ### Tenant (isolés par RLS)
 
 | Table | Colonnes principales | Contraintes notables |
@@ -219,7 +235,7 @@ type PostgreSQL natif).
 
 | Droits | Tables |
 |---|---|
-| `SELECT` | catalogue |
+| `SELECT` | catalogue, licenses (émises et révoquées par TechNova seule) |
 | `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits, stock_transfers, sales |
 | `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines, stock_transfer_lines, sale_lines (lignes de brouillon) |
 | `SELECT, INSERT` | audit_logs, stock_movements (append-only), subscription_payments (décision : TechNova seule) |
@@ -243,7 +259,9 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    (migration 0019) : `subscription_payments` — lecture, mise à jour des seules colonnes de
    décision d'une ligne `PENDING` (ADR-0032). Depuis 3.3-B1 (migration 0020) : `sites` — lecture de
    `id`, `name`, `code` ; `tenant_memberships` — lecture de `id`, `is_owner`, `all_sites` ;
-   `membership_sites` — lecture (compteurs d'utilisateurs par site, ADR-0033).
+   `membership_sites` — lecture (compteurs d'utilisateurs par site, ADR-0033). Depuis 3.3-B2
+   (migration 0021) : `licenses` — lecture, émission (`ISSUED`), révocation seulement ;
+   séquence `license_number_seq` (ADR-0034).
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

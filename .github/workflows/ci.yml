@@ -89,6 +89,28 @@ jobs:
       - name: Migrations — réversibles
         run: uv run alembic downgrade base && uv run alembic upgrade head
 
+  signing-service:
+    # Service de signature des licences (ADR-0034) : tests avec des clés ÉPHÉMÈRES générées
+    # à l'exécution ; aucune clé ni aucun secret n'est fourni à ce job.
+    name: Signing Service (lint, types, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: signing-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: signing-service/uv.lock
+
+      - run: uv sync --frozen
+      - run: uv run ruff check . && uv run ruff format --check .
+      - run: uv run mypy signing_service
+      - run: uv run pytest
+
   frontend:
     name: Frontend (lint, format, types, tests, build)
     runs-on: ubuntu-latest

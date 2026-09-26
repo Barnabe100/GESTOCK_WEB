@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, NotFoundError
 from app.platform.audit.service import RequestMeta, record_audit
 from app.platform.context import RequestContext
+from app.platform.licensing.service import tenant_terms
 from app.platform.onboarding.definitions import OnboardingEnv, OnboardingStatus, OnboardingStepDef
 from app.platform.onboarding.models import OnboardingStep
 from app.platform.onboarding.schemas import (
@@ -33,7 +34,6 @@ from app.platform.onboarding.schemas import (
 )
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
-from app.platform.subscriptions.service import tenant_plans
 from app.platform.tenancy.models import Tenant
 from app.shared.clock import utcnow
 from app.shared.ids import new_id
@@ -59,7 +59,7 @@ class OnboardingService:
     # --- Évaluation ------------------------------------------------------------------------
 
     def env(self, tenant: Tenant, modules: frozenset[str]) -> OnboardingEnv:
-        policies = [PlanPolicy(self.db, plan, self.registry) for plan in tenant_plans(self.db)]
+        policies = [PlanPolicy(self.db, terms, self.registry) for terms in tenant_terms(self.db)]
 
         def limit(code: str) -> int | None:
             """Plus grande valeur parmi les abonnements (applicabilité d'une étape seulement ;

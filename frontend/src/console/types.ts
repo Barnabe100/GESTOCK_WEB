@@ -1,6 +1,6 @@
 /** Types de l'API de la console TechNova (montants en chaînes décimales). */
 import type { Page } from '@/shared/lib/serverTable';
-import type { SubscriptionPaymentStatus } from '@/shared/ui/StatusBadge';
+import type { LicenseState, SubscriptionPaymentStatus } from '@/shared/ui/StatusBadge';
 
 export type { Page };
 
@@ -157,6 +157,8 @@ export interface TenantSubscription {
   currency_at_subscription: string | null;
   requested_activations: number;
   usage: Record<string, { used: number; limit: number | null }>;
+  /** Licence en vigueur du site, sinon la plus récente (ADR-0034). */
+  license: LicenseSummary | null;
   actions: {
     can_activate: boolean;
     can_extend: boolean;
@@ -230,3 +232,80 @@ export interface ConsolePayment {
 }
 
 export type PaymentDecision = { kind: 'confirm' | 'reject'; reason: string };
+
+// --- Licences (Phase 3.3-B2, ADR-0034) ---------------------------------------------------------
+
+export type { LicenseState };
+
+export interface LicenseSummary {
+  id: string;
+  license_number: string;
+  license_version: number;
+  state: LicenseState;
+  plan_code: string;
+  valid_from: string;
+  valid_until: string;
+  max_activations: number;
+  issued_at: string;
+  revoked_at: string | null;
+}
+
+/** Licence vue par TechNova : contenu signé (jamais modifiable), état calculé, révocation. */
+export interface ConsoleLicense {
+  id: string;
+  license_number: string;
+  license_version: number;
+  supersedes_id: string | null;
+  superseded_by_id: string | null;
+  tenant_id: string;
+  tenant_name: string;
+  site_id: string;
+  site_name: string;
+  site_code: string;
+  subscription_id: string;
+  payment_id: string;
+  plan_code: string;
+  billing_period: 'monthly' | 'annual';
+  valid_from: string;
+  valid_until: string;
+  timezone: string;
+  max_activations: number;
+  modules: string[];
+  features: string[];
+  limits: Record<string, number | null>;
+  status: 'ISSUED' | 'REVOKED';
+  state: LicenseState;
+  issued_at: string;
+  issued_by_email: string | null;
+  key_id: string;
+  payload_sha256: string;
+  revoked_at: string | null;
+  revoked_by_email: string | null;
+  revocation_reason: string | null;
+}
+
+/** Ce que produirait la génération depuis un paiement (calculé par le serveur). */
+export interface LicenseProposal {
+  payment_id: string;
+  payment_status: SubscriptionPaymentStatus;
+  tenant_id: string;
+  tenant_name: string;
+  subscription_id: string;
+  site_id: string | null;
+  site_name: string | null;
+  plan_code: string;
+  billing_period: 'monthly' | 'annual';
+  timezone: string;
+  valid_from: string;
+  valid_until: string;
+  requested_activations: number;
+  max_activations: number;
+  payment_period_start: string;
+  payment_period_end: string;
+  blocking: string | null;
+  license_id: string | null;
+}
+
+export type LicenseAction =
+  | { kind: 'revoke'; reason: string }
+  | { kind: 'reissue'; reason: string; max_activations?: number };

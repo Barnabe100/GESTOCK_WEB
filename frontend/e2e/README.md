@@ -49,6 +49,24 @@ cd frontend && npm run dev                                  # terminal 3
 cd frontend && npm run e2e                                  # terminal 4
 ```
 
+Licences (`console-licenses.e2e.ts`) : Signing Service local avec une clé **éphémère**
+générée **hors du dépôt** (jamais versionnée), et console lancée avec son secret HMAC et le
+trousseau public correspondant :
+
+```bash
+D=/tmp/sm-signing && cd signing-service && uv sync
+uv run signing-service-keygen --key-id dev-ed25519-e2e --out $D/private.pem \
+  | grep -v '^#' > $D/public_keys.toml
+head -c 48 /dev/urandom | base64 | tr -d '\n' > $D/client-secret && chmod 600 $D/client-secret
+SIGNING_KEY_ID=dev-ed25519-e2e SIGNING_PRIVATE_KEY_FILE=$D/private.pem \
+SIGNING_CLIENT_SECRET_FILE=$D/client-secret \
+  uv run uvicorn --factory signing_service.app:create_app --port 8100      # terminal 5
+# terminal 2, à la place : console avec le Signing Service
+cd backend && SM_SIGNING_SERVICE_URL=http://127.0.0.1:8100 \
+  SM_SIGNING_CLIENT_SECRET="$(cat $D/client-secret)" SM_LICENSE_PUBLIC_KEYS_FILE=$D/public_keys.toml \
+  uv run uvicorn app.console.main:app --port 8001
+```
+
 La console TechNova exige le rôle SQL `stockmanager_platform`
 (`docker/postgres/init/02-platform-role.sh`) ; `console.e2e.ts` crée lui-même un
 administrateur TechNova par la CLI (`stockmanager platform-admin create`).
@@ -60,12 +78,12 @@ la suite peut être rejouée sur la même base.
 
 ## Suites
 
-- `console-payments.e2e.ts` (Phase 3.3-A) : entreprises (abonnement en attente d'activation)
-  et administrateurs TechNova créés à chaque exécution ; déclaration d'un paiement par
-  l'entreprise (« En attente »), confirmation puis rejet motivé dans la console, statuts et
-  motif visibles par l'entreprise, abonnement **non activé** après confirmation, journal de
-  l'entreprise ; isolation entre deux entreprises ; décisions simultanées (une seule réussit,
-  `409 payment_already_decided`).
+- `console-licenses.e2e.ts` (Phase 3.3-B2) : paiement confirmé → génération de la licence dans
+  la console (postes proposés puis ajustés, raison, confirmation), téléchargement du `.lic`
+  signé, licence et postes autorisés visibles par l'entreprise (site actif), révocation
+  (site suspendu), réémission (nouveau numéro, site de nouveau actif), journal de l'entreprise ;
+  sans paiement confirmé : aucune licence, aucune route de licence côté entreprise. **Exige le
+  Signing Service** (voir « Exécution »).
 - `console-payments.e2e.ts` (Phase 3.3-A) : entreprises (abonnement en attente d'activation)
   et administrateurs TechNova créés à chaque exécution ; déclaration d'un paiement par
   l'entreprise (« En attente »), confirmation puis rejet motivé dans la console, statuts et

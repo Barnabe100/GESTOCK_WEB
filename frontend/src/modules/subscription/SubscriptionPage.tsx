@@ -6,12 +6,43 @@ import { formatDate } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { SubscriptionStatusBadge, StatusBadge } from '@/shared/ui/StatusBadge';
+import { LicenseStateBadge, SubscriptionStatusBadge, StatusBadge } from '@/shared/ui/StatusBadge';
 
-import { useSubscriptions, type SubscriptionDetails } from './api';
+import { useSubscriptions, type LicenseSummary, type SubscriptionDetails } from './api';
 import { SubscriptionPaymentsSection } from './PaymentsSection';
 
-/** Abonnement d'un site : offre, statut, période, utilisation et accès autorisés. */
+/** Licence du site (lecture seule) : numéro, état, validité, postes autorisés. Les jours de
+ * validité sont des dates du fuseau de l'entreprise, affichées telles quelles. */
+function SiteLicense({ license, locale }: { license: LicenseSummary | null; locale: string }) {
+  const { t } = useTranslation();
+  if (!license) {
+    return (
+      <p className="sm-muted" data-testid="license-none">
+        {t('subscriptionPage.noLicense')}
+      </p>
+    );
+  }
+  const day = (value: string) => formatDate(value, locale, 'UTC');
+  return (
+    <div data-testid="license">
+      <p className="sm-strong">
+        {t('subscriptionPage.licenseNumber', { number: license.license_number })}{' '}
+        <LicenseStateBadge state={license.state} />
+      </p>
+      <p>
+        {t('subscriptionPage.licenseValidity', {
+          start: day(license.valid_from),
+          end: day(license.valid_until),
+        })}
+      </p>
+      <p data-testid="license-activations">
+        {t('subscriptionPage.licenseActivations', { count: license.max_activations })}
+      </p>
+    </div>
+  );
+}
+
+/** Abonnement d'un site : offre, statut, période, licence, utilisation et accès autorisés. */
 function SiteSubscription({ subscription: s }: { subscription: SubscriptionDetails }) {
   const { t } = useTranslation();
   const { capabilities } = useCapabilities();
@@ -43,6 +74,10 @@ function SiteSubscription({ subscription: s }: { subscription: SubscriptionDetai
           <p className="sm-muted">
             {t('subscriptionPage.requestedActivations', { count: s.requested_activations })}
           </p>
+        </div>
+        <div>
+          <h3>{t('subscriptionPage.license')}</h3>
+          <SiteLicense license={s.license} locale={locale} />
         </div>
         <div>
           <h3>{t('subscriptionPage.usage')}</h3>

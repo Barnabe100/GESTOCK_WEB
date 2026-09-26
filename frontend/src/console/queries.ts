@@ -1,10 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { consoleRequest } from './api';
+import { parseError } from '@/core/api/client';
+
+import { CONSOLE_API_BASE, consoleRequest } from './api';
 import type {
   Catalog,
+  ConsoleLicense,
   ConsolePayment,
   Dashboard,
+  LicenseAction,
+  LicenseProposal,
   Page,
   Plan,
   PlanCommercialUpdate,
@@ -153,4 +158,83 @@ export function usePaymentDecision(id: string) {
     },
     onError: refresh,
   });
+}
+
+// --- Licences (Phase 3.3-B2, ADR-0034) ---------------------------------------------------------
+
+export function useLicenses(query: string) {
+  return useQuery({
+    queryKey: ['console', 'licenses', query],
+    queryFn: () => consoleRequest<Page<ConsoleLicense>>(`/licenses?${query}`),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export const useLicense = (id: string) =>
+  useQuery({
+    queryKey: ['console', 'licenses', 'detail', id],
+    queryFn: () => consoleRequest<ConsoleLicense>(`/licenses/${encodeURIComponent(id)}`),
+  });
+
+/** Licence que produirait la génération (paiement confirmé seulement). */
+export const useLicenseProposal = (paymentId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['console', 'payments', 'license-proposal', paymentId],
+    queryFn: () =>
+      consoleRequest<LicenseProposal>(
+        `/payments/${encodeURIComponent(paymentId)}/license-proposal`,
+      ),
+    enabled,
+  });
+
+function useLicenseRefresh() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ['console', 'licenses'] });
+    void queryClient.invalidateQueries({ queryKey: ['console', 'payments'] });
+    void queryClient.invalidateQueries({ queryKey: ['console', 'tenants'] });
+    void queryClient.invalidateQueries({ queryKey: ['console', 'audit'] });
+  };
+}
+
+/** Génération : le serveur calcule la période, fait signer et vérifie ; `max_activations` =
+ * postes confirmés ou ajustés par TechNova. */
+export function useGenerateLicense(paymentId: string) {
+  const refresh = useLicenseRefresh();
+  return useMutation({
+    mutationFn: (body: { reason: string; max_activations: number }) =>
+      consoleRequest<ConsoleLicense>(`/payments/${encodeURIComponent(paymentId)}/license`, {
+        method: 'POST',
+        body,
+      }),
+    onSettled: refresh,
+  });
+}
+
+/** Révocation (définitive) ou réémission (nouvelle licence) ; le serveur revérifie tout. */
+export function useLicenseAction(id: string) {
+  const refresh = useLicenseRefresh();
+  return useMutation({
+    mutationFn: ({ kind, ...body }: LicenseAction) =>
+      consoleRequest<ConsoleLicense>(`/licenses/${encodeURIComponent(id)}/${kind}`, {
+        method: 'POST',
+        body,
+      }),
+    onSettled: refresh,
+  });
+}
+
+/** Télécharge le fichier `.lic` signé (cookie de session et en-tête anti-CSRF de la console). */
+export async function downloadLicense(license: ConsoleLicense): Promise<void> {
+  const response = await fetch(
+    `${CONSOLE_API_BASE}/licenses/${encodeURIComponent(license.id)}/file`,
+    { headers: { 'X-TechNova-Console': '1' }, credentials: 'same-origin' },
+  );
+  if (!response.ok) throw await parseError(response);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${license.license_number}.lic`;
+  link.click();
+  URL.revokeObjectURL(url);
 }

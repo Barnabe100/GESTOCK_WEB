@@ -9,13 +9,14 @@ from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
+from app.platform.licensing.service import tenant_terms
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
+from app.platform.subscriptions.plan_policy import PlanTerms
 from app.platform.subscriptions.service import (
     period_enabled,
     self_service,
     subscription_price,
-    tenant_plans,
     unattached_subscription,
 )
 from app.platform.tenancy.models import Site, TenantModule
@@ -199,19 +200,19 @@ class ModuleService:
         self.registry = registry
         self.capabilities = CapabilityService(db, registry)
 
-    def _profile_and_plans(self) -> tuple[BusinessProfile, list[Plan]]:
-        """Profil et plans des abonnements de l'entreprise : un module est activable s'il est
-        proposé par le profil et inclus dans au moins un abonnement (chaque site n'en reçoit
-        que ce que son propre plan inclut)."""
+    def _profile_and_plans(self) -> tuple[BusinessProfile, list[PlanTerms]]:
+        """Profil et conditions des abonnements de l'entreprise (licence en vigueur, sinon
+        plan) : un module est activable s'il est proposé par le profil et inclus dans au moins
+        un abonnement (chaque site n'en reçoit que ce que ses propres conditions incluent)."""
         profile = self.db.get(BusinessProfile, self.ctx.tenant.business_profile_code)
         if profile is None:
             raise BusinessRuleError("Profil introuvable", code="unknown_profile")
-        return profile, tenant_plans(self.db)
+        return profile, tenant_terms(self.db)
 
     def list_all(self) -> list[ModuleOut]:
         profile, plans = self._profile_and_plans()
         in_profile = {m.module_code for m in profile.modules}
-        in_plan = {m.module_code for plan in plans for m in plan.modules}
+        in_plan = {code for terms in plans for code in terms.modules}
         enabled = self.capabilities.enabled_module_codes()
         effective = self.ctx.capabilities.modules
         return [

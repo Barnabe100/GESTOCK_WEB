@@ -1,0 +1,49 @@
+[project]
+name = "stockmanager-signing-service"
+version = "0.1.0"
+description = "StockManager — service de signature des licences (Ed25519), déployé à part"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "TechNova" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "cryptography>=43",
+]
+
+[project.scripts]
+signing-service-keygen = "signing_service.keygen:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "httpx2>=2.13",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["signing_service"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "DTZ"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]

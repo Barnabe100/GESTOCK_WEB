@@ -61,6 +61,22 @@ class BusinessRuleError(AppError):
     title = "Règle métier non respectée"
 
 
+class BadGatewayError(AppError):
+    """Réponse invalide d'un service tiers de confiance (ex. Signing Service)."""
+
+    status_code = 502
+    code = "bad_gateway"
+    title = "Réponse invalide d'un service distant"
+
+
+class ServiceUnavailableError(AppError):
+    """Service distant indisponible ou non configuré ; rien n'a été modifié."""
+
+    status_code = 503
+    code = "service_unavailable"
+    title = "Service indisponible"
+
+
 class TooManyRequestsError(AppError):
     """Limite de fréquence atteinte ; ``retry_after`` (secondes) est renvoyé dans l'en-tête
     ``Retry-After`` et dans le corps."""

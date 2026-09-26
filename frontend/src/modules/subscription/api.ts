@@ -3,7 +3,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/core/api/client';
 import type { LimitUsage, SubscriptionStatus } from '@/core/api/types';
 import type { Page } from '@/shared/lib/serverTable';
-import type { SubscriptionPaymentStatus } from '@/shared/ui/StatusBadge';
+import type { LicenseState, SubscriptionPaymentStatus } from '@/shared/ui/StatusBadge';
+
+/** Licence d'un site (lecture seule : l'entreprise ne la génère ni ne la modifie jamais). */
+export interface LicenseSummary {
+  id: string;
+  license_number: string;
+  license_version: number;
+  state: LicenseState;
+  plan_code: string;
+  valid_from: string;
+  valid_until: string;
+  max_activations: number;
+  issued_at: string;
+  revoked_at: string | null;
+}
 
 /** Abonnement d'un site (1 site = 1 abonnement, ADR-0033) ; ``site`` nul : abonnement pris à
  * l'inscription, rattaché au premier site créé. */
@@ -23,6 +37,8 @@ export interface SubscriptionDetails {
   limits: Record<string, LimitUsage>;
   features: string[];
   allowed_access: string[];
+  /** Licence en vigueur du site, sinon la plus récente ; nulle : aucune licence. */
+  license: LicenseSummary | null;
 }
 
 /** Abonnements de l'entreprise (sites accessibles au membre). */

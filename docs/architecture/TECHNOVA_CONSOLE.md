@@ -185,10 +185,8 @@ PLAN → SUBSCRIPTION → PAYMENT (3.3-A) → LICENCE (3.3-B) → ACTIVATION
 ```
 
 **Payment CONFIRMED ≠ activation.** Confirmer un paiement atteste seulement que TechNova l'a
-reçu : l'abonnement et l'entreprise ne changent pas (statut, période, plan). L'activation
-viendra de l'import d'une licence signée (3.3-B), qui référencera un paiement confirmé ; en
-attendant, l'activation manuelle transitoire (§ 6) reste l'outil de TechNova. Aucune clé,
-aucune signature, aucune licence en 3.3-A.
+reçu : l'abonnement et l'entreprise ne changent pas (statut, période, plan). L'activation vient
+de la **licence** générée ensuite depuis ce paiement (§ 7 bis, 3.3-B2).
 
 | Étape | Qui | Règles |
 |---|---|---|
@@ -213,6 +211,29 @@ La console voit le nom de l'entreprise et le plan, jamais le déclarant (utilisa
 l'entreprise) ; le journal de l'entreprise ne contient jamais l'identité de l'agent TechNova.
 Droits SQL (migration 0019) : voir [`DATA_MODEL.md`](DATA_MODEL.md).
 
+## 7 bis. Licences (Phase 3.3-B2, ADR-0034)
+
+```text
+PAYMENT CONFIRMED ──« Générer la licence »──▶ Signing Service (Ed25519, processus distinct)
+                                                │ document .lic signé
+console : vérifie la signature (trousseau public) ─▶ enregistre la licence ─▶ abonnement du site actif
+```
+
+- Depuis la fiche d'un paiement **confirmé** : période calculée par le serveur (lendemain de la
+  licence en cours, sinon aujourd'hui), postes proposés = postes demandés à la souscription,
+  confirmés ou ajustés par TechNova, raison obligatoire, case « Je confirme ». Ce qui bloque la
+  génération est affiché (paiement non confirmé, entreprise suspendue, licence déjà générée…).
+- Entrée « Licences » : liste (filtres entreprise, site, plan, état ; recherche par numéro ou
+  entreprise), fiche (contenu signé figé, validité, postes, clé de signature, empreinte,
+  historique), **téléchargement** du `.lic`, **révocation** (définitive) et **réémission**
+  (nouvelle licence, même période). La fiche d'une entreprise affiche la licence de chaque
+  abonnement de site ; l'activation manuelle et la prolongation transitoires (§ 6) n'y sont plus
+  proposées dès qu'une licence existe.
+- La console ne détient **aucune** clé privée : seulement le secret HMAC qui authentifie ses
+  demandes au Signing Service (`SM_SIGNING_SERVICE_URL`, `SM_SIGNING_CLIENT_SECRET`) et le
+  trousseau des clés publiques. Service indisponible ou réponse non vérifiable : rien n'est
+  enregistré. Détails : [`LICENSING.md`](LICENSING.md).
+
 ## 8. Ce qui est implémenté, prévu côté infrastructure, futur
 
 | Sujet | Statut |
@@ -223,5 +244,7 @@ Droits SQL (migration 0019) : voir [`DATA_MODEL.md`](DATA_MODEL.md).
 | MFA des administrateurs TechNova | **Futur** |
 | Tenants (liste, détail, suspension, réactivation), abonnements (changement de plan, activation manuelle transitoire, prolongation), double audit | **Implémenté** (3.2-G, migration 0018, tests) |
 | Paiements d'abonnement (déclaration par l'entreprise, confirmation / rejet TechNova, double audit, aucune activation) | **Implémenté** (3.3-A, migration 0019, tests, ADR-0032) |
-| Licences (outil de signature séparé, clé privée hors StockManager, import `.lic`) | **3.3-B** |
+| Licences : Signing Service séparé (clé privée hors StockManager), génération depuis un paiement confirmé, révocation, réémission, téléchargement `.lic`, double audit | **Implémenté** (3.3-B2, migration 0021, tests, ADR-0034) |
+| Postes (activations), renouvellement, notifications d'échéance | **3.3-B3 / B4** |
+| Déploiement du Signing Service (hôte, secrets montés, réseau privé, clé de production) | **Infrastructure** : image fournie (`signing-service/Dockerfile`), hors Compose de l'application |
 | Catalogue technique éditable, limites modifiables, paramètres SaaS en base, support avec accès aux données métier | **Futur / réévaluation** (hors console en 3.2-F) |

@@ -13,9 +13,11 @@ from fastapi import FastAPI
 
 from app import __version__
 from app.console.router import router
+from app.console.signing import SigningClient
 from app.core.config import Settings, get_settings
 from app.core.db import create_db_engine, create_session_factory
 from app.core.errors import register_error_handlers
+from app.platform.licensing.keyring import load_keyring
 from app.platform.registry import get_registry
 
 
@@ -36,6 +38,19 @@ def create_console_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = create_db_engine(settings.platform_database_url, settings)
     app.state.session_factory = create_session_factory(app.state.engine)
+    # Signing Service (ADR-0034) : seul le secret HMAC est connu de la console, jamais la clé
+    # privée ; le trousseau public vérifie chaque document signé avant enregistrement.
+    keyring = load_keyring(settings.license_public_keys_file)
+    app.state.signing_client = (
+        SigningClient(
+            base_url=settings.signing_service_url,
+            secret=settings.signing_client_secret.get_secret_value().encode(),
+            keyring=keyring,
+            timeout=settings.signing_timeout_seconds,
+        )
+        if settings.signing_service_url and settings.signing_client_secret
+        else None
+    )
     register_error_handlers(app)
     app.include_router(router, prefix=prefix)
     return app

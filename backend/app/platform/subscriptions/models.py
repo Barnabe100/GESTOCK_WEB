@@ -64,8 +64,10 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             unique=True,
             postgresql_where=text("site_id IS NULL"),
         ),
-        # Cible des clés étrangères composites (paiements d'abonnement du même tenant).
+        # Cible des clés étrangères composites (paiements d'abonnement du même tenant ;
+        # licences du même tenant et du même site).
         UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "site_id", "id"),
         CheckConstraint(
             "(price_at_subscription IS NULL) = (currency_at_subscription IS NULL)",
             name="price_snapshot_complete",
@@ -138,6 +140,8 @@ class SubscriptionPayment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         ),
         # Une seule déclaration par clé d'idempotence et par tenant.
         UniqueConstraint("tenant_id", "idempotency_key"),
+        # Cible de la clé étrangère des licences (paiement de CET abonnement).
+        UniqueConstraint("tenant_id", "subscription_id", "id"),
         CheckConstraint("amount > 0", name="amount_positive"),
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="iso_currency"),
         CheckConstraint("period_end > period_start", name="period_ordered"),

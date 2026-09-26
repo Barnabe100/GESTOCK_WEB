@@ -29,6 +29,7 @@ const SUBSCRIPTION: SubscriptionDetails = {
   limits: {},
   features: [],
   allowed_access: ['read', 'admin', 'billing'],
+  license: null,
 };
 
 const payment = (over: Partial<SubscriptionPayment> = {}): SubscriptionPayment => ({
@@ -140,6 +141,50 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
     expect(within(confirmed).getByText('Confirmé')).toBeTruthy();
     // Aucune clé de traduction brute affichée.
     expect(document.body.textContent).not.toMatch(/subscriptionPayment|subscriptionPayments\./);
+  });
+
+  it('licence du site : numéro, état, validité et postes autorisés (lecture seule)', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/subscriptions')) {
+        return jsonResponse([
+          {
+            ...SUBSCRIPTION,
+            status: 'active',
+            effective_status: 'active',
+            license: {
+              id: 'lic-1',
+              license_number: 'LIC-2026-00007',
+              license_version: 1,
+              state: 'ACTIVE',
+              plan_code: 'STANDARD',
+              valid_from: '2026-10-01',
+              valid_until: '2027-09-30',
+              max_activations: 3,
+              issued_at: '2026-09-26T10:00:00Z',
+              revoked_at: null,
+            },
+          },
+        ]);
+      }
+      if (u.includes('/subscription/payments?')) {
+        return jsonResponse({ items: [], total: 0, limit: 25, offset: 0 });
+      }
+      return jsonResponse({ code: 'not_found' }, 404);
+    });
+    renderPage(VIEW);
+    const license = await screen.findByTestId('license');
+    expect(license.textContent).toContain('N° LIC-2026-00007');
+    expect(license.textContent).toContain('Active');
+    expect(license.textContent).toContain('Valide du 1 oct. 2026 au 30 sept. 2027');
+    expect(screen.getByTestId('license-activations').textContent).toContain('3 postes autorisés');
+    expect(screen.queryByRole('button', { name: /licence/i })).toBeNull();
+  });
+
+  it('sans licence : le site attend le paiement confirmé et la licence', async () => {
+    api();
+    renderPage(VIEW);
+    expect((await screen.findByTestId('license-none')).textContent).toContain('Aucune licence');
   });
 
   it('sans la permission de déclarer : lecture seule', async () => {

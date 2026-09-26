@@ -4,6 +4,7 @@ Toutes les routes, sauf la connexion, exigent un administrateur de la plateforme
 (``PlatformAdmin``). Aucune ne dépend d'un tenant ni n'accède à ses données.
 """
 
+import json
 import uuid
 from typing import Annotated, Any
 
@@ -20,15 +21,20 @@ from app.console.auth import (
     require_console_header,
 )
 from app.console.catalog import active_countries, build_catalog
+from app.console.licenses import LicenseAdminService, LicenseFilters
 from app.console.models import PlatformAuditLog
 from app.console.payments import PaymentDecisionService
 from app.console.plans import PlanCommercialService
 from app.console.schemas import (
     ActivationIn,
     CatalogOut,
+    ConsoleLicenseOut,
     ConsolePaymentOut,
     DashboardOut,
     ExtensionIn,
+    LicenseGenerateIn,
+    LicenseProposalOut,
+    LicenseReissueIn,
     LoginIn,
     PlanChangeIn,
     PlanChoice,
@@ -47,9 +53,12 @@ from app.console.schemas import (
     TenantSubscriptionOut,
     TenantUsage,
 )
+from app.console.signing import SigningClient
 from app.console.tenants import ACTIVABLE, EXTENDABLE, TenantAdminService, TenantFilters
 from app.core.config import Settings
 from app.platform.catalog.models import BusinessProfile, Plan
+from app.platform.licensing.models import LicenseState
+from app.platform.licensing.schemas import license_summary
 from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
 from app.platform.subscriptions.models import SubscriptionPaymentStatus, SubscriptionStatus
 from app.platform.subscriptions.service import self_service
@@ -60,6 +69,14 @@ from app.shared.schemas import Page
 router = APIRouter(dependencies=[Depends(require_console_header)])
 
 Registry = Annotated[ModuleRegistry, Depends(get_registry)]
+
+
+def get_signing_client(request: Request) -> SigningClient | None:
+    client: SigningClient | None = getattr(request.app.state, "signing_client", None)
+    return client
+
+
+Signer = Annotated[SigningClient | None, Depends(get_signing_client)]
 
 
 def _cookie_path(settings: Settings) -> str:
@@ -270,6 +287,12 @@ def _subscription_out(
     service: TenantAdminService, row: Any, timezone: str, plans: list[Plan]
 ) -> TenantSubscriptionOut:
     subscription = row.Subscription
+    licenses = LicenseAdminService(service.db, service.registry, service.now).licenses_of_tenant(
+        subscription.tenant_id
+    )
+    own = [lic for lic in licenses if lic.subscription_id == subscription.id]
+    in_force = [lic for lic in own if lic.state(service.now) is LicenseState.ACTIVE]
+    controlled = bool(own)
     plan = service.plan(subscription.plan_code)
     limits = service.limits(plan)
     used = {"max_users": service.site_users(subscription.tenant_id, subscription.site_id)}
@@ -300,9 +323,12 @@ def _subscription_out(
             for code, limit in limits.items()
             if code in used
         },
+        license=license_summary(
+            in_force[-1] if in_force else (own[-1] if own else None), service.now
+        ),
         actions=SubscriptionActions(
-            can_activate=subscription.status in ACTIVABLE,
-            can_extend=subscription.status in EXTENDABLE,
+            can_activate=subscription.status in ACTIVABLE and not controlled,
+            can_extend=subscription.status in EXTENDABLE and not controlled,
             can_change_plan=bool(others),
             activation_start=start,
             activation_end=end,
@@ -544,3 +570,211 @@ def reject_payment(
     service.reject(payment_id, body.reason, ctx.actor, ctx.meta)
     db.commit()
     return _payment_out(service.row(payment_id))
+
+
+# --- Licences (Phase 3.3-B2, ADR-0034) ---------------------------------------------------------
+
+
+def _license_out(row: Any, service: LicenseAdminService) -> ConsoleLicenseOut:
+    license = row.License
+    return ConsoleLicenseOut(
+        id=license.id,
+        license_number=license.license_number,
+        license_version=license.license_version,
+        supersedes_id=license.supersedes_id,
+        superseded_by_id=row.superseded_by_id,
+        tenant_id=license.tenant_id,
+        tenant_name=row.tenant_name,
+        site_id=license.site_id,
+        site_name=row.site_name,
+        site_code=row.site_code,
+        subscription_id=license.subscription_id,
+        payment_id=license.payment_id,
+        plan_code=license.plan_code,
+        billing_period=license.billing_period.value,
+        valid_from=license.valid_from,
+        valid_until=license.valid_until,
+        timezone=license.timezone,
+        max_activations=license.max_activations,
+        modules=list(license.modules),
+        features=list(license.features),
+        limits=dict(license.limits),
+        status=license.status.value,
+        state=license.state(service.now).value,
+        issued_at=license.issued_at,
+        issued_by_email=row.issued_by_email,
+        key_id=license.key_id,
+        payload_sha256=license.payload_sha256,
+        revoked_at=license.revoked_at,
+        revoked_by_email=row.revoked_by_email,
+        revocation_reason=license.revocation_reason,
+    )
+
+
+@router.get("/licenses", response_model=Page[ConsoleLicenseOut], tags=["console-licenses"])
+def list_licenses(
+    ctx: PlatformAdmin,
+    db: ConsoleDb,
+    registry: Registry,
+    now: NowDep,
+    params: Annotated[PageParams, Depends(page_params)],
+    tenant_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    plan_code: Annotated[str | None, Query(max_length=50)] = None,
+    state: LicenseState | None = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+) -> Page[ConsoleLicenseOut]:
+    """Licences (filtres : entreprise, site, plan, état calculé, numéro ou entreprise ; tri
+    ``issued_at`` décroissant par défaut, ``valid_until``, ``license_number``)."""
+    service = LicenseAdminService(db, registry, now)
+    rows, total = service.search(
+        LicenseFilters(
+            tenant_id=tenant_id, site_id=site_id, plan_code=plan_code, state=state, search=search
+        ),
+        params,
+    )
+    return Page(
+        items=[_license_out(r, service) for r in rows],
+        total=total,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+@router.get("/licenses/{license_id}", response_model=ConsoleLicenseOut, tags=["console-licenses"])
+def get_license(
+    license_id: uuid.UUID, ctx: PlatformAdmin, db: ConsoleDb, registry: Registry, now: NowDep
+) -> ConsoleLicenseOut:
+    service = LicenseAdminService(db, registry, now)
+    return _license_out(service.row(license_id), service)
+
+
+@router.get("/licenses/{license_id}/file", tags=["console-licenses"])
+def download_license(
+    license_id: uuid.UUID, ctx: PlatformAdmin, db: ConsoleDb, registry: Registry, now: NowDep
+) -> Response:
+    """Fichier ``.lic`` signé (document v1, JSON). Une licence révoquée n'est plus
+    distribuée (``409 license_revoked``)."""
+    license, document = LicenseAdminService(db, registry, now).document(license_id)
+    return Response(
+        # Lisible ; la vérification recalcule la forme canonique (ordre et espaces indifférents).
+        content=json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{license.license_number}.lic"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post(
+    "/licenses/{license_id}/revoke", response_model=ConsoleLicenseOut, tags=["console-licenses"]
+)
+def revoke_license(
+    license_id: uuid.UUID,
+    body: ReasonIn,
+    ctx: PlatformAdmin,
+    db: ConsoleDb,
+    registry: Registry,
+    now: NowDep,
+) -> ConsoleLicenseOut:
+    """Révocation **définitive** (jamais restaurée) ; l'abonnement du site suit les règles
+    d'accès correspondantes (suspendu si plus aucune licence ne couvre ce jour)."""
+    service = LicenseAdminService(db, registry, now)
+    service.revoke(license_id, body.reason, ctx.actor, ctx.meta)
+    db.commit()
+    return _license_out(service.row(license_id), service)
+
+
+@router.post(
+    "/licenses/{license_id}/reissue",
+    response_model=ConsoleLicenseOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["console-licenses"],
+)
+def reissue_license(
+    license_id: uuid.UUID,
+    body: LicenseReissueIn,
+    ctx: PlatformAdmin,
+    db: ConsoleDb,
+    registry: Registry,
+    now: NowDep,
+    signer: Signer,
+) -> ConsoleLicenseOut:
+    """Réémission : ancienne licence révoquée, **nouvelle** licence (numéro, version + 1), même
+    paiement et même période ; postes conservés sauf ``max_activations`` explicite."""
+    service = LicenseAdminService(db, registry, now, signer)
+    new = service.reissue(
+        license_id,
+        reason=body.reason,
+        max_activations=body.max_activations,
+        actor=ctx.actor,
+        meta=ctx.meta,
+    )
+    db.commit()
+    return _license_out(service.row(new.id), service)
+
+
+def _proposal_out(service: LicenseAdminService, payment_id: uuid.UUID) -> LicenseProposalOut:
+    proposal = service.proposal(payment_id)
+    return LicenseProposalOut(
+        payment_id=proposal.payment.id,
+        payment_status=proposal.payment.status.value,
+        tenant_id=proposal.payment.tenant_id,
+        tenant_name=proposal.tenant_name,
+        subscription_id=proposal.subscription.id,
+        site_id=proposal.subscription.site_id,
+        site_name=proposal.site_name,
+        plan_code=proposal.subscription.plan_code,
+        billing_period=proposal.subscription.billing_period.value,
+        timezone=proposal.timezone,
+        valid_from=proposal.valid_from,
+        valid_until=proposal.valid_until,
+        requested_activations=proposal.subscription.requested_activations,
+        max_activations=proposal.max_activations,
+        payment_period_start=proposal.payment.period_start,
+        payment_period_end=proposal.payment.period_end,
+        blocking=proposal.blocking,
+        license_id=proposal.existing_license_id,
+    )
+
+
+@router.get(
+    "/payments/{payment_id}/license-proposal",
+    response_model=LicenseProposalOut,
+    tags=["console-licenses"],
+)
+def get_license_proposal(
+    payment_id: uuid.UUID, ctx: PlatformAdmin, db: ConsoleDb, registry: Registry, now: NowDep
+) -> LicenseProposalOut:
+    return _proposal_out(LicenseAdminService(db, registry, now), payment_id)
+
+
+@router.post(
+    "/payments/{payment_id}/license",
+    response_model=ConsoleLicenseOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["console-licenses"],
+)
+def generate_license(
+    payment_id: uuid.UUID,
+    body: LicenseGenerateIn,
+    ctx: PlatformAdmin,
+    db: ConsoleDb,
+    registry: Registry,
+    now: NowDep,
+    signer: Signer,
+) -> ConsoleLicenseOut:
+    """Génère la licence du site depuis un paiement **confirmé** : période calculée par le
+    serveur, postes confirmés ou ajustés (``max_activations``), signature par le Signing
+    Service vérifiée, abonnement du site aligné ; une seule licence par paiement."""
+    service = LicenseAdminService(db, registry, now, signer)
+    license = service.generate(
+        payment_id,
+        max_activations=body.max_activations,
+        reason=body.reason,
+        actor=ctx.actor,
+        meta=ctx.meta,
+    )
+    db.commit()
+    return _license_out(service.row(license.id), service)

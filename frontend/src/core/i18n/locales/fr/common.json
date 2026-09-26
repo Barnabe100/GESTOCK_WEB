@@ -473,7 +473,7 @@
     "usage": "Utilisation",
     "unlimited": "Illimité",
     "allowed": "Accès autorisés",
-    "renewInfo": "Chaque site a son propre abonnement. Pour renouveler ou changer d'offre, contactez TechNova.",
+    "renewInfo": "Chaque site a son propre abonnement et sa propre licence. Pour renouveler, déclarez votre paiement : TechNova émettra la licence de la période suivante.",
     "limitNames": {
       "max_sites": "Sites",
       "max_users": "Utilisateurs"
@@ -482,7 +482,13 @@
     "unattached": "En attente du premier site",
     "unattachedHelp": "L'abonnement choisi à l'inscription sera rattaché au premier site que vous créerez.",
     "requestedActivations_one": "{{count}} poste demandé",
-    "requestedActivations_other": "{{count}} postes demandés"
+    "requestedActivations_other": "{{count}} postes demandés",
+    "license": "Licence",
+    "noLicense": "Aucune licence : le site deviendra opérationnel après confirmation de votre paiement et émission de la licence par TechNova.",
+    "licenseNumber": "N° {{number}}",
+    "licenseValidity": "Valide du {{start}} au {{end}}",
+    "licenseActivations_one": "{{count}} poste autorisé",
+    "licenseActivations_other": "{{count}} postes autorisés"
   },
   "errors": {
     "pageNotFound": "Page introuvable",
@@ -1418,5 +1424,11 @@
     "periodOrder": "La fin de période doit suivre son début.",
     "subscription": "Abonnement (site)",
     "site": "Site"
+  },
+  "licenseState": {
+    "NOT_YET_VALID": "À venir",
+    "ACTIVE": "Active",
+    "EXPIRED": "Expirée",
+    "REVOKED": "Révoquée"
   }
 }

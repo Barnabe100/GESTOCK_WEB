@@ -14,6 +14,12 @@ Au démarrage, le service `migrate` applique les migrations puis synchronise le 
 port 8001 publié sur `127.0.0.1` seulement) démarre aussi ; le frontend relaie `/platform-api`
 vers lui.
 
+Le **Signing Service** des licences (ADR-0034) n'est **pas** dans ce Compose ni dans ces
+images : il est déployé à part avec sa propre image (`signing-service/Dockerfile`), sa clé
+privée montée depuis l'hôte du service. Sans lui, la console fonctionne mais la génération de
+licence répond `503 signing_service_unavailable` (configuration : `SM_SIGNING_SERVICE_URL`,
+`SM_SIGNING_CLIENT_SECRET`, `SM_LICENSE_PUBLIC_KEYS_FILE`).
+
 Le contexte de build est la racine du dépôt. Les images de production
 (SPA statique derrière un reverse proxy, Uvicorn/Gunicorn) seront définies ultérieurement.
 

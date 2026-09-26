@@ -45,11 +45,11 @@ from app.platform.catalog.loader import role_templates
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
+from app.platform.licensing.service import current_terms
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import (
     site_subscription,
-    subscription_plan,
     unattached_subscription,
 )
 from app.platform.tenancy.models import Site
@@ -592,16 +592,14 @@ class MemberService(_AccessBase):
         if not tenant_sites:
             subscription = unattached_subscription(self.db)
             if subscription is not None:
-                policy = PlanPolicy(
-                    self.db, subscription_plan(self.db, subscription), self.registry
-                )
+                policy = PlanPolicy(self.db, current_terms(self.db, subscription), self.registry)
                 policy.ensure_capacity("max_users", additional=0)
             return
         for site_id in sorted(accessible_sites(membership, tenant_sites) - previous):
             subscription = site_subscription(self.db, site_id)
             if subscription is None:
                 continue
-            policy = PlanPolicy(self.db, subscription_plan(self.db, subscription), self.registry)
+            policy = PlanPolicy(self.db, current_terms(self.db, subscription), self.registry)
             policy.ensure_capacity("max_users", additional=0, site_id=site_id)
 
     def _validate_access(

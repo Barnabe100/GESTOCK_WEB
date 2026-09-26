@@ -11,7 +11,7 @@ import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
+import { LicenseStateBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
 
 import { AuditChanges } from '../auditDisplay';
 import { CONSOLE_BASE } from '../ConsoleLayout';
@@ -140,6 +140,18 @@ function SubscriptionCard({
             `subscription-price-${code}`,
           ],
           [t('console:tenant.requestedActivations'), String(s.requested_activations)],
+          [
+            t('console:license.cardTitle'),
+            s.license ? (
+              <Link to={`${CONSOLE_BASE}/licenses/${s.license.id}`}>
+                {s.license.license_number} · <LicenseStateBadge state={s.license.state} /> ·{' '}
+                {t('console:license.activationsCount', { count: s.license.max_activations })}
+              </Link>
+            ) : (
+              t('console:license.none')
+            ),
+            `subscription-license-${code}`,
+          ],
           ...Object.entries(s.usage).map(
             ([limit, u]) =>
               [

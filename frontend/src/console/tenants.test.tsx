@@ -58,6 +58,7 @@ const DETAIL: TenantDetail = {
       currency_at_subscription: 'XOF',
       requested_activations: 2,
       usage: { max_users: { used: 3, limit: 5 } },
+      license: null,
       actions: {
         can_activate: true,
         can_extend: false,

@@ -52,6 +52,7 @@ from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.access.site_access import site_access_condition
 from app.platform.audit.service import RequestMeta
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
+from app.platform.licensing.models import License
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
 from app.platform.subscriptions.service import (
@@ -271,6 +272,24 @@ class TenantAdminService:
             raise NotFoundError("Abonnement introuvable", code="subscription_missing")
         return found
 
+    def license_controlled(self, subscription_id: uuid.UUID) -> bool:
+        """Une licence (même révoquée) décide de la période de cet abonnement : l'activation
+        manuelle et la prolongation transitoires (3.2-G) ne s'appliquent plus (ADR-0034)."""
+        return bool(
+            self.db.scalar(
+                select(func.count())
+                .select_from(License)
+                .where(License.subscription_id == subscription_id)
+            )
+        )
+
+    def _ensure_manual(self, subscription: Subscription) -> None:
+        if self.license_controlled(subscription.id):
+            raise ConflictError(
+                "La période de cet abonnement est décidée par sa licence",
+                code="subscription_license_controlled",
+            )
+
     def site_users(self, tenant_id: uuid.UUID, site_id: uuid.UUID | None) -> int:
         """Utilisateurs actifs ayant accès au site (limite ``max_users`` de son abonnement,
         arbitrage Q1) ; sans site : toute l'entreprise."""
@@ -419,6 +438,7 @@ class TenantAdminService:
         ce n'est ni un paiement confirmé ni une licence (3.3-A, 3.3-B)."""
         tenant = self._lock_tenant(tenant_id)
         subscription = self.subscription(tenant_id, subscription_id, for_update=True)
+        self._ensure_manual(subscription)
         if subscription.status not in ACTIVABLE:
             raise ConflictError(
                 "Seul un abonnement en attente d'activation ou en essai peut être activé",
@@ -465,6 +485,7 @@ class TenantAdminService:
         une période déjà échue repart du jour même."""
         tenant = self._lock_tenant(tenant_id)
         subscription = self.subscription(tenant_id, subscription_id, for_update=True)
+        self._ensure_manual(subscription)
         if subscription.status not in EXTENDABLE:
             raise ConflictError(
                 "Seul un abonnement actif, échu ou expiré peut être prolongé",

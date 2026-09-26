@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr, model_validator
@@ -69,6 +70,15 @@ class Settings(BaseSettings):
     platform_session_ttl_minutes: int = 480
     platform_session_idle_minutes: int = 30
 
+    # Licences (Phase 3.3-B2, ADR-0034). Signing Service : processus distinct, seul détenteur de
+    # la clé privée Ed25519 ; la console l'appelle avec un secret HMAC partagé (jamais la clé).
+    # Sans URL : génération impossible (503 signing_service_unavailable).
+    signing_service_url: str | None = None
+    signing_client_secret: SecretStr | None = None
+    signing_timeout_seconds: float = 10.0
+    # Trousseau des clés PUBLIQUES (vérification) ; défaut : fichier versionné du backend.
+    license_public_keys_file: Path | None = None
+
     password_min_length: int = 8
     login_max_failures: int = 5
     login_lockout_minutes: int = 15
@@ -79,6 +89,12 @@ class Settings(BaseSettings):
             secret = self.jwt_secret.get_secret_value()
             if secret == _DEV_JWT_SECRET or len(secret) < 32:
                 raise ValueError("SM_JWT_SECRET doit être défini (≥ 32 caractères) en production")
+        if self.signing_service_url:
+            signing_secret = (
+                self.signing_client_secret.get_secret_value() if self.signing_client_secret else ""
+            )
+            if len(signing_secret) < 32:
+                raise ValueError("SM_SIGNING_CLIENT_SECRET doit compter au moins 32 caractères")
         return self
 
 
