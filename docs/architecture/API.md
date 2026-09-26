@@ -66,7 +66,9 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | GET | `/roles/delegable` | `users.role.manage` **ou** `users.member.manage` | Rôles actifs attribuables par l'utilisateur courant sur tout le tenant, ou pour `site_id` |
 | GET | `/role-templates` | `users.role.view` | Modèles de rôles de base (instanciés ou non) |
 | POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle de base manquant |
-| GET | `/subscription` | `subscription.subscription.view` | Offre, statut effectif, période, limites, utilisation |
+| GET | `/subscription` | `subscription.subscription.view` | Offre, statut effectif, période, limites, utilisation (`id` de l'abonnement depuis 3.3-A) |
+| GET | `/subscription/payments` · `/subscription/payments/{id}` | `subscription.subscription.view` | Paiements d'abonnement déclarés à TechNova (Phase 3.3-A, ADR-0032) : paginés (`limit`, `offset`, `status` ; tri `created_at` décroissant par défaut, `amount`, `status`, `period_start`) ; statut, date et motif de la décision (jamais l'agent TechNova) ; `404 subscription_payment_not_found` |
+| POST | `/subscription/payments` | `subscription.payment.declare` (nature `billing`) | Déclaration `PENDING` : `subscription_id`, `amount` (> 0, 2 décimales), `period_start`, `period_end` (≤ 24 mois), `payment_method`, `declared_reference`, `idempotency_key` ; tout autre champ (statut, décision, devise…) → `422` ; `201`, ou `200` si la même clé rejoue la même demande ; `409 idempotency_key_reused`, `404 subscription_not_found`, `422 invalid_period` / `period_too_long`. **Aucune route de décision** côté entreprise |
 | GET | `/audit-logs` | `audit.log.view` | Journal d'audit paginé (`limit`, `offset`, `action`, `user_id`) |
 
 « tenant » = jeton lié à un tenant, appartenance active, tenant actif, mot de passe à jour.
@@ -341,6 +343,8 @@ modifiantes. Aucun jeton de l'API des entreprises n'y est accepté.
 | GET | `/tenants` · `/tenants/{id}` | Entreprises (Phase 3.2-G) : métadonnées plateforme paginées (`search`, `status`, `plan_code`, `subscription_status` effectif ; tri `name`, `created_at`, `current_period_end`, `status`) ; détail : identité, utilisation, abonnement, actions possibles ; `404 tenant_not_found` |
 | POST | `/tenants/{id}/suspend` · `/reactivate` | Statut de l'entreprise, `reason` obligatoire ; `409 tenant_already_suspended` / `tenant_not_suspended` |
 | POST | `/tenants/{id}/subscription/activate` · `/extend` · `/change-plan` | Activation manuelle transitoire (aucun paiement), prolongation, changement de plan (prix figé) ; `reason` obligatoire ; double audit (plateforme + entreprise) ; `409 subscription_not_activable` / `subscription_not_extendable`, `422 invalid_period` / `period_too_long` / `plan_unchanged` / `unknown_plan` |
+| GET | `/payments` · `/payments/{id}` | Paiements d'abonnement (Phase 3.3-A, ADR-0032) : paginés (`status`, `tenant_id`, `search` sur la référence ; tri `created_at` décroissant par défaut, `amount`, `status`, `decided_at`) ; entreprise (nom), plan, montant, devise, période, moyen, référence, statut, décision (e-mail de l'administrateur TechNova), motif ; jamais le déclarant ; `404 subscription_payment_not_found` |
+| POST | `/payments/{id}/confirm` · `/reject` | Décision définitive d'un paiement `PENDING` sous verrou, `reason` obligatoire (motif du rejet visible par l'entreprise), double audit ; `409 payment_already_decided` ; **aucune activation** |
 
 ## Routes des modules métier
 

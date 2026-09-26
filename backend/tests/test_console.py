@@ -245,6 +245,8 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
     assert writes == [
         (f"{CONSOLE_PREFIX}/auth/login", "POST"),
         (f"{CONSOLE_PREFIX}/auth/logout", "POST"),
+        (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/confirm", "POST"),
+        (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/reject", "POST"),
         (f"{CONSOLE_PREFIX}/plans/{{code}}/commercial", "PATCH"),
         (f"{tenant}/reactivate", "POST"),
         (f"{tenant}/subscription/activate", "POST"),
@@ -253,8 +255,18 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
         (f"{tenant}/suspend", "POST"),
     ]
     # Aucune route d'administrateur TechNova, d'utilisateur, ni de donnée métier d'un tenant.
+    # Seuls les paiements d'abonnement à TechNova (3.3-A) sont exposés, jamais ceux des ventes.
+    subscription_payments = {
+        f"{CONSOLE_PREFIX}/payments",
+        f"{CONSOLE_PREFIX}/payments/{{payment_id}}",
+        f"{CONSOLE_PREFIX}/payments/{{payment_id}}/confirm",
+        f"{CONSOLE_PREFIX}/payments/{{payment_id}}/reject",
+    }
+    assert {p for p in paths if "payment" in p} == subscription_payments
     forbidden = ("admin", "user", "member", "sale", "stock", "customer", "cash", "payment")
-    assert not [p for p in paths if any(word in p for word in forbidden)]
+    assert not [
+        p for p in paths if p not in subscription_payments and any(word in p for word in forbidden)
+    ]
 
 
 # --- Identité TechNova : CLI uniquement, compte dédié hors tenant ---------------------------

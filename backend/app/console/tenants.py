@@ -41,10 +41,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
-from app.console.audit import PlatformActor, plain, record_platform_audit
+from app.console.audit import PlatformActor, record_tenant_action
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.platform.access.models import MembershipStatus, TenantMembership
-from app.platform.audit.service import RequestMeta, record_audit
+from app.platform.audit.service import RequestMeta
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
@@ -66,7 +66,6 @@ EXTENDABLE = (SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE, Subscripti
 MAX_PERIOD_MONTHS = 24
 # « À renouveler » (tableau de bord) : échéance dans ce délai.
 RENEWAL_WINDOW = timedelta(days=30)
-TECHNOVA = "technova"
 
 
 def effective_status_sql(now: datetime) -> ColumnElement[str]:
@@ -487,39 +486,20 @@ class TenantAdminService:
         meta: RequestMeta,
         data: dict[str, Any],
     ) -> None:
-        """Journal de la plateforme + entrée miroir dans le journal du tenant, dans la
-        transaction de l'action : l'une ne peut exister sans l'autre ni sans l'action."""
-        entry = record_platform_audit(
+        """Double audit (plateforme + miroir de l'entreprise), même transaction."""
+        record_tenant_action(
             self.db,
             actor=actor,
             action=action,
+            tenant_id=tenant_id,
             target_type=target_type,
             target_id=target_id,
-            tenant_id=tenant_id,
             before=before,
             after=after,
             reason=reason,
             data=data,
             meta=meta,
         )
-        self.db.flush()
-        record_audit(
-            self.db,
-            action=action,
-            tenant_id=tenant_id,
-            user_id=None,
-            entity_type=target_type,
-            entity_id=target_id,
-            data={
-                "actor": TECHNOVA,
-                "reason": reason,
-                "before": {k: plain(v) for k, v in before.items()},
-                "after": {k: plain(v) for k, v in after.items()},
-                "platform_audit_id": str(entry.id),
-            }
-            | {k: plain(v) for k, v in data.items() if k != "tenant_name"},
-        )
-        self.db.flush()
 
     # --- Tableau de bord -----------------------------------------------------------------------
 

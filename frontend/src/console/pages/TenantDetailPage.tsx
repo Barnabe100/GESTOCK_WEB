@@ -4,7 +4,7 @@ import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 
 import { formatDateTime } from '@/shared/lib/format';
 import { EmptyState } from '@/shared/ui/EmptyState';
@@ -18,21 +18,8 @@ import { CONSOLE_BASE } from '../ConsoleLayout';
 import { planPrice } from '../planDisplay';
 import { useAudit, useTenant } from '../queries';
 import { TenantActionDialog, type ActionKind } from '../TenantActionDialog';
-import { TenantStatusBadge, tenantDate } from '../tenantDisplay';
+import { Details, TenantStatusBadge, tenantDate } from '../tenantDisplay';
 import type { PlatformAuditEntry, TenantDetail } from '../types';
-
-function Details({ items }: { items: [string, React.ReactNode, string?][] }) {
-  return (
-    <dl className="sm-details">
-      {items.map(([label, value, testId]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd data-testid={testId}>{value ?? '—'}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 function TenantHistory({ tenantId }: { tenantId: string }) {
   const { t } = useTranslation();
@@ -130,10 +117,19 @@ export function TenantDetailPage() {
           { label: d.name },
         ]}
         actions={
-          <span className="sm-tags" data-testid="tenant-badges">
-            <TenantStatusBadge status={d.status} />
-            <SubscriptionStatusBadge status={s.effective_status} />
-          </span>
+          <>
+            <span className="sm-tags" data-testid="tenant-badges">
+              <TenantStatusBadge status={d.status} />
+              <SubscriptionStatusBadge status={s.effective_status} />
+            </span>
+            <Link
+              className="p-button p-button-outlined"
+              to={`${CONSOLE_BASE}/payments?tenant_id=${encodeURIComponent(d.id)}`}
+            >
+              <i className="pi pi-wallet" aria-hidden />
+              <span>{t('console:payments.ofTenant')}</span>
+            </Link>
+          </>
         }
       />
       <div className="sm-dashboard-grid">

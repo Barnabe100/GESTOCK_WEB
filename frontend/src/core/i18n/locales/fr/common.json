@@ -376,6 +376,7 @@
     "users.role.manage": "Gérer les rôles",
     "audit.log.view": "Consulter le journal d'audit",
     "subscription.subscription.view": "Consulter l'abonnement",
+    "subscription.payment.declare": "Déclarer un paiement d'abonnement",
     "catalog.category.view": "Consulter les catégories",
     "catalog.category.create": "Créer une catégorie",
     "catalog.category.update": "Modifier une catégorie",
@@ -1362,5 +1363,45 @@
       "users": "Ajouter un utilisateur",
       "configuration": "Compléter les informations"
     }
+  },
+  "subscriptionPaymentStatus": {
+    "PENDING": "En attente",
+    "CONFIRMED": "Confirmé",
+    "REJECTED": "Rejeté"
+  },
+  "subscriptionPaymentMethod": {
+    "BANK_TRANSFER": "Virement bancaire",
+    "MOBILE_MONEY": "Mobile money",
+    "CASH": "Espèces",
+    "CHECK": "Chèque",
+    "CARD": "Carte bancaire",
+    "OTHER": "Autre"
+  },
+  "subscriptionPayments": {
+    "title": "Paiements de l'abonnement",
+    "help": "Déclarez ici les paiements effectués à TechNova. Chaque déclaration reste « En attente » jusqu'à sa vérification par TechNova ; un paiement confirmé n'active pas à lui seul l'abonnement.",
+    "declare": "Déclarer un paiement",
+    "empty": "Aucun paiement déclaré.",
+    "allStatuses": "Tous les statuts",
+    "statusFilter": "Statut du paiement",
+    "date": "Déclaré le",
+    "amount": "Montant",
+    "period": "Période couverte",
+    "periodValue": "du {{start}} au {{end}}",
+    "method": "Moyen de paiement",
+    "reference": "Référence",
+    "status": "Statut",
+    "decidedAt": "Décidé le {{date}}",
+    "rejectionReason": "Motif du rejet : {{reason}}",
+    "dialogTitle": "Déclarer un paiement à TechNova",
+    "dialogInfo": "TechNova vérifiera ce paiement puis le confirmera ou le rejettera. La devise est celle de votre abonnement ; la déclaration ne modifie pas votre abonnement.",
+    "amountHelp": "Montant réglé, en {{currency}}.",
+    "periodStart": "Début de la période couverte",
+    "periodEnd": "Fin de la période couverte",
+    "referenceHelp": "Référence du virement, de la transaction mobile money, du reçu…",
+    "submit": "Déclarer le paiement",
+    "declared": "Paiement déclaré : en attente de vérification par TechNova.",
+    "invalidAmount": "Montant invalide : nombre positif, 2 décimales au plus.",
+    "periodOrder": "La fin de période doit suivre son début."
   }
 }

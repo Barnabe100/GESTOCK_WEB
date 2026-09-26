@@ -69,7 +69,12 @@ PLATFORM_MODULES: tuple[ModuleManifest, ...] = (
     ModuleManifest(
         code="subscription",
         core=True,
-        permissions=(PermissionDef("subscription.subscription.view", B),),
+        permissions=(
+            PermissionDef("subscription.subscription.view", B),
+            # Déclarer un paiement d'abonnement à TechNova (Phase 3.3-A) : écriture de nature
+            # « facturation » (autorisée même abonnement expiré ou en attente d'activation).
+            PermissionDef("subscription.payment.declare", B),
+        ),
         onboarding=SUBSCRIPTION_STEPS,
     ),
 )

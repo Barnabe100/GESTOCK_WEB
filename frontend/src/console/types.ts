@@ -1,5 +1,6 @@
 /** Types de l'API de la console TechNova (montants en chaînes décimales). */
 import type { Page } from '@/shared/lib/serverTable';
+import type { SubscriptionPaymentStatus } from '@/shared/ui/StatusBadge';
 
 export type { Page };
 
@@ -191,3 +192,29 @@ export type TenantAction =
   | { kind: 'activate'; reason: string; period_start: string; period_end: string }
   | { kind: 'extend'; reason: string; period_end: string }
   | { kind: 'change-plan'; reason: string; plan_code: string };
+
+// --- Paiements d'abonnement (Phase 3.3-A) ------------------------------------------------------
+
+export type { SubscriptionPaymentStatus };
+
+/** Paiement vu par TechNova : ni identité du déclarant, ni donnée métier de l'entreprise. */
+export interface ConsolePayment {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  subscription_id: string;
+  plan_code: string;
+  amount: string;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  payment_method: string;
+  declared_reference: string;
+  status: SubscriptionPaymentStatus;
+  created_at: string;
+  decided_at: string | null;
+  decided_by_email: string | null;
+  rejection_reason: string | null;
+}
+
+export type PaymentDecision = { kind: 'confirm' | 'reject'; reason: string };

@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.console.models import PlatformAuditLog
-from app.platform.audit.service import RequestMeta
+from app.platform.audit.service import RequestMeta, record_audit
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,8 @@ class PlatformActor:
 
 
 CLI_ACTOR = PlatformActor(user_id=None, label="cli")
+# Auteur affiché dans le journal d'une entreprise : jamais l'identité de l'agent TechNova.
+TECHNOVA = "technova"
 
 
 def plain(value: Any) -> Any:
@@ -68,4 +70,58 @@ def record_platform_audit(
         user_agent=meta.user_agent[:500] if meta and meta.user_agent else None,
     )
     db.add(entry)
+    return entry
+
+
+def record_tenant_action(
+    db: Session,
+    *,
+    actor: PlatformActor,
+    action: str,
+    tenant_id: uuid.UUID,
+    target_type: str,
+    target_id: uuid.UUID,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    reason: str,
+    data: dict[str, Any],
+    meta: RequestMeta | None,
+) -> PlatformAuditLog:
+    """**Double audit** d'une action TechNova sur une entreprise (ADR-0031) : journal de la
+    plateforme + entrée miroir dans le journal de l'entreprise (même action, ``user_id`` nul,
+    ``actor = "technova"``, raison, avant / après, identifiant de l'entrée plateforme ; jamais
+    l'identité de l'agent), dans la transaction de l'action : l'une ne peut exister sans l'autre
+    ni sans l'action."""
+    data = {k: plain(v) for k, v in data.items()}
+    entry = record_platform_audit(
+        db,
+        actor=actor,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        tenant_id=tenant_id,
+        before=before,
+        after=after,
+        reason=reason,
+        data=data,
+        meta=meta,
+    )
+    db.flush()
+    record_audit(
+        db,
+        action=action,
+        tenant_id=tenant_id,
+        user_id=None,
+        entity_type=target_type,
+        entity_id=target_id,
+        data={
+            "actor": TECHNOVA,
+            "reason": reason,
+            "before": {k: plain(v) for k, v in before.items()},
+            "after": {k: plain(v) for k, v in after.items()},
+            "platform_audit_id": str(entry.id),
+        }
+        | {k: v for k, v in data.items() if k != "tenant_name"},
+    )
+    db.flush()
     return entry

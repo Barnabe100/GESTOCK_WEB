@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { consoleRequest } from './api';
 import type {
   Catalog,
+  ConsolePayment,
   Dashboard,
   Page,
   Plan,
   PlanCommercialUpdate,
+  PaymentDecision,
   PlanDetail,
   PlatformAuditEntry,
   TenantAction,
@@ -103,5 +105,44 @@ export function useTenantAction(id: string) {
       void queryClient.invalidateQueries({ queryKey: ['console', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['console', 'audit'] });
     },
+  });
+}
+
+/** Paiements d'abonnement : pagination, tri et filtres côté serveur. */
+export function usePayments(query: string) {
+  return useQuery({
+    queryKey: ['console', 'payments', query],
+    queryFn: () => consoleRequest<Page<ConsolePayment>>(`/payments?${query}`),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export const usePayment = (id: string) =>
+  useQuery({
+    queryKey: ['console', 'payments', 'detail', id],
+    queryFn: () => consoleRequest<ConsolePayment>(`/payments/${encodeURIComponent(id)}`),
+  });
+
+/**
+ * Décision TechNova (définitive) : le serveur verrouille le paiement et refuse une seconde
+ * décision (`409 payment_already_decided`) ; la fiche est alors relue.
+ */
+export function usePaymentDecision(id: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['console', 'payments'] });
+    void queryClient.invalidateQueries({ queryKey: ['console', 'audit'] });
+  };
+  return useMutation({
+    mutationFn: ({ kind, reason }: PaymentDecision) =>
+      consoleRequest<ConsolePayment>(`/payments/${encodeURIComponent(id)}/${kind}`, {
+        method: 'POST',
+        body: { reason },
+      }),
+    onSuccess: (payment) => {
+      queryClient.setQueryData(['console', 'payments', 'detail', id], payment);
+      refresh();
+    },
+    onError: refresh,
   });
 }

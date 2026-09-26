@@ -143,5 +143,8 @@
   "period_too_long": "Période trop longue ({{max_months}} mois au plus).",
   "plan_unchanged": "C'est déjà le plan de l'abonnement.",
   "unknown_plan": "Plan inconnu ou retiré du catalogue.",
-  "subscription_missing": "Aucun abonnement."
+  "subscription_missing": "Aucun abonnement.",
+  "subscription_not_found": "Abonnement introuvable.",
+  "subscription_payment_not_found": "Paiement introuvable.",
+  "payment_already_decided": "Ce paiement a déjà été décidé ; la fiche a été actualisée."
 }

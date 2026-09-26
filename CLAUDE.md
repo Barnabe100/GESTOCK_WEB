@@ -48,8 +48,16 @@ statut du tenant ≠ statut de l'abonnement, suspension / réactivation, **activ
 transitoire** (`pending_activation`/`trial` → `active`, **aucun paiement**), prolongation,
 changement de plan (prix figé au nouveau tarif, rien de rétroactif), **double audit** dans la
 même transaction (plateforme + entrée miroir du tenant) ; 3.2-H — **phase 3.2 clôturée** (revue
-RLS / droits SQL / migrations / documentation, E2E rejouée deux fois). Suite : 3.3-A paiements,
-3.3-B licences — non commencées sans validation. Non implémentés (feuille de route §13) :
+RLS / droits SQL / migrations / documentation, E2E rejouée deux fois). **Phase 3.3 en cours :
+3.3-A livrée — paiements d'abonnement** (ADR-0032) : `SubscriptionPayment`
+(`subscription_payments`, distinct des paiements des ventes) déclaré par l'entreprise
+(`POST /subscription/payments`, permission `subscription.payment.declare` de nature `billing`,
+idempotent, devise fixée par le serveur, aucun champ de décision accepté du client) ; décision
+**définitive** (`PENDING` → `CONFIRMED` | `REJECTED`) par TechNova seule dans la console
+(`/payments/{id}/confirm|reject`, verrou, raison obligatoire — motif du rejet visible par
+l'entreprise —, double audit ; rôle SQL de la console limité aux colonnes de décision) ;
+**Payment CONFIRMED ≠ activation** : rien n'est activé. 3.3-B licences — non commencée sans
+validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

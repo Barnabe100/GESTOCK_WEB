@@ -66,6 +66,21 @@ TechNova (`platform_admins_read`, `platform_admins_lockout`).
 
 Aucun droit pour le rôle applicatif des tenants sur ces tables.
 
+### Paiements d'abonnement (Phase 3.3-A, isolés par RLS, [ADR-0032](../adr/0032-paiements-abonnement.md))
+
+Paiement de l'abonnement **à TechNova** (distinct des paiements des ventes `payments`).
+
+| Table | Colonnes principales | Règles |
+|---|---|---|
+| `subscription_payments` | `tenant_id`, `subscription_id` (FK composite `(tenant_id, subscription_id)`), `amount` `NUMERIC(18,2)` > 0, `currency` (ISO, fixée par le serveur), `period_start`, `period_end` (dates, fin > début), `payment_method`, `declared_reference`, `idempotency_key` (unique par tenant), `declared_by`, `status` (`PENDING` / `CONFIRMED` / `REJECTED`), `decided_by`, `decided_at`, `rejection_reason`, `created_at`, `updated_at` | `CHECK` : décision renseignée ⇔ statut décidé, motif ⇔ rejet, référence et motif non vides ; déclencheur `subscription_payments_final` (ligne décidée figée, données déclarées immuables) ; index `(tenant_id, created_at)`, `(status, created_at)` |
+
+Droits : rôle applicatif `SELECT, INSERT` (politique `tenant_isolation`, jamais de modification
+ni de suppression) ; rôle de la console `SELECT` (`platform_read`) et `UPDATE (status,
+decided_by, decided_at, rejection_reason, updated_at)` d'une ligne `PENDING` vers `CONFIRMED` /
+`REJECTED` seulement (`platform_decide`), ni insertion ni suppression. `subscriptions` reçoit
+l'unicité `(tenant_id, id)`, cible de la clé étrangère composite. Un paiement confirmé ne
+modifie ni l'abonnement ni l'entreprise.
+
 ### Tenant (isolés par RLS)
 
 | Table | Colonnes principales | Contraintes notables |
@@ -207,7 +222,7 @@ type PostgreSQL natif).
 | `SELECT` | catalogue |
 | `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits, stock_transfers, sales |
 | `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines, stock_transfer_lines, sale_lines (lignes de brouillon) |
-| `SELECT, INSERT` | audit_logs, stock_movements (append-only) |
+| `SELECT, INSERT` | audit_logs, stock_movements (append-only), subscription_payments (décision : TechNova seule) |
 
 Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais de données.
 
@@ -224,7 +239,9 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    `status` (compteurs) ; `audit_logs` — **insertion seule** d'entrées miroir (politique
    permissive `platform_mirror_insert` et restrictive `platform_mirror_only` : tenant
    renseigné, `user_id` nul). **Aucun droit** de suppression, aucune lecture d'`audit_logs`,
-   des coordonnées des entreprises, des utilisateurs, ni d'aucune table métier.
+   des coordonnées des entreprises, des utilisateurs, ni d'aucune table métier. Depuis 3.3-A
+   (migration 0019) : `subscription_payments` — lecture, mise à jour des seules colonnes de
+   décision d'une ligne `PENDING` (ADR-0032).
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

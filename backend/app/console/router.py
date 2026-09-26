@@ -5,7 +5,7 @@ Toutes les routes, sauf la connexion, exigent un administrateur de la plateforme
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import func, select
@@ -21,10 +21,12 @@ from app.console.auth import (
 )
 from app.console.catalog import active_countries, build_catalog
 from app.console.models import PlatformAuditLog
+from app.console.payments import PaymentDecisionService
 from app.console.plans import PlanCommercialService
 from app.console.schemas import (
     ActivationIn,
     CatalogOut,
+    ConsolePaymentOut,
     DashboardOut,
     ExtensionIn,
     LoginIn,
@@ -48,7 +50,7 @@ from app.core.config import Settings
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
 from app.platform.signup.service import self_service
-from app.platform.subscriptions.models import SubscriptionStatus
+from app.platform.subscriptions.models import SubscriptionPaymentStatus, SubscriptionStatus
 from app.platform.tenancy.models import TenantStatus
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
@@ -431,3 +433,85 @@ def change_tenant_plan(
     )
     db.commit()
     return _tenant_detail(service, tenant_id)
+
+
+# --- Paiements d'abonnement (Phase 3.3-A, ADR-0032) --------------------------------------------
+
+
+def _payment_out(row: Any) -> ConsolePaymentOut:
+    payment = row.SubscriptionPayment
+    return ConsolePaymentOut(
+        id=payment.id,
+        tenant_id=payment.tenant_id,
+        tenant_name=row.tenant_name,
+        subscription_id=payment.subscription_id,
+        plan_code=row.plan_code,
+        amount=payment.amount,
+        currency=payment.currency,
+        period_start=payment.period_start,
+        period_end=payment.period_end,
+        payment_method=payment.payment_method.value,
+        declared_reference=payment.declared_reference,
+        status=payment.status.value,
+        created_at=payment.created_at,
+        decided_at=payment.decided_at,
+        decided_by_email=row.decided_by_email,
+        rejection_reason=payment.rejection_reason,
+    )
+
+
+@router.get("/payments", response_model=Page[ConsolePaymentOut], tags=["console-payments"])
+def list_payments(
+    ctx: PlatformAdmin,
+    db: ConsoleDb,
+    now: NowDep,
+    params: Annotated[PageParams, Depends(page_params)],
+    status: SubscriptionPaymentStatus | None = None,
+    tenant_id: uuid.UUID | None = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+) -> Page[ConsolePaymentOut]:
+    """Paiements d'abonnement déclarés (filtres : statut, entreprise, référence ; tri
+    ``created_at`` décroissant par défaut, ``amount``, ``status``, ``decided_at``)."""
+    rows, total = PaymentDecisionService(db, now).search(
+        params, status=status, tenant_id=tenant_id, search=search
+    )
+    return Page(
+        items=[_payment_out(r) for r in rows],
+        total=total,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+@router.get("/payments/{payment_id}", response_model=ConsolePaymentOut, tags=["console-payments"])
+def get_payment(
+    payment_id: uuid.UUID, ctx: PlatformAdmin, db: ConsoleDb, now: NowDep
+) -> ConsolePaymentOut:
+    return _payment_out(PaymentDecisionService(db, now).row(payment_id))
+
+
+@router.post(
+    "/payments/{payment_id}/confirm", response_model=ConsolePaymentOut, tags=["console-payments"]
+)
+def confirm_payment(
+    payment_id: uuid.UUID, body: ReasonIn, ctx: PlatformAdmin, db: ConsoleDb, now: NowDep
+) -> ConsolePaymentOut:
+    """Confirme un paiement ``PENDING`` (définitif). **N'active pas** l'abonnement (3.3-B)."""
+    service = PaymentDecisionService(db, now)
+    service.confirm(payment_id, body.reason, ctx.actor, ctx.meta)
+    db.commit()
+    return _payment_out(service.row(payment_id))
+
+
+@router.post(
+    "/payments/{payment_id}/reject", response_model=ConsolePaymentOut, tags=["console-payments"]
+)
+def reject_payment(
+    payment_id: uuid.UUID, body: ReasonIn, ctx: PlatformAdmin, db: ConsoleDb, now: NowDep
+) -> ConsolePaymentOut:
+    """Rejette un paiement ``PENDING`` (définitif) ; ``reason`` = motif de rejet, visible par
+    l'entreprise."""
+    service = PaymentDecisionService(db, now)
+    service.reject(payment_id, body.reason, ctx.actor, ctx.meta)
+    db.commit()
+    return _payment_out(service.row(payment_id))

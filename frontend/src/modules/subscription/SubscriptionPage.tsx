@@ -8,6 +8,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { SubscriptionStatusBadge, StatusBadge } from '@/shared/ui/StatusBadge';
 
 import { useSubscription } from './api';
+import { SubscriptionPaymentsSection } from './PaymentsSection';
 
 export default function SubscriptionPage() {
   const { t } = useTranslation();
@@ -59,6 +60,7 @@ export default function SubscriptionPage() {
         </div>
         <p className="sm-muted">{t('subscriptionPage.renewInfo')}</p>
       </Card>
+      <SubscriptionPaymentsSection subscriptionId={s.id} />
     </>
   );
 }

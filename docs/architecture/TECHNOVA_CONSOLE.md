@@ -1,6 +1,7 @@
-# Console d'administration TechNova (Phases 3.2-F et 3.2-G)
+# Console d'administration TechNova (Phases 3.2-F, 3.2-G et 3.3-A)
 
-Décisions : [ADR-0031](../adr/0031-console-technova.md). Ce document décrit le périmètre livré,
+Décisions : [ADR-0031](../adr/0031-console-technova.md) ; paiements :
+[ADR-0032](../adr/0032-paiements-abonnement.md). Ce document décrit le périmètre livré,
 l'exploitation et ce qui relève de l'infrastructure ou des phases suivantes.
 
 ```text
@@ -16,7 +17,7 @@ l'exploitation et ce qui relève de l'infrastructure ou des phases suivantes.
      │           (métadonnées) │ activation       │
      ▼                          │ transitoire      ▼
  DB commerciale                 ▼            TOML / code : LECTURE SEULE
-     │              Paiements → 3.3-A · Licences → 3.3-B
+     │              Paiements (3.3-A) · Licences → 3.3-B
      ▼
  GET /public/plans · inscription · prix figé des souscriptions
 
@@ -83,6 +84,9 @@ Variables : `SM_PLATFORM_DATABASE_URL`, `SM_DB_PLATFORM_ROLE`, `SM_PLATFORM_API_
 | POST | `/tenants/{id}/subscription/activate` | activation manuelle transitoire (`period_start`, `period_end` facultatifs, `reason`) |
 | POST | `/tenants/{id}/subscription/extend` | prolongation (`period_end`, `reason`) |
 | POST | `/tenants/{id}/subscription/change-plan` | changement de plan (`plan_code`, `reason`) |
+| GET | `/payments` | paiements d'abonnement paginés (tri `created_at` décroissant par défaut, `amount`, `status`, `decided_at`) ; filtres `status`, `tenant_id`, `search` (référence) |
+| GET | `/payments/{id}` | détail : entreprise, plan, montant, devise, période, moyen, référence, statut, décision |
+| POST | `/payments/{id}/confirm` · `/reject` | décision définitive d'un paiement `PENDING` (`reason` ; motif du rejet visible par l'entreprise) |
 
 Toute requête modifiante exige l'en-tête `X-TechNova-Console: 1` (`403
 console_header_required` sinon). Aucune route n'existe pour créer ou promouvoir un
@@ -162,7 +166,44 @@ jours), calculés par agrégats SQL.
 Droits SQL ajoutés (migration 0018) : voir [`DATA_MODEL.md`](DATA_MODEL.md) ; aucune table
 métier.
 
-## 7. Ce qui est implémenté, prévu côté infrastructure, futur
+## 7. Paiements d'abonnement (Phase 3.3-A)
+
+```text
+PLAN → SUBSCRIPTION → PAYMENT (3.3-A) → LICENCE (3.3-B) → ACTIVATION
+                        │
+   entreprise : déclare (PENDING) ── TechNova : CONFIRMED | REJECTED (définitif)
+```
+
+**Payment CONFIRMED ≠ activation.** Confirmer un paiement atteste seulement que TechNova l'a
+reçu : l'abonnement et l'entreprise ne changent pas (statut, période, plan). L'activation
+viendra de l'import d'une licence signée (3.3-B), qui référencera un paiement confirmé ; en
+attendant, l'activation manuelle transitoire (§ 6) reste l'outil de TechNova. Aucune clé,
+aucune signature, aucune licence en 3.3-A.
+
+| Étape | Qui | Règles |
+|---|---|---|
+| Déclaration | entreprise (`subscription.payment.declare`, nature `billing`) | montant, période (≤ 24 mois), moyen, référence ; devise fixée par le serveur ; idempotente ; possible abonnement en attente d'activation ou expiré ; aucun champ de décision accepté |
+| Confirmation | TechNova | paiement `PENDING`, verrou de la ligne, raison obligatoire, `decided_by` / `decided_at`, double audit `subscription_payment.confirmed` |
+| Rejet | TechNova | idem, raison = **motif visible par l'entreprise**, double audit `subscription_payment.rejected` |
+
+Décision **définitive** : `PENDING → CONFIRMED` ou `PENDING → REJECTED`, aucune autre
+transition (service, politique RLS `platform_decide`, contraintes et déclencheur
+`subscription_payments_final`). Deux administrateurs qui décident en même temps : une seule
+décision réussit, l'autre reçoit `409 payment_already_decided`. Après un rejet, l'entreprise
+déclare un nouveau paiement.
+
+Interface : entrée « Paiements » (liste filtrable, actualisation), fiche du paiement
+(récapitulatif, décision, historique), actions visibles seulement si `PENDING`, confirmation
+explicite (raison + case « Je confirme »), un seul envoi à la fois, `409` affiché puis fiche
+relue ; depuis la fiche d'une entreprise, « Voir les paiements ». Côté entreprise : section
+« Paiements de l'abonnement » de la page Abonnement (historique, filtre de statut, motif de
+rejet, formulaire de déclaration si la permission est détenue).
+
+La console voit le nom de l'entreprise et le plan, jamais le déclarant (utilisateur de
+l'entreprise) ; le journal de l'entreprise ne contient jamais l'identité de l'agent TechNova.
+Droits SQL (migration 0019) : voir [`DATA_MODEL.md`](DATA_MODEL.md).
+
+## 8. Ce qui est implémenté, prévu côté infrastructure, futur
 
 | Sujet | Statut |
 |---|---|
@@ -171,6 +212,6 @@ métier.
 | TLS, `SM_PLATFORM_COOKIE_SECURE=true` | **Infrastructure / configuration** de production |
 | MFA des administrateurs TechNova | **Futur** |
 | Tenants (liste, détail, suspension, réactivation), abonnements (changement de plan, activation manuelle transitoire, prolongation), double audit | **Implémenté** (3.2-G, migration 0018, tests) |
-| Paiements (déclaration, confirmation TechNova) | **3.3-A** |
+| Paiements d'abonnement (déclaration par l'entreprise, confirmation / rejet TechNova, double audit, aucune activation) | **Implémenté** (3.3-A, migration 0019, tests, ADR-0032) |
 | Licences (outil de signature séparé, clé privée hors StockManager, import `.lic`) | **3.3-B** |
 | Catalogue technique éditable, limites modifiables, paramètres SaaS en base, support avec accès aux données métier | **Futur / réévaluation** (hors console en 3.2-F) |

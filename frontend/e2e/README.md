@@ -60,6 +60,18 @@ la suite peut être rejouée sur la même base.
 
 ## Suites
 
+- `console-payments.e2e.ts` (Phase 3.3-A) : entreprises (abonnement en attente d'activation)
+  et administrateurs TechNova créés à chaque exécution ; déclaration d'un paiement par
+  l'entreprise (« En attente »), confirmation puis rejet motivé dans la console, statuts et
+  motif visibles par l'entreprise, abonnement **non activé** après confirmation, journal de
+  l'entreprise ; isolation entre deux entreprises ; décisions simultanées (une seule réussit,
+  `409 payment_already_decided`).
+- `console-payments.e2e.ts` (Phase 3.3-A) : entreprises (abonnement en attente d'activation)
+  et administrateurs TechNova créés à chaque exécution ; déclaration d'un paiement par
+  l'entreprise (« En attente »), confirmation puis rejet motivé dans la console, statuts et
+  motif visibles par l'entreprise, abonnement **non activé** après confirmation, journal de
+  l'entreprise ; isolation entre deux entreprises ; décisions simultanées (une seule réussit,
+  `409 payment_already_decided`).
 - `console-tenants.e2e.ts` (Phase 3.2-G) : entreprise et administrateur TechNova créés à chaque
   exécution ; recherche, fiche, activation manuelle transitoire, changement de plan, suspension
   (accès refusé) et réactivation, journal de la plateforme, entrées miroir du journal de

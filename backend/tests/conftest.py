@@ -52,6 +52,7 @@ PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
     "platform_audit_logs",
+    "subscription_payments",
     "platform_sessions",
     "rate_limit_hits",
     "onboarding_steps",

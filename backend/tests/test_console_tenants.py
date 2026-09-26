@@ -513,7 +513,7 @@ def test_plan_change_freezes_the_new_price_and_keeps_old_snapshots(
 
 
 @pytest.mark.parametrize(
-    "failing", ["app.console.tenants.record_audit", "app.console.tenants.record_platform_audit"]
+    "failing", ["app.console.audit.record_audit", "app.console.audit.record_platform_audit"]
 )
 def test_action_and_both_audits_are_atomic(
     admin: TestClient,

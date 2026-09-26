@@ -33,7 +33,7 @@ from app.platform.identity.models import AuthSession, User
 from app.platform.onboarding.models import OnboardingStep
 from app.platform.ratelimit.models import RateLimitHit
 from app.platform.sequences.models import DocumentSequence
-from app.platform.subscriptions.models import Subscription
+from app.platform.subscriptions.models import Subscription, SubscriptionPayment
 from app.platform.tenancy.models import Site, Tenant, TenantModule
 
 __all__ = [
@@ -67,6 +67,7 @@ __all__ = [
     "Site",
     "Subscription",
     "SubscriptionAccessPolicy",
+    "SubscriptionPayment",
     "Tenant",
     "TenantMembership",
     "TenantModule",

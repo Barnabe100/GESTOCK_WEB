@@ -329,4 +329,26 @@ class PlatformDashboardTenants(BaseModel):
     subscriptions_renewal_due: int
 
 
+class ConsolePaymentOut(BaseModel):
+    """Paiement d'abonnement vu par TechNova : ni identité du déclarant (utilisateur de
+    l'entreprise), ni donnée métier."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    tenant_name: str
+    subscription_id: uuid.UUID
+    plan_code: str
+    amount: Money
+    currency: str
+    period_start: date
+    period_end: date
+    payment_method: str
+    declared_reference: str
+    status: str
+    created_at: datetime
+    decided_at: datetime | None
+    decided_by_email: str | None
+    rejection_reason: str | None
+
+
 DashboardOut.model_rebuild()

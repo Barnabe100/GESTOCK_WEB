@@ -27,6 +27,15 @@ export const SUBSCRIPTION_TONES: Record<SubscriptionStatus, Tone> = {
   cancelled: 'danger',
 };
 
+/** Paiement d'abonnement déclaré à TechNova (Phase 3.3-A) : décision définitive. */
+export type SubscriptionPaymentStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
+
+export const SUBSCRIPTION_PAYMENT_TONES: Record<SubscriptionPaymentStatus, Tone> = {
+  PENDING: 'warning',
+  CONFIRMED: 'success',
+  REJECTED: 'danger',
+};
+
 export function StatusBadge({
   label,
   tone = 'neutral',
@@ -70,5 +79,15 @@ export function SubscriptionStatusBadge({ status }: { status: SubscriptionStatus
   const { t } = useTranslation();
   return (
     <StatusBadge tone={SUBSCRIPTION_TONES[status]} label={t(`subscriptionStatus.${status}`)} />
+  );
+}
+
+export function SubscriptionPaymentStatusBadge({ status }: { status: SubscriptionPaymentStatus }) {
+  const { t } = useTranslation();
+  return (
+    <StatusBadge
+      tone={SUBSCRIPTION_PAYMENT_TONES[status]}
+      label={t(`subscriptionPaymentStatus.${status}`)}
+    />
   );
 }
