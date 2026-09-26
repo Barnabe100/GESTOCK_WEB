@@ -42,8 +42,13 @@ TechNova = comptes dédiés `users.is_platform_admin` attribués **par la CLI se
 (`stockmanager platform-admin`) et invisibles pour l'application des tenants (RLS), journal
 `platform_audit_logs` append-only, catalogue technique en **lecture seule** (TOML / code),
 **paramètres commerciaux** des plans modifiables (raison obligatoire, confirmation, audit
-avant / après) et lus par `/public/plans`. Suite : 3.2-G tenants et abonnements, 3.2-H clôture,
-3.3 paiements et licences — non commencées sans validation.
+avant / après) et lus par `/public/plans` ; 3.2-G livrée — **tenants et abonnements** dans la
+console : métadonnées plateforme (colonnes limitées, compteurs ; jamais de données métier),
+statut du tenant ≠ statut de l'abonnement, suspension / réactivation, **activation manuelle
+transitoire** (`pending_activation`/`trial` → `active`, **aucun paiement**), prolongation,
+changement de plan (prix figé au nouveau tarif, rien de rétroactif), **double audit** dans la
+même transaction (plateforme + entrée miroir du tenant). Suite : 3.2-H clôture, 3.3-A paiements,
+3.3-B licences — non commencées sans validation.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**

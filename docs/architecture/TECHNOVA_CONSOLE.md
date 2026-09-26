@@ -1,4 +1,4 @@
-# Console d'administration TechNova (Phase 3.2-F)
+# Console d'administration TechNova (Phases 3.2-F et 3.2-G)
 
 Décisions : [ADR-0031](../adr/0031-console-technova.md). Ce document décrit le périmètre livré,
 l'exploitation et ce qui relève de l'infrastructure ou des phases suivantes.
@@ -11,14 +11,16 @@ l'exploitation et ce qui relève de l'infrastructure ou des phases suivantes.
              ┌─────────▼─────────┐
              │ TechNova Console  │  processus app.console.main, rôle SQL stockmanager_platform
              └─────────┬─────────┘
-          ┌────────────┼────────────┐
-      Plans/Tarifs   Audit      Catalogue
-          │        (plateforme)     │
-          ▼                    TOML / code : LECTURE SEULE
-   DB commerciale (plans.*)
-          │
-          ▼
-   GET /public/plans · inscription · prix figé des souscriptions
+     ┌────────────┬────────┴─────┬──────────────┐
+ Plans/Tarifs     Tenants    Abonnements    Catalogue · Audit (plateforme)
+     │           (métadonnées) │ activation       │
+     ▼                          │ transitoire      ▼
+ DB commerciale                 ▼            TOML / code : LECTURE SEULE
+     │              Paiements → 3.3-A · Licences → 3.3-B
+     ▼
+ GET /public/plans · inscription · prix figé des souscriptions
+
+ Données métier des entreprises (ventes, stock, clients…) : AUCUN accès TechNova.
 ```
 
 ## 1. TechNova ≠ tenant
@@ -70,15 +72,23 @@ Variables : `SM_PLATFORM_DATABASE_URL`, `SM_DB_PLATFORM_ROLE`, `SM_PLATFORM_API_
 | POST | `/auth/login` | connexion (cookie `HttpOnly`, `SameSite=Strict`) |
 | POST | `/auth/logout` | déconnexion (session révoquée) |
 | GET | `/me` | administrateur connecté |
-| GET | `/dashboard` | indicateurs des offres et du catalogue (aucune donnée de tenant) |
+| GET | `/dashboard` | indicateurs des offres, du catalogue, et agrégats des entreprises et abonnements (comptages en base) |
 | GET | `/plans`, `/plans/{code}` | paramètres commerciaux + structure technique (lecture seule) |
 | PATCH | `/plans/{code}/commercial` | paramètres commerciaux ; `reason` obligatoire |
 | GET | `/catalog` | modules, permissions, fonctionnalités, limites, profils, rôles de base, politiques, devises |
-| GET | `/audit` | journal de la plateforme (paginé ; filtres `action`, `target_type`, `target_id`) |
+| GET | `/audit` | journal de la plateforme (paginé ; filtres `action`, `target_type`, `target_id`, `tenant_id`) |
+| GET | `/tenants` | entreprises : métadonnées paginées (`limit`, `offset`, `sort` : `name`, `created_at`, `current_period_end`, `status`) ; filtres `search`, `status`, `plan_code`, `subscription_status` (statut **effectif**) |
+| GET | `/tenants/{id}` | identité plateforme, utilisation (sites, utilisateurs / limites du plan), abonnement (plan, statuts stocké et effectif, période, prix figé), actions possibles et propositions de dates |
+| POST | `/tenants/{id}/suspend` · `/reactivate` | statut de l'entreprise ; `reason` obligatoire |
+| POST | `/tenants/{id}/subscription/activate` | activation manuelle transitoire (`period_start`, `period_end` facultatifs, `reason`) |
+| POST | `/tenants/{id}/subscription/extend` | prolongation (`period_end`, `reason`) |
+| POST | `/tenants/{id}/subscription/change-plan` | changement de plan (`plan_code`, `reason`) |
 
 Toute requête modifiante exige l'en-tête `X-TechNova-Console: 1` (`403
 console_header_required` sinon). Aucune route n'existe pour créer ou promouvoir un
-administrateur, ni pour lire un tenant (test automatisé sur le schéma OpenAPI).
+administrateur, ni pour lire une donnée métier d'une entreprise (test automatisé sur le schéma
+OpenAPI). Un compte ou un jeton d'entreprise reçoit `401` ; une entreprise inconnue, `404
+tenant_not_found`.
 
 ## 4. Offres & tarifs
 
@@ -117,7 +127,42 @@ les champs modifiés, montants en chaînes) et **pourquoi** (raison). Également
 modification générale d'un plan ; la colonne `tenant_id` prépare le double audit des
 opérations sur un tenant (3.2-G).
 
-## 6. Ce qui est implémenté, prévu côté infrastructure, futur
+## 6. Tenants et abonnements (Phase 3.2-G)
+
+**Tenant ≠ abonnement.** Le statut de l'entreprise (`active` / `suspended`) et celui de son
+abonnement sont indépendants : `Tenant = active` avec `Subscription = expired` (consultation,
+export, renouvellement selon la politique d'abonnement) est différent de
+`Tenant = suspended` avec `Subscription = active` (plus aucun accès des utilisateurs de
+l'entreprise, `403 tenant_suspended`). Aucune donnée n'est jamais supprimée.
+
+| Action | Condition | Effet | Audit |
+|---|---|---|---|
+| Suspendre | entreprise active | `tenants.status = suspended` | `tenant.suspended` |
+| Réactiver | entreprise suspendue | `tenants.status = active` | `tenant.reactivated` |
+| Activer (transitoire) | abonnement `pending_activation` ou `trial` | `active`, période choisie (24 mois au plus) ; **aucun paiement** | `subscription.manually_activated` |
+| Prolonger | abonnement `active` / `past_due` / `expired` | nouvelle échéance postérieure (période échue : repart du jour) | `subscription.extended` |
+| Changer de plan | plan actif différent | plan + prix / devise figés au tarif actuel du nouveau plan ; période inchangée | `subscription.plan_changed` |
+
+Chaque action : raison obligatoire, confirmation explicite (récapitulatif + case « Je
+confirme » + bouton), verrou de la ligne, état compatible exigé (une action rejouée répond
+`409` : `tenant_already_suspended`, `tenant_not_suspended`, `subscription_not_activable`,
+`subscription_not_extendable` ; dates : `422 invalid_period`, `period_too_long` ; plan :
+`plan_unchanged`, `unknown_plan`). Les dates sont des jours du fuseau de l'entreprise
+(ADR-0028) ; l'échéance est le début (minuit local) du jour indiqué.
+
+**Double audit** (même transaction) : `platform_audit_logs` (auteur TechNova, tenant, cible,
+avant, après, raison) et entrée miroir dans `audit_logs` de l'entreprise (même action,
+`user_id` nul, `actor = "technova"`, raison, avant / après, identifiant de l'entrée
+plateforme ; jamais l'identité de l'agent), visible dans son journal d'audit.
+
+Tableau de bord : entreprises (total, actives, suspendues) et abonnements par statut effectif
+(actifs, en essai, en attente d'activation, échéance dépassée, expirés, à renouveler sous 30
+jours), calculés par agrégats SQL.
+
+Droits SQL ajoutés (migration 0018) : voir [`DATA_MODEL.md`](DATA_MODEL.md) ; aucune table
+métier.
+
+## 7. Ce qui est implémenté, prévu côté infrastructure, futur
 
 | Sujet | Statut |
 |---|---|
@@ -125,7 +170,7 @@ opérations sur un tenant (3.2-G).
 | Restriction réseau (VPN, liste d'adresses, reverse proxy dédié à la console) | **Infrastructure** : non réalisée par le dépôt ; Compose publie le port 8001 sur `127.0.0.1` seulement |
 | TLS, `SM_PLATFORM_COOKIE_SECURE=true` | **Infrastructure / configuration** de production |
 | MFA des administrateurs TechNova | **Futur** |
-| Tenants (liste, détail, suspension, réactivation), abonnements (changement de plan, activation, prolongation), double audit | **3.2-G** |
+| Tenants (liste, détail, suspension, réactivation), abonnements (changement de plan, activation manuelle transitoire, prolongation), double audit | **Implémenté** (3.2-G, migration 0018, tests) |
 | Paiements (déclaration, confirmation TechNova) | **3.3-A** |
 | Licences (outil de signature séparé, clé privée hors StockManager, import `.lic`) | **3.3-B** |
 | Catalogue technique éditable, limites modifiables, paramètres SaaS en base, support avec accès aux données métier | **Futur / réévaluation** (hors console en 3.2-F) |

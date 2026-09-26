@@ -61,6 +61,7 @@ export interface Dashboard {
   permissions: number;
   profiles_active: number;
   active_countries: number;
+  tenants: DashboardTenants;
 }
 
 export interface Catalog {
@@ -111,3 +112,82 @@ export interface PlatformAuditEntry {
   data: Record<string, unknown>;
   ip_address: string | null;
 }
+
+// --- Tenants et abonnements (Phase 3.2-G) ------------------------------------------------------
+
+export type TenantStatus = 'active' | 'suspended';
+export type SubscriptionStatus =
+  'pending_activation' | 'trial' | 'active' | 'past_due' | 'expired' | 'suspended' | 'cancelled';
+
+/** Métadonnées plateforme d'une entreprise (aucune donnée métier). */
+export interface TenantListItem {
+  id: string;
+  name: string;
+  trade_name: string | null;
+  slug: string;
+  status: TenantStatus;
+  business_profile_code: string;
+  business_profile_name: string;
+  created_at: string;
+  plan_code: string;
+  plan_name: string;
+  subscription_status: SubscriptionStatus;
+  effective_status: SubscriptionStatus;
+  current_period_end: string;
+  sites: number;
+  users: number;
+}
+
+export interface TenantDetail extends TenantListItem {
+  country_code: string | null;
+  country_name: string | null;
+  currency: string;
+  locale: string;
+  timezone: string;
+  usage: Record<string, { used: number; limit: number | null }>;
+  subscription: {
+    id: string;
+    plan_code: string;
+    plan_name: string;
+    billing_period: 'monthly' | 'annual';
+    status: SubscriptionStatus;
+    effective_status: SubscriptionStatus;
+    started_at: string;
+    current_period_start: string;
+    current_period_end: string;
+    cancelled_at: string | null;
+    grace_days: number;
+    price_at_subscription: string | null;
+    currency_at_subscription: string | null;
+  };
+  actions: {
+    can_suspend: boolean;
+    can_reactivate: boolean;
+    can_activate: boolean;
+    can_extend: boolean;
+    can_change_plan: boolean;
+    activation_start: string;
+    activation_end: string;
+    extension_end: string;
+    available_plans: { code: string; name: string }[];
+  };
+}
+
+export interface DashboardTenants {
+  tenants_total: number;
+  tenants_active: number;
+  tenants_suspended: number;
+  subscriptions_active: number;
+  subscriptions_trial: number;
+  subscriptions_pending_activation: number;
+  subscriptions_past_due: number;
+  subscriptions_expired: number;
+  subscriptions_renewal_due: number;
+}
+
+export type TenantAction =
+  | { kind: 'suspend'; reason: string }
+  | { kind: 'reactivate'; reason: string }
+  | { kind: 'activate'; reason: string; period_start: string; period_end: string }
+  | { kind: 'extend'; reason: string; period_end: string }
+  | { kind: 'change-plan'; reason: string; plan_code: string };

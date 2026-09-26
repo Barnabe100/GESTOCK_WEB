@@ -138,8 +138,10 @@ def test_platform_admin_reaches_every_console_page(admin: TestClient) -> None:
     assert dashboard["admin"]["email"] == PLATFORM_ADMIN_EMAIL
     assert dashboard["plans_active"] >= 2
     assert dashboard["plans_listed"] == 0
-    # Aucun indicateur de tenant (ventes, stock, clients, entreprises) en 3.2-F.
-    assert not {k for k in dashboard if "tenant" in k or "sale" in k or "customer" in k}
+    # Aucun indicateur métier (ventes, stock, clients) ; les tenants ne sont que des comptages
+    # plateforme (Phase 3.2-G).
+    assert not {k for k in dashboard if "sale" in k or "customer" in k or "stock" in k}
+    assert all(isinstance(v, int) for v in dashboard["tenants"].values())
 
 
 @pytest.mark.parametrize("template", ["administrator", "manager", "seller", "viewer"])
@@ -239,12 +241,20 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
         for method in operations
         if method not in ("get", "head", "options")
     )
+    tenant = f"{CONSOLE_PREFIX}/tenants/{{tenant_id}}"
     assert writes == [
         (f"{CONSOLE_PREFIX}/auth/login", "POST"),
         (f"{CONSOLE_PREFIX}/auth/logout", "POST"),
         (f"{CONSOLE_PREFIX}/plans/{{code}}/commercial", "PATCH"),
+        (f"{tenant}/reactivate", "POST"),
+        (f"{tenant}/subscription/activate", "POST"),
+        (f"{tenant}/subscription/change-plan", "POST"),
+        (f"{tenant}/subscription/extend", "POST"),
+        (f"{tenant}/suspend", "POST"),
     ]
-    assert not [p for p in paths if "admin" in p or "user" in p or "tenant" in p]
+    # Aucune route d'administrateur TechNova, d'utilisateur, ni de donnée métier d'un tenant.
+    forbidden = ("admin", "user", "member", "sale", "stock", "customer", "cash", "payment")
+    assert not [p for p in paths if any(word in p for word in forbidden)]
 
 
 # --- Identité TechNova : CLI uniquement, compte dédié hors tenant ---------------------------
@@ -388,11 +398,9 @@ def test_platform_db_role_has_minimal_privileges(
     assert tuple(attrs) == (False, False, False, False)
     provision("alpha")
     platform_admin()
+    # Tables métier et d'accès : aucune lecture (Phase 3.2-G : seules des colonnes de
+    # métadonnées de tenants, sites et appartenances sont lisibles, voir plus bas).
     denied_reads = (
-        "tenants",
-        "subscriptions",
-        "tenant_memberships",
-        "sites",
         "sales",
         "payments",
         "customers",
@@ -409,6 +417,19 @@ def test_platform_db_role_has_minimal_privileges(
             with pytest.raises(DBAPIError, match="permission denied"):
                 conn.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
             conn.rollback()
+        # Tenants, sites, appartenances : colonnes de métadonnées seulement.
+        for sql in (
+            "SELECT * FROM tenants",
+            "SELECT email, phone, tax_id FROM tenants",
+            "SELECT name, address FROM sites",
+            "SELECT user_id FROM tenant_memberships",
+            "SELECT * FROM audit_logs",
+        ):
+            with pytest.raises(DBAPIError, match="permission denied"):
+                conn.execute(text(sql))
+            conn.rollback()
+        assert conn.execute(text("SELECT count(*) FROM tenants")).scalar() == 1
+        conn.rollback()
         # Comptes : seuls les administrateurs TechNova sont visibles (RLS).
         emails = conn.execute(text("SELECT email FROM users")).scalars().all()
         assert emails == [PLATFORM_ADMIN_EMAIL]
@@ -427,6 +448,12 @@ def test_platform_db_role_has_minimal_privileges(
             "VALUES (gen_random_uuid(), 'a@b.c', 'a', 'h')",
             "DELETE FROM platform_audit_logs",
             "UPDATE platform_audit_logs SET reason = 'x'",
+            "UPDATE tenants SET name = 'X'",
+            "DELETE FROM tenants",
+            "DELETE FROM subscriptions",
+            "UPDATE subscriptions SET tenant_id = gen_random_uuid()",
+            "UPDATE sites SET is_active = false",
+            "UPDATE tenant_memberships SET status = 'suspended'",
         ):
             with pytest.raises(DBAPIError, match="permission denied"):
                 conn.execute(text(sql))

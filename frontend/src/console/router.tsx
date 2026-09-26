@@ -9,6 +9,8 @@ import { ConsoleLoginPage } from './pages/ConsoleLoginPage';
 import { PlanDetailPage } from './pages/PlanDetailPage';
 import { PlansPage } from './pages/PlansPage';
 import { PlatformAuditPage } from './pages/PlatformAuditPage';
+import { TenantDetailPage } from './pages/TenantDetailPage';
+import { TenantsPage } from './pages/TenantsPage';
 
 /** Routes de la console TechNova (hors application des entreprises). */
 export const consoleRoutes = [
@@ -22,6 +24,8 @@ export const consoleRoutes = [
       { path: 'plans', element: <PlansPage /> },
       { path: 'plans/:code', element: <PlanDetailPage /> },
       { path: 'catalog', element: <CatalogPage /> },
+      { path: 'tenants', element: <TenantsPage /> },
+      { path: 'tenants/:id', element: <TenantDetailPage /> },
       { path: 'audit', element: <PlatformAuditPage /> },
       { path: '*', element: <NotFound /> },
     ],

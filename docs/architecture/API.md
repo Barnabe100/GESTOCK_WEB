@@ -337,7 +337,10 @@ modifiantes. Aucun jeton de l'API des entreprises n'y est accepté.
 | GET | `/plans` · `/plans/{code}` | Paramètres commerciaux (+ `self_service`) ; structure technique en lecture seule |
 | PATCH | `/plans/{code}/commercial` | Paramètres commerciaux seulement (`extra="forbid"`), `reason` obligatoire ; `422` : `validation_error`, `unknown_currency`, `price_required`, `currency_required`, `price_display_without_period`, `plan_not_subscribable`, `plan_inactive`, `no_changes` |
 | GET | `/catalog` | Catalogue technique (lecture seule) |
-| GET | `/audit` | Journal de la plateforme (`limit`, `offset`, `action`, `target_type`, `target_id`) |
+| GET | `/audit` | Journal de la plateforme (`limit`, `offset`, `action`, `target_type`, `target_id`, `tenant_id`) |
+| GET | `/tenants` · `/tenants/{id}` | Entreprises (Phase 3.2-G) : métadonnées plateforme paginées (`search`, `status`, `plan_code`, `subscription_status` effectif ; tri `name`, `created_at`, `current_period_end`, `status`) ; détail : identité, utilisation, abonnement, actions possibles ; `404 tenant_not_found` |
+| POST | `/tenants/{id}/suspend` · `/reactivate` | Statut de l'entreprise, `reason` obligatoire ; `409 tenant_already_suspended` / `tenant_not_suspended` |
+| POST | `/tenants/{id}/subscription/activate` · `/extend` · `/change-plan` | Activation manuelle transitoire (aucun paiement), prolongation, changement de plan (prix figé) ; `reason` obligatoire ; double audit (plateforme + entreprise) ; `409 subscription_not_activable` / `subscription_not_extendable`, `422 invalid_period` / `period_too_long` / `plan_unchanged` / `unknown_plan` |
 
 ## Routes des modules métier
 

@@ -2,7 +2,9 @@
 
 import calendar
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +28,64 @@ def add_months(moment: datetime, months: int) -> datetime:
 
 def period_end(start: datetime, billing_period: BillingPeriod) -> datetime:
     return add_months(start, 1 if billing_period is BillingPeriod.MONTHLY else 12)
+
+
+def subscription_price(
+    plan: Plan, billing_period: BillingPeriod
+) -> tuple[Decimal | None, str | None]:
+    """Prix de la période souscrite, à figer dans l'abonnement : celui du plan si TechNova a
+    ouvert cette période (prix et devise), sinon aucun."""
+    if billing_period is BillingPeriod.MONTHLY and plan.monthly_price_enabled:
+        return plan.monthly_price, plan.currency
+    if billing_period is BillingPeriod.ANNUAL and plan.annual_price_enabled:
+        return plan.annual_price, plan.currency
+    return None, None
+
+
+@dataclass(frozen=True)
+class PlanChange:
+    previous_plan: str
+    plan: str
+    previous_price: Decimal | None
+    previous_currency: str | None
+    price: Decimal | None
+    currency: str | None
+
+    @property
+    def changed(self) -> bool:
+        return self.previous_plan != self.plan
+
+    @property
+    def price_changed(self) -> bool:
+        return (self.previous_price, self.previous_currency) != (self.price, self.currency)
+
+
+def apply_plan_change(subscription: Subscription, plan: Plan) -> PlanChange:
+    """Nouveau plan de l'abonnement : les nouvelles conditions commerciales (prix et devise de la
+    période souscrite) sont **figées à ce moment**, comme à la souscription ; rien n'est
+    rétroactif (l'ancien prix reste dans le journal). Période inchangée, aucune proratisation."""
+    previous = PlanChange(
+        previous_plan=subscription.plan_code,
+        plan=subscription.plan_code,
+        previous_price=subscription.price_at_subscription,
+        previous_currency=subscription.currency_at_subscription,
+        price=subscription.price_at_subscription,
+        currency=subscription.currency_at_subscription,
+    )
+    if subscription.plan_code == plan.code:
+        return previous
+    price, currency = subscription_price(plan, subscription.billing_period)
+    subscription.plan_code = plan.code
+    subscription.price_at_subscription = price
+    subscription.currency_at_subscription = currency
+    return PlanChange(
+        previous_plan=previous.previous_plan,
+        plan=plan.code,
+        previous_price=previous.previous_price,
+        previous_currency=previous.previous_currency,
+        price=price,
+        currency=currency,
+    )
 
 
 def effective_status(
@@ -76,9 +136,15 @@ def change_plan(
     plan = session.get(Plan, plan_code)
     if plan is None or not plan.is_active:
         raise BusinessRuleError(f"Plan inconnu : {plan_code}", code="unknown_plan")
-    previous = subscription.plan_code
-    if previous != plan.code:
-        subscription.plan_code = plan.code
+    change = apply_plan_change(subscription, plan)
+    if change.changed:
+        data: dict[str, str | None] = {
+            "actor": actor,
+            "previous_plan": change.previous_plan,
+            "plan": change.plan,
+        }
+        if change.price_changed:
+            data |= price_audit(change)
         record_audit(
             session,
             action="subscription.plan_changed",
@@ -86,7 +152,21 @@ def change_plan(
             user_id=None,
             entity_type="subscription",
             entity_id=subscription.id,
-            data={"actor": actor, "previous_plan": previous, "plan": plan.code},
+            data=data,
         )
         session.flush()
-    return previous, plan.code
+    return change.previous_plan, change.plan
+
+
+def price_audit(change: PlanChange) -> dict[str, str | None]:
+    """Prix figés avant / après (montants en chaînes, jamais en flottants)."""
+
+    def amount(value: Decimal | None) -> str | None:
+        return format(value, "f") if value is not None else None
+
+    return {
+        "previous_price": amount(change.previous_price),
+        "previous_currency": change.previous_currency,
+        "price": amount(change.price),
+        "currency": change.currency,
+    }

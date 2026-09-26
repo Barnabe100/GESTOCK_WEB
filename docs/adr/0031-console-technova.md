@@ -1,6 +1,6 @@
 # ADR-0031 — Console d'administration TechNova : identité, isolation, rôle SQL, audit
 
-- **Statut** : Acceptée (arbitrages TechNova D1 à D6, Phase 3.2-F)
+- **Statut** : Acceptée (arbitrages TechNova D1 à D6, Phase 3.2-F ; complétée en 3.2-G)
 - **Date** : 2026-09-25
 
 ## Contexte
@@ -80,13 +80,53 @@ d'administrateur TechNova, et le rôle SQL applicatif des tenants ne peut, à ju
 11. **Licences** : aucune signature dans StockManager ; la clé privée n'est jamais dans le
     dépôt, la base, la console ni le frontend (outil TechNova séparé, Phase 3.3-B).
 
+## Complément Phase 3.2-G — tenants et abonnements
+
+12. **Métadonnées seulement** : la console lit l'identité plateforme d'une entreprise (nom,
+    nom commercial, identifiant, profil, pays, devise, langue, fuseau, dates), son abonnement,
+    son plan et deux **compteurs** (sites actifs, appartenances actives). Droits ajoutés au rôle
+    de la console (migration 0018), par **colonne** et par politiques RLS `TO` ce rôle :
+    `tenants` (lecture de ces colonnes, mise à jour de `status` seul), `subscriptions`
+    (lecture ; plan, statut, période, prix figé), `sites` (`tenant_id`, `is_active`),
+    `tenant_memberships` (`tenant_id`, `status`), `audit_logs` (insertion d'entrées miroir
+    seulement : politique permissive + politique **restrictive** `tenant_id` renseigné et
+    `user_id` nul). Ni coordonnées de l'entreprise, ni utilisateurs, ni aucune table métier.
+13. **Deux statuts distincts** : `Tenant.status` (`active` / `suspended`, suspension par
+    TechNova : accès refusé à tous ses utilisateurs, `403 tenant_suspended`, rien n'est
+    supprimé) et `Subscription.status` (statut stocké ; statut **effectif** calculé à la
+    lecture — échéance, délai de grâce — en Python et en SQL pour les filtres et agrégats).
+    Aucun statut n'a été ajouté.
+14. **Actions** (raison obligatoire, confirmation explicite, verrou de ligne, état compatible
+    exigé : rejouer une action produit `409`, jamais un second effet) :
+    - suspension / réactivation du tenant (`tenant.suspended`, `tenant.reactivated`) ;
+    - **activation manuelle transitoire** (arbitrage D5) d'un abonnement `pending_activation`
+      **ou `trial`** vers `active`, période choisie (dates dans le fuseau du tenant ;
+      proposition du serveur : aujourd'hui + une période de facturation ; 24 mois au plus) :
+      TechNova autorise l'activation ; **aucun paiement n'est créé ni confirmé**, aucune
+      licence ; remplacée par l'activation par licence (3.3-B)
+      (`subscription.manually_activated`) ;
+    - prolongation d'un abonnement `active` / `past_due` / `expired` (nouvelle échéance
+      postérieure ; une période échue repart du jour) (`subscription.extended`) ;
+    - changement de plan (`subscription.plan_changed`, même action que la CLI) : prix et
+      devise figés au tarif **actuel** du nouveau plan pour la période souscrite, période
+      inchangée, aucune proratisation ; les autres abonnements et l'ancien prix (dans le
+      journal) ne changent pas. La CLI `change-plan` applique désormais la même règle
+      (`apply_plan_change`).
+15. **Double audit transactionnel** : journal de la plateforme (auteur, tenant, cible, avant,
+    après, raison) **et** entrée miroir dans le journal du tenant (même action, `user_id` nul,
+    `actor = "technova"`, raison, avant / après, identifiant de l'entrée plateforme ; jamais
+    l'identité de l'agent), dans la transaction de l'action : l'action et ses deux entrées
+    réussissent ou échouent ensemble (test).
+16. Le filtre par profil d'activité n'est pas proposé : il enfreindrait la règle statique « aucun
+    test d'un code de profil dans le code applicatif » (règle 4).
+
 ## Conséquences
 
 - `GET /public/plans` et l'inscription lisent directement les valeurs saisies dans la console.
 - Un plan `DEMO` n'existe pas dans le catalogue : aucune règle n'est déduite d'un prix nul
   (un prix 0 signifie « gratuit » pour la période proposée, rien de plus).
-- Les tenants, abonnements (suspension, activation, prolongation), paiements et licences ne
-  sont pas administrables en 3.2-F (3.2-G, 3.3-A, 3.3-B).
+- Tenants et abonnements : administrés depuis 3.2-G (voir le complément). Paiements et
+  licences : 3.3-A et 3.3-B ; l'activation manuelle est transitoire.
 
 ## Alternatives écartées
 

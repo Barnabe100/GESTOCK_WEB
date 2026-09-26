@@ -23,6 +23,7 @@ export function ConsoleDashboardPage() {
   const d = dashboard.data;
   const plans = `${CONSOLE_BASE}/plans`;
   const catalog = `${CONSOLE_BASE}/catalog`;
+  const tenants = `${CONSOLE_BASE}/tenants`;
   return (
     <>
       <PageHeader
@@ -32,6 +33,63 @@ export function ConsoleDashboardPage() {
       <p className="sm-muted" data-testid="console-identity">
         {t('console:dashboard.connectedAs', { name: d.admin.full_name, email: d.admin.email })}
       </p>
+      <h2 className="sm-section-title">{t('console:dashboard.tenantsSection')}</h2>
+      <div className="sm-metrics" data-testid="dashboard-tenants">
+        <MetricCard
+          icon="pi pi-building"
+          label={t('console:dashboard.tenantsTotal')}
+          value={d.tenants.tenants_total}
+          to={tenants}
+        />
+        <MetricCard
+          icon="pi pi-check-circle"
+          tone="success"
+          label={t('console:dashboard.tenantsActive')}
+          value={d.tenants.tenants_active}
+        />
+        <MetricCard
+          icon="pi pi-ban"
+          tone="danger"
+          label={t('console:dashboard.tenantsSuspended')}
+          value={d.tenants.tenants_suspended}
+        />
+        <MetricCard
+          icon="pi pi-verified"
+          tone="success"
+          label={t('console:dashboard.subscriptionsActive')}
+          value={d.tenants.subscriptions_active}
+        />
+        <MetricCard
+          icon="pi pi-hourglass"
+          tone="warning"
+          label={t('console:dashboard.subscriptionsPending')}
+          value={d.tenants.subscriptions_pending_activation}
+        />
+        <MetricCard
+          icon="pi pi-gift"
+          tone="info"
+          label={t('console:dashboard.subscriptionsTrial')}
+          value={d.tenants.subscriptions_trial}
+        />
+        <MetricCard
+          icon="pi pi-calendar"
+          tone="warning"
+          label={t('console:dashboard.subscriptionsRenewal')}
+          value={d.tenants.subscriptions_renewal_due}
+        />
+        <MetricCard
+          icon="pi pi-exclamation-triangle"
+          tone="warning"
+          label={t('console:dashboard.subscriptionsPastDue')}
+          value={d.tenants.subscriptions_past_due}
+        />
+        <MetricCard
+          icon="pi pi-times-circle"
+          tone="danger"
+          label={t('console:dashboard.subscriptionsExpired')}
+          value={d.tenants.subscriptions_expired}
+        />
+      </div>
       <h2 className="sm-section-title">{t('console:dashboard.offers')}</h2>
       <div className="sm-metrics">
         <MetricCard

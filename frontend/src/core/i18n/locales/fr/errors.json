@@ -133,5 +133,15 @@
   "price_display_without_period": "Pour afficher le prix, proposez au moins une période (mensuelle ou annuelle).",
   "plan_inactive": "Un plan retiré du catalogue ne peut pas être publié.",
   "plan_not_subscribable": "Un plan publié doit proposer une période ou exiger un contact commercial.",
-  "no_changes": "Aucune modification à enregistrer."
+  "no_changes": "Aucune modification à enregistrer.",
+  "tenant_not_found": "Entreprise introuvable.",
+  "tenant_already_suspended": "Cette entreprise est déjà suspendue.",
+  "tenant_not_suspended": "Cette entreprise n'est pas suspendue.",
+  "subscription_not_activable": "Seul un abonnement en attente d'activation ou en essai peut être activé.",
+  "subscription_not_extendable": "Seul un abonnement actif, échu ou expiré peut être prolongé.",
+  "invalid_period": "Dates invalides : l'échéance doit suivre le début (et l'échéance actuelle) et être à venir.",
+  "period_too_long": "Période trop longue ({{max_months}} mois au plus).",
+  "plan_unchanged": "C'est déjà le plan de l'abonnement.",
+  "unknown_plan": "Plan inconnu ou retiré du catalogue.",
+  "subscription_missing": "Aucun abonnement."
 }

@@ -60,6 +60,10 @@ la suite peut être rejouée sur la même base.
 
 ## Suites
 
+- `console-tenants.e2e.ts` (Phase 3.2-G) : entreprise et administrateur TechNova créés à chaque
+  exécution ; recherche, fiche, activation manuelle transitoire, changement de plan, suspension
+  (accès refusé) et réactivation, journal de la plateforme, entrées miroir du journal de
+  l'entreprise ; liste sur mobile.
 - `console.e2e.ts` (Phase 3.2-F) : console TechNova — administrateur créé par la CLI,
   connexion, offres & tarifs (publication de STANDARD, raison obligatoire, confirmation,
   nouvelle valeur, historique, journal de la plateforme, effet sur `/public/plans`), refus d'un

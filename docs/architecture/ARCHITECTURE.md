@@ -318,7 +318,10 @@ Une transition invalide est refusée par le backend, quel que soit le client.
   `/tech-admin`), rôle SQL dédié `stockmanager_platform` aux droits minimaux (aucune donnée de
   tenant), administrateurs TechNova = comptes dédiés `users.is_platform_admin` attribués par la
   CLI seulement et invisibles pour l'application des tenants (RLS), journal de la plateforme
-  append-only. Restriction réseau : infrastructure ; MFA : future.
+  append-only. Depuis 3.2-G : métadonnées des entreprises et abonnements (colonnes limitées),
+  suspension / réactivation, activation manuelle transitoire (sans paiement), prolongation,
+  changement de plan, double audit (plateforme + journal de l'entreprise). Restriction
+  réseau : infrastructure ; MFA : future.
 - **Audit** : journal `audit_log` (tenant, site, utilisateur, action, entité,
   avant/après, IP, horodatage) alimenté explicitement par les services pour les
   actions sensibles (connexion, droits, stock, ventes, caisse, annulations).
@@ -540,7 +543,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · 2.5-B ✅ Design System de l'interface ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)) · 2.6 ✅ inventaires ([`INVENTORY.md`](INVENTORY.md), ADR-0019) | V1 |
-| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 🔄 SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E ✅ rôles, permissions et délégation RBAC (ADR-0030) · 3.2-F ✅ console TechNova : socle, offres & tarifs ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md), ADR-0031) · 3.2-G tenants et abonnements (console) · 3.2-H clôture 3.2 : E2E SaaS, sécurité, documentation · 3.3-A paiements · 3.3-B licences | V1 |
+| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 🔄 SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E ✅ rôles, permissions et délégation RBAC (ADR-0030) · 3.2-F ✅ console TechNova : socle, offres & tarifs ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md), ADR-0031) · 3.2-G ✅ tenants et abonnements dans la console (suspension, activation manuelle transitoire, prolongation, changement de plan, double audit) · 3.2-H clôture 3.2 : E2E SaaS, sécurité, documentation · 3.3-A paiements · 3.3-B licences | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 

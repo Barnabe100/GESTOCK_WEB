@@ -76,6 +76,17 @@ const DASHBOARD = {
   permissions: 120,
   profiles_active: 28,
   active_countries: 249,
+  tenants: {
+    tenants_total: 3,
+    tenants_active: 2,
+    tenants_suspended: 1,
+    subscriptions_active: 1,
+    subscriptions_trial: 0,
+    subscriptions_pending_activation: 1,
+    subscriptions_past_due: 0,
+    subscriptions_expired: 1,
+    subscriptions_renewal_due: 0,
+  },
 };
 
 const fetchMock = vi.fn<typeof fetch>();

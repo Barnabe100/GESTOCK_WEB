@@ -214,8 +214,17 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
 5. **Droits du rôle de la console TechNova** (`stockmanager_platform`, sans `BYPASSRLS`,
    ADR-0031) : `SELECT` sur le catalogue ; `UPDATE` des seules colonnes commerciales de
    `plans` ; `SELECT` sur `users` (comptes TechNova seulement, RLS) et `UPDATE` des colonnes de
-   verrouillage ; `platform_sessions` et `platform_audit_logs` ci-dessus. **Aucun droit** sur
-   `tenants`, `subscriptions`, `audit_logs` ni aucune table métier.
+   verrouillage ; `platform_sessions` et `platform_audit_logs` ci-dessus. Depuis 3.2-G
+   (migration 0018, politiques RLS `TO` ce rôle) : `tenants` — lecture de `id`, `name`,
+   `trade_name`, `slug`, `status`, `business_profile_code`, `country_code`, `currency`,
+   `locale`, `timezone`, `created_at`, `updated_at`, mise à jour de `status` seul ;
+   `subscriptions` — lecture, mise à jour de `plan_code`, `status`, `current_period_start`,
+   `current_period_end`, `price_at_subscription`, `currency_at_subscription` ; `sites` —
+   lecture de `tenant_id`, `is_active` ; `tenant_memberships` — lecture de `tenant_id`,
+   `status` (compteurs) ; `audit_logs` — **insertion seule** d'entrées miroir (politique
+   permissive `platform_mirror_insert` et restrictive `platform_mirror_only` : tenant
+   renseigné, `user_id` nul). **Aucun droit** de suppression, aucune lecture d'`audit_logs`,
+   des coordonnées des entreprises, des utilisateurs, ni d'aucune table métier.
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

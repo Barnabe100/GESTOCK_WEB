@@ -2,7 +2,6 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal
 from enum import StrEnum
 from typing import NamedTuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -24,7 +23,7 @@ from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import BillingPeriod, Subscription, SubscriptionStatus
-from app.platform.subscriptions.service import period_end
+from app.platform.subscriptions.service import period_end, subscription_price
 from app.platform.tenancy.models import Site, SiteKind, Tenant, TenantModule
 from app.shared.ids import new_id
 
@@ -98,18 +97,6 @@ class ProvisionResult:
     owner_user_id: uuid.UUID
     owner_created: bool
     enabled_modules: list[str] = field(default_factory=list)
-
-
-def subscription_price(
-    plan: Plan, billing_period: BillingPeriod
-) -> tuple[Decimal | None, str | None]:
-    """Prix de la période souscrite, à figer dans l'abonnement : celui du plan si TechNova a
-    ouvert cette période (prix et devise), sinon aucun."""
-    if billing_period is BillingPeriod.MONTHLY and plan.monthly_price_enabled:
-        return plan.monthly_price, plan.currency
-    if billing_period is BillingPeriod.ANNUAL and plan.annual_price_enabled:
-        return plan.annual_price, plan.currency
-    return None, None
 
 
 class _Checked(NamedTuple):

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -189,6 +189,7 @@ class DashboardOut(BaseModel):
     permissions: int
     profiles_active: int
     active_countries: int
+    tenants: "PlatformDashboardTenants"
 
 
 class PlatformAuditOut(BaseModel):
@@ -207,3 +208,125 @@ class PlatformAuditOut(BaseModel):
     reason: str | None
     data: dict[str, Any]
     ip_address: str | None
+
+
+# --- Tenants et abonnements (Phase 3.2-G) ------------------------------------------------------
+
+
+class TenantListItem(BaseModel):
+    """Métadonnées plateforme d'une entreprise (aucune donnée métier)."""
+
+    id: uuid.UUID
+    name: str
+    trade_name: str | None
+    slug: str
+    status: str
+    business_profile_code: str
+    business_profile_name: str
+    created_at: datetime
+    plan_code: str
+    plan_name: str
+    # Statut stocké et statut effectif (échéance, délai de grâce), distincts du statut du tenant.
+    subscription_status: str
+    effective_status: str
+    current_period_end: datetime
+    sites: int
+    users: int
+
+
+class TenantUsage(BaseModel):
+    used: int
+    limit: int | None
+
+
+class TenantSubscriptionOut(BaseModel):
+    id: uuid.UUID
+    plan_code: str
+    plan_name: str
+    billing_period: str
+    status: str
+    effective_status: str
+    started_at: datetime
+    current_period_start: datetime
+    current_period_end: datetime
+    cancelled_at: datetime | None
+    grace_days: int
+    # Prix et devise figés à la souscription (ou au dernier changement de plan).
+    price_at_subscription: Money | None
+    currency_at_subscription: str | None
+
+
+class PlanChoice(BaseModel):
+    code: str
+    name: str
+
+
+class TenantActions(BaseModel):
+    """Actions possibles dans l'état actuel (décidées par le serveur, qui revérifie tout)."""
+
+    can_suspend: bool
+    can_reactivate: bool
+    can_activate: bool
+    can_extend: bool
+    can_change_plan: bool
+    activation_start: date
+    activation_end: date
+    extension_end: date
+    available_plans: list[PlanChoice]
+
+
+class TenantDetailOut(TenantListItem):
+    country_code: str | None
+    country_name: str | None
+    currency: str
+    locale: str
+    timezone: str
+    usage: dict[str, TenantUsage]
+    subscription: TenantSubscriptionOut
+    actions: TenantActions
+
+
+class ReasonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("La raison est obligatoire")
+        return stripped
+
+
+class ActivationIn(ReasonIn):
+    # Dates dans le fuseau du tenant ; absentes : proposition du serveur (aujourd'hui, une
+    # période de facturation).
+    period_start: date | None = None
+    period_end: date | None = None
+
+
+class ExtensionIn(ReasonIn):
+    period_end: date
+
+
+class PlanChangeIn(ReasonIn):
+    plan_code: str = Field(min_length=1, max_length=50)
+
+
+class PlatformDashboardTenants(BaseModel):
+    """Agrégats calculés en base (aucune ligne de tenant chargée)."""
+
+    tenants_total: int
+    tenants_active: int
+    tenants_suspended: int
+    subscriptions_active: int
+    subscriptions_trial: int
+    subscriptions_pending_activation: int
+    subscriptions_past_due: int
+    subscriptions_expired: int
+    subscriptions_renewal_due: int
+
+
+DashboardOut.model_rebuild()

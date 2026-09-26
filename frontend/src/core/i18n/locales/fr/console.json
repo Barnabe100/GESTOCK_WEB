@@ -9,6 +9,7 @@
     "dashboard": "Accueil",
     "plans": "Offres & tarifs",
     "catalog": "Catalogue technique",
+    "tenants": "Tenants",
     "audit": "Journal de la plateforme"
   },
   "login": {
@@ -34,7 +35,18 @@
     "shortcuts": "Accès rapides",
     "openPlans": "Gérer les offres & tarifs",
     "openAudit": "Consulter le journal",
-    "openCatalog": "Consulter le catalogue"
+    "openCatalog": "Consulter le catalogue",
+    "tenantsSection": "Entreprises et abonnements",
+    "tenantsTotal": "Entreprises",
+    "tenantsActive": "Entreprises actives",
+    "tenantsSuspended": "Entreprises suspendues",
+    "subscriptionsActive": "Abonnements actifs",
+    "subscriptionsPending": "En attente d'activation",
+    "subscriptionsTrial": "En essai",
+    "subscriptionsRenewal": "À renouveler (30 jours)",
+    "subscriptionsPastDue": "Échéance dépassée",
+    "subscriptionsExpired": "Abonnements expirés",
+    "openTenants": "Gérer les entreprises"
   },
   "plans": {
     "title": "Offres & tarifs",
@@ -163,7 +175,8 @@
     "reason": "Raison",
     "filterAction": "Filtrer par action",
     "before": "avant",
-    "after": "après"
+    "after": "après",
+    "tenant": "Entreprise"
   },
   "accessKind": {
     "read": "lecture",
@@ -171,5 +184,99 @@
     "export": "export",
     "admin": "administration",
     "billing": "facturation"
+  },
+  "tenantStatus": {
+    "active": "Active",
+    "suspended": "Suspendue"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "subtitle": "Entreprises clientes : métadonnées de la plateforme et abonnements. Les données métier des entreprises (ventes, stock, clients…) ne sont pas accessibles depuis la console.",
+    "search": "Rechercher une entreprise (nom, nom commercial, identifiant)",
+    "status": "Statut",
+    "plan": "Plan",
+    "subscription": "Abonnement",
+    "allStatuses": "Tous les statuts",
+    "allPlans": "Tous les plans",
+    "allSubscriptions": "Tous les abonnements",
+    "company": "Entreprise",
+    "expiration": "Échéance",
+    "sites": "Sites",
+    "users": "Utilisateurs",
+    "createdAt": "Création",
+    "empty": "Aucune entreprise.",
+    "open": "Ouvrir"
+  },
+  "tenant": {
+    "breadcrumb": "Tenants",
+    "identity": "Identité",
+    "name": "Raison sociale",
+    "tradeName": "Nom commercial",
+    "profile": "Profil d'activité",
+    "country": "Pays",
+    "currency": "Devise",
+    "timezone": "Fuseau horaire",
+    "createdAt": "Création",
+    "slug": "Identifiant",
+    "usage": "Utilisation",
+    "usageOf": "{{used}} / {{limit}}",
+    "unlimited": "illimité",
+    "overLimit": "Au-delà de la limite du plan (données conservées ; aucune création possible)",
+    "subscriptionTitle": "Abonnement",
+    "statusTitle": "État de l'entreprise",
+    "statusHelp": "Le statut de l'entreprise (suspension par TechNova) est distinct du statut de son abonnement.",
+    "plan": "Plan",
+    "subscriptionStatus": "Statut enregistré",
+    "effectiveStatus": "Statut effectif",
+    "billingPeriod": "Période de facturation",
+    "startedAt": "Souscription",
+    "periodStart": "Début de période",
+    "periodEnd": "Échéance",
+    "graceDays": "Délai de grâce",
+    "price": "Prix figé",
+    "noPrice": "Aucun prix figé",
+    "actionsTitle": "Actions TechNova",
+    "actionsHelp": "Chaque action exige une raison et une confirmation ; elle est enregistrée dans le journal de la plateforme et dans le journal de l'entreprise.",
+    "noAction": "Aucune action disponible dans l'état actuel.",
+    "historyTitle": "Historique des actions TechNova",
+    "historyEmpty": "Aucune action TechNova sur cette entreprise.",
+    "transitional": "Activation manuelle transitoire : TechNova autorise l'activation. Ce n'est ni un paiement confirmé ni une licence (phases 3.3).",
+    "reason": "Raison",
+    "reasonHelp": "Obligatoire, enregistrée dans les journaux.",
+    "reasonRequired": "La raison est obligatoire.",
+    "confirmCheck": "Je confirme cette action.",
+    "periodStartField": "Début",
+    "periodEndField": "Échéance",
+    "newPlan": "Nouveau plan",
+    "choosePlan": "Choisir un plan",
+    "planChangeHelp": "Le prix et la devise de la période sont figés au tarif actuel du nouveau plan ; la période est inchangée ; aucune donnée n'est supprimée.",
+    "suspendHelp": "Tous les utilisateurs de l'entreprise perdent l'accès immédiatement. Aucune donnée n'est supprimée.",
+    "reactivateHelp": "Les utilisateurs de l'entreprise retrouvent l'accès.",
+    "extendHelp": "Nouvelle échéance postérieure à l'échéance actuelle ; une période échue repart d'aujourd'hui.",
+    "done": "Action enregistrée",
+    "summaryTenant": "Entreprise",
+    "summaryPlan": "Plan",
+    "summaryCurrentEnd": "Échéance actuelle",
+    "action": {
+      "suspend": "Suspendre",
+      "reactivate": "Réactiver",
+      "activate": "Activer l'abonnement",
+      "extend": "Prolonger l'abonnement",
+      "change-plan": "Changer de plan"
+    },
+    "confirm": {
+      "suspend": "Confirmer la suspension",
+      "reactivate": "Confirmer la réactivation",
+      "activate": "Confirmer l'activation",
+      "extend": "Confirmer la prolongation",
+      "change-plan": "Confirmer le changement de plan"
+    },
+    "dialogTitle": {
+      "suspend": "Suspendre l'entreprise",
+      "reactivate": "Réactiver l'entreprise",
+      "activate": "Activation manuelle",
+      "extend": "Prolongation de l'abonnement",
+      "change-plan": "Changement de plan"
+    }
   }
 }
