@@ -23,7 +23,7 @@ from app.core.errors import BusinessRuleError, ConflictError
 from app.platform.audit.service import RequestMeta, record_audit
 from app.platform.catalog.models import BusinessProfile
 from app.platform.registry import ModuleRegistry, ModuleStatus
-from app.platform.subscriptions.service import current_plan
+from app.platform.subscriptions.service import tenant_plans
 from app.platform.tenancy.models import Tenant, TenantModule
 
 
@@ -74,7 +74,8 @@ def change_business_profile(
             extra={"modules": blocking},
         )
 
-    plan_modules = {m.module_code for m in current_plan(session).modules}
+    # Modules inclus dans au moins un abonnement de l'entreprise (ADR-0033).
+    plan_modules = {m.module_code for plan in tenant_plans(session) for m in plan.modules}
     enabled: list[str] = []
     for link in profile.modules:
         if (

@@ -9,11 +9,19 @@ from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
-from app.platform.registry import ModuleRegistry, get_registry
-from app.platform.subscriptions.plan_policy import PlanPolicy
-from app.platform.subscriptions.service import current_plan
+from app.platform.registry import ModuleRegistry
+from app.platform.subscriptions.models import Subscription, SubscriptionStatus
+from app.platform.subscriptions.service import (
+    period_enabled,
+    self_service,
+    subscription_price,
+    tenant_plans,
+    unattached_subscription,
+)
 from app.platform.tenancy.models import Site, TenantModule
 from app.platform.tenancy.schemas import ModuleOut, SiteCreate, SiteUpdate, TenantUpdate
+from app.shared.clock import utcnow
+from app.shared.ids import new_id
 
 
 class TenantService:
@@ -74,9 +82,6 @@ class SiteService:
             raise NotFoundError("Site introuvable", code="site_not_found")
         return site
 
-    def _check_site_limit(self) -> None:
-        PlanPolicy(self.db, current_plan(self.db), get_registry()).ensure_capacity("max_sites")
-
     def _flush(self) -> None:
         try:
             self.db.flush()
@@ -84,10 +89,77 @@ class SiteService:
             raise ConflictError("Ce code de site existe déjà", code="site_code_taken") from exc
 
     def create(self, data: SiteCreate) -> Site:
-        self._check_site_limit()
-        site = Site(tenant_id=self.ctx.tenant_id, **data.model_dump())
+        """Nouveau site et **son abonnement** (1 site = 1 abonnement, ADR-0033). Le premier site
+        d'une inscription reçoit l'abonnement choisi à l'inscription ; tout autre site, un
+        abonnement « en attente d'activation » au plan publié choisi par l'administrateur (sans
+        essai) : il n'est opérationnel qu'après paiement confirmé et licence."""
+        pending = unattached_subscription(self.db, for_update=True)
+        plan: Plan | None = None
+        if pending is not None:
+            if data.plan_code is not None or data.billing_period is not None:
+                raise BusinessRuleError(
+                    "L'abonnement de ce premier site a été choisi à l'inscription",
+                    code="site_subscription_preselected",
+                )
+        else:
+            if data.plan_code is None or data.billing_period is None:
+                raise BusinessRuleError(
+                    "Choisissez l'offre et la période de facturation du site",
+                    code="site_plan_required",
+                )
+            plan = self.db.get(Plan, data.plan_code)
+            if (
+                plan is None
+                or not self_service(plan)
+                or not period_enabled(plan, data.billing_period)
+            ):
+                raise BusinessRuleError("Offre indisponible", code="plan_not_available")
+        fields = data.model_dump(exclude={"plan_code", "billing_period", "requested_activations"})
+        site = Site(id=new_id(), tenant_id=self.ctx.tenant_id, **fields)
         self.db.add(site)
         self._flush()
+        if pending is not None:
+            subscription = pending
+            subscription.site_id = site.id
+            subscription.requested_activations = data.requested_activations
+            action = "subscription.site_attached"
+        else:
+            assert plan is not None and data.billing_period is not None
+            price, currency = subscription_price(plan, data.billing_period)
+            now = utcnow()
+            subscription = Subscription(
+                tenant_id=self.ctx.tenant_id,
+                site_id=site.id,
+                plan_code=plan.code,
+                billing_period=data.billing_period,
+                status=SubscriptionStatus.PENDING_ACTIVATION,
+                started_at=now,
+                current_period_start=now,
+                current_period_end=now,
+                price_at_subscription=price,
+                currency_at_subscription=currency,
+                requested_activations=data.requested_activations,
+            )
+            self.db.add(subscription)
+            action = "subscription.created"
+        self.db.flush()
+        record_audit(
+            self.db,
+            action=action,
+            tenant_id=self.ctx.tenant_id,
+            user_id=self.ctx.user.id,
+            site_id=site.id,
+            entity_type="subscription",
+            entity_id=subscription.id,
+            data={
+                "site_id": str(site.id),
+                "plan": subscription.plan_code,
+                "billing_period": subscription.billing_period.value,
+                "status": subscription.status.value,
+                "requested_activations": subscription.requested_activations,
+            },
+            meta=self.ctx.meta,
+        )
         record_audit(
             self.db,
             action="site.created",
@@ -95,7 +167,7 @@ class SiteService:
             user_id=self.ctx.user.id,
             entity_type="site",
             entity_id=site.id,
-            data=data.model_dump(mode="json"),
+            data=fields | {"kind": site.kind.value},
             meta=self.ctx.meta,
         )
         return site
@@ -103,8 +175,6 @@ class SiteService:
     def update(self, site_id: uuid.UUID, data: SiteUpdate) -> Site:
         site = self.get(site_id)
         changes = data.model_dump(exclude_unset=True)
-        if changes.get("is_active") and not site.is_active:
-            self._check_site_limit()
         before = {k: getattr(site, k) for k in changes}
         for key, value in changes.items():
             setattr(site, key, value)
@@ -129,16 +199,19 @@ class ModuleService:
         self.registry = registry
         self.capabilities = CapabilityService(db, registry)
 
-    def _profile_and_plan(self) -> tuple[BusinessProfile, Plan]:
+    def _profile_and_plans(self) -> tuple[BusinessProfile, list[Plan]]:
+        """Profil et plans des abonnements de l'entreprise : un module est activable s'il est
+        proposé par le profil et inclus dans au moins un abonnement (chaque site n'en reçoit
+        que ce que son propre plan inclut)."""
         profile = self.db.get(BusinessProfile, self.ctx.tenant.business_profile_code)
         if profile is None:
             raise BusinessRuleError("Profil introuvable", code="unknown_profile")
-        return profile, current_plan(self.db)
+        return profile, tenant_plans(self.db)
 
     def list_all(self) -> list[ModuleOut]:
-        profile, plan = self._profile_and_plan()
+        profile, plans = self._profile_and_plans()
         in_profile = {m.module_code for m in profile.modules}
-        in_plan = {m.module_code for m in plan.modules}
+        in_plan = {m.module_code for plan in plans for m in plan.modules}
         enabled = self.capabilities.enabled_module_codes()
         effective = self.ctx.capabilities.modules
         return [
@@ -159,8 +232,8 @@ class ModuleService:
     def set_enabled(self, code: str, enabled: bool) -> None:
         if code not in self.registry or self.registry.get(code).core:
             raise BusinessRuleError("Module non paramétrable", code="module_not_configurable")
-        profile, plan = self._profile_and_plan()
-        if code not in self.capabilities.offered_modules(profile, plan):
+        profile, plans = self._profile_and_plans()
+        if not any(code in self.capabilities.offered_modules(profile, plan) for plan in plans):
             raise BusinessRuleError(
                 "Module non inclus dans votre profil ou votre abonnement",
                 code="module_not_offered",

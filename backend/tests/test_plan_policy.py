@@ -71,25 +71,34 @@ def test_limits_exposed_with_usage(provision: Any, api_for: Any) -> None:
 
 
 def test_limit_values_come_from_plan_data(provision: Any, api_for: Any, owner_db: Session) -> None:
-    """Changer l'offre = changer les données du plan, sans toucher au code."""
+    """Changer l'offre = changer les données du plan, sans toucher au code. La limite
+    d'utilisateurs est celle de l'abonnement du site (1 site = 1 abonnement, ADR-0033)."""
     provision("alpha", plan="STANDARD")
     api = api_for("owner@alpha.example.com")
-    assert api.post("/sites", json={"name": "B", "code": "B"}).json()["code"] == (
-        "plan_limit_reached"
-    )
-    owner_db.execute(
-        text(
-            "UPDATE plans SET limits = jsonb_set(limits, '{max_sites}', '2') WHERE code='STANDARD'"
-        )
-    )
-    owner_db.commit()
-    try:
-        assert api.post("/sites", json={"name": "B", "code": "B"}).status_code == 201
-    finally:
+
+    def set_max_users(value: int) -> None:
         owner_db.execute(
             text(
-                "UPDATE plans SET limits = jsonb_set(limits, '{max_sites}', '1') "
+                "UPDATE plans SET limits = jsonb_set(limits, '{max_users}', :v) "
                 "WHERE code='STANDARD'"
-            )
+            ),
+            {"v": str(value)},
         )
         owner_db.commit()
+
+    body = {
+        "email": "vendeur@alpha.example.com",
+        "full_name": "Vendeur",
+        "password": "Provisoire-123",
+        "roles": [],
+        "all_sites": True,
+    }
+    set_max_users(1)
+    try:
+        refused = api.post("/members", json=body)
+        assert refused.status_code == 422
+        assert refused.json()["code"] == "plan_limit_reached"
+        set_max_users(2)
+        assert api.post("/members", json=body).status_code == 201
+    finally:
+        set_max_users(5)

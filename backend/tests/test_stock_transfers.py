@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.db import create_session_factory, set_db_context
 from app.platform.subscriptions.service import change_plan
 from tests import stock_helpers as sh
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 from tests.stock_helpers import World
 
 TRANSFER_PERMISSIONS = {
@@ -538,7 +538,14 @@ def test_downgrade_to_standard_keeps_history_read_only(
     tenant_id = owner_db.execute(text("SELECT tenant_id FROM stock_transfers LIMIT 1")).scalar()
 
     with create_session_factory(app_engine)() as db:
-        assert change_plan(db, tenant_id, "STANDARD", actor="test") == ("ENTREPRISE", "STANDARD")
+        # 1 site = 1 abonnement (ADR-0033) : les deux sites passent en STANDARD.
+        for site_id in (world.site, world.site2):
+            assert change_plan(
+                db, tenant_id, "STANDARD", actor="test", site_id=uuid.UUID(site_id)
+            ) == (
+                "ENTREPRISE",
+                "STANDARD",
+            )
         db.commit()
 
     caps = world.owner.get("/me/capabilities").json()
@@ -587,7 +594,8 @@ def test_downgrade_to_standard_keeps_history_read_only(
 
     # Retour à ENTREPRISE : les opérations redeviennent possibles sur les mêmes données.
     with create_session_factory(app_engine)() as db:
-        change_plan(db, tenant_id, "ENTREPRISE", actor="test")
+        for site_id in (world.site, world.site2):
+            change_plan(db, tenant_id, "ENTREPRISE", actor="test", site_id=uuid.UUID(site_id))
         db.commit()
     assert _validate(world.owner, draft).status_code == 200
 
@@ -693,7 +701,7 @@ def test_site_scoped_role_requires_permission_on_both_sites(
 
 
 def test_selected_site_must_be_part_of_the_transfer(world: World) -> None:
-    third = world.owner.post("/sites", json={"name": "Annexe", "code": "ANNEXE", "kind": "store"})
+    third = add_site(world.owner, "Annexe", "ANNEXE", "store")
     assert third.status_code == 201, third.text
     world.owner.site_id = uuid.UUID(third.json()["id"])
     mismatch = world.owner.post("/stock/transfers", json=_body(world, [(0, "1")]))

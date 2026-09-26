@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, loginUi, OWNER } from './support';
+import { apiToken, bearer, createActiveSite, loginUi, OWNER } from './support';
 
 /**
  * Phase 2.9 — Caisse. Les tests travaillent sur le site « Dépôt E2E » (créé au besoin) pour ne
@@ -46,7 +46,7 @@ async function setup(request: APIRequestContext): Promise<Setup> {
   ).json()) as Site[];
   const depot =
     sites.find((s) => s.code === DEPOT.code) ??
-    ((await ok(request, token, '/sites', { ...DEPOT, kind: 'warehouse' })) as unknown as Site);
+    (await createActiveSite<Site>(request, token, { ...DEPOT, kind: 'warehouse' }));
   // Sessions du dépôt restées ouvertes (exécution interrompue) : clôturées.
   const open = (await call(request, token, 'get', `/cash/sessions?status=OPEN&site_id=${depot.id}`))
     .body as { items: { id: string; theoretical_balance: string }[] };

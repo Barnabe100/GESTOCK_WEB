@@ -206,7 +206,8 @@
     "users": "Utilisateurs",
     "createdAt": "Création",
     "empty": "Aucune entreprise.",
-    "open": "Ouvrir"
+    "open": "Ouvrir",
+    "subscriptions": "Abonnements"
   },
   "tenant": {
     "breadcrumb": "Tenants",
@@ -237,7 +238,7 @@
     "price": "Prix figé",
     "noPrice": "Aucun prix figé",
     "actionsTitle": "Actions TechNova",
-    "actionsHelp": "Chaque action exige une raison et une confirmation ; elle est enregistrée dans le journal de la plateforme et dans le journal de l'entreprise.",
+    "actionsHelp": "Suspension et réactivation de l'entreprise. Chaque action exige une raison et une confirmation ; elle est enregistrée dans le journal de la plateforme et dans celui de l'entreprise.",
     "noAction": "Aucune action disponible dans l'état actuel.",
     "historyTitle": "Historique des actions TechNova",
     "historyEmpty": "Aucune action TechNova sur cette entreprise.",
@@ -278,7 +279,14 @@
       "activate": "Activation manuelle",
       "extend": "Prolongation de l'abonnement",
       "change-plan": "Changement de plan"
-    }
+    },
+    "summarySite": "Site",
+    "unattached": "Abonnement en attente du premier site",
+    "requestedActivations": "Postes demandés",
+    "sitesCount": "Sites actifs",
+    "usersCount": "Utilisateurs actifs",
+    "subscriptionsTitle": "Abonnements par site",
+    "subscriptionsHelp": "1 site = 1 abonnement : chaque site a son offre, sa période, son statut et ses limites. Les actions portent sur l'abonnement d'un site."
   },
   "payments": {
     "title": "Paiements",
@@ -333,6 +341,7 @@
     "confirmed": "Paiement confirmé",
     "rejected": "Paiement rejeté",
     "history": "Historique",
-    "historyEmpty": "Aucune décision enregistrée."
+    "historyEmpty": "Aucune décision enregistrée.",
+    "site": "Site"
   }
 }

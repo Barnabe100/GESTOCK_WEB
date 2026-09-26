@@ -49,11 +49,13 @@ class PermissionDef:
 
 @dataclass(frozen=True)
 class LimitDef:
-    """Quantité plafonnable par un plan. ``counter`` compte l'usage courant du tenant actif
-    (la session est déjà dans le contexte du tenant)."""
+    """Quantité plafonnable par un plan. ``counter(session, site_id)`` compte l'usage courant
+    du tenant actif (la session est déjà dans le contexte du tenant) ; ``site_id`` : usage du
+    site dont l'abonnement porte la limite (1 site = 1 abonnement, ADR-0033), nul pour
+    l'entreprise entière (abonnement pas encore rattaché à un site)."""
 
     code: str
-    counter: "Callable[[Session], int]" = field(compare=False, hash=False)
+    counter: "Callable[[Session, uuid.UUID | None], int]" = field(compare=False, hash=False)
 
 
 @dataclass(frozen=True)

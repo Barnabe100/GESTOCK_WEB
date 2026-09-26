@@ -11,7 +11,7 @@ Chaîne appliquée : User → Tenant → Site → Permission → Resource.
 
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Annotated
 
@@ -25,10 +25,13 @@ from app.core.errors import AppError, ForbiddenError, UnauthorizedError
 from app.core.security import AccessClaims, InvalidTokenError, decode_access_token
 from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.audit.service import RequestMeta
-from app.platform.capabilities.service import Capabilities, CapabilityService
+from app.platform.capabilities.service import (
+    Capabilities,
+    CapabilityService,
+    SubscriptionMissingError,
+)
 from app.platform.identity.models import AuthSession, User
-from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
-from app.platform.subscriptions.service import get_subscription
+from app.platform.registry import AccessKind, ModuleRegistry, ModuleStatus, get_registry
 from app.platform.tenancy.models import Site, Tenant, TenantStatus
 from app.shared.clock import utcnow
 
@@ -117,6 +120,10 @@ ActiveUser = Annotated[Authenticated, Depends(get_active_user)]
 # --- Contexte tenant ------------------------------------------------------------------------
 
 
+# Natures de permission qui ne modifient rien : pas de revérification par site (Q6, ADR-0033).
+_READ_ONLY_ACCESS = frozenset({AccessKind.READ, AccessKind.EXPORT})
+
+
 @dataclass(frozen=True)
 class RequestContext:
     user: User
@@ -126,6 +133,12 @@ class RequestContext:
     capabilities: Capabilities
     session_id: uuid.UUID
     meta: RequestMeta
+    # Capacités sur un autre site que le site sélectionné (abonnement de ce site), et
+    # exigences de permission de la route (renseignées par ``require_permission``).
+    site_capabilities: Callable[[uuid.UUID], Capabilities] = field(
+        default=lambda _site_id: _no_site_capabilities(), compare=False, repr=False
+    )
+    requirements: list[frozenset[str]] = field(default_factory=list, compare=False, repr=False)
 
     @property
     def tenant_id(self) -> uuid.UUID:
@@ -136,6 +149,43 @@ class RequestContext:
 
     def has_feature(self, code: str) -> bool:
         return code in self.capabilities.features
+
+    def ensure_site_allows(self, site_id: uuid.UUID) -> None:
+        """1 site = 1 abonnement (ADR-0033) : une opération qui **écrit** sur un site doit être
+        autorisée par l'abonnement de CE site, même si elle est lancée sans site sélectionné
+        (capacités consolidées de l'entreprise). Les lectures ne sont pas revérifiées."""
+        if self.site is not None and self.site.id == site_id:
+            return  # capacités déjà résolues pour ce site
+        writes = [r for r in self.requirements if not _read_only(r)]
+        if not writes:
+            return
+        capabilities = self.site_capabilities(site_id)
+        for requirement in writes:
+            if requirement & capabilities.permissions:
+                continue
+            extra = {"site_id": str(site_id)}
+            if requirement & capabilities.restricted_permissions:
+                raise ForbiddenError(
+                    "Action indisponible avec le statut de l'abonnement de ce site",
+                    code="subscription_restricted",
+                    extra=extra,
+                )
+            raise ForbiddenError(
+                "Permission insuffisante sur ce site", code="permission_denied", extra=extra
+            )
+
+
+def _no_site_capabilities() -> Capabilities:
+    raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+
+
+def _read_only(requirement: frozenset[str]) -> bool:
+    registry = get_registry()
+    return all(
+        (definition := registry.permission(code)) is not None
+        and definition.access in _READ_ONLY_ACCESS
+        for code in requirement
+    )
 
 
 def get_tenant_context(
@@ -163,10 +213,6 @@ def get_tenant_context(
         raise ForbiddenError("Accès à cette entreprise refusé", code="tenant_access_denied")
     if tenant.status != TenantStatus.ACTIVE:
         raise ForbiddenError("Entreprise suspendue", code="tenant_suspended")
-    subscription = get_subscription(db)
-    if subscription is None:
-        raise ForbiddenError("Aucun abonnement", code="subscription_missing")
-
     site: Site | None = None
     if x_site_id:
         try:
@@ -177,15 +223,26 @@ def get_tenant_context(
         if site is None or not site.is_active:
             raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
 
-    capabilities = CapabilityService(db, registry).resolve(
-        tenant=tenant,
-        membership=membership,
-        subscription=subscription,
-        site_id=site.id if site else None,
-        now=now,
-    )
+    service = CapabilityService(db, registry)
+
+    def resolve(target: uuid.UUID | None) -> Capabilities:
+        try:
+            return service.resolve(tenant=tenant, membership=membership, site_id=target, now=now)
+        except SubscriptionMissingError as exc:
+            raise ForbiddenError("Aucun abonnement", code="subscription_missing") from exc
+
+    capabilities = resolve(site.id if site else None)
     if site is not None and site.id not in capabilities.accessible_site_ids:
         raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+
+    cache: dict[uuid.UUID, Capabilities] = {}
+
+    def site_capabilities(target: uuid.UUID) -> Capabilities:
+        if target not in capabilities.accessible_site_ids:
+            raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+        if target not in cache:
+            cache[target] = resolve(target)
+        return cache[target]
 
     return RequestContext(
         user=auth.user,
@@ -195,6 +252,7 @@ def get_tenant_context(
         capabilities=capabilities,
         session_id=auth.claims.session_id,
         meta=meta,
+        site_capabilities=site_capabilities,
     )
 
 
@@ -229,6 +287,7 @@ def require_permission(code: str) -> Callable[[RequestContext], RequestContext]:
     _DECLARED_PERMISSIONS.add(code)
 
     def dependency(ctx: TenantContext) -> RequestContext:
+        ctx.requirements.append(frozenset({code}))
         if code in ctx.capabilities.permissions:
             return ctx
         if code in ctx.capabilities.restricted_permissions:
@@ -247,6 +306,7 @@ def require_any_permission(*codes: str) -> Callable[[RequestContext], RequestCon
     _DECLARED_PERMISSIONS.update(codes)
 
     def dependency(ctx: TenantContext) -> RequestContext:
+        ctx.requirements.append(frozenset(codes))
         if any(code in ctx.capabilities.permissions for code in codes):
             return ctx
         if any(code in ctx.capabilities.restricted_permissions for code in codes):

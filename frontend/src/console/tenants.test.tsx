@@ -25,11 +25,10 @@ const ROW: TenantListItem = {
   business_profile_code: 'retail.alimentation',
   business_profile_name: 'Alimentation',
   created_at: '2026-09-01T10:00:00Z',
-  plan_code: 'STANDARD',
-  plan_name: 'Standard',
-  subscription_status: 'pending_activation',
-  effective_status: 'pending_activation',
-  current_period_end: '2026-09-01T10:00:00Z',
+  subscription_count: 1,
+  plan_codes: ['STANDARD'],
+  effective_statuses: ['pending_activation'],
+  next_period_end: '2026-09-01T10:00:00Z',
   sites: 1,
   users: 3,
 };
@@ -41,33 +40,36 @@ const DETAIL: TenantDetail = {
   currency: 'XOF',
   locale: 'fr',
   timezone: 'Africa/Ouagadougou',
-  usage: { max_sites: { used: 1, limit: 1 }, max_users: { used: 3, limit: 5 } },
-  subscription: {
-    id: 's-1',
-    plan_code: 'STANDARD',
-    plan_name: 'Standard',
-    billing_period: 'monthly',
-    status: 'pending_activation',
-    effective_status: 'pending_activation',
-    started_at: '2026-09-01T10:00:00Z',
-    current_period_start: '2026-09-01T10:00:00Z',
-    current_period_end: '2026-09-01T10:00:00Z',
-    cancelled_at: null,
-    grace_days: 7,
-    price_at_subscription: '10000.00',
-    currency_at_subscription: 'XOF',
-  },
-  actions: {
-    can_suspend: true,
-    can_reactivate: false,
-    can_activate: true,
-    can_extend: false,
-    can_change_plan: true,
-    activation_start: '2026-09-25',
-    activation_end: '2026-10-25',
-    extension_end: '2026-10-25',
-    available_plans: [{ code: 'ENTREPRISE', name: 'Entreprise' }],
-  },
+  subscriptions: [
+    {
+      id: 's-1',
+      site: { id: 'site-1', name: 'Boutique', code: 'BTQ' },
+      plan_code: 'STANDARD',
+      plan_name: 'Standard',
+      billing_period: 'monthly',
+      status: 'pending_activation',
+      effective_status: 'pending_activation',
+      started_at: '2026-09-01T10:00:00Z',
+      current_period_start: '2026-09-01T10:00:00Z',
+      current_period_end: '2026-09-01T10:00:00Z',
+      cancelled_at: null,
+      grace_days: 7,
+      price_at_subscription: '10000.00',
+      currency_at_subscription: 'XOF',
+      requested_activations: 2,
+      usage: { max_users: { used: 3, limit: 5 } },
+      actions: {
+        can_activate: true,
+        can_extend: false,
+        can_change_plan: true,
+        activation_start: '2026-09-25',
+        activation_end: '2026-10-25',
+        extension_end: '2026-10-25',
+        available_plans: [{ code: 'ENTREPRISE', name: 'Entreprise' }],
+      },
+    },
+  ],
+  actions: { can_suspend: true, can_reactivate: false },
 };
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -149,11 +151,17 @@ describe('Console TechNova : tenants', () => {
     consoleApi();
     renderConsole('/tech-admin/tenants/t-1');
     expect(await screen.findByText('Burkina Faso')).toBeTruthy();
-    expect(screen.getByTestId('usage-max_users').textContent).toContain('3 / 5');
-    expect(screen.getByTestId('subscription-plan').textContent).toBe('Standard (STANDARD)');
-    expect(screen.getByTestId('subscription-price').textContent).toMatch(/10.000/);
+    // 1 site = 1 abonnement (ADR-0033) : un bloc par site, ses limites et ses actions.
+    const card = screen.getByTestId('subscription-BTQ');
+    expect(within(card).getByText('Boutique (BTQ)')).toBeTruthy();
+    expect(screen.getByTestId('usage-max_users-BTQ').textContent).toContain('3 / 5');
+    expect(screen.getByTestId('subscription-plan-BTQ').textContent).toBe('Standard (STANDARD)');
+    expect(screen.getByTestId('subscription-price-BTQ').textContent).toMatch(/10.000/);
+    expect(within(card).getByText('2')).toBeTruthy(); // postes demandés
+    const siteActions = screen.getByTestId('subscription-actions-BTQ');
+    expect(within(siteActions).getByRole('button', { name: "Activer l'abonnement" })).toBeTruthy();
     const actions = screen.getByTestId('tenant-actions');
-    expect(within(actions).getByRole('button', { name: "Activer l'abonnement" })).toBeTruthy();
+    expect(within(actions).getByRole('button', { name: 'Suspendre' })).toBeTruthy();
     expect(within(actions).queryByRole('button', { name: 'Réactiver' })).toBeNull();
   });
 
@@ -177,7 +185,7 @@ describe('Console TechNova : tenants', () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(posts()).toHaveLength(1));
     const [url, init] = posts()[0] ?? [];
-    expect(String(url)).toMatch(/\/tenants\/t-1\/subscription\/activate$/);
+    expect(String(url)).toMatch(/\/tenants\/t-1\/subscriptions\/s-1\/activate$/);
     expect(JSON.parse(String(init?.body))).toEqual({
       reason: 'Activation commerciale temporaire',
       period_start: '2026-09-25',

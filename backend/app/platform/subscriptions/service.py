@@ -30,6 +30,23 @@ def period_end(start: datetime, billing_period: BillingPeriod) -> datetime:
     return add_months(start, 1 if billing_period is BillingPeriod.MONTHLY else 12)
 
 
+def period_enabled(plan: Plan, period: BillingPeriod) -> bool:
+    return (
+        plan.monthly_price_enabled if period is BillingPeriod.MONTHLY else plan.annual_price_enabled
+    )
+
+
+def self_service(plan: Plan) -> bool:
+    """Plan souscriptible par le client (inscription publique, abonnement d'un nouveau
+    site)."""
+    return (
+        plan.is_active
+        and plan.listed
+        and not plan.contact_required
+        and (plan.monthly_price_enabled or plan.annual_price_enabled)
+    )
+
+
 def subscription_price(
     plan: Plan, billing_period: BillingPeriod
 ) -> tuple[Decimal | None, str | None]:
@@ -109,30 +126,71 @@ def allowed_access(session: Session, status: SubscriptionStatus) -> frozenset[st
     return frozenset(policy.allowed_access) if policy else frozenset()
 
 
-def get_subscription(session: Session) -> Subscription | None:
-    """Abonnement du tenant actif (filtré par RLS)."""
-    return session.scalars(select(Subscription)).one_or_none()
+def tenant_subscriptions(session: Session) -> list[Subscription]:
+    """Abonnements du tenant actif (filtrés par RLS) : un par site, plus éventuellement celui,
+    non rattaché, pris à l'inscription avant la création du premier site (ADR-0033)."""
+    return list(
+        session.scalars(
+            select(Subscription).order_by(
+                Subscription.site_id.is_(None).desc(), Subscription.created_at, Subscription.id
+            )
+        )
+    )
 
 
-def current_plan(session: Session) -> Plan:
-    """Plan de l'abonnement du tenant actif."""
-    subscription = get_subscription(session)
-    plan = session.get(Plan, subscription.plan_code) if subscription else None
+def site_subscription(
+    session: Session, site_id: uuid.UUID, *, for_update: bool = False
+) -> Subscription | None:
+    """Abonnement d'un site du tenant actif (RLS)."""
+    query = select(Subscription).where(Subscription.site_id == site_id)
+    if for_update:
+        query = query.with_for_update()
+    return session.scalars(query).one_or_none()
+
+
+def unattached_subscription(session: Session, *, for_update: bool = False) -> Subscription | None:
+    """Abonnement pris à l'inscription, pas encore rattaché à un site (au plus un)."""
+    query = select(Subscription).where(Subscription.site_id.is_(None))
+    if for_update:
+        query = query.with_for_update()
+    return session.scalars(query).one_or_none()
+
+
+def subscription_plan(session: Session, subscription: Subscription) -> Plan:
+    """Plan de l'abonnement (source des limites et fonctionnalités d'un site)."""
+    plan = session.get(Plan, subscription.plan_code)
     if plan is None:
         raise BusinessRuleError("Aucun plan actif", code="subscription_missing")
     return plan
 
 
+def tenant_plans(session: Session) -> list[Plan]:
+    """Plans des abonnements du tenant actif (sans doublon)."""
+    codes = sorted({s.plan_code for s in tenant_subscriptions(session)})
+    return [plan for code in codes if (plan := session.get(Plan, code)) is not None]
+
+
 def change_plan(
-    session: Session, tenant_id: uuid.UUID, plan_code: str, *, actor: str
+    session: Session,
+    tenant_id: uuid.UUID,
+    plan_code: str,
+    *,
+    actor: str,
+    site_id: uuid.UUID | None = None,
 ) -> tuple[str, str]:
-    """Change le plan de l'abonnement d'un tenant (opération TechNova), audité. Les données
-    sont conservées : ce que le nouveau plan n'inclut pas (modules, fonctionnalités) cesse
-    simplement d'être accordé par les capacités. Renvoie (ancien plan, nouveau plan)."""
+    """Change le plan de l'abonnement d'un site (opération TechNova), audité. ``site_id`` est
+    facultatif si l'entreprise n'a qu'un abonnement. Les données sont conservées : ce que le
+    nouveau plan n'inclut pas (modules, fonctionnalités) cesse simplement d'être accordé par les
+    capacités. Renvoie (ancien plan, nouveau plan)."""
     set_db_context(session, tenant_id=tenant_id, user_id=None)
-    subscription = get_subscription(session)
-    if subscription is None:
+    subscriptions = tenant_subscriptions(session)
+    if site_id is not None:
+        subscriptions = [s for s in subscriptions if s.site_id == site_id]
+    if not subscriptions:
         raise NotFoundError("Abonnement introuvable", code="subscription_missing")
+    if len(subscriptions) > 1:
+        raise BusinessRuleError("Plusieurs abonnements : précisez le site", code="site_required")
+    subscription = subscriptions[0]
     plan = session.get(Plan, plan_code)
     if plan is None or not plan.is_active:
         raise BusinessRuleError(f"Plan inconnu : {plan_code}", code="unknown_plan")
@@ -142,6 +200,7 @@ def change_plan(
             "actor": actor,
             "previous_plan": change.previous_plan,
             "plan": change.plan,
+            "site_id": str(subscription.site_id) if subscription.site_id else None,
         }
         if change.price_changed:
             data |= price_audit(change)
@@ -150,6 +209,7 @@ def change_plan(
             action="subscription.plan_changed",
             tenant_id=tenant_id,
             user_id=None,
+            site_id=subscription.site_id,
             entity_type="subscription",
             entity_id=subscription.id,
             data=data,

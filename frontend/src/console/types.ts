@@ -120,7 +120,8 @@ export type TenantStatus = 'active' | 'suspended';
 export type SubscriptionStatus =
   'pending_activation' | 'trial' | 'active' | 'past_due' | 'expired' | 'suspended' | 'cancelled';
 
-/** Métadonnées plateforme d'une entreprise (aucune donnée métier). */
+/** Métadonnées plateforme d'une entreprise (aucune donnée métier). 1 site = 1 abonnement
+ * (ADR-0033) : abonnements résumés (plans, statuts effectifs, prochaine échéance). */
 export interface TenantListItem {
   id: string;
   name: string;
@@ -130,40 +131,33 @@ export interface TenantListItem {
   business_profile_code: string;
   business_profile_name: string;
   created_at: string;
-  plan_code: string;
-  plan_name: string;
-  subscription_status: SubscriptionStatus;
-  effective_status: SubscriptionStatus;
-  current_period_end: string;
+  subscription_count: number;
+  plan_codes: string[];
+  effective_statuses: SubscriptionStatus[];
+  next_period_end: string | null;
   sites: number;
   users: number;
 }
 
-export interface TenantDetail extends TenantListItem {
-  country_code: string | null;
-  country_name: string | null;
-  currency: string;
-  locale: string;
-  timezone: string;
+/** Abonnement d'un site (``site`` nul : pris à l'inscription, en attente du premier site). */
+export interface TenantSubscription {
+  id: string;
+  site: { id: string; name: string; code: string } | null;
+  plan_code: string;
+  plan_name: string;
+  billing_period: 'monthly' | 'annual';
+  status: SubscriptionStatus;
+  effective_status: SubscriptionStatus;
+  started_at: string;
+  current_period_start: string;
+  current_period_end: string;
+  cancelled_at: string | null;
+  grace_days: number;
+  price_at_subscription: string | null;
+  currency_at_subscription: string | null;
+  requested_activations: number;
   usage: Record<string, { used: number; limit: number | null }>;
-  subscription: {
-    id: string;
-    plan_code: string;
-    plan_name: string;
-    billing_period: 'monthly' | 'annual';
-    status: SubscriptionStatus;
-    effective_status: SubscriptionStatus;
-    started_at: string;
-    current_period_start: string;
-    current_period_end: string;
-    cancelled_at: string | null;
-    grace_days: number;
-    price_at_subscription: string | null;
-    currency_at_subscription: string | null;
-  };
   actions: {
-    can_suspend: boolean;
-    can_reactivate: boolean;
     can_activate: boolean;
     can_extend: boolean;
     can_change_plan: boolean;
@@ -172,6 +166,16 @@ export interface TenantDetail extends TenantListItem {
     extension_end: string;
     available_plans: { code: string; name: string }[];
   };
+}
+
+export interface TenantDetail extends TenantListItem {
+  country_code: string | null;
+  country_name: string | null;
+  currency: string;
+  locale: string;
+  timezone: string;
+  subscriptions: TenantSubscription[];
+  actions: { can_suspend: boolean; can_reactivate: boolean };
 }
 
 export interface DashboardTenants {
@@ -189,9 +193,15 @@ export interface DashboardTenants {
 export type TenantAction =
   | { kind: 'suspend'; reason: string }
   | { kind: 'reactivate'; reason: string }
-  | { kind: 'activate'; reason: string; period_start: string; period_end: string }
-  | { kind: 'extend'; reason: string; period_end: string }
-  | { kind: 'change-plan'; reason: string; plan_code: string };
+  | {
+      kind: 'activate';
+      subscription_id: string;
+      reason: string;
+      period_start: string;
+      period_end: string;
+    }
+  | { kind: 'extend'; subscription_id: string; reason: string; period_end: string }
+  | { kind: 'change-plan'; subscription_id: string; reason: string; plan_code: string };
 
 // --- Paiements d'abonnement (Phase 3.3-A) ------------------------------------------------------
 
@@ -204,6 +214,8 @@ export interface ConsolePayment {
   tenant_name: string;
   subscription_id: string;
   plan_code: string;
+  site_id: string | null;
+  site_name: string | null;
   amount: string;
   currency: string;
   period_start: string;

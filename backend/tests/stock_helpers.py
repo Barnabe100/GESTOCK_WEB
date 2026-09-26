@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 
 
 @dataclass
@@ -23,7 +23,7 @@ class World:
 def make_world(provision: Any, api_for: Any) -> World:
     t = provision("alpha", profile="retail.quincaillerie", plan="ENTREPRISE")
     owner: Api = api_for("owner@alpha.example.com")
-    site2 = owner.post("/sites", json={"name": "Dépôt", "code": "DEPOT", "kind": "warehouse"})
+    site2 = add_site(owner, "Dépôt", "DEPOT", "warehouse")
     category = owner.post("/catalog/categories", json={"name": "Divers"}).json()
     articles = [
         owner.post(

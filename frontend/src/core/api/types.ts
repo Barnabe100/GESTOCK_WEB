@@ -53,6 +53,8 @@ export interface SiteInfo {
   name: string;
   code: string;
   kind: SiteKind;
+  /** Statut effectif de l'abonnement du site (1 site = 1 abonnement, ADR-0033). */
+  subscription_status?: SubscriptionStatus | null;
 }
 
 export type SubscriptionStatus =

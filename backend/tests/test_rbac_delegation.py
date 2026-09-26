@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import create_session_factory, set_db_context
 from app.platform.subscriptions.service import change_plan
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 
 TEMPORARY = "Provisoire-Deleg-1"
 
@@ -35,7 +35,7 @@ def _tenant(provision: Any, api_for: Any, slug: str, plan: str = "ENTREPRISE") -
     owner: Api = api_for(f"owner@{slug}.example.com")
     site_b = str(t.site_id)
     if plan == "ENTREPRISE":
-        created = owner.post("/sites", json={"name": "Dépôt", "code": "DEP", "kind": "warehouse"})
+        created = add_site(owner, "Dépôt", "DEP", "warehouse")
         assert created.status_code == 201, created.text
         site_b = created.json()["id"]
     roles = {r["template_code"] or r["name"]: r["id"] for r in owner.get("/roles").json()}
@@ -260,7 +260,9 @@ def test_out_of_offer_permissions_are_kept_when_editing(
     ).json()
     with create_session_factory(app_engine)() as db:
         set_db_context(db, tenant_id=t.id)
-        change_plan(db, t.id, "STANDARD", actor="test")
+        # 1 site = 1 abonnement (ADR-0033) : chaque site de l'entreprise passe en STANDARD.
+        for site_id in db.scalars(text("SELECT site_id FROM subscriptions")).all():
+            change_plan(db, t.id, "STANDARD", actor="test", site_id=site_id)
         db.commit()
     # Fonctionnalité « transferts » absente de STANDARD : création hors offre.
     assert "stock.transfer.create" not in _codes(t.owner, "/permissions/delegable")

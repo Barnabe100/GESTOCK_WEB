@@ -12,6 +12,7 @@ Le code métier n'appelle que ``ensure_capacity("<limite>")`` ou ``has_feature(.
 valeur ni règle d'offre commerciale n'y est écrite.
 """
 
+import uuid
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -39,27 +40,33 @@ class PlanPolicy:
         value = self.plan.limits.get(code)
         return int(value) if value is not None else None
 
-    def usage(self, code: str) -> int:
+    def usage(self, code: str, site_id: uuid.UUID | None = None) -> int:
         definition = self.registry.limit(code)
         if definition is None:
             raise ValueError(f"limite inconnue du registre : {code}")
-        return definition.counter(self.db)
+        return definition.counter(self.db, site_id)
 
-    def ensure_capacity(self, code: str, additional: int = 1) -> None:
-        """Refuse l'opération si elle dépasserait la limite du plan."""
+    def ensure_capacity(
+        self, code: str, additional: int = 1, site_id: uuid.UUID | None = None
+    ) -> None:
+        """Refuse l'opération si elle dépasserait la limite du plan (de l'abonnement du site
+        ``site_id``)."""
         limit = self.limit(code)
         if limit is None:
             return
-        if self.usage(code) + additional > limit:
+        if self.usage(code, site_id) + additional > limit:
+            extra: dict[str, object] = {"limit": code, "value": limit}
+            if site_id is not None:
+                extra["site_id"] = str(site_id)
             raise BusinessRuleError(
                 "La limite de votre abonnement est atteinte",
                 code="plan_limit_reached",
-                extra={"limit": code, "value": limit},
+                extra=extra,
             )
 
-    def snapshot(self) -> dict[str, LimitUsage]:
+    def snapshot(self, site_id: uuid.UUID | None = None) -> dict[str, LimitUsage]:
         return {
-            code: LimitUsage(limit=self.limit(code), used=self.usage(code))
+            code: LimitUsage(limit=self.limit(code), used=self.usage(code, site_id))
             for code in sorted(self.registry.limit_codes())
         }
 

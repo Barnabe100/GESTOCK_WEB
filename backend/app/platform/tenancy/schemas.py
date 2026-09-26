@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.platform.subscriptions.models import BillingPeriod
 from app.platform.tenancy.models import SiteKind
 from app.shared.text import (
     Optional50,
@@ -93,6 +94,14 @@ class SiteCreate(BaseModel):
     kind: SiteKind = SiteKind.STORE
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
+    # Abonnement du site (1 site = 1 abonnement, ADR-0033) : plan publié et période de
+    # facturation, obligatoires sauf pour le premier site d'une inscription (l'abonnement
+    # choisi à l'inscription lui est rattaché). Démarre « en attente d'activation » : le site
+    # n'est opérationnel qu'après paiement confirmé et licence (3.3-B).
+    plan_code: str | None = Field(default=None, min_length=1, max_length=50)
+    billing_period: BillingPeriod | None = None
+    # Nombre de postes demandé (confirmé ou ajusté par TechNova à la génération de la licence).
+    requested_activations: int = Field(default=1, ge=1, le=1000)
 
 
 class SiteUpdate(BaseModel):

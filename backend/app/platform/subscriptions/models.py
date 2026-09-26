@@ -10,11 +10,13 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,18 +44,36 @@ class SubscriptionStatus(StrEnum):
 
 
 class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
-    """Abonnement courant du tenant. L'expiration ne supprime jamais de données."""
+    """Abonnement d'un **site** (Phase 3.3-B, ADR-0033) : 1 site = 1 abonnement = 1 licence.
+    Une entreprise à plusieurs sites a plusieurs abonnements, indépendants (plan, période,
+    statut, limites). ``site_id`` n'est nul que pour l'abonnement pris à l'inscription, avant
+    la création du premier site (au plus un par entreprise), auquel il est alors rattaché.
+    L'expiration ne supprime jamais de données."""
 
     __tablename__ = "subscriptions"
     __table_args__ = (
-        UniqueConstraint("tenant_id"),
+        # Un abonnement par site ; jamais le site d'un autre tenant.
+        UniqueConstraint("tenant_id", "site_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+        # Au plus un abonnement en attente de site (inscription publique) par entreprise.
+        Index(
+            "uq_subscriptions_unattached",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("site_id IS NULL"),
+        ),
         # Cible des clés étrangères composites (paiements d'abonnement du même tenant).
         UniqueConstraint("tenant_id", "id"),
         CheckConstraint(
             "(price_at_subscription IS NULL) = (currency_at_subscription IS NULL)",
             name="price_snapshot_complete",
         ),
+        CheckConstraint("requested_activations >= 1", name="requested_activations_positive"),
     )
+
+    site_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
     plan_code: Mapped[str] = mapped_column(
         String(50), ForeignKey("plans.code", ondelete="RESTRICT"), nullable=False
@@ -72,6 +92,11 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # tarif du plan ne change pas rétroactivement l'abonnement (nul : aucun prix affiché).
     price_at_subscription: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     currency_at_subscription: Mapped[str | None] = mapped_column(String(3))
+    # Nombre de postes demandé par le client à la souscription (défaut : 1) ; TechNova le
+    # confirme ou l'ajuste à la génération de la licence, qui le fige (3.3-B).
+    requested_activations: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1"), nullable=False
+    )
 
 
 MONEY = Numeric(18, 2)

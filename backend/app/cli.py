@@ -126,7 +126,9 @@ def cmd_create_tenant(args: argparse.Namespace, settings: Settings) -> int:
 
 def cmd_change_plan(args: argparse.Namespace, settings: Settings) -> int:
     with _session(settings.database_url, settings) as session:
-        previous, plan = change_plan(session, args.tenant_id, args.plan, actor="cli")
+        previous, plan = change_plan(
+            session, args.tenant_id, args.plan, actor="cli", site_id=args.site_id
+        )
         session.commit()
     if previous == plan:
         print(f"Plan inchangé : {plan}")
@@ -254,8 +256,14 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--currency", default=None, help="Défaut : devise du pays")
     create.set_defaults(func=cmd_create_tenant)
 
-    change = sub.add_parser("change-plan", help="Changer le plan d'une entreprise")
+    change = sub.add_parser("change-plan", help="Changer le plan de l'abonnement d'un site")
     change.add_argument("--tenant-id", required=True, type=uuid.UUID)
+    change.add_argument(
+        "--site-id",
+        type=uuid.UUID,
+        default=None,
+        help="Site dont l'abonnement change (facultatif si l'entreprise n'a qu'un abonnement)",
+    )
     change.add_argument("--plan", required=True, choices=["STANDARD", "ENTREPRISE"])
     change.set_defaults(func=cmd_change_plan)
 

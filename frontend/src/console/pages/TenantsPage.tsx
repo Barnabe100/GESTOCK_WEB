@@ -147,7 +147,10 @@ export function TenantsPage() {
             </span>
           )}
         />
-        <Column header={t('console:tenants.plan')} body={(row: TenantListItem) => row.plan_name} />
+        <Column
+          header={t('console:tenants.plan')}
+          body={(row: TenantListItem) => row.plan_codes.join(', ') || '—'}
+        />
         <Column
           field="status"
           sortable
@@ -156,14 +159,27 @@ export function TenantsPage() {
         />
         <Column
           header={t('console:tenants.subscription')}
-          body={(row: TenantListItem) => <SubscriptionStatusBadge status={row.effective_status} />}
+          body={(row: TenantListItem) => (
+            <span className="sm-tags">
+              {row.effective_statuses.map((status) => (
+                <SubscriptionStatusBadge key={status} status={status} />
+              ))}
+            </span>
+          )}
         />
         <Column
-          field="current_period_end"
+          field="subscription_count"
+          header={t('console:tenants.subscriptions')}
+          bodyClassName="sm-num"
+        />
+        <Column
+          field="next_period_end"
           sortable
           header={t('console:tenants.expiration')}
           bodyClassName="sm-nowrap"
-          body={(row: TenantListItem) => tenantDate(row.current_period_end)}
+          body={(row: TenantListItem) =>
+            row.next_period_end ? tenantDate(row.next_period_end) : '—'
+          }
         />
         <Column field="sites" header={t('console:tenants.sites')} bodyClassName="sm-num" />
         <Column field="users" header={t('console:tenants.users')} bodyClassName="sm-num" />

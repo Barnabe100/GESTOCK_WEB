@@ -38,12 +38,11 @@ from app.modules.stock.stock_service import (
     round_money,
 )
 from app.platform.audit.service import audit_action
-from app.platform.capabilities.service import CapabilityService
+from app.platform.capabilities.service import CapabilityService, SubscriptionMissingError
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.registry import get_registry
 from app.platform.sequences.service import next_number
-from app.platform.subscriptions.service import get_subscription
 from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, apply_sort, paginate, search_filter
 
@@ -134,22 +133,23 @@ class TransferService:
     def _permissions_on(self, site_id: uuid.UUID) -> frozenset[str]:
         """Permissions du membre sur un site donné (rôles du tenant + rôles de ce site)."""
         if site_id not in self._site_permissions:
-            subscription = get_subscription(self.db)
-            if subscription is None:
+            # 1 site = 1 abonnement (ADR-0033) : rôles du site ET abonnement de ce site
+            # (fonctionnalité ``stock.transfers`` exigée des deux côtés).
+            try:
+                capabilities = CapabilityService(self.db, get_registry()).resolve(
+                    tenant=self.ctx.tenant,
+                    membership=self.ctx.membership,
+                    site_id=site_id,
+                    now=self.now,
+                )
+            except SubscriptionMissingError:
                 return frozenset()
-            capabilities = CapabilityService(self.db, get_registry()).resolve(
-                tenant=self.ctx.tenant,
-                membership=self.ctx.membership,
-                subscription=subscription,
-                site_id=site_id,
-                now=self.now,
-            )
             self._site_permissions[site_id] = capabilities.permissions
         return self._site_permissions[site_id]
 
     def _check_sites(self, source: uuid.UUID, destination: uuid.UUID, permission: str) -> None:
         """Deux sites distincts, actifs, accessibles ; le site sélectionné (X-Site-Id) est l'un
-        des deux ; la permission est détenue sur chacun."""
+        des deux ; la permission est détenue sur chacun (rôles et abonnement du site)."""
         if source == destination:
             raise BusinessRuleError(
                 "Le site destination doit être différent du site source",
@@ -169,8 +169,9 @@ class TransferService:
             raise ForbiddenError(
                 "Le transfert ne concerne pas le site sélectionné", code="site_mismatch"
             )
-        if selected is None:
-            return  # permission vérifiée sur tout le tenant : elle vaut pour chaque site
+        # 1 site = 1 abonnement (ADR-0033) : la permission (et la fonctionnalité
+        # ``stock.transfers``) est exigée de chaque site du transfert, selon SON abonnement ;
+        # sans site sélectionné, les capacités consolidées ne suffisent pas.
         for site_id in (source, destination):
             if site_id != selected and permission not in self._permissions_on(site_id):
                 raise ForbiddenError(

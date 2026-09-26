@@ -73,6 +73,11 @@ export interface SiteInput {
   address?: string | null;
   phone?: string | null;
   is_active?: boolean;
+  /** Création : abonnement du site (offre publiée, période, postes demandés), sauf pour le
+   * premier site d'une inscription (abonnement déjà choisi). */
+  plan_code?: string;
+  billing_period?: 'monthly' | 'annual';
+  requested_activations?: number;
 }
 
 export interface TenantModule {

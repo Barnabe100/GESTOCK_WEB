@@ -6,13 +6,15 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, Plan
-from app.platform.context import DbSession, RegistryDep, TenantContext
+from app.platform.context import DbSession, NowDep, RegistryDep, TenantContext
 from app.platform.identity.schemas import UserOut
 from app.platform.profiles.registry import BusinessProfileRegistry
 from app.platform.profiles.schemas import SectorInfo, UxOut
+from app.platform.subscriptions.models import Subscription
 from app.platform.subscriptions.plan_policy import PlanPolicy
-from app.platform.subscriptions.service import get_subscription
+from app.platform.subscriptions.service import tenant_subscriptions
 from app.platform.tenancy.models import Site, SiteKind
 
 router = APIRouter(tags=["capabilities"])
@@ -54,6 +56,9 @@ class SiteInfo(BaseModel):
     name: str
     code: str
     kind: SiteKind
+    # Statut effectif de l'abonnement du site (1 site = 1 abonnement, ADR-0033) : un site
+    # « en attente d'activation » n'est pas encore opérationnel.
+    subscription_status: str | None = None
 
 
 class ModuleInfo(BaseModel):
@@ -90,7 +95,9 @@ class CapabilitiesOut(BaseModel):
 
 
 @router.get("/me/capabilities", response_model=CapabilitiesOut)
-def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -> CapabilitiesOut:
+def get_capabilities(
+    ctx: TenantContext, db: DbSession, registry: RegistryDep, now: NowDep
+) -> CapabilitiesOut:
     """Contexte consolidé de l'utilisateur dans le tenant (et le site ``X-Site-Id``) :
     tenant, profil (secteur, profil UX), plan, abonnement, sites, modules, permissions,
     fonctionnalités, limites et expérience (navigation, tableau de bord, terminologie, thème).
@@ -100,16 +107,28 @@ def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -
     caps = ctx.capabilities
     profile = db.get(BusinessProfile, caps.profile_code)
     plan = db.get(Plan, caps.plan_code)
-    subscription = get_subscription(db)
+    subscription = db.get(Subscription, caps.subscription_id)
     assert profile is not None and plan is not None and subscription is not None
     sites = db.scalars(
         select(Site).where(Site.id.in_(caps.accessible_site_ids)).order_by(Site.name)
     ).all()
+    service = CapabilityService(db, registry)
+    site_status = {
+        s.site_id: service.grant(s, profile, now).status.value
+        for s in tenant_subscriptions(db)
+        if s.site_id is not None
+    }
 
     experience = BusinessProfileRegistry(db, registry).effective(profile, caps.modules)
 
     def site_info(site: Site) -> SiteInfo:
-        return SiteInfo(id=site.id, name=site.name, code=site.code, kind=site.kind)
+        return SiteInfo(
+            id=site.id,
+            name=site.name,
+            code=site.code,
+            kind=site.kind,
+            subscription_status=site_status.get(site.id),
+        )
 
     return CapabilitiesOut(
         user=UserOut.model_validate(ctx.user),
@@ -143,6 +162,6 @@ def get_capabilities(ctx: TenantContext, db: DbSession, registry: RegistryDep) -
         features=sorted(caps.features),
         limits={
             code: LimitInfo(limit=usage.limit, used=usage.used)
-            for code, usage in PlanPolicy(db, plan, registry).snapshot().items()
+            for code, usage in PlanPolicy(db, plan, registry).snapshot(subscription.site_id).items()
         },
     )

@@ -1,4 +1,7 @@
-"""Site d'une opération de stock et date du jour du tenant (§6.6 du plan)."""
+"""Site d'une opération de stock et date du jour du tenant (§6.6 du plan).
+
+Toute écriture portant sur un site est revérifiée pour l'abonnement de CE site
+(``RequestContext.ensure_site_allows``, ADR-0033)."""
 
 import uuid
 from datetime import date, datetime
@@ -21,6 +24,8 @@ def operation_site(ctx: RequestContext, site_id: uuid.UUID | None) -> uuid.UUID:
         raise BusinessRuleError("Choisissez un site", code="site_required")
     if site_id not in ctx.capabilities.accessible_site_ids:
         raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+    # 1 site = 1 abonnement (ADR-0033) : l'abonnement du site ciblé doit autoriser l'écriture.
+    ctx.ensure_site_allows(site_id)
     return site_id
 
 
@@ -51,6 +56,7 @@ def ensure_document_site(ctx: RequestContext, site_id: uuid.UUID, not_found_code
         raise NotFoundError("Document introuvable", code=not_found_code)
     if ctx.site is not None and ctx.site.id != site_id:
         raise ForbiddenError("Ce document appartient à un autre site", code="site_mismatch")
+    ctx.ensure_site_allows(site_id)
 
 
 def tenant_today(ctx: RequestContext, now: datetime) -> date:

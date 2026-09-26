@@ -10,6 +10,7 @@ Variables : SM_TEST_DATABASE_URL (rôle applicatif), SM_TEST_MIGRATION_DATABASE_
 import os
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -350,3 +351,92 @@ def console_login(
         json={"email": email, "password": password},
         headers=CONSOLE_HEADERS,
     )
+
+
+# --- Sites : 1 site = 1 abonnement (Phase 3.3-B1, ADR-0033) -----------------------------------
+
+_owner_engine_for_sites: Engine | None = None
+
+
+def _sites_engine() -> Engine:
+    global _owner_engine_for_sites
+    if _owner_engine_for_sites is None:
+        _owner_engine_for_sites = create_engine(OWNER_URL)
+    return _owner_engine_for_sites
+
+
+@contextmanager
+def published_plan(code: str) -> Iterator[None]:
+    """Plan souscriptible par le client (publié, prix mensuel ouvert) le temps du bloc, puis
+    rétabli : les tests qui n'en dépendent pas gardent les paramètres commerciaux par défaut."""
+    columns = "listed, contact_required, monthly_price_enabled, monthly_price, currency"
+    with _sites_engine().begin() as conn:
+        previous = conn.execute(
+            text(f"SELECT {columns} FROM plans WHERE code = :c"), {"c": code}
+        ).one()
+        conn.execute(
+            text(
+                "UPDATE plans SET listed = true, contact_required = false, "
+                "monthly_price_enabled = true, monthly_price = coalesce(monthly_price, 10000), "
+                "currency = coalesce(currency, 'XOF') WHERE code = :c"
+            ),
+            {"c": code},
+        )
+    try:
+        yield
+    finally:
+        with _sites_engine().begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE plans SET listed = :listed, contact_required = :contact, "
+                    "monthly_price_enabled = :enabled, monthly_price = :price, "
+                    "currency = :currency WHERE code = :c"
+                ),
+                {
+                    "listed": previous.listed,
+                    "contact": previous.contact_required,
+                    "enabled": previous.monthly_price_enabled,
+                    "price": previous.monthly_price,
+                    "currency": previous.currency,
+                    "c": code,
+                },
+            )
+
+
+def activate_site(site_id: str | uuid.UUID) -> None:
+    """Abonnement du site actif pour un an : état que donnera la licence (paiement confirmé +
+    licence, Phase 3.3-B) ; les tests hors abonnement n'ont pas à rejouer ce parcours."""
+    with _sites_engine().begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE subscriptions SET status = 'active', current_period_start = now(), "
+                "current_period_end = now() + interval '1 year' WHERE site_id = :s"
+            ),
+            {"s": str(site_id)},
+        )
+
+
+def add_site(
+    api: "Api",
+    name: str,
+    code: str,
+    kind: str = "store",
+    *,
+    plan: str = "ENTREPRISE",
+    active: bool = True,
+    **extra: Any,
+) -> Any:
+    """Nouveau site par l'API (avec son abonnement, plan choisi parmi les plans publiés) ;
+    ``active`` : abonnement du site rendu opérationnel (comme après paiement et licence)."""
+    body = {
+        "name": name,
+        "code": code,
+        "kind": kind,
+        "plan_code": plan,
+        "billing_period": "monthly",
+    }
+    with published_plan(plan):
+        response = api.post("/sites", json=body | extra)
+    if active and response.status_code == 201:
+        activate_site(response.json()["id"])
+    return response

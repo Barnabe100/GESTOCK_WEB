@@ -133,7 +133,10 @@ export function PaymentsPage() {
             <span>
               <span className="sm-strong">{p.tenant_name}</span>
               <br />
-              <small className="sm-muted">{p.plan_code}</small>
+              <small className="sm-muted">
+                {p.site_name ? `${p.site_name} · ` : ''}
+                {p.plan_code}
+              </small>
             </span>
           )}
         />

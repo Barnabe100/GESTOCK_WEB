@@ -5,8 +5,11 @@ import type { LimitUsage, SubscriptionStatus } from '@/core/api/types';
 import type { Page } from '@/shared/lib/serverTable';
 import type { SubscriptionPaymentStatus } from '@/shared/ui/StatusBadge';
 
+/** Abonnement d'un site (1 site = 1 abonnement, ADR-0033) ; ``site`` nul : abonnement pris à
+ * l'inscription, rattaché au premier site créé. */
 export interface SubscriptionDetails {
   id: string;
+  site: { id: string; name: string; code: string } | null;
   plan_code: string;
   plan_name: string;
   billing_period: 'monthly' | 'annual';
@@ -16,15 +19,18 @@ export interface SubscriptionDetails {
   current_period_start: string;
   current_period_end: string;
   grace_days: number;
+  requested_activations: number;
   limits: Record<string, LimitUsage>;
   features: string[];
   allowed_access: string[];
 }
 
-export function useSubscription() {
+/** Abonnements de l'entreprise (sites accessibles au membre). */
+export function useSubscriptions(enabled = true) {
   return useQuery({
-    queryKey: ['subscription'],
-    queryFn: ({ signal }) => api.get<SubscriptionDetails>('/subscription', signal),
+    queryKey: ['subscription', 'list'],
+    queryFn: ({ signal }) => api.get<SubscriptionDetails[]>('/subscriptions', signal),
+    enabled,
   });
 }
 

@@ -39,29 +39,13 @@ from app.platform.provisioning.service import (
 from app.platform.ratelimit.service import RateLimiter
 from app.platform.registry import ModuleRegistry
 from app.platform.signup.schemas import SignupRequest
-from app.platform.subscriptions.models import BillingPeriod
+from app.platform.subscriptions.service import period_enabled, self_service
 from app.platform.tenancy.models import Tenant
 
 RATE_LIMIT_BUCKET = "signup"
 UNAVAILABLE = (
     "Inscription impossible avec ces informations. Si vous avez déjà un compte, connectez-vous."
 )
-
-
-def period_enabled(plan: Plan, period: BillingPeriod) -> bool:
-    return (
-        plan.monthly_price_enabled if period is BillingPeriod.MONTHLY else plan.annual_price_enabled
-    )
-
-
-def self_service(plan: Plan) -> bool:
-    """Plan souscriptible depuis l'inscription publique."""
-    return (
-        plan.is_active
-        and plan.listed
-        and not plan.contact_required
-        and (plan.monthly_price_enabled or plan.annual_price_enabled)
-    )
 
 
 def slug_base(name: str) -> str:

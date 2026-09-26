@@ -14,7 +14,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.db import create_session_factory, set_db_context
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 
 TEMPORARY = "Provisoire-Admin-1"
 
@@ -31,7 +31,7 @@ class Tenant:
 def _tenant(provision: Any, api_for: Any, slug: str) -> Tenant:
     t = provision(slug)
     owner: Api = api_for(f"owner@{slug}.example.com")
-    site_b = owner.post("/sites", json={"name": "Dépôt", "code": "DEP", "kind": "warehouse"})
+    site_b = add_site(owner, "Dépôt", "DEP", "warehouse")
     assert site_b.status_code == 201, site_b.text
     roles = {r["template_code"] or r["name"]: r["id"] for r in owner.get("/roles").json()}
     return Tenant(t.tenant_id, owner, str(t.site_id), site_b.json()["id"], roles)

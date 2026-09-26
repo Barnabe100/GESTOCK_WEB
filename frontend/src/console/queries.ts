@@ -82,23 +82,31 @@ export const useTenant = (id: string) =>
     queryFn: () => consoleRequest<TenantDetail>(`/tenants/${encodeURIComponent(id)}`),
   });
 
-const ACTION_PATHS: Record<TenantAction['kind'], string> = {
-  suspend: 'suspend',
-  reactivate: 'reactivate',
-  activate: 'subscription/activate',
-  extend: 'subscription/extend',
-  'change-plan': 'subscription/change-plan',
-};
+/** Chemin d'une action : l'entreprise, ou l'abonnement d'un de ses sites (ADR-0033). */
+function actionPath(action: TenantAction): string {
+  switch (action.kind) {
+    case 'suspend':
+    case 'reactivate':
+      return action.kind;
+    default:
+      return `subscriptions/${encodeURIComponent(action.subscription_id)}/${action.kind}`;
+  }
+}
 
 /** Action TechNova sur une entreprise ; le serveur revérifie l'état et renvoie la fiche. */
 export function useTenantAction(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ kind, ...body }: TenantAction) =>
-      consoleRequest<TenantDetail>(`/tenants/${encodeURIComponent(id)}/${ACTION_PATHS[kind]}`, {
-        method: 'POST',
-        body,
-      }),
+    mutationFn: (action: TenantAction) => {
+      // Corps : les seuls champs de l'action (ni son type ni l'abonnement, portés par l'URL).
+      const body: Record<string, unknown> = { ...action };
+      delete body.kind;
+      delete body.subscription_id;
+      return consoleRequest<TenantDetail>(
+        `/tenants/${encodeURIComponent(id)}/${actionPath(action)}`,
+        { method: 'POST', body },
+      );
+    },
     onSuccess: (tenant) => {
       queryClient.setQueryData(['console', 'tenants', 'detail', id], tenant);
       void queryClient.invalidateQueries({ queryKey: ['console', 'tenants'] });

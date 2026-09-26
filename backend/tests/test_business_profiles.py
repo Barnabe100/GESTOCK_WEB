@@ -19,7 +19,7 @@ from app.core.db import create_session_factory, set_db_context
 from app.platform.catalog.loader import DATA_DIR, CatalogError, load_catalog, profile_ux
 from app.platform.catalog.sync import sync_catalog
 from app.platform.registry import get_registry
-from tests.conftest import Api
+from tests.conftest import Api, add_site
 from tests.stock_helpers import member
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
@@ -386,7 +386,7 @@ def test_profile_belongs_to_the_tenant_not_to_the_site(
 ) -> None:
     t = provision("alpha", profile="retail.quincaillerie")
     owner = api_for("owner@alpha.example.com")
-    depot = owner.post("/sites", json={"name": "Dépôt", "code": "DEP", "kind": "warehouse"})
+    depot = add_site(owner, "Dépôt", "DEP", "warehouse")
     seller = member(
         SimpleNamespace(owner=owner),
         client,

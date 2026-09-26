@@ -181,12 +181,17 @@ class TenantProvisioningService:
         site: Site | None = None
         if cmd.create_first_site:
             site = Site(
+                id=new_id(),
                 tenant_id=tenant_id,
                 name=cmd.first_site_name,
                 code=cmd.first_site_code,
                 kind=cmd.first_site_kind,
             )
             self.db.add(site)
+            self.db.flush()  # le site existe avant son rattachement (clé étrangère composite)
+            # 1 site = 1 abonnement (ADR-0033) ; sans site (inscription publique), l'abonnement
+            # attend le premier site, auquel il sera rattaché.
+            subscription.site_id = site.id
         owner, created = self._get_or_create_owner(cmd)
         # Propriétaire (propriété protégée, ``is_owner``) ET administrateur principal (rôle
         # RBAC protégé) : deux notions distinctes ; d'autres administrateurs peuvent exister.

@@ -19,7 +19,7 @@ from app.platform.onboarding.definitions import (
     status_from,
 )
 from app.platform.subscriptions.models import SubscriptionStatus
-from app.platform.subscriptions.service import get_subscription
+from app.platform.subscriptions.service import tenant_subscriptions
 from app.platform.tenancy.identity import (
     RECOMMENDED_COMPANY_FIELDS,
     REQUIRED_COMPANY_FIELDS,
@@ -109,9 +109,9 @@ def evaluate_business_profile(env: OnboardingEnv) -> OnboardingStatus:
 
 
 def evaluate_subscription(env: OnboardingEnv) -> OnboardingStatus:
-    subscription = get_subscription(env.db)
+    """Au moins un abonnement de l'entreprise (un par site, ADR-0033) enregistré."""
     return status_from(
-        subscription is not None and subscription.status in VALID_SUBSCRIPTION_STATUSES
+        any(s.status in VALID_SUBSCRIPTION_STATUSES for s in tenant_subscriptions(env.db))
     )
 
 

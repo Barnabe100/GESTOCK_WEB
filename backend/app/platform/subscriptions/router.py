@@ -6,12 +6,21 @@ from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel
 
 from app.core.errors import BusinessRuleError
-from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
-from app.platform.subscriptions.models import SubscriptionPaymentStatus
+from app.platform.capabilities.service import CapabilityService
+from app.platform.catalog.models import BusinessProfile
+from app.platform.context import (
+    DbSession,
+    NowDep,
+    RegistryDep,
+    RequestContext,
+    require_permission,
+)
+from app.platform.subscriptions.models import Subscription, SubscriptionPaymentStatus
 from app.platform.subscriptions.payments import SubscriptionPaymentService
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.schemas import SubscriptionPaymentCreate, SubscriptionPaymentOut
-from app.platform.subscriptions.service import current_plan, get_subscription
+from app.platform.subscriptions.service import site_subscription, tenant_subscriptions
+from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
 
@@ -30,8 +39,18 @@ class LimitOut(BaseModel):
     used: int
 
 
-class SubscriptionOut(BaseModel):
+class SiteRef(BaseModel):
     id: uuid.UUID
+    name: str
+    code: str
+
+
+class SubscriptionOut(BaseModel):
+    """Abonnement d'un site (1 site = 1 abonnement, ADR-0033) ; ``site`` nul : abonnement pris
+    à l'inscription, pas encore rattaché (il le sera au premier site créé)."""
+
+    id: uuid.UUID
+    site: SiteRef | None
     plan_code: str
     plan_name: str
     billing_period: str
@@ -41,38 +60,73 @@ class SubscriptionOut(BaseModel):
     current_period_start: datetime
     current_period_end: datetime
     grace_days: int
+    requested_activations: int
     limits: dict[str, LimitOut]
     features: list[str]
     allowed_access: list[str]
 
 
-@router.get("/subscription", response_model=SubscriptionOut)
-def get_subscription_details(
-    ctx: SubscriptionView, db: DbSession, registry: RegistryDep
+def _subscription_out(
+    db: DbSession,
+    registry: RegistryDep,
+    ctx: RequestContext,
+    subscription: Subscription,
+    now: datetime,
 ) -> SubscriptionOut:
-    subscription = get_subscription(db)
-    if subscription is None:
-        raise BusinessRuleError("Aucun abonnement", code="subscription_missing")
-    plan = current_plan(db)
-    policy = PlanPolicy(db, plan, registry)
+    profile = db.get(BusinessProfile, ctx.tenant.business_profile_code)
+    assert profile is not None
+    grant = CapabilityService(db, registry).grant(subscription, profile, now)
+    site = db.get(Site, subscription.site_id) if subscription.site_id else None
+    policy = PlanPolicy(db, grant.plan, registry)
     return SubscriptionOut(
         id=subscription.id,
-        plan_code=plan.code,
-        plan_name=plan.name,
+        site=SiteRef(id=site.id, name=site.name, code=site.code) if site else None,
+        plan_code=grant.plan.code,
+        plan_name=grant.plan.name,
         billing_period=subscription.billing_period.value,
         status=subscription.status.value,
-        effective_status=ctx.capabilities.subscription_status.value,
+        effective_status=grant.status.value,
         started_at=subscription.started_at,
         current_period_start=subscription.current_period_start,
         current_period_end=subscription.current_period_end,
-        grace_days=plan.grace_days,
+        grace_days=grant.plan.grace_days,
+        requested_activations=subscription.requested_activations,
         limits={
             code: LimitOut(limit=usage.limit, used=usage.used)
-            for code, usage in policy.snapshot().items()
+            for code, usage in policy.snapshot(subscription.site_id).items()
         },
-        features=sorted(ctx.capabilities.features),
-        allowed_access=sorted(ctx.capabilities.allowed_access),
+        features=sorted(grant.features),
+        allowed_access=sorted(grant.access),
     )
+
+
+@router.get("/subscriptions", response_model=list[SubscriptionOut])
+def list_subscriptions(
+    ctx: SubscriptionView, db: DbSession, registry: RegistryDep, now: NowDep
+) -> list[SubscriptionOut]:
+    """Abonnements de l'entreprise, un par site (sites accessibles au membre seulement), et
+    l'abonnement non rattaché éventuel."""
+    visible = ctx.capabilities.accessible_site_ids
+    return [
+        _subscription_out(db, registry, ctx, s, now)
+        for s in tenant_subscriptions(db)
+        if s.site_id is None or s.site_id in visible
+    ]
+
+
+@router.get("/subscription", response_model=SubscriptionOut)
+def get_subscription_details(
+    ctx: SubscriptionView, db: DbSession, registry: RegistryDep, now: NowDep
+) -> SubscriptionOut:
+    """Abonnement du site sélectionné (``X-Site-Id``) ; sans site sélectionné, l'abonnement
+    représentatif de l'entreprise (celui des capacités)."""
+    if ctx.site is not None:
+        subscription = site_subscription(db, ctx.site.id)
+    else:
+        subscription = db.get(Subscription, ctx.capabilities.subscription_id)
+    if subscription is None:
+        raise BusinessRuleError("Aucun abonnement", code="subscription_missing")
+    return _subscription_out(db, registry, ctx, subscription, now)
 
 
 # --- Paiements de l'abonnement (Phase 3.3-A, ADR-0032) ----------------------------------------

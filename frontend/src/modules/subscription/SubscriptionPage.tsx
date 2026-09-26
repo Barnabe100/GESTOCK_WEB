@@ -4,37 +4,35 @@ import { useTranslation } from 'react-i18next';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatDate } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
+import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SubscriptionStatusBadge, StatusBadge } from '@/shared/ui/StatusBadge';
 
-import { useSubscription } from './api';
+import { useSubscriptions, type SubscriptionDetails } from './api';
 import { SubscriptionPaymentsSection } from './PaymentsSection';
 
-export default function SubscriptionPage() {
+/** Abonnement d'un site : offre, statut, période, utilisation et accès autorisés. */
+function SiteSubscription({ subscription: s }: { subscription: SubscriptionDetails }) {
   const { t } = useTranslation();
   const { capabilities } = useCapabilities();
-  const subscription = useSubscription();
   const locale = capabilities.tenant.locale;
-
-  if (subscription.isError) {
-    return <ErrorMessage error={subscription.error} onRetry={() => void subscription.refetch()} />;
-  }
-  const s = subscription.data;
-  if (!s) return null;
-
+  const code = s.site?.code ?? 'pending';
   return (
-    <>
-      <PageHeader
-        title={t('subscriptionPage.title')}
-        description={t('subscriptionPage.subtitle')}
-      />
+    <Card
+      title={s.site ? s.site.name : t('subscriptionPage.unattached')}
+      className="sm-block"
+      data-testid={`subscription-${code}`}
+    >
+      {!s.site && <p className="sm-help">{t('subscriptionPage.unattachedHelp')}</p>}
       <div className="sm-grid">
-        <Card title={t('subscriptionPage.plan')}>
+        <div>
+          <h3>{t('subscriptionPage.plan')}</h3>
           <p className="sm-strong">{s.plan_name}</p>
           <p>{t(`billingPeriod.${s.billing_period}`)}</p>
           <SubscriptionStatusBadge status={s.effective_status} />
-        </Card>
-        <Card title={t('subscriptionPage.period')}>
+        </div>
+        <div>
+          <h3>{t('subscriptionPage.period')}</h3>
           <p>
             {t('subscriptionPage.periodValue', {
               start: formatDate(s.current_period_start, locale),
@@ -42,25 +40,55 @@ export default function SubscriptionPage() {
             })}
           </p>
           <p className="sm-muted">{t('subscriptionPage.grace', { count: s.grace_days })}</p>
-        </Card>
-        <Card title={t('subscriptionPage.usage')}>
-          {Object.entries(s.limits).map(([code, usage]) => (
-            <p key={code}>
-              {t(`subscriptionPage.limitNames.${code}`, code)} : {usage.used} /{' '}
+          <p className="sm-muted">
+            {t('subscriptionPage.requestedActivations', { count: s.requested_activations })}
+          </p>
+        </div>
+        <div>
+          <h3>{t('subscriptionPage.usage')}</h3>
+          {Object.entries(s.limits).map(([limit, usage]) => (
+            <p key={limit}>
+              {t(`subscriptionPage.limitNames.${limit}`, limit)} : {usage.used} /{' '}
               {usage.limit ?? t('subscriptionPage.unlimited')}
             </p>
           ))}
-        </Card>
-      </div>
-      <Card title={t('subscriptionPage.allowed')} className="sm-block">
-        <div className="sm-tags">
-          {s.allowed_access.map((access) => (
-            <StatusBadge key={access} tone="info" label={t(`access.${access}`)} />
-          ))}
         </div>
-        <p className="sm-muted">{t('subscriptionPage.renewInfo')}</p>
-      </Card>
-      <SubscriptionPaymentsSection subscriptionId={s.id} />
+      </div>
+      <div className="sm-tags" aria-label={t('subscriptionPage.allowed')}>
+        {s.allowed_access.map((access) => (
+          <StatusBadge key={access} tone="info" label={t(`access.${access}`)} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Abonnements de l'entreprise : **un par site** (1 site = 1 abonnement, ADR-0033), chacun avec
+ * son offre, son statut et sa période ; paiements déclarés à TechNova.
+ */
+export default function SubscriptionPage() {
+  const { t } = useTranslation();
+  const subscriptions = useSubscriptions();
+
+  if (subscriptions.isPending) return <LoadingState />;
+  if (subscriptions.isError) {
+    return (
+      <ErrorMessage error={subscriptions.error} onRetry={() => void subscriptions.refetch()} />
+    );
+  }
+  const list = subscriptions.data;
+  return (
+    <>
+      <PageHeader
+        title={t('subscriptionPage.title')}
+        description={t('subscriptionPage.subtitle')}
+      />
+      {list.map((s) => (
+        <SiteSubscription key={s.id} subscription={s} />
+      ))}
+      <p className="sm-muted">{t('subscriptionPage.renewInfo')}</p>
+      {list.length > 0 && <SubscriptionPaymentsSection subscriptions={list} />}
     </>
   );
 }

@@ -56,8 +56,13 @@ idempotent, devise fixée par le serveur, aucun champ de décision accepté du c
 **définitive** (`PENDING` → `CONFIRMED` | `REJECTED`) par TechNova seule dans la console
 (`/payments/{id}/confirm|reject`, verrou, raison obligatoire — motif du rejet visible par
 l'entreprise —, double audit ; rôle SQL de la console limité aux colonnes de décision) ;
-**Payment CONFIRMED ≠ activation** : rien n'est activé. 3.3-B licences — non commencée sans
-validation. Non implémentés (feuille de route §13) :
+**Payment CONFIRMED ≠ activation** : rien n'est activé. **3.3-B en cours (licences)** : B1 livrée —
+**1 site = 1 abonnement** (ADR-0033) : `subscriptions.site_id` (abonnement d'inscription rattaché
+au premier site), nouveau site = abonnement `pending_activation` au plan publié choisi (pas
+d'essai), capacités **par site** (sans site : union des abonnements), toute écriture sur un site
+revérifiée pour l'abonnement de CE site (`ensure_site_allows`), limites par site (`max_users`),
+console par abonnement de site. B2 (licences Ed25519, service de signature), B3 (postes),
+B4 (renouvellement, notifications) : suivent, arrêt après chaque sous-phase si non verte. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

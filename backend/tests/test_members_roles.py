@@ -3,7 +3,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 
 
 def _roles(api: Api) -> dict[str, str]:
@@ -73,12 +73,15 @@ def test_existing_user_joins_without_password_change(
 
 
 def test_plan_limits(provision: Any, api_for: Any) -> None:
-    provision("alpha", plan="STANDARD")  # provisoire : 1 site, 5 utilisateurs
+    """1 site = 1 abonnement (ADR-0033, arbitrage Q1) : un nouveau site a son propre abonnement
+    (pas de limite de sites) ; la limite d'utilisateurs est celle de l'abonnement de chaque
+    site auquel l'utilisateur a accès."""
+    provision("alpha", plan="STANDARD")  # site principal : 5 utilisateurs au plus
     owner = api_for("owner@alpha.example.com")
-    site = owner.post("/sites", json={"name": "Second", "code": "SECOND"})
-    assert site.status_code == 422
-    assert site.json()["code"] == "plan_limit_reached"
-    for i in range(4):
+    second = add_site(owner, "Second", "SECOND", plan="ENTREPRISE")  # illimité
+    assert second.status_code == 201, second.text
+    main = next(s["id"] for s in owner.get("/sites").json() if s["code"] != "SECOND")
+    for i in range(4):  # + le propriétaire : 5 utilisateurs sur le site principal
         created = owner.post(
             "/members",
             json={"email": f"u{i}@example.com", "full_name": f"U{i}", "password": "Provisoire-123"},
@@ -86,9 +89,34 @@ def test_plan_limits(provision: Any, api_for: Any) -> None:
         assert created.status_code == 201
     over = owner.post(
         "/members",
-        json={"email": "u9@example.com", "full_name": "U9", "password": "Provisoire-123"},
+        json={
+            "email": "u9@example.com",
+            "full_name": "U9",
+            "password": "Provisoire-123",
+            "site_ids": [main],
+        },
     )
+    assert over.status_code == 422
     assert over.json()["code"] == "plan_limit_reached"
+    assert over.json()["site_id"] == main
+    # Un utilisateur du seul second site ne consomme pas la limite du site principal…
+    second_only = owner.post(
+        "/members",
+        json={
+            "email": "u9@example.com",
+            "full_name": "U9",
+            "password": "Provisoire-123",
+            "site_ids": [second.json()["id"]],
+        },
+    )
+    assert second_only.status_code == 201, second_only.text
+    # … mais lui donner aussi accès au site principal la dépasserait.
+    widened = owner.patch(
+        f"/members/{second_only.json()['id']}",
+        json={"site_ids": [second.json()["id"], main]},
+    )
+    assert widened.status_code == 422
+    assert widened.json()["code"] == "plan_limit_reached"
 
 
 def test_owner_and_self_are_protected(provision: Any, api_for: Any, client: Any) -> None:

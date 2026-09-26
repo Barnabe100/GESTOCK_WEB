@@ -161,7 +161,15 @@ def test_cli_change_plan_keeps_data_and_audits(
         ),
         {"t": tenant},
     ).scalar_one()
-    assert audit == {"actor": "cli", "previous_plan": "ENTREPRISE", "plan": "STANDARD"}
+    site_id = owner_db.execute(
+        text("SELECT site_id FROM subscriptions WHERE tenant_id = :t"), {"t": tenant}
+    ).scalar_one()
+    assert audit == {
+        "actor": "cli",
+        "previous_plan": "ENTREPRISE",
+        "plan": "STANDARD",
+        "site_id": str(site_id),
+    }
     assert main(["change-plan", "--tenant-id", tenant, "--plan", "STANDARD"], settings) == 0
     assert "inchangé" in capsys.readouterr().out
     unknown = main(

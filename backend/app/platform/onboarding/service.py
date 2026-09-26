@@ -33,7 +33,7 @@ from app.platform.onboarding.schemas import (
 )
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
-from app.platform.subscriptions.service import current_plan
+from app.platform.subscriptions.service import tenant_plans
 from app.platform.tenancy.models import Tenant
 from app.shared.clock import utcnow
 from app.shared.ids import new_id
@@ -59,8 +59,17 @@ class OnboardingService:
     # --- Évaluation ------------------------------------------------------------------------
 
     def env(self, tenant: Tenant, modules: frozenset[str]) -> OnboardingEnv:
-        policy = PlanPolicy(self.db, current_plan(self.db), self.registry)
-        return OnboardingEnv(db=self.db, tenant=tenant, modules=modules, limit=policy.limit)
+        policies = [PlanPolicy(self.db, plan, self.registry) for plan in tenant_plans(self.db)]
+
+        def limit(code: str) -> int | None:
+            """Plus grande valeur parmi les abonnements (applicabilité d'une étape seulement ;
+            les limites s'appliquent site par site)."""
+            values = [policy.limit(code) for policy in policies]
+            if not values or any(v is None for v in values):
+                return None
+            return max(v for v in values if v is not None)
+
+        return OnboardingEnv(db=self.db, tenant=tenant, modules=modules, limit=limit)
 
     def steps(self, env: OnboardingEnv) -> list[OnboardingStepDef]:
         return [

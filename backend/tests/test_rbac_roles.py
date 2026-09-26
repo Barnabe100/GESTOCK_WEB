@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 
 TEMPORARY = "Provisoire-123"
 
@@ -342,7 +342,7 @@ def test_site_scoped_role_only_applies_on_its_site(
 ) -> None:
     t = provision("gamma", profile="retail.quincaillerie", plan="ENTREPRISE")
     owner: Api = api_for("owner@gamma.example.com")
-    site_b = owner.post("/sites", json={"name": "Dépôt", "code": "DEP", "kind": "warehouse"})
+    site_b = add_site(owner, "Dépôt", "DEP", "warehouse")
     site_b_id = site_b.json()["id"]
     boss = owner.post(
         "/roles",

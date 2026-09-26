@@ -90,13 +90,18 @@ test.describe('Console TechNova : tenants et abonnements', () => {
     await row.getByRole('button', { name: new RegExp(`Ouvrir ${name}`) }).click();
 
     await expect(page.getByRole('heading', { name })).toBeVisible();
-    await expect(page.getByTestId('subscription-plan')).toHaveText('Entreprise (ENTREPRISE)');
-    await expect(page.getByTestId('tenant-badges')).toContainText("En attente d'activation");
+    // 1 site = 1 abonnement (ADR-0033) : l'abonnement du site principal (code PRINCIPAL).
+    await expect(page.getByTestId('subscription-plan-PRINCIPAL')).toHaveText(
+      'Entreprise (ENTREPRISE)',
+    );
+    await expect(page.getByTestId('subscription-status-PRINCIPAL')).toContainText(
+      "En attente d'activation",
+    );
 
     // Activation manuelle transitoire (aucun paiement).
     const activation = `Activation commerciale temporaire ${stamp}`;
     await page
-      .getByTestId('tenant-actions')
+      .getByTestId('subscription-actions-PRINCIPAL')
       .getByRole('button', { name: "Activer l'abonnement" })
       .click();
     const dialog = page.getByRole('dialog');
@@ -106,7 +111,7 @@ test.describe('Console TechNova : tenants et abonnements', () => {
     await dialog.getByText('Je confirme cette action.').click();
     await dialog.getByRole('button', { name: "Confirmer l'activation" }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByTestId('tenant-badges')).toContainText('Actif');
+    await expect(page.getByTestId('subscription-status-PRINCIPAL')).toContainText('Actif');
     const history = page.getByRole('row').filter({ hasText: activation });
     await expect(history).toContainText('subscription.manually_activated');
     const created = await request.post('/api/v1/catalog/categories', {
@@ -117,7 +122,7 @@ test.describe('Console TechNova : tenants et abonnements', () => {
 
     // Changement de plan.
     await page
-      .getByTestId('tenant-actions')
+      .getByTestId('subscription-actions-PRINCIPAL')
       .getByRole('button', { name: 'Changer de plan' })
       .click();
     await page
@@ -131,7 +136,7 @@ test.describe('Console TechNova : tenants et abonnements', () => {
       .getByRole('dialog')
       .getByRole('button', { name: 'Confirmer le changement de plan' })
       .click();
-    await expect(page.getByTestId('subscription-plan')).toHaveText('Standard (STANDARD)');
+    await expect(page.getByTestId('subscription-plan-PRINCIPAL')).toHaveText('Standard (STANDARD)');
 
     // Suspension puis réactivation.
     await runAction(page, 'Suspendre', 'Confirmer la suspension', `Suspension ${stamp}`);

@@ -249,9 +249,9 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
         (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/reject", "POST"),
         (f"{CONSOLE_PREFIX}/plans/{{code}}/commercial", "PATCH"),
         (f"{tenant}/reactivate", "POST"),
-        (f"{tenant}/subscription/activate", "POST"),
-        (f"{tenant}/subscription/change-plan", "POST"),
-        (f"{tenant}/subscription/extend", "POST"),
+        (f"{tenant}/subscriptions/{{subscription_id}}/activate", "POST"),
+        (f"{tenant}/subscriptions/{{subscription_id}}/change-plan", "POST"),
+        (f"{tenant}/subscriptions/{{subscription_id}}/extend", "POST"),
         (f"{tenant}/suspend", "POST"),
     ]
     # Aucune route d'administrateur TechNova, d'utilisateur, ni de donnée métier d'un tenant.

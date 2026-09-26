@@ -81,9 +81,9 @@ Variables : `SM_PLATFORM_DATABASE_URL`, `SM_DB_PLATFORM_ROLE`, `SM_PLATFORM_API_
 | GET | `/tenants` | entreprises : métadonnées paginées (`limit`, `offset`, `sort` : `name`, `created_at`, `current_period_end`, `status`) ; filtres `search`, `status`, `plan_code`, `subscription_status` (statut **effectif**) |
 | GET | `/tenants/{id}` | identité plateforme, utilisation (sites, utilisateurs / limites du plan), abonnement (plan, statuts stocké et effectif, période, prix figé), actions possibles et propositions de dates |
 | POST | `/tenants/{id}/suspend` · `/reactivate` | statut de l'entreprise ; `reason` obligatoire |
-| POST | `/tenants/{id}/subscription/activate` | activation manuelle transitoire (`period_start`, `period_end` facultatifs, `reason`) |
-| POST | `/tenants/{id}/subscription/extend` | prolongation (`period_end`, `reason`) |
-| POST | `/tenants/{id}/subscription/change-plan` | changement de plan (`plan_code`, `reason`) |
+| POST | `/tenants/{id}/subscriptions/{subscription_id}/activate` | activation manuelle transitoire (`period_start`, `period_end` facultatifs, `reason`) — abonnement d'un site |
+| POST | `/tenants/{id}/subscriptions/{subscription_id}/extend` | prolongation (`period_end`, `reason`) — abonnement d'un site |
+| POST | `/tenants/{id}/subscriptions/{subscription_id}/change-plan` | changement de plan (`plan_code`, `reason`) — abonnement d'un site |
 | GET | `/payments` | paiements d'abonnement paginés (tri `created_at` décroissant par défaut, `amount`, `status`, `decided_at`) ; filtres `status`, `tenant_id`, `search` (référence) |
 | GET | `/payments/{id}` | détail : entreprise, plan, montant, devise, période, moyen, référence, statut, décision |
 | POST | `/payments/{id}/confirm` · `/reject` | décision définitive d'un paiement `PENDING` (`reason` ; motif du rejet visible par l'entreprise) |
@@ -165,6 +165,16 @@ jours), calculés par agrégats SQL.
 
 Droits SQL ajoutés (migration 0018) : voir [`DATA_MODEL.md`](DATA_MODEL.md) ; aucune table
 métier.
+
+## 6 bis. 1 site = 1 abonnement (Phase 3.3-B1, ADR-0033)
+
+Chaque site d'une entreprise a son propre abonnement (plan, période, statut, limites) ; deux
+sites = deux abonnements. La liste des entreprises résume leurs abonnements (nombre, plans,
+statuts effectifs, prochaine échéance) ; la fiche présente un bloc par abonnement de site
+(limites et usage du site, postes demandés) et ses actions (activation manuelle transitoire,
+prolongation, changement de plan : un abonnement à la fois). L'abonnement pris à l'inscription
+apparaît « en attente du premier site » jusqu'à sa création. Suspension et réactivation
+restent des actions sur l'entreprise.
 
 ## 7. Paiements d'abonnement (Phase 3.3-A)
 

@@ -146,5 +146,7 @@
   "subscription_missing": "Aucun abonnement.",
   "subscription_not_found": "Abonnement introuvable.",
   "subscription_payment_not_found": "Paiement introuvable.",
-  "payment_already_decided": "Ce paiement a déjà été décidé ; la fiche a été actualisée."
+  "payment_already_decided": "Ce paiement a déjà été décidé ; la fiche a été actualisée.",
+  "site_plan_required": "Choisissez l'offre et la période de facturation du site.",
+  "site_subscription_preselected": "Ce premier site reçoit l'abonnement choisi à l'inscription : aucune offre à choisir."
 }

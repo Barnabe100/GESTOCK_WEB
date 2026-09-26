@@ -214,7 +214,8 @@ class PlatformAuditOut(BaseModel):
 
 
 class TenantListItem(BaseModel):
-    """Métadonnées plateforme d'une entreprise (aucune donnée métier)."""
+    """Métadonnées plateforme d'une entreprise (aucune donnée métier). Abonnements : un par
+    site (ADR-0033), résumés ici (plans, statuts effectifs, prochaine échéance)."""
 
     id: uuid.UUID
     name: str
@@ -224,14 +225,19 @@ class TenantListItem(BaseModel):
     business_profile_code: str
     business_profile_name: str
     created_at: datetime
-    plan_code: str
-    plan_name: str
-    # Statut stocké et statut effectif (échéance, délai de grâce), distincts du statut du tenant.
-    subscription_status: str
-    effective_status: str
-    current_period_end: datetime
+    subscription_count: int
+    plan_codes: list[str]
+    # Statuts effectifs (échéance, délai de grâce) des abonnements, distincts du statut du
+    # tenant.
+    effective_statuses: list[str]
+    next_period_end: datetime | None
     sites: int
     users: int
+
+    @field_validator("plan_codes", "effective_statuses", mode="before")
+    @classmethod
+    def _sorted(cls, value: list[str] | None) -> list[str]:
+        return sorted(v for v in (value or []) if v is not None)
 
 
 class TenantUsage(BaseModel):
@@ -239,8 +245,34 @@ class TenantUsage(BaseModel):
     limit: int | None
 
 
+class SiteRefOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str
+
+
+class PlanChoice(BaseModel):
+    code: str
+    name: str
+
+
+class SubscriptionActions(BaseModel):
+    """Actions possibles sur cet abonnement dans l'état actuel (décidées par le serveur, qui
+    revérifie tout)."""
+
+    can_activate: bool
+    can_extend: bool
+    can_change_plan: bool
+    activation_start: date
+    activation_end: date
+    extension_end: date
+    available_plans: list[PlanChoice]
+
+
 class TenantSubscriptionOut(BaseModel):
     id: uuid.UUID
+    # Site de l'abonnement ; nul : pris à l'inscription, en attente du premier site.
+    site: SiteRefOut | None
     plan_code: str
     plan_name: str
     billing_period: str
@@ -254,25 +286,15 @@ class TenantSubscriptionOut(BaseModel):
     # Prix et devise figés à la souscription (ou au dernier changement de plan).
     price_at_subscription: Money | None
     currency_at_subscription: str | None
-
-
-class PlanChoice(BaseModel):
-    code: str
-    name: str
+    requested_activations: int
+    # Limites du plan de CET abonnement et usage du site (utilisateurs ayant accès au site).
+    usage: dict[str, TenantUsage]
+    actions: SubscriptionActions
 
 
 class TenantActions(BaseModel):
-    """Actions possibles dans l'état actuel (décidées par le serveur, qui revérifie tout)."""
-
     can_suspend: bool
     can_reactivate: bool
-    can_activate: bool
-    can_extend: bool
-    can_change_plan: bool
-    activation_start: date
-    activation_end: date
-    extension_end: date
-    available_plans: list[PlanChoice]
 
 
 class TenantDetailOut(TenantListItem):
@@ -281,8 +303,7 @@ class TenantDetailOut(TenantListItem):
     currency: str
     locale: str
     timezone: str
-    usage: dict[str, TenantUsage]
-    subscription: TenantSubscriptionOut
+    subscriptions: list[TenantSubscriptionOut]
     actions: TenantActions
 
 
@@ -338,6 +359,8 @@ class ConsolePaymentOut(BaseModel):
     tenant_name: str
     subscription_id: uuid.UUID
     plan_code: str
+    site_id: uuid.UUID | None
+    site_name: str | None
     amount: Money
     currency: str
     period_start: date

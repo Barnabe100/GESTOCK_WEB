@@ -257,3 +257,49 @@ export function ownerSql(sql: string): void {
   ].join('\n');
   execFileSync('uv', ['run', 'python', '-c', script], { cwd, encoding: 'utf8', input: sql });
 }
+
+/**
+ * Nouveau site par l'API : 1 site = 1 abonnement (Phase 3.3-B1, ADR-0033). L'offre ENTREPRISE
+ * est publiée le temps de l'appel (paramètres commerciaux remis à leurs valeurs neutres
+ * ensuite), puis l'abonnement du site est rendu opérationnel comme le fera la licence
+ * (paiement confirmé + licence, 3.3-B) : ces suites ne portent pas sur l'abonnement.
+ */
+export async function createActiveSite<T = { id: string }>(
+  request: APIRequestContext,
+  token: string,
+  site: { name: string; code: string; kind?: string },
+): Promise<T> {
+  ownerSql(
+    'UPDATE plans SET listed = true, contact_required = false, monthly_price_enabled = true, ' +
+      "monthly_price = coalesce(monthly_price, 25000), currency = coalesce(currency, 'XOF') " +
+      "WHERE code = 'ENTREPRISE'",
+  );
+  let response;
+  try {
+    response = await request.post('/api/v1/sites', {
+      headers: bearer(token),
+      data: { ...site, plan_code: 'ENTREPRISE', billing_period: 'monthly' },
+    });
+  } finally {
+    ownerSql(
+      'UPDATE plans SET listed = false, monthly_price_enabled = false, monthly_price = NULL, ' +
+        "currency = CASE WHEN annual_price_enabled THEN currency END WHERE code = 'ENTREPRISE'",
+    );
+  }
+  expect(response.status(), await response.text()).toBe(201);
+  const created = (await response.json()) as T & { id: string };
+  ownerSql(
+    "UPDATE subscriptions SET status = 'active', current_period_start = now(), " +
+      `current_period_end = now() + interval '1 year' WHERE site_id = '${created.id}'`,
+  );
+  return created;
+}
+
+/** Plan de l'abonnement de chaque site de l'entreprise (CLI TechNova, ADR-0033). */
+export function changePlanOfSites(tenantId: string, siteIds: string[], plan: string): string {
+  return siteIds
+    .map((siteId) =>
+      adminCli('change-plan', '--tenant-id', tenantId, '--site-id', siteId, '--plan', plan),
+    )
+    .join('\n');
+}

@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, ensureCashOpen, loginUi, OWNER, STANDARD_OWNER } from './support';
+import {
+  apiToken,
+  bearer,
+  createActiveSite,
+  ensureCashOpen,
+  loginUi,
+  OWNER,
+  STANDARD_OWNER,
+} from './support';
 
 /**
  * Phase 2.8 — Créances / comptes clients : créance = vente validée dont le reste dû (total −
@@ -48,7 +56,7 @@ async function setup(request: APIRequestContext): Promise<Setup> {
   const shop = sites.find((s) => s.code !== DEPOT.code) as Site;
   const depot =
     sites.find((s) => s.code === DEPOT.code) ??
-    ((await post(request, token, '/sites', { ...DEPOT, kind: 'warehouse' })) as Site);
+    (await createActiveSite<Site>(request, token, { ...DEPOT, kind: 'warehouse' }));
   const suffix = Date.now().toString().slice(-7);
   const category = await post(request, token, '/catalog/categories', {
     name: `Créances E2E ${suffix}`,

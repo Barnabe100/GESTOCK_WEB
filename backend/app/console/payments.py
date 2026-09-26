@@ -30,7 +30,7 @@ from app.platform.subscriptions.models import (
     SubscriptionPayment,
     SubscriptionPaymentStatus,
 )
-from app.platform.tenancy.models import Tenant
+from app.platform.tenancy.models import Site, Tenant
 from app.shared.pagination import PageParams, apply_sort, escape_like, paginate_rows
 
 NOT_FOUND = "subscription_payment_not_found"
@@ -47,10 +47,14 @@ class PaymentDecisionService:
                 SubscriptionPayment,
                 Tenant.name.label("tenant_name"),
                 Subscription.plan_code,
+                Subscription.site_id,
+                Site.name.label("site_name"),
                 User.email.label("decided_by_email"),
             )
             .join(Tenant, Tenant.id == SubscriptionPayment.tenant_id)
             .join(Subscription, Subscription.id == SubscriptionPayment.subscription_id)
+            # Site de l'abonnement payé (1 site = 1 abonnement, ADR-0033).
+            .outerjoin(Site, Site.id == Subscription.site_id)
             # Décideur : administrateur TechNova (seuls comptes visibles de la console).
             .outerjoin(User, User.id == SubscriptionPayment.decided_by)
         )

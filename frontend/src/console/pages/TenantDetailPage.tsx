@@ -19,7 +19,7 @@ import { planPrice } from '../planDisplay';
 import { useAudit, useTenant } from '../queries';
 import { TenantActionDialog, type ActionKind } from '../TenantActionDialog';
 import { Details, TenantStatusBadge, tenantDate } from '../tenantDisplay';
-import type { PlatformAuditEntry, TenantDetail } from '../types';
+import type { PlatformAuditEntry, TenantDetail, TenantSubscription } from '../types';
 
 function TenantHistory({ tenantId }: { tenantId: string }) {
   const { t } = useTranslation();
@@ -64,9 +64,6 @@ function Actions({
   const { t } = useTranslation();
   const a = tenant.actions;
   const buttons: [ActionKind, boolean, string, boolean][] = [
-    ['activate', a.can_activate, 'pi pi-check-circle', false],
-    ['extend', a.can_extend, 'pi pi-calendar-plus', false],
-    ['change-plan', a.can_change_plan, 'pi pi-sync', false],
     ['reactivate', a.can_reactivate, 'pi pi-play', false],
     ['suspend', a.can_suspend, 'pi pi-ban', true],
   ];
@@ -94,18 +91,98 @@ function Actions({
   );
 }
 
+/** Abonnement d'un site (1 site = 1 abonnement, ADR-0033) et ses actions. */
+function SubscriptionCard({
+  tenant,
+  subscription: s,
+  onAction,
+}: {
+  tenant: TenantDetail;
+  subscription: TenantSubscription;
+  onAction: (kind: ActionKind, subscription: TenantSubscription) => void;
+}) {
+  const { t } = useTranslation();
+  const date = (iso: string) => tenantDate(iso, tenant.timezone);
+  const code = s.site?.code ?? 'pending';
+  const buttons: [ActionKind, boolean, string][] = [
+    ['activate', s.actions.can_activate, 'pi pi-check-circle'],
+    ['extend', s.actions.can_extend, 'pi pi-calendar-plus'],
+    ['change-plan', s.actions.can_change_plan, 'pi pi-sync'],
+  ];
+  const available = buttons.filter(([, allowed]) => allowed);
+  return (
+    <Card
+      title={s.site ? `${s.site.name} (${s.site.code})` : t('console:tenant.unattached')}
+      data-testid={`subscription-${code}`}
+    >
+      <Details
+        items={[
+          [
+            t('console:tenant.plan'),
+            `${s.plan_name} (${s.plan_code})`,
+            `subscription-plan-${code}`,
+          ],
+          [
+            t('console:tenant.effectiveStatus'),
+            <SubscriptionStatusBadge status={s.effective_status} />,
+            `subscription-status-${code}`,
+          ],
+          [t('console:tenant.subscriptionStatus'), t(`subscriptionStatus.${s.status}`)],
+          [t('console:tenant.billingPeriod'), t(`billingPeriod.${s.billing_period}`)],
+          [t('console:tenant.periodStart'), date(s.current_period_start)],
+          [t('console:tenant.periodEnd'), date(s.current_period_end), `subscription-end-${code}`],
+          [t('console:tenant.graceDays'), t('console:plans.trialDays', { count: s.grace_days })],
+          [
+            t('console:tenant.price'),
+            s.price_at_subscription === null
+              ? t('console:tenant.noPrice')
+              : planPrice(s.price_at_subscription, s.currency_at_subscription),
+            `subscription-price-${code}`,
+          ],
+          [t('console:tenant.requestedActivations'), String(s.requested_activations)],
+          ...Object.entries(s.usage).map(
+            ([limit, u]) =>
+              [
+                t(`console:limits.${limit}`, { defaultValue: limit }),
+                t('console:tenant.usageOf', {
+                  used: u.used,
+                  limit: u.limit ?? t('console:tenant.unlimited'),
+                }),
+                `usage-${limit}-${code}`,
+              ] as [string, string, string],
+          ),
+        ]}
+      />
+      {available.length > 0 && (
+        <div className="sm-quick-actions" data-testid={`subscription-actions-${code}`}>
+          {available.map(([kind, , icon]) => (
+            <Button
+              key={kind}
+              icon={icon}
+              label={t(`console:tenant.action.${kind}`)}
+              onClick={() => onAction(kind, s)}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function TenantDetailPage() {
   const { t } = useTranslation();
   const { id = '' } = useParams();
   const tenant = useTenant(id);
-  const [action, setAction] = useState<ActionKind | null>(null);
+  const [action, setAction] = useState<{
+    kind: ActionKind;
+    subscription?: TenantSubscription;
+  } | null>(null);
 
   if (tenant.isLoading) return <LoadingState />;
   if (tenant.isError || !tenant.data) {
     return <ErrorMessage error={tenant.error} onRetry={() => void tenant.refetch()} />;
   }
   const d = tenant.data;
-  const s = d.subscription;
   const date = (iso: string) => tenantDate(iso, d.timezone);
   return (
     <>
@@ -120,7 +197,6 @@ export function TenantDetailPage() {
           <>
             <span className="sm-tags" data-testid="tenant-badges">
               <TenantStatusBadge status={d.status} />
-              <SubscriptionStatusBadge status={s.effective_status} />
             </span>
             <Link
               className="p-button p-button-outlined"
@@ -144,50 +220,8 @@ export function TenantDetailPage() {
               [t('console:tenant.timezone'), d.timezone],
               [t('console:tenant.slug'), <span className="sm-code">{d.slug}</span>],
               [t('console:tenant.createdAt'), date(d.created_at)],
-            ]}
-          />
-        </Card>
-        <Card title={t('console:tenant.usage')}>
-          <Details
-            items={Object.entries(d.usage).map(([code, u]) => [
-              t(`console:limits.${code}`, { defaultValue: code }),
-              <>
-                {t('console:tenant.usageOf', {
-                  used: u.used,
-                  limit: u.limit ?? t('console:tenant.unlimited'),
-                })}
-                {u.limit !== null && u.used > u.limit && (
-                  <small className="sm-muted"> — {t('console:tenant.overLimit')}</small>
-                )}
-              </>,
-              `usage-${code}`,
-            ])}
-          />
-        </Card>
-        <Card title={t('console:tenant.subscriptionTitle')}>
-          <Details
-            items={[
-              [t('console:tenant.plan'), `${s.plan_name} (${s.plan_code})`, 'subscription-plan'],
-              [
-                t('console:tenant.effectiveStatus'),
-                <SubscriptionStatusBadge status={s.effective_status} />,
-              ],
-              [t('console:tenant.subscriptionStatus'), t(`subscriptionStatus.${s.status}`)],
-              [t('console:tenant.billingPeriod'), t(`billingPeriod.${s.billing_period}`)],
-              [t('console:tenant.startedAt'), date(s.started_at)],
-              [t('console:tenant.periodStart'), date(s.current_period_start)],
-              [t('console:tenant.periodEnd'), date(s.current_period_end), 'subscription-end'],
-              [
-                t('console:tenant.graceDays'),
-                t('console:plans.trialDays', { count: s.grace_days }),
-              ],
-              [
-                t('console:tenant.price'),
-                s.price_at_subscription === null
-                  ? t('console:tenant.noPrice')
-                  : planPrice(s.price_at_subscription, s.currency_at_subscription),
-                'subscription-price',
-              ],
+              [t('console:tenant.sitesCount'), String(d.sites), 'usage-sites'],
+              [t('console:tenant.usersCount'), String(d.users), 'usage-users'],
             ]}
           />
         </Card>
@@ -196,9 +230,30 @@ export function TenantDetailPage() {
           <TenantStatusBadge status={d.status} />
         </Card>
       </div>
-      <Actions tenant={d} onAction={setAction} />
+      <Actions tenant={d} onAction={(kind) => setAction({ kind })} />
+      <section className="sm-block" aria-labelledby="subscriptions-title">
+        <h2 id="subscriptions-title">{t('console:tenant.subscriptionsTitle')}</h2>
+        <p className="sm-help">{t('console:tenant.subscriptionsHelp')}</p>
+        <div className="sm-dashboard-grid">
+          {d.subscriptions.map((s) => (
+            <SubscriptionCard
+              key={s.id}
+              tenant={d}
+              subscription={s}
+              onAction={(kind, subscription) => setAction({ kind, subscription })}
+            />
+          ))}
+        </div>
+      </section>
       <TenantHistory tenantId={d.id} />
-      {action && <TenantActionDialog tenant={d} kind={action} onClose={() => setAction(null)} />}
+      {action && (
+        <TenantActionDialog
+          tenant={d}
+          kind={action.kind}
+          subscription={action.subscription}
+          onClose={() => setAction(null)}
+        />
+      )}
     </>
   );
 }

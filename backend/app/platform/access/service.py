@@ -38,6 +38,7 @@ from app.platform.access.schemas import (
     RoleTemplateOut,
     RoleUpdate,
 )
+from app.platform.access.site_access import accessible_sites
 from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.loader import role_templates
@@ -46,7 +47,11 @@ from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
-from app.platform.subscriptions.service import current_plan
+from app.platform.subscriptions.service import (
+    site_subscription,
+    subscription_plan,
+    unattached_subscription,
+)
 from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, apply_sort, paginate, search_filter, text_sort
 from app.shared.schemas import StatusFilter
@@ -567,8 +572,37 @@ class MemberService(_AccessBase):
             raise NotFoundError("Membre introuvable", code="member_not_found")
         return membership
 
-    def _check_user_limit(self) -> None:
-        PlanPolicy(self.db, current_plan(self.db), self.registry).ensure_capacity("max_users")
+    def _tenant_sites(self) -> set[uuid.UUID]:
+        return set(self.db.scalars(select(Site.id)))  # RLS : sites du tenant
+
+    def _previous_sites(self, membership: TenantMembership) -> set[uuid.UUID]:
+        if membership.status != MembershipStatus.ACTIVE:
+            return set()
+        return accessible_sites(membership, self._tenant_sites())
+
+    def _check_user_limits(self, membership: TenantMembership, previous: set[uuid.UUID]) -> None:
+        """Limite ``max_users`` de l'abonnement de **chaque site** nouvellement accessible au
+        membre (1 site = 1 abonnement, ADR-0033 ; arbitrage Q1), une fois ses accès appliqués
+        (le membre est donc compté). Un dépassement existant n'est jamais aggravé ; il est
+        toléré tant qu'aucun accès n'est ajouté. Sans site : abonnement pris à l'inscription,
+        pour toute l'entreprise."""
+        if membership.status != MembershipStatus.ACTIVE:
+            return
+        tenant_sites = self._tenant_sites()
+        if not tenant_sites:
+            subscription = unattached_subscription(self.db)
+            if subscription is not None:
+                policy = PlanPolicy(
+                    self.db, subscription_plan(self.db, subscription), self.registry
+                )
+                policy.ensure_capacity("max_users", additional=0)
+            return
+        for site_id in sorted(accessible_sites(membership, tenant_sites) - previous):
+            subscription = site_subscription(self.db, site_id)
+            if subscription is None:
+                continue
+            policy = PlanPolicy(self.db, subscription_plan(self.db, subscription), self.registry)
+            policy.ensure_capacity("max_users", additional=0, site_id=site_id)
 
     def _validate_access(
         self,
@@ -662,7 +696,6 @@ class MemberService(_AccessBase):
                 )
 
     def create(self, data: MemberCreate) -> TenantMembership:
-        self._check_user_limit()
         self._validate_access(data.roles, data.site_ids, data.all_sites)
         email = normalize_email(str(data.email))
         user = self.db.scalars(select(User).where(User.email == email)).one_or_none()
@@ -707,6 +740,7 @@ class MemberService(_AccessBase):
         self.db.flush()
         self._apply_access(membership, data.roles, data.site_ids)
         self.db.flush()
+        self._check_user_limits(membership, previous=set())
         self._audit(
             "member.created",
             "membership",
@@ -747,14 +781,14 @@ class MemberService(_AccessBase):
         self._validate_access(current_roles, current_sites, membership.all_sites, existing)
         self._validate_access(roles, site_ids, all_sites, existing)
         before = self._access_snapshot(membership)
-        if data.status == MembershipStatus.ACTIVE and membership.status != MembershipStatus.ACTIVE:
-            self._check_user_limit()
+        previous_sites = self._previous_sites(membership)
 
         membership.all_sites = all_sites
         if data.status is not None:
             membership.status = data.status
         self._apply_access(membership, roles, site_ids)
         self.db.flush()
+        self._check_user_limits(membership, previous_sites)
         after = self._access_snapshot(membership)
         if before != after:
             self._audit(

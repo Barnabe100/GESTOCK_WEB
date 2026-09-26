@@ -26,7 +26,7 @@ from app.platform.onboarding.service import build_overview
 from app.platform.onboarding.steps import users_applicable
 from app.platform.registry import ModuleManifest, ModuleRegistry, PermissionDef, RegistryError
 from tests.conftest import PASSWORD as CLI_PASSWORD
-from tests.conftest import Api, login
+from tests.conftest import Api, add_site, login
 from tests.test_signup import PASSWORD, _api, _signup, offers  # noqa: F401
 
 STEPS = [
@@ -377,7 +377,7 @@ def test_isolation_api_and_rls(
 ) -> None:
     a = provision("alpha")
     b = provision("beta")
-    api_for("owner@alpha.example.com").post("/sites", json={"name": "Dépôt", "code": "DEP"})
+    add_site(api_for("owner@alpha.example.com"), "Dépôt", "DEP")
     beta = api_for("owner@beta.example.com")
     beta.patch("/onboarding/steps/users", json={"status": "IN_PROGRESS"})
     assert _statuses(beta.get("/onboarding").json())["users"] == "IN_PROGRESS"

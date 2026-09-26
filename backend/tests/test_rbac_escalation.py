@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 
 TEMPORARY = "Provisoire-123"
 
@@ -28,7 +28,7 @@ class Tenant:
 def tenant(provision: Any, api_for: Any) -> Tenant:
     t = provision("alpha", plan="ENTREPRISE")
     owner: Api = api_for("owner@alpha.example.com")
-    site_b = owner.post("/sites", json={"name": "Dépôt", "code": "DEP", "kind": "warehouse"})
+    site_b = add_site(owner, "Dépôt", "DEP", "warehouse")
     assert site_b.status_code == 201, site_b.text
     roles = {r["template_code"] or r["name"]: r["id"] for r in owner.get("/roles").json()}
     return Tenant(owner, str(t.site_id), site_b.json()["id"], roles)

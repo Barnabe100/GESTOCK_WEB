@@ -19,8 +19,9 @@ from app.platform.signup.schemas import (
     PublicSector,
     SignupRequest,
 )
-from app.platform.signup.service import SignupService, period_enabled, self_service
+from app.platform.signup.service import SignupService
 from app.platform.subscriptions.models import BillingPeriod
+from app.platform.subscriptions.service import period_enabled, self_service
 
 router = APIRouter(prefix="/public", tags=["public"])
 

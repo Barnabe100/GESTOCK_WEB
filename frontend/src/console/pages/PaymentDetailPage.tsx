@@ -212,6 +212,7 @@ export function PaymentDetailPage() {
                 t('console:payment.company'),
                 <Link to={`${CONSOLE_BASE}/tenants/${p.tenant_id}`}>{p.tenant_name}</Link>,
               ],
+              [t('console:payment.site'), p.site_name],
               [t('console:payment.plan'), p.plan_code],
               [t('console:payment.amount'), formatMoney(p.amount, p.currency), 'payment-amount'],
               [

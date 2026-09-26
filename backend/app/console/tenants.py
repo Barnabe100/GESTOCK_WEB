@@ -8,6 +8,10 @@ et agit sur deux statuts **distincts** :
 - ``Subscription.status`` : statut stocké, dont le statut **effectif** (échéance, grâce) est
   calculé à la lecture (``effective_status``, et son équivalent SQL pour les listes).
 
+**1 site = 1 abonnement** (Phase 3.3-B1, ADR-0033) : une entreprise a un abonnement par site
+(plus, éventuellement, celui pris à l'inscription avant son premier site) ; les actions sur un
+abonnement désignent cet abonnement (``/tenants/{id}/subscriptions/{subscription_id}/…``).
+
 Actions (raison obligatoire, verrou de ligne, état compatible exigé : une requête rejouée ne
 produit jamais un second effet) : suspension, réactivation, activation manuelle transitoire
 (``pending_activation`` / ``trial`` → ``active`` ; **aucun paiement** n'est créé ni confirmé),
@@ -35,6 +39,7 @@ from sqlalchemy import (
     cast,
     func,
     literal,
+    literal_column,
     or_,
     select,
     update,
@@ -44,6 +49,7 @@ from sqlalchemy.orm import Session
 from app.console.audit import PlatformActor, record_tenant_action
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.platform.access.models import MembershipStatus, TenantMembership
+from app.platform.access.site_access import site_access_condition
 from app.platform.audit.service import RequestMeta
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.registry import ModuleRegistry
@@ -129,7 +135,30 @@ class TenantAdminService:
 
     # --- Lecture -------------------------------------------------------------------------------
 
+    def _subscriptions_of_tenant(self) -> Select[Any]:
+        return (
+            select(Subscription.id)
+            .select_from(Subscription)
+            .join(Plan, Plan.code == Subscription.plan_code)
+            .where(Subscription.tenant_id == Tenant.id)
+            .correlate(Tenant)
+        )
+
     def _base(self) -> Select[Any]:
+        effective = effective_status_sql(self.now)
+        aggregate = (
+            select(
+                func.count().label("count"),
+                func.array_agg(Subscription.plan_code.distinct()).label("plans"),
+                func.array_agg(effective.distinct()).label("statuses"),
+                func.min(Subscription.current_period_end).label("next_end"),
+            )
+            .select_from(Subscription)
+            .join(Plan, Plan.code == Subscription.plan_code)
+            .where(Subscription.tenant_id == Tenant.id)
+            .correlate(Tenant)
+            .lateral("subs")
+        )
         return (
             select(
                 Tenant.id,
@@ -140,16 +169,15 @@ class TenantAdminService:
                 Tenant.business_profile_code,
                 BusinessProfile.name.label("business_profile_name"),
                 Tenant.created_at,
-                Subscription.plan_code,
-                Plan.name.label("plan_name"),
-                cast(Subscription.status, String).label("subscription_status"),
-                effective_status_sql(self.now).label("effective_status"),
-                Subscription.current_period_end,
+                aggregate.c.count.label("subscription_count"),
+                aggregate.c.plans.label("plan_codes"),
+                aggregate.c.statuses.label("effective_statuses"),
+                aggregate.c.next_end.label("next_period_end"),
                 _sites_count().label("sites"),
                 _users_count().label("users"),
             )
-            .join(Subscription, Subscription.tenant_id == Tenant.id)
-            .join(Plan, Plan.code == Subscription.plan_code)
+            .select_from(Tenant)
+            .join(aggregate, literal(True))
             .join(BusinessProfile, BusinessProfile.code == Tenant.business_profile_code)
         )
 
@@ -167,16 +195,24 @@ class TenantAdminService:
         if filters.status:
             stmt = stmt.where(Tenant.status == filters.status)
         if filters.plan_code:
-            stmt = stmt.where(Subscription.plan_code == filters.plan_code)
+            stmt = stmt.where(
+                self._subscriptions_of_tenant()
+                .where(Subscription.plan_code == filters.plan_code)
+                .exists()
+            )
         if filters.subscription_status:
-            stmt = stmt.where(effective_status_sql(self.now) == filters.subscription_status.value)
+            stmt = stmt.where(
+                self._subscriptions_of_tenant()
+                .where(effective_status_sql(self.now) == filters.subscription_status.value)
+                .exists()
+            )
         stmt = apply_sort(
             stmt,
             params.sort,
             {
                 "name": text_sort(Tenant.name),
                 "created_at": Tenant.created_at,
-                "current_period_end": Subscription.current_period_end,
+                "next_period_end": literal_column("next_period_end"),
                 "status": Tenant.status,
             },
             default="name",
@@ -210,14 +246,45 @@ class TenantAdminService:
             raise NotFoundError("Entreprise introuvable", code="tenant_not_found")
         return found
 
-    def subscription(self, tenant_id: uuid.UUID, *, for_update: bool = False) -> Subscription:
-        query = select(Subscription).where(Subscription.tenant_id == tenant_id)
+    def subscriptions(self, tenant_id: uuid.UUID) -> list[Any]:
+        """Abonnements de l'entreprise (un par site, l'éventuel non rattaché en premier), avec
+        le nom et le code du site."""
+        return list(
+            self.db.execute(
+                select(Subscription, Site.name.label("site_name"), Site.code.label("site_code"))
+                .outerjoin(Site, Site.id == Subscription.site_id)
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.site_id.is_(None).desc(), Site.name, Subscription.id)
+            ).all()
+        )
+
+    def subscription(
+        self, tenant_id: uuid.UUID, subscription_id: uuid.UUID, *, for_update: bool = False
+    ) -> Subscription:
+        query = select(Subscription).where(
+            Subscription.tenant_id == tenant_id, Subscription.id == subscription_id
+        )
         if for_update:
             query = query.with_for_update()
         found = self.db.scalars(query).one_or_none()
         if found is None:
             raise NotFoundError("Abonnement introuvable", code="subscription_missing")
         return found
+
+    def site_users(self, tenant_id: uuid.UUID, site_id: uuid.UUID | None) -> int:
+        """Utilisateurs actifs ayant accès au site (limite ``max_users`` de son abonnement,
+        arbitrage Q1) ; sans site : toute l'entreprise."""
+        query = (
+            select(func.count())
+            .select_from(TenantMembership)
+            .where(
+                TenantMembership.tenant_id == tenant_id,
+                TenantMembership.status == MembershipStatus.ACTIVE,
+            )
+        )
+        if site_id is not None:
+            query = query.where(site_access_condition(site_id))
+        return self.db.scalar(query) or 0
 
     def plan(self, code: str) -> Plan:
         plan = self.db.get(Plan, code)
@@ -340,6 +407,7 @@ class TenantAdminService:
     def activate(
         self,
         tenant_id: uuid.UUID,
+        subscription_id: uuid.UUID,
         *,
         period_start: date | None,
         period_end_on: date | None,
@@ -350,7 +418,7 @@ class TenantAdminService:
         """Activation manuelle **transitoire** (arbitrage D5) : TechNova autorise l'activation ;
         ce n'est ni un paiement confirmé ni une licence (3.3-A, 3.3-B)."""
         tenant = self._lock_tenant(tenant_id)
-        subscription = self.subscription(tenant_id, for_update=True)
+        subscription = self.subscription(tenant_id, subscription_id, for_update=True)
         if subscription.status not in ACTIVABLE:
             raise ConflictError(
                 "Seul un abonnement en attente d'activation ou en essai peut être activé",
@@ -377,6 +445,7 @@ class TenantAdminService:
             meta=meta,
             data={
                 "plan": subscription.plan_code,
+                "site_id": subscription.site_id,
                 "transitional": True,
                 "payment_confirmed": False,
             },
@@ -385,6 +454,7 @@ class TenantAdminService:
     def extend(
         self,
         tenant_id: uuid.UUID,
+        subscription_id: uuid.UUID,
         *,
         period_end_on: date,
         reason: str,
@@ -394,7 +464,7 @@ class TenantAdminService:
         """Prolongation (même cadre transitoire) : nouvelle échéance postérieure à l'actuelle ;
         une période déjà échue repart du jour même."""
         tenant = self._lock_tenant(tenant_id)
-        subscription = self.subscription(tenant_id, for_update=True)
+        subscription = self.subscription(tenant_id, subscription_id, for_update=True)
         if subscription.status not in EXTENDABLE:
             raise ConflictError(
                 "Seul un abonnement actif, échu ou expiré peut être prolongé",
@@ -427,12 +497,17 @@ class TenantAdminService:
             reason=reason,
             actor=actor,
             meta=meta,
-            data={"plan": subscription.plan_code, "payment_confirmed": False},
+            data={
+                "plan": subscription.plan_code,
+                "site_id": subscription.site_id,
+                "payment_confirmed": False,
+            },
         )
 
     def change_plan(
         self,
         tenant_id: uuid.UUID,
+        subscription_id: uuid.UUID,
         *,
         plan_code: str,
         reason: str,
@@ -440,7 +515,7 @@ class TenantAdminService:
         meta: RequestMeta,
     ) -> None:
         self._lock_tenant(tenant_id)
-        subscription = self.subscription(tenant_id, for_update=True)
+        subscription = self.subscription(tenant_id, subscription_id, for_update=True)
         plan = self.db.get(Plan, plan_code)
         if plan is None or not plan.is_active:
             raise BusinessRuleError("Plan inconnu ou retiré du catalogue", code="unknown_plan")
@@ -467,7 +542,11 @@ class TenantAdminService:
             actor=actor,
             meta=meta,
             # Mêmes clés que le changement de plan par la CLI, dans le journal du tenant.
-            data={"previous_plan": change.previous_plan, "plan": change.plan},
+            data={
+                "previous_plan": change.previous_plan,
+                "plan": change.plan,
+                "site_id": subscription.site_id,
+            },
         )
 
     # --- Double audit --------------------------------------------------------------------------

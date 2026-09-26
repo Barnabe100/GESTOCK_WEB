@@ -199,7 +199,16 @@
     "created": "Site créé",
     "updated": "Site modifié",
     "subtitle": "Boutiques, dépôts et autres lieux d'activité de l'entreprise.",
-    "empty": "Aucun site."
+    "empty": "Aucun site.",
+    "subscription": "Abonnement",
+    "subscriptionHelp": "Chaque site a son propre abonnement. Il démarre « en attente d'activation » : le site sera opérationnel après la confirmation du paiement par TechNova et la licence.",
+    "subscriptionPreselected": "Ce premier site reçoit l'abonnement choisi à votre inscription.",
+    "plan": "Offre",
+    "choosePlan": "Choisir une offre",
+    "noPlan": "Aucune offre disponible : contactez TechNova.",
+    "billingPeriod": "Période de facturation",
+    "requestedActivations": "Nombre de postes demandés",
+    "requestedActivationsHelp": "Postes (installations) autorisés pour ce site ; confirmé par TechNova avec la licence."
   },
   "company": {
     "title": "Entreprise",
@@ -464,12 +473,16 @@
     "usage": "Utilisation",
     "unlimited": "Illimité",
     "allowed": "Accès autorisés",
-    "renewInfo": "Pour renouveler ou changer d'offre, contactez TechNova.",
+    "renewInfo": "Chaque site a son propre abonnement. Pour renouveler ou changer d'offre, contactez TechNova.",
     "limitNames": {
       "max_sites": "Sites",
       "max_users": "Utilisateurs"
     },
-    "subtitle": "Offre souscrite, statut et fonctionnalités incluses."
+    "subtitle": "Un abonnement par site : offre, statut, période et utilisation de chacun.",
+    "unattached": "En attente du premier site",
+    "unattachedHelp": "L'abonnement choisi à l'inscription sera rattaché au premier site que vous créerez.",
+    "requestedActivations_one": "{{count}} poste demandé",
+    "requestedActivations_other": "{{count}} postes demandés"
   },
   "errors": {
     "pageNotFound": "Page introuvable",
@@ -1402,6 +1415,8 @@
     "submit": "Déclarer le paiement",
     "declared": "Paiement déclaré : en attente de vérification par TechNova.",
     "invalidAmount": "Montant invalide : nombre positif, 2 décimales au plus.",
-    "periodOrder": "La fin de période doit suivre son début."
+    "periodOrder": "La fin de période doit suivre son début.",
+    "subscription": "Abonnement (site)",
+    "site": "Site"
   }
 }

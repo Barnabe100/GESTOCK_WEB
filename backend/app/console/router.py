@@ -39,6 +39,8 @@ from app.console.schemas import (
     PlatformAuditOut,
     PlatformDashboardTenants,
     ReasonIn,
+    SiteRefOut,
+    SubscriptionActions,
     TenantActions,
     TenantDetailOut,
     TenantListItem,
@@ -49,8 +51,8 @@ from app.console.tenants import ACTIVABLE, EXTENDABLE, TenantAdminService, Tenan
 from app.core.config import Settings
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
-from app.platform.signup.service import self_service
 from app.platform.subscriptions.models import SubscriptionPaymentStatus, SubscriptionStatus
+from app.platform.subscriptions.service import self_service
 from app.platform.tenancy.models import TenantStatus
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
@@ -246,7 +248,7 @@ def list_tenants(
 ) -> Page[TenantListItem]:
     """Entreprises clientes : métadonnées plateforme seulement (paginées, triées, filtrées côté
     serveur ; ``subscription_status`` filtre le statut **effectif**). Tri : ``name`` (défaut),
-    ``created_at``, ``current_period_end``, ``status``."""
+    ``created_at``, ``next_period_end``, ``status``."""
     rows, total = TenantAdminService(db, registry, now).search(
         TenantFilters(
             search=search,
@@ -264,20 +266,56 @@ def list_tenants(
     )
 
 
+def _subscription_out(
+    service: TenantAdminService, row: Any, timezone: str, plans: list[Plan]
+) -> TenantSubscriptionOut:
+    subscription = row.Subscription
+    plan = service.plan(subscription.plan_code)
+    limits = service.limits(plan)
+    used = {"max_users": service.site_users(subscription.tenant_id, subscription.site_id)}
+    start, end = service.activation_proposal(subscription, timezone)
+    others = [PlanChoice(code=p.code, name=p.name) for p in plans if p.code != plan.code]
+    return TenantSubscriptionOut(
+        id=subscription.id,
+        site=(
+            SiteRefOut(id=subscription.site_id, name=row.site_name, code=row.site_code)
+            if subscription.site_id
+            else None
+        ),
+        plan_code=plan.code,
+        plan_name=plan.name,
+        billing_period=subscription.billing_period.value,
+        status=subscription.status.value,
+        effective_status=service.effective(subscription).value,
+        started_at=subscription.started_at,
+        current_period_start=subscription.current_period_start,
+        current_period_end=subscription.current_period_end,
+        cancelled_at=subscription.cancelled_at,
+        grace_days=plan.grace_days,
+        price_at_subscription=subscription.price_at_subscription,
+        currency_at_subscription=subscription.currency_at_subscription,
+        requested_activations=subscription.requested_activations,
+        usage={
+            code: TenantUsage(used=used[code], limit=limit)
+            for code, limit in limits.items()
+            if code in used
+        },
+        actions=SubscriptionActions(
+            can_activate=subscription.status in ACTIVABLE,
+            can_extend=subscription.status in EXTENDABLE,
+            can_change_plan=bool(others),
+            activation_start=start,
+            activation_end=end,
+            extension_end=service.extension_proposal(subscription, timezone),
+            available_plans=others,
+        ),
+    )
+
+
 def _tenant_detail(service: TenantAdminService, tenant_id: uuid.UUID) -> TenantDetailOut:
     row = service.row(tenant_id)
     identity = service.identity(tenant_id)
-    subscription = service.subscription(tenant_id)
-    plan = service.plan(subscription.plan_code)
-    effective = service.effective(subscription)
-    limits = service.limits(plan)
-    used = {"max_sites": row.sites, "max_users": row.users}
-    start, end = service.activation_proposal(subscription, identity.timezone)
-    plans = [
-        PlanChoice(code=p.code, name=p.name)
-        for p in PlanCommercialService(service.db, service.registry).list()
-        if p.is_active and p.code != subscription.plan_code
-    ]
+    plans = [p for p in PlanCommercialService(service.db, service.registry).list() if p.is_active]
     return TenantDetailOut(
         **TenantListItem.model_validate(row, from_attributes=True).model_dump(),
         country_code=identity.country_code,
@@ -285,34 +323,13 @@ def _tenant_detail(service: TenantAdminService, tenant_id: uuid.UUID) -> TenantD
         currency=identity.currency,
         locale=identity.locale,
         timezone=identity.timezone,
-        usage={
-            code: TenantUsage(used=used.get(code, 0), limit=limit) for code, limit in limits.items()
-        },
-        subscription=TenantSubscriptionOut(
-            id=subscription.id,
-            plan_code=plan.code,
-            plan_name=plan.name,
-            billing_period=subscription.billing_period.value,
-            status=subscription.status.value,
-            effective_status=effective.value,
-            started_at=subscription.started_at,
-            current_period_start=subscription.current_period_start,
-            current_period_end=subscription.current_period_end,
-            cancelled_at=subscription.cancelled_at,
-            grace_days=plan.grace_days,
-            price_at_subscription=subscription.price_at_subscription,
-            currency_at_subscription=subscription.currency_at_subscription,
-        ),
+        subscriptions=[
+            _subscription_out(service, sub_row, identity.timezone, plans)
+            for sub_row in service.subscriptions(tenant_id)
+        ],
         actions=TenantActions(
             can_suspend=identity.status is TenantStatus.ACTIVE,
             can_reactivate=identity.status is TenantStatus.SUSPENDED,
-            can_activate=subscription.status in ACTIVABLE,
-            can_extend=subscription.status in EXTENDABLE,
-            can_change_plan=bool(plans),
-            activation_start=start,
-            activation_end=end,
-            extension_end=service.extension_proposal(subscription, identity.timezone),
-            available_plans=plans,
         ),
     )
 
@@ -360,12 +377,13 @@ def reactivate_tenant(
 
 
 @router.post(
-    "/tenants/{tenant_id}/subscription/activate",
+    "/tenants/{tenant_id}/subscriptions/{subscription_id}/activate",
     response_model=TenantDetailOut,
     tags=["console-tenants"],
 )
 def activate_subscription(
     tenant_id: uuid.UUID,
+    subscription_id: uuid.UUID,
     body: ActivationIn,
     ctx: PlatformAdmin,
     db: ConsoleDb,
@@ -377,6 +395,7 @@ def activate_subscription(
     service = TenantAdminService(db, registry, now)
     service.activate(
         tenant_id,
+        subscription_id,
         period_start=body.period_start,
         period_end_on=body.period_end,
         reason=body.reason,
@@ -388,12 +407,13 @@ def activate_subscription(
 
 
 @router.post(
-    "/tenants/{tenant_id}/subscription/extend",
+    "/tenants/{tenant_id}/subscriptions/{subscription_id}/extend",
     response_model=TenantDetailOut,
     tags=["console-tenants"],
 )
 def extend_subscription(
     tenant_id: uuid.UUID,
+    subscription_id: uuid.UUID,
     body: ExtensionIn,
     ctx: PlatformAdmin,
     db: ConsoleDb,
@@ -403,6 +423,7 @@ def extend_subscription(
     service = TenantAdminService(db, registry, now)
     service.extend(
         tenant_id,
+        subscription_id,
         period_end_on=body.period_end,
         reason=body.reason,
         actor=ctx.actor,
@@ -413,12 +434,13 @@ def extend_subscription(
 
 
 @router.post(
-    "/tenants/{tenant_id}/subscription/change-plan",
+    "/tenants/{tenant_id}/subscriptions/{subscription_id}/change-plan",
     response_model=TenantDetailOut,
     tags=["console-tenants"],
 )
 def change_tenant_plan(
     tenant_id: uuid.UUID,
+    subscription_id: uuid.UUID,
     body: PlanChangeIn,
     ctx: PlatformAdmin,
     db: ConsoleDb,
@@ -429,7 +451,12 @@ def change_tenant_plan(
     conservées (ce que le nouveau plan n'inclut pas cesse d'être accordé)."""
     service = TenantAdminService(db, registry, now)
     service.change_plan(
-        tenant_id, plan_code=body.plan_code, reason=body.reason, actor=ctx.actor, meta=ctx.meta
+        tenant_id,
+        subscription_id,
+        plan_code=body.plan_code,
+        reason=body.reason,
+        actor=ctx.actor,
+        meta=ctx.meta,
     )
     db.commit()
     return _tenant_detail(service, tenant_id)
@@ -446,6 +473,8 @@ def _payment_out(row: Any) -> ConsolePaymentOut:
         tenant_name=row.tenant_name,
         subscription_id=payment.subscription_id,
         plan_code=row.plan_code,
+        site_id=row.site_id,
+        site_name=row.site_name,
         amount=payment.amount,
         currency=payment.currency,
         period_start=payment.period_start,

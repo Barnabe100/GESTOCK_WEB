@@ -138,13 +138,15 @@ def test_tenant_list_is_paginated_searchable_filtered_and_sorted(
     ]
     first = page["items"][0]
     assert first["id"] == str(alpha.tenant_id)
-    assert (first["plan_code"], first["status"], first["sites"], first["users"]) == (
-        "ENTREPRISE",
+    assert (first["plan_codes"], first["status"], first["sites"], first["users"]) == (
+        ["ENTREPRISE"],
         "active",
         1,
         1,
     )
-    assert first["effective_status"] == "active"
+    # 1 site = 1 abonnement (ADR-0033) : résumé des abonnements de l'entreprise.
+    assert first["subscription_count"] == 1
+    assert first["effective_statuses"] == ["active"]
     # Métadonnées plateforme seulement.
     assert not {"email", "phone", "address", "tax_id"} & set(first)
 
@@ -179,11 +181,10 @@ def test_tenant_detail_counters_limits_and_subscription(
     detail = _get(admin, f"/tenants/{tenant.tenant_id}").json()
     assert (detail["country_code"], detail["country_name"]) == ("BF", "Burkina Faso")
     assert (detail["currency"], detail["timezone"]) == ("XOF", "Africa/Ouagadougou")
-    assert detail["usage"] == {
-        "max_sites": {"used": 1, "limit": 1},
-        "max_users": {"used": 2, "limit": 5},
-    }
-    subscription = detail["subscription"]
+    subscription = detail["subscriptions"][0]
+    assert subscription["site"]["id"] == str(tenant.site_id)
+    assert subscription["usage"] == {"max_users": {"used": 2, "limit": 5}}
+    assert subscription["requested_activations"] == 1
     assert (subscription["plan_code"], subscription["status"]) == ("STANDARD", "active")
     assert subscription["billing_period"] == "monthly"
     assert (subscription["price_at_subscription"], subscription["currency_at_subscription"]) == (
@@ -191,8 +192,8 @@ def test_tenant_detail_counters_limits_and_subscription(
         "XOF",
     )
     assert subscription["grace_days"] == 7
-    actions = detail["actions"]
-    assert actions["can_suspend"] and not actions["can_reactivate"]
+    assert detail["actions"] == {"can_suspend": True, "can_reactivate": False}
+    actions = subscription["actions"]
     assert actions["can_extend"] and not actions["can_activate"]
     assert [p["code"] for p in actions["available_plans"]] == ["ENTREPRISE"]
     assert not {"email", "phone", "address", "tax_id", "trade_register"} & set(detail)
@@ -220,7 +221,7 @@ def test_suspension_and_reactivation_with_double_audit(
     body = suspended.json()
     assert body["status"] == "suspended"
     # Statut du tenant ≠ statut de l'abonnement.
-    assert body["subscription"]["status"] == "active"
+    assert body["subscriptions"][0]["status"] == "active"
     assert body["actions"]["can_reactivate"] and not body["actions"]["can_suspend"]
 
     blocked = owner.get("/sites")
@@ -275,24 +276,31 @@ def test_manual_activation_is_transitional_idempotent_and_audited(
     assert restricted.json()["code"] == "subscription_restricted"
 
     detail = _get(admin, f"/tenants/{tenant.tenant_id}").json()
-    assert detail["subscription"]["effective_status"] == "pending_activation"
-    assert detail["actions"]["can_activate"] and not detail["actions"]["can_extend"]
-    start = date.fromisoformat(detail["actions"]["activation_start"])
-    end = date.fromisoformat(detail["actions"]["activation_end"])
+    assert detail["subscriptions"][0]["effective_status"] == "pending_activation"
+    actions = detail["subscriptions"][0]["actions"]
+    assert actions["can_activate"] and not actions["can_extend"]
+    start = date.fromisoformat(actions["activation_start"])
+    end = date.fromisoformat(actions["activation_end"])
     assert end > start
 
     activated = _post(
-        admin, f"/tenants/{tenant.tenant_id}/subscription/activate", {"reason": REASON}
+        admin,
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/activate",
+        {"reason": REASON},
     )
     assert activated.status_code == 200, activated.text
-    subscription = activated.json()["subscription"]
+    subscription = activated.json()["subscriptions"][0]
     assert subscription["status"] == subscription["effective_status"] == "active"
     # Africa/Ouagadougou = UTC : minuit local.
     assert subscription["current_period_end"].startswith(end.isoformat())
     assert subscription["price_at_subscription"] == "10000.00"  # prix figé inchangé
     assert owner.post("/catalog/categories", json={"name": "Boissons"}).status_code == 201
 
-    replay = _post(admin, f"/tenants/{tenant.tenant_id}/subscription/activate", {"reason": REASON})
+    replay = _post(
+        admin,
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/activate",
+        {"reason": REASON},
+    )
     assert replay.status_code == 409
     assert replay.json()["code"] == "subscription_not_activable"
     entries = _platform_audit(owner_db, "subscription.manually_activated", tenant.tenant_id)
@@ -327,7 +335,7 @@ def test_activation_dates_are_validated(
     today = utcnow().date()
     response = _post(
         admin,
-        f"/tenants/{tenant.tenant_id}/subscription/activate",
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/activate",
         {
             "reason": REASON,
             "period_start": (today + timedelta(days=offset_start)).isoformat(),
@@ -356,6 +364,7 @@ def test_concurrent_activations_produce_a_single_activation(
             try:
                 service.activate(
                     tenant.tenant_id,
+                    tenant.subscription_id,
                     period_start=None,
                     period_end_on=None,
                     reason=REASON,
@@ -395,8 +404,8 @@ def test_expiration_and_extension(
         t=tenant.tenant_id,
     )
     detail = _get(admin, f"/tenants/{tenant.tenant_id}").json()
-    assert detail["subscription"]["status"] == "active"
-    assert detail["subscription"]["effective_status"] == "expired"
+    assert detail["subscriptions"][0]["status"] == "active"
+    assert detail["subscriptions"][0]["effective_status"] == "expired"
     expired = _get(admin, "/tenants", params={"subscription_status": "expired"}).json()
     assert [t["id"] for t in expired["items"]] == [str(tenant.tenant_id)]
     assert owner.get("/sites").status_code == 200  # consultation autorisée
@@ -409,10 +418,12 @@ def test_expiration_and_extension(
         "WHERE tenant_id = :t",
         t=tenant.tenant_id,
     )
-    listed = _get(admin, "/tenants").json()["items"][0]["effective_status"]
+    listed = _get(admin, "/tenants").json()["items"][0]["effective_statuses"][0]
     assert (
         listed
-        == _get(admin, f"/tenants/{tenant.tenant_id}").json()["subscription"]["effective_status"]
+        == _get(admin, f"/tenants/{tenant.tenant_id}").json()["subscriptions"][0][
+            "effective_status"
+        ]
         == "past_due"
     )
     _sql(
@@ -425,11 +436,11 @@ def test_expiration_and_extension(
     new_end = (utcnow() + timedelta(days=60)).date()
     extended = _post(
         admin,
-        f"/tenants/{tenant.tenant_id}/subscription/extend",
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/extend",
         {"period_end": new_end.isoformat(), "reason": REASON},
     )
     assert extended.status_code == 200, extended.text
-    subscription = extended.json()["subscription"]
+    subscription = extended.json()["subscriptions"][0]
     assert subscription["effective_status"] == "active"
     assert subscription["current_period_end"].startswith(new_end.isoformat())
     # Période échue : elle repart du jour même.
@@ -438,7 +449,7 @@ def test_expiration_and_extension(
 
     shorter = _post(
         admin,
-        f"/tenants/{tenant.tenant_id}/subscription/extend",
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/extend",
         {"period_end": (new_end - timedelta(days=1)).isoformat(), "reason": REASON},
     )
     assert shorter.status_code == 422
@@ -450,7 +461,7 @@ def test_expiration_and_extension(
     _pending(owner_db, tenant.tenant_id)
     refused = _post(
         admin,
-        f"/tenants/{tenant.tenant_id}/subscription/extend",
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/extend",
         {"period_end": new_end.isoformat(), "reason": REASON},
     )
     assert refused.status_code == 409
@@ -470,14 +481,14 @@ def test_plan_change_freezes_the_new_price_and_keeps_old_snapshots(
 
     changed = _post(
         admin,
-        f"/tenants/{tenant.tenant_id}/subscription/change-plan",
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/change-plan",
         {"plan_code": "ENTREPRISE", "reason": REASON},
     )
     assert changed.status_code == 200, changed.text
-    subscription = changed.json()["subscription"]
+    subscription = changed.json()["subscriptions"][0]
     assert subscription["plan_code"] == "ENTREPRISE"
     assert subscription["price_at_subscription"] == "25000.00"
-    assert changed.json()["usage"]["max_sites"]["limit"] is None
+    assert subscription["usage"]["max_users"]["limit"] is None
     assert "stock.transfers" in owner.get("/me/capabilities").json()["features"]
     # Autre abonnement : prix figé inchangé.
     assert _subscription(owner_db, other.tenant_id).price_at_subscription == Decimal("10000.00")
@@ -497,12 +508,16 @@ def test_plan_change_freezes_the_new_price_and_keeps_old_snapshots(
         ({"plan_code": "ENTREPRISE", "reason": REASON}, "plan_unchanged"),
         ({"plan_code": "INCONNU", "reason": REASON}, "unknown_plan"),
     ):
-        refused = _post(admin, f"/tenants/{tenant.tenant_id}/subscription/change-plan", body)
+        refused = _post(
+            admin,
+            f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/change-plan",
+            body,
+        )
         assert refused.status_code == 422
         assert refused.json()["code"] == code
     extra = _post(
         admin,
-        f"/tenants/{tenant.tenant_id}/subscription/change-plan",
+        f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/change-plan",
         {"plan_code": "STANDARD", "reason": REASON, "price_at_subscription": "1"},
     )
     assert extra.status_code == 422  # aucun champ financier accepté du client
@@ -583,9 +598,9 @@ def test_tenant_routes_are_reserved_to_platform_admins(
         ("get", f"/tenants/{tenant.tenant_id}"),
         ("post", f"/tenants/{tenant.tenant_id}/suspend"),
         ("post", f"/tenants/{tenant.tenant_id}/reactivate"),
-        ("post", f"/tenants/{tenant.tenant_id}/subscription/activate"),
-        ("post", f"/tenants/{tenant.tenant_id}/subscription/extend"),
-        ("post", f"/tenants/{tenant.tenant_id}/subscription/change-plan"),
+        ("post", f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/activate"),
+        ("post", f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/extend"),
+        ("post", f"/tenants/{tenant.tenant_id}/subscriptions/{tenant.subscription_id}/change-plan"),
     ]
     anonymous = TestClient(console.app)
     token = login(client, "owner@alpha.example.com", PASSWORD).json()["access_token"]

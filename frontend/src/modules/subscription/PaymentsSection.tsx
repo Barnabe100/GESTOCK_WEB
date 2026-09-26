@@ -6,6 +6,7 @@ import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -30,11 +31,17 @@ import {
   SUBSCRIPTION_PAYMENT_METHODS,
   useDeclareSubscriptionPayment,
   useSubscriptionPayments,
+  type SubscriptionDetails,
   type SubscriptionPayment,
   type SubscriptionPaymentMethod,
 } from './api';
 
 const STATUSES: SubscriptionPaymentStatus[] = ['PENDING', 'CONFIRMED', 'REJECTED'];
+
+/** Site d'un abonnement (ou « en attente du premier site ») et son offre. */
+function subscriptionLabel(t: TFunction, s: SubscriptionDetails): string {
+  return `${s.site?.name ?? t('subscriptionPage.unattached')} · ${s.plan_name}`;
+}
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Jour déclaré (sans heure) : affiché tel quel, sans conversion de fuseau. */
@@ -59,10 +66,10 @@ const schema = z
 type FormValues = z.infer<typeof schema>;
 
 function DeclarePaymentDialog({
-  subscriptionId,
+  subscriptions,
   onClose,
 }: {
-  subscriptionId: string;
+  subscriptions: SubscriptionDetails[];
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -72,6 +79,8 @@ function DeclarePaymentDialog({
   // Une clé par saisie : double clic ou nouvel envoi après une coupure → aucun doublon.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<unknown>(null);
+  // Abonnement payé : celui d'un site (1 site = 1 abonnement, ADR-0033).
+  const [subscriptionId, setSubscriptionId] = useState(subscriptions[0]?.id ?? '');
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -131,6 +140,23 @@ function DeclarePaymentDialog({
       >
         <Message severity="info" text={t('subscriptionPayments.dialogInfo')} />
         {error !== null && <Message severity="error" text={translateError(t, error)} />}
+        {subscriptions.length > 1 && (
+          <FormField
+            id="subscription-payment-subscription"
+            label={t('subscriptionPayments.subscription')}
+            required
+          >
+            <Dropdown
+              inputId="subscription-payment-subscription"
+              value={subscriptionId}
+              onChange={(e) => setSubscriptionId(e.value as string)}
+              options={subscriptions.map((s) => ({
+                value: s.id,
+                label: subscriptionLabel(t, s),
+              }))}
+            />
+          </FormField>
+        )}
         <FormField
           id="subscription-payment-amount"
           label={t('subscriptionPayments.amount')}
@@ -229,7 +255,11 @@ function DeclarePaymentDialog({
  * Paiements de l'abonnement à TechNova : historique (statut, motif de rejet) et déclaration.
  * La confirmation appartient à TechNova seule ; aucun statut n'est calculé ici.
  */
-export function SubscriptionPaymentsSection({ subscriptionId }: { subscriptionId: string }) {
+export function SubscriptionPaymentsSection({
+  subscriptions,
+}: {
+  subscriptions: SubscriptionDetails[];
+}) {
   const { t } = useTranslation();
   const { can, capabilities } = useCapabilities();
   const { locale, timezone } = capabilities.tenant;
@@ -238,6 +268,7 @@ export function SubscriptionPaymentsSection({ subscriptionId }: { subscriptionId
   const [declaring, setDeclaring] = useState(false);
   const payments = useSubscriptionPayments(toQueryString(table, { status }));
   const canDeclare = can('subscription.payment.declare');
+  const bySubscription = new Map(subscriptions.map((s) => [s.id, s]));
 
   return (
     <section className="sm-block" aria-labelledby="subscription-payments-title">
@@ -295,6 +326,13 @@ export function SubscriptionPaymentsSection({ subscriptionId }: { subscriptionId
             body={(p: SubscriptionPayment) => formatDateTime(p.created_at, locale, timezone)}
           />
           <Column
+            header={t('subscriptionPayments.site')}
+            body={(p: SubscriptionPayment) => {
+              const subscription = bySubscription.get(p.subscription_id);
+              return subscription ? subscriptionLabel(t, subscription) : '—';
+            }}
+          />
+          <Column
             field="amount"
             sortable
             header={t('subscriptionPayments.amount')}
@@ -343,7 +381,7 @@ export function SubscriptionPaymentsSection({ subscriptionId }: { subscriptionId
         </ServerTable>
       </Card>
       {declaring && (
-        <DeclarePaymentDialog subscriptionId={subscriptionId} onClose={() => setDeclaring(false)} />
+        <DeclarePaymentDialog subscriptions={subscriptions} onClose={() => setDeclaring(false)} />
       )}
     </section>
   );

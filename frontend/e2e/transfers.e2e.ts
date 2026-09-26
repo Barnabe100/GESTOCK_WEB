@@ -1,9 +1,10 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  adminCli,
   apiToken,
   bearer,
+  changePlanOfSites,
+  createActiveSite,
   DOWNGRADE_OWNER,
   loginUi,
   OWNER,
@@ -47,7 +48,7 @@ async function setup(request: APIRequestContext, account = OWNER): Promise<Setup
   const source = sites.find((s) => s.code !== DESTINATION.code) as Site;
   const destination =
     sites.find((s) => s.code === DESTINATION.code) ??
-    ((await post('/sites', { ...DESTINATION, kind: 'warehouse' })) as Site);
+    (await createActiveSite<Site>(request, token, { ...DESTINATION, kind: 'warehouse' }));
   const suffix = Date.now().toString().slice(-7);
   const reference = `E2E-T${suffix}`;
   const category = await post('/catalog/categories', { name: `Transferts E2E ${suffix}` });
@@ -227,7 +228,8 @@ test.describe('Transferts inter-sites', () => {
       expect(response.status(), await response.text()).toBe(201);
       return (await response.json()) as { id: string; number: string };
     };
-    adminCli('change-plan', '--tenant-id', tenant, '--plan', 'ENTREPRISE');
+    const both = [s.sourceId, s.destinationId];
+    changePlanOfSites(tenant, both, 'ENTREPRISE');
     const validated = await create('30');
     const validation = await request.post(`/api/v1/stock/transfers/${validated.id}/validate`, {
       headers,
@@ -235,9 +237,7 @@ test.describe('Transferts inter-sites', () => {
     expect(validation.status()).toBe(200);
     const draft = await create('5');
     try {
-      expect(adminCli('change-plan', '--tenant-id', tenant, '--plan', 'STANDARD')).toContain(
-        'ENTREPRISE → STANDARD',
-      );
+      expect(changePlanOfSites(tenant, both, 'STANDARD')).toContain('ENTREPRISE → STANDARD');
 
       // Historique consultable dans l'interface, en lecture seule.
       await loginUi(page, DOWNGRADE_OWNER.email, DOWNGRADE_OWNER.password, DOWNGRADE_OWNER.tenant);
@@ -281,7 +281,7 @@ test.describe('Transferts inter-sites', () => {
       const after = await levels(request, s);
       expect([after.source?.quantity, after.destination?.quantity]).toEqual(['70.000', '50.000']);
     } finally {
-      adminCli('change-plan', '--tenant-id', tenant, '--plan', 'ENTREPRISE');
+      changePlanOfSites(tenant, both, 'ENTREPRISE');
     }
   });
 

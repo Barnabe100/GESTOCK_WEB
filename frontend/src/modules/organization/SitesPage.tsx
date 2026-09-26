@@ -7,7 +7,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputSwitch } from 'primereact/inputswitch';
 import { InputText } from 'primereact/inputtext';
 import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
@@ -19,15 +19,21 @@ import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
-import { ActiveBadge } from '@/shared/ui/StatusBadge';
+import { ActiveBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
+
+import { useSubscriptions } from '@/modules/subscription/api';
+import { usePublicPlans } from '@/pages/signup/api';
 
 import { useSaveSite, useSites, type Site } from './api';
 
 const KINDS: SiteKind[] = ['store', 'warehouse', 'restaurant', 'other'];
 
 const schema = z.object({
+  plan_code: z.string(),
+  billing_period: z.enum(['monthly', 'annual']),
+  requested_activations: z.number().int().min(1).max(1000),
   name: z.string().trim().min(1).max(150),
   code: z
     .string()
@@ -40,13 +46,34 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-function SiteDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
+/**
+ * Création ou modification d'un site. Création : 1 site = 1 abonnement (ADR-0033) — offre
+ * publiée, période et nombre de postes demandés, sauf pour le premier site d'une inscription
+ * (abonnement déjà choisi). Le nouvel abonnement attend le paiement et la licence ; le serveur
+ * revérifie tout.
+ */
+function SiteDialog({
+  site,
+  choosePlan,
+  onClose,
+}: {
+  site: Site | null;
+  choosePlan: boolean;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const save = useSaveSite();
+  const plans = usePublicPlans();
+  const offers = (plans.data?.plans ?? []).filter((p) => p.self_service);
+  const creating = site === null;
+  const withPlan = creating && choosePlan;
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      plan_code: '',
+      billing_period: 'monthly',
+      requested_activations: 1,
       name: site?.name ?? '',
       code: site?.code ?? '',
       kind: site?.kind ?? 'store',
@@ -56,25 +83,36 @@ function SiteDialog({ site, onClose }: { site: Site | null; onClose: () => void 
     },
   });
   const errors = form.formState.errors;
+  const [planError, setPlanError] = useState(false);
+  const planCode = useWatch({ control: form.control, name: 'plan_code' });
+  const chosenPlan = offers.find((p) => p.code === planCode);
 
-  const onSubmit = form.handleSubmit(({ is_active, ...values }) => {
-    const input = {
-      ...values,
-      address: values.address || null,
-      phone: values.phone || null,
-      ...(site ? { is_active } : {}),
-    };
-    save.mutate(
-      { id: site?.id, input },
-      {
-        onSuccess: () => {
-          toast.success(t(site ? 'sites.updated' : 'sites.created'));
-          onClose();
+  const onSubmit = form.handleSubmit(
+    ({ is_active, plan_code, billing_period, requested_activations, ...values }) => {
+      if (withPlan && !plan_code) {
+        setPlanError(true);
+        return;
+      }
+      const input = {
+        ...values,
+        address: values.address || null,
+        phone: values.phone || null,
+        ...(site ? { is_active } : {}),
+        ...(creating ? { requested_activations } : {}),
+        ...(withPlan ? { plan_code, billing_period } : {}),
+      };
+      save.mutate(
+        { id: site?.id, input },
+        {
+          onSuccess: () => {
+            toast.success(t(site ? 'sites.updated' : 'sites.created'));
+            onClose();
+          },
+          onError: (error) => toast.error(translateError(t, error)),
         },
-        onError: (error) => toast.error(translateError(t, error)),
-      },
-    );
-  });
+      );
+    },
+  );
 
   return (
     <Dialog
@@ -120,6 +158,77 @@ function SiteDialog({ site, onClose }: { site: Site | null; onClose: () => void 
         <FormField id="site-phone" label={t('sites.phone')}>
           <InputText id="site-phone" {...form.register('phone')} />
         </FormField>
+        {creating && (
+          <fieldset className="sm-fieldset" data-testid="site-subscription">
+            <legend>{t('sites.subscription')}</legend>
+            <p className="sm-help">
+              {t(withPlan ? 'sites.subscriptionHelp' : 'sites.subscriptionPreselected')}
+            </p>
+            {withPlan && (
+              <>
+                <FormField
+                  id="site-plan"
+                  label={t('sites.plan')}
+                  required
+                  error={planError ? t('validation.required') : undefined}
+                >
+                  <Controller
+                    control={form.control}
+                    name="plan_code"
+                    render={({ field }) => (
+                      <Dropdown
+                        inputId="site-plan"
+                        value={field.value}
+                        placeholder={t('sites.choosePlan')}
+                        emptyMessage={t('sites.noPlan')}
+                        onChange={(e) => {
+                          field.onChange(e.value);
+                          setPlanError(false);
+                          const periods = offers.find((p) => p.code === e.value)?.periods ?? [];
+                          if (periods[0]) {
+                            form.setValue('billing_period', periods[0].billing_period);
+                          }
+                        }}
+                        options={offers.map((p) => ({ value: p.code, label: p.name }))}
+                      />
+                    )}
+                  />
+                </FormField>
+                <FormField id="site-period" label={t('sites.billingPeriod')} required>
+                  <Controller
+                    control={form.control}
+                    name="billing_period"
+                    render={({ field }) => (
+                      <Dropdown
+                        inputId="site-period"
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.value)}
+                        options={(chosenPlan?.periods ?? []).map((p) => ({
+                          value: p.billing_period,
+                          label: t(`billingPeriod.${p.billing_period}`),
+                        }))}
+                      />
+                    )}
+                  />
+                </FormField>
+              </>
+            )}
+            <FormField
+              id="site-activations"
+              label={t('sites.requestedActivations')}
+              help={t('sites.requestedActivationsHelp')}
+              required
+              error={errors.requested_activations && t('validation.invalid')}
+            >
+              <InputText
+                id="site-activations"
+                type="number"
+                min={1}
+                {...form.register('requested_activations', { valueAsNumber: true })}
+              />
+            </FormField>
+          </fieldset>
+        )}
         {site && (
           <FormField id="site-active" label={t('common.active')}>
             <Controller
@@ -146,8 +255,12 @@ function SiteDialog({ site, onClose }: { site: Site | null; onClose: () => void 
 
 export default function SitesPage() {
   const { t } = useTranslation();
-  const { can } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const sites = useSites();
+  // Abonnement pris à l'inscription, pas encore rattaché : le premier site le reçoit.
+  const subscriptions = useSubscriptions(can('subscription.subscription.view'));
+  const preselected = (subscriptions.data ?? []).some((s) => s.site === null);
+  const siteStatus = new Map(capabilities.sites.map((s) => [s.id, s.subscription_status]));
   const canManage = can('organization.site.manage');
   // Action « Créer mon premier site » de l'onboarding : formulaire ouvert d'emblée.
   const [createRequested, clearCreate] = useCreateRequest(canManage);
@@ -185,6 +298,13 @@ export default function SitesPage() {
             header={t('sites.status')}
             body={(s: Site) => <ActiveBadge active={s.is_active} />}
           />
+          <Column
+            header={t('sites.subscription')}
+            body={(s: Site) => {
+              const status = siteStatus.get(s.id);
+              return status ? <SubscriptionStatusBadge status={status} /> : '—';
+            }}
+          />
           {canManage && (
             <Column
               header={t('common.actions')}
@@ -207,6 +327,7 @@ export default function SitesPage() {
       {editing !== undefined && (
         <SiteDialog
           site={editing}
+          choosePlan={!preselected}
           onClose={() => {
             setEditing(undefined);
             clearCreate();

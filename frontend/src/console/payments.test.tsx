@@ -24,6 +24,8 @@ const PENDING: ConsolePayment = {
   tenant_name: 'ABC Commerce',
   subscription_id: 's-1',
   plan_code: 'STANDARD',
+  site_id: 'site-1',
+  site_name: 'Boutique',
   amount: '10000.00',
   currency: 'XOF',
   period_start: '2026-10-01',

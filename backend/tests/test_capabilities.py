@@ -3,7 +3,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.conftest import Api
+from tests.conftest import Api, add_site
 
 
 def _caps(api: Api) -> dict[str, Any]:
@@ -85,7 +85,7 @@ def test_owner_gets_all_permissions_of_active_modules(provision: Any, api_for: A
 def test_role_based_permissions_and_site_scoped_roles(provision: Any, api_for: Any) -> None:
     t = provision("alpha", plan="ENTREPRISE")
     owner = api_for("owner@alpha.example.com")
-    second_site = owner.post("/sites", json={"name": "Dépôt", "code": "DEPOT", "kind": "warehouse"})
+    second_site = add_site(owner, "Dépôt", "DEPOT", "warehouse")
     roles = {r["template_code"]: r["id"] for r in owner.get("/roles").json()}
     created = owner.post(
         "/members",
@@ -128,7 +128,7 @@ def test_role_based_permissions_and_site_scoped_roles(provision: Any, api_for: A
 def test_site_not_assigned_is_refused(provision: Any, api_for: Any) -> None:
     t = provision("alpha")
     owner = api_for("owner@alpha.example.com")
-    other = owner.post("/sites", json={"name": "Bobo", "code": "BOBO"}).json()
+    other = add_site(owner, "Bobo", "BOBO").json()
     roles = {r["template_code"]: r["id"] for r in owner.get("/roles").json()}
     owner.post(
         "/members",

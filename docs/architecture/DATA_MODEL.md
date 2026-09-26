@@ -88,7 +88,7 @@ modifie ni l'abonnement ni l'entreprise.
 | `tenants` | `name` (raison sociale), `slug` (unique), `status`, `business_profile_code`, `country_code` → `geo_countries` (obligatoire pour tout nouveau tenant), `currency` (figée), `locale`, `timezone` ; entreprise : `trade_name`, `email`, `phone`, `address`, `city`, `region`, `website`, `tax_id` (IFU), `trade_register` (RCCM), `description`, `logo_url` (https) — **source unique de l'identité de l'entreprise** pour les documents (projection `DocumentIdentity`, ADR-0027 ; aucune copie) | RLS sur `id` |
 | `sites` | `tenant_id`, `name`, `code`, `kind` (store/warehouse/restaurant/other), `address`, `phone`, `is_active` | `UNIQUE(tenant_id, code)`, `UNIQUE(tenant_id, id)` |
 | `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
-| `subscriptions` | `tenant_id` (unique), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at` | |
+| `subscriptions` | `tenant_id`, `site_id` (1 site = 1 abonnement, ADR-0033 : clé étrangère composite `(tenant_id, site_id)`, unique ; nul seulement pour l'abonnement d'inscription en attente du premier site — au plus un par entreprise), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at`, prix figé, `requested_activations` (postes demandés, ≥ 1, défaut 1) | |
 | `tenant_memberships` | `tenant_id`, `user_id`, `status` (`active` / `suspended` = « Inactif »), `is_owner`, `all_sites` — **appartenance au tenant**, seule ressource administrée par le tenant ; `users` = identité globale, jamais modifiée par un administrateur de tenant (ADR-0029) | `UNIQUE(tenant_id, user_id)` ; jamais supprimée (désactivation) |
 | `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system`, `is_active` | nom des rôles personnalisés unique par tenant, casse ignorée (index partiel `lower(name)`) ; un exemplaire par modèle (`(tenant_id, template_code)`) ; `CHECK is_system = (template_code IS NOT NULL)` ; rôle de base : nom, description et permissions résolus depuis son modèle (ADR-0013, ADR-0015) ; jamais supprimé (désactivé) |
 | `role_permissions` | `tenant_id`, `role_id`, `permission_code` | FK `(tenant_id, role_id)` |
@@ -233,7 +233,7 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    (migration 0018, politiques RLS `TO` ce rôle) : `tenants` — lecture de `id`, `name`,
    `trade_name`, `slug`, `status`, `business_profile_code`, `country_code`, `currency`,
    `locale`, `timezone`, `created_at`, `updated_at`, mise à jour de `status` seul ;
-   `subscriptions` — lecture, mise à jour de `plan_code`, `status`, `current_period_start`,
+   `subscriptions` — lecture (depuis 0020 : un abonnement par site), mise à jour de `plan_code`, `status`, `current_period_start`,
    `current_period_end`, `price_at_subscription`, `currency_at_subscription` ; `sites` —
    lecture de `tenant_id`, `is_active` ; `tenant_memberships` — lecture de `tenant_id`,
    `status` (compteurs) ; `audit_logs` — **insertion seule** d'entrées miroir (politique
@@ -241,7 +241,9 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    renseigné, `user_id` nul). **Aucun droit** de suppression, aucune lecture d'`audit_logs`,
    des coordonnées des entreprises, des utilisateurs, ni d'aucune table métier. Depuis 3.3-A
    (migration 0019) : `subscription_payments` — lecture, mise à jour des seules colonnes de
-   décision d'une ligne `PENDING` (ADR-0032).
+   décision d'une ligne `PENDING` (ADR-0032). Depuis 3.3-B1 (migration 0020) : `sites` — lecture de
+   `id`, `name`, `code` ; `tenant_memberships` — lecture de `id`, `is_owner`, `all_sites` ;
+   `membership_sites` — lecture (compteurs d'utilisateurs par site, ADR-0033).
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

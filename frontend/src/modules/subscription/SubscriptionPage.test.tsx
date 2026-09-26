@@ -15,6 +15,8 @@ const money = (v: string) => formatMoney(v, 'XOF', 'fr').replace(/\s/g, ' ');
 
 const SUBSCRIPTION: SubscriptionDetails = {
   id: 'sub-1',
+  site: { id: 'site-1', name: 'Boutique', code: 'BTQ' },
+  requested_activations: 2,
   plan_code: 'STANDARD',
   plan_name: 'Standard',
   billing_period: 'monthly',
@@ -73,7 +75,7 @@ function api(onPost?: (body: Record<string, unknown>) => Response | Promise<Resp
     if (u.includes('/subscription/payments?')) {
       return jsonResponse({ items: PAYMENTS, total: 3, limit: 25, offset: 0 });
     }
-    if (u.endsWith('/subscription')) return jsonResponse(SUBSCRIPTION);
+    if (u.endsWith('/subscriptions')) return jsonResponse([SUBSCRIPTION]);
     return jsonResponse({ code: 'not_found' }, 404);
   });
 }

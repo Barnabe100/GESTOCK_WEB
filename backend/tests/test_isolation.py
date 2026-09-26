@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.security import AccessClaims, create_access_token
-from tests.conftest import Api
+from tests.conftest import Api, add_site
 
 
 @dataclass
@@ -31,7 +31,7 @@ def world(provision: Any, api_for: Any) -> World:
     api_a = api_for("owner@alpha.example.com")
     api_b = api_for("owner@beta.example.com")
     role = api_b.post("/roles", json={"name": "Secret B", "permissions": ["audit.log.view"]})
-    site = api_b.post("/sites", json={"name": "Dépôt B", "code": "DEPOTB"})
+    site = add_site(api_b, "Dépôt B", "DEPOTB")
     member = api_b.post(
         "/members",
         json={

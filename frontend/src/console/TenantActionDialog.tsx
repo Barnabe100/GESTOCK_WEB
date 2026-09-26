@@ -14,7 +14,7 @@ import { useToast } from '@/shared/ui/toast';
 
 import { useTenantAction } from './queries';
 import { tenantDate } from './tenantDisplay';
-import type { TenantAction, TenantDetail } from './types';
+import type { TenantAction, TenantDetail, TenantSubscription } from './types';
 
 export type ActionKind = TenantAction['kind'];
 
@@ -26,19 +26,23 @@ export type ActionKind = TenantAction['kind'];
 export function TenantActionDialog({
   tenant,
   kind,
+  subscription,
   onClose,
 }: {
   tenant: TenantDetail;
   kind: ActionKind;
+  /** Abonnement visé (activation, prolongation, changement de plan) : celui d'un site. */
+  subscription?: TenantSubscription;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const action = useTenantAction(tenant.id);
   const [reason, setReason] = useState('');
-  const [start, setStart] = useState(tenant.actions.activation_start);
+  const proposals = subscription?.actions;
+  const [start, setStart] = useState(proposals?.activation_start ?? '');
   const [end, setEnd] = useState(
-    kind === 'extend' ? tenant.actions.extension_end : tenant.actions.activation_end,
+    (kind === 'extend' ? proposals?.extension_end : proposals?.activation_end) ?? '',
   );
   const [plan, setPlan] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -46,14 +50,18 @@ export function TenantActionDialog({
   const [error, setError] = useState<unknown>(null);
   const danger = kind === 'suspend';
 
-  const summary: [string, string][] = [
-    [t('console:tenant.summaryTenant'), tenant.name],
-    [t('console:tenant.summaryPlan'), tenant.subscription.plan_name],
-  ];
-  if (kind === 'extend') {
+  const summary: [string, string][] = [[t('console:tenant.summaryTenant'), tenant.name]];
+  if (subscription) {
+    summary.push([
+      t('console:tenant.summarySite'),
+      subscription.site?.name ?? t('console:tenant.unattached'),
+    ]);
+    summary.push([t('console:tenant.summaryPlan'), subscription.plan_name]);
+  }
+  if (kind === 'extend' && subscription) {
     summary.push([
       t('console:tenant.summaryCurrentEnd'),
-      tenantDate(tenant.subscription.current_period_end, tenant.timezone),
+      tenantDate(subscription.current_period_end, tenant.timezone),
     ]);
   }
   const help: Partial<Record<ActionKind, string>> = {
@@ -68,11 +76,22 @@ export function TenantActionDialog({
     const trimmed = reason.trim();
     switch (kind) {
       case 'activate':
-        return { kind, reason: trimmed, period_start: start, period_end: end };
+        return {
+          kind,
+          subscription_id: subscription?.id ?? '',
+          reason: trimmed,
+          period_start: start,
+          period_end: end,
+        };
       case 'extend':
-        return { kind, reason: trimmed, period_end: end };
+        return { kind, subscription_id: subscription?.id ?? '', reason: trimmed, period_end: end };
       case 'change-plan':
-        return { kind, reason: trimmed, plan_code: plan ?? '' };
+        return {
+          kind,
+          subscription_id: subscription?.id ?? '',
+          reason: trimmed,
+          plan_code: plan ?? '',
+        };
       default:
         return { kind, reason: trimmed };
     }
@@ -147,7 +166,7 @@ export function TenantActionDialog({
             <Dropdown
               inputId="new-plan"
               value={plan}
-              options={tenant.actions.available_plans.map((p) => ({
+              options={(proposals?.available_plans ?? []).map((p) => ({
                 label: p.name,
                 value: p.code,
               }))}
