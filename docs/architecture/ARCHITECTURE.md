@@ -268,8 +268,10 @@ de `sectors.toml` + un profil UX. Aucune modification du Core ni de conditions d
   TechNova** (raison obligatoire, audit avant / après), jamais écrasés par `catalog sync` ;
   la structure reste en `plans.toml` ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md),
   [ADR-0031](../adr/0031-console-technova.md)).
-- L'abonnement a un statut (`trial`, `active`, `past_due`, `expired`, `suspended`,
-  `cancelled`) ; le statut effectif est calculé à la lecture.
+- L'abonnement a un statut (`pending_activation` — inscription sans essai, ADR-0025 —,
+  `trial`, `active`, `past_due`, `expired`, `suspended`, `cancelled`) ; le statut effectif
+  est calculé à la lecture. Il est distinct du statut du tenant (`active` / `suspended`,
+  suspension par TechNova, ADR-0031).
 - Une **politique centrale** (`subscription_policies.toml`) indique, par statut, les
   natures de permissions autorisées (`read`, `write`, `export`, `admin`, `billing`).
   Voir [ADR-0011](../adr/0011-politique-abonnement.md).
@@ -543,7 +545,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 | **0 — Fondations** ✅ | Structure du repo, squelettes, documentation, décisions | — |
 | **1 — Socle plateforme** ✅ | Base de données + Alembic, tenants, sites, utilisateurs, appartenances, auth, RBAC, registre de modules, capacités, profils/plans (données), abonnements, audit, provisioning CLI, shell frontend (login, layout, navigation dynamique), CI | V1 |
 | **2 — Catalogue, stock & clients** 🔄 | 2.1 ✅ catégories, fournisseurs, articles · 2.2 ✅ stock par site, entrées/sorties, mouvements, alertes ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md)) · RBAC consolidé ✅ (ADR-0015) · 2.3 ✅ clients ([`CLIENTS.md`](CLIENTS.md)) · 2.4 ✅ ventes simples au comptant ([`SALES.md`](SALES.md)) · 2.5 ✅ transferts inter-sites ([`CATALOGUE_STOCK.md`](CATALOGUE_STOCK.md) §8, ADR-0018) · 2.5-B ✅ Design System de l'interface ([`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)) · 2.6 ✅ inventaires ([`INVENTORY.md`](INVENTORY.md), ADR-0019) | V1 |
-| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 🔄 SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E ✅ rôles, permissions et délégation RBAC (ADR-0030) · 3.2-F ✅ console TechNova : socle, offres & tarifs ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md), ADR-0031) · 3.2-G ✅ tenants et abonnements dans la console (suspension, activation manuelle transitoire, prolongation, changement de plan, double audit) · 3.2-H clôture 3.2 : E2E SaaS, sécurité, documentation · 3.3-A paiements · 3.3-B licences | V1 |
+| **3 — Ventes & encaissement** | 2.7 ✅ paiements des ventes ([`PAYMENTS.md`](PAYMENTS.md), ADR-0020) · 2.8 ✅ créances / comptes clients ([`RECEIVABLES.md`](RECEIVABLES.md), ADR-0021) · 2.9 ✅ caisse ([`CASH_REGISTER.md`](CASH_REGISTER.md), ADR-0022) · 3.0 ✅ point de vente générique ([`POS.md`](POS.md), ADR-0023) · 3.1 ✅ profils d'activité et profils UX ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md), ADR-0024) · 3.2 ✅ SaaS : 3.2-A ✅ inscription publique (ADR-0025) · 3.2-B ✅ onboarding (ADR-0026) · 3.2-C ✅ entreprise et identité documentaire (ADR-0027, ADR-0028) · 3.2-D ✅ administration des utilisateurs (ADR-0029) · 3.2-E ✅ rôles, permissions et délégation RBAC (ADR-0030) · 3.2-F ✅ console TechNova : socle, offres & tarifs ([`TECHNOVA_CONSOLE.md`](TECHNOVA_CONSOLE.md), ADR-0031) · 3.2-G ✅ tenants et abonnements dans la console (suspension, activation manuelle transitoire, prolongation, changement de plan, double audit) · 3.2-H ✅ clôture 3.2 : revue et consolidation (RLS, droits SQL, migrations, documentation, E2E) · 3.3-A paiements · 3.3-B licences | V1 |
 | **4 — Pilotage** | Rapports, alertes, abonnements | V1 |
 | suivantes | V1.5 → V3 selon la roadmap produit | — |
 
@@ -551,17 +553,21 @@ Chaque phase démarre **après validation explicite**.
 
 ### Fonctionnalités futures identifiées (hors Phase 3.2, à ne pas oublier)
 
+Phase 3.2 clôturée (3.2-H) : ce qui suit n'est **pas** implémenté.
+
 Explicitement reportées par TechNova ; chacune fera l'objet d'une phase ou sous-phase dédiée,
 validée avant d'être commencée.
 
 | Domaine | Fonctionnalité | Origine |
 |---|---|---|
 | Identité et compte (« Mon profil ») | Espace de l'utilisateur sur son **identité globale** : changement du nom, changement de l'e-mail (avec vérification), changement du mot de passe hors première connexion | ADR-0029 (jamais depuis l'administration d'un tenant) |
-| Identité et compte | **Récupération de compte** (mot de passe oublié) par un mécanisme sécurisé, sans administrateur de tenant | ADR-0029 |
+| Identité et compte | **Récupération de compte** (mot de passe oublié) par un mécanisme sécurisé, sans administrateur de tenant (jeton temporaire à usage unique, expiration, aucune révélation de l'existence du compte, limitation, sessions révoquées) ; **non implémentée**. Comptes TechNova : aujourd'hui, seule la CLI (`platform-admin revoke` puis `create`) | ADR-0029, ADR-0031 |
 | Identité et compte | **Invitations par e-mail** (`PENDING` / `ACCEPTED` / `EXPIRED` / `CANCELLED`), en remplacement du mot de passe provisoire ; vérification de l'e-mail à l'inscription (supprime le risque résiduel d'énumération) | 3.2 (arbitrage 4), ADR-0025 |
-| Identité et compte | **SSO** et **MFA** | 3.2-D |
+| Identité et compte | **SSO** et **MFA** (y compris pour les administrateurs TechNova de la console, exposée en attendant sur un réseau restreint) | 3.2-D, ADR-0031 |
 | Tenant | **Transfert de propriété** du tenant (procédure spécifique, propriétaire protégé en attendant) | 3.2-D, ADR-0029 |
-| Abonnement | Chaîne **paiement → licence `.lic` → activation** (paiements `PENDING`/`CONFIRMED`/`REJECTED` confirmés par TechNova, licence signée par la clé privée TechNova et vérifiée par clé publique) | ADR-0025 |
+| Abonnement | Chaîne **paiement → licence `.lic` → activation** (paiements `PENDING`/`CONFIRMED`/`REJECTED` confirmés par TechNova, licence signée par la clé privée TechNova et vérifiée par clé publique) — **3.3-A** paiements, **3.3-B** licences ; remplacera l'activation manuelle transitoire de la console (3.2-G) | ADR-0025, ADR-0031 |
+| Plateforme | **Communications TechNova** : annonces ou message global (maintenance…) avec début, fin, publication, expiration, affichage côté tenant, sans lecture de données métier ; **non implémentées** | Étude console TechNova (3.2) |
+| Plateforme | Paramètres SaaS en base (inscription ouverte / fermée, contact commercial), aujourd'hui variables d'environnement ; accès du support aux données métier (consentement, audit) — **non implémentés** | Étude console TechNova (3.2), ADR-0031 |
 | Documents | **Moteur documentaire** (reçus, factures, PDF) consommant la projection `DocumentIdentity` ; identité figée à l'émission si nécessaire | ADR-0027 |
 | Documents | **Stockage de fichiers** (logo téléversé alimentant `logo_url`) | ADR-0027 |
 | Temps | Fuseau horaire **par site** (tenant réparti sur plusieurs fuseaux) | ADR-0028 |

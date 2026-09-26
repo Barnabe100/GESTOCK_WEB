@@ -10,7 +10,7 @@ Architecture : **Core commun + profils d'activité + modules spécialisés**.
 Référence complète : [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 et [`docs/adr/`](docs/adr/README.md).
 
-**Phase actuelle : 3 — ventes et encaissement.** Phase 3.2 en cours (SaaS) : 3.2-A livrée —
+**Phase actuelle : 3 — ventes et encaissement.** Phase 3.2 (SaaS) clôturée : 3.2-A livrée —
 référentiel des pays (`countries.toml` → `geo_countries`), informations d'entreprise, paramètres
 commerciaux des plans (TechNova, jamais écrasés par `catalog sync`), inscription publique
 (`POST /public/signup` : compte + entreprise sans site, propriétaire **et** administrateur,
@@ -47,8 +47,10 @@ console : métadonnées plateforme (colonnes limitées, compteurs ; jamais de do
 statut du tenant ≠ statut de l'abonnement, suspension / réactivation, **activation manuelle
 transitoire** (`pending_activation`/`trial` → `active`, **aucun paiement**), prolongation,
 changement de plan (prix figé au nouveau tarif, rien de rétroactif), **double audit** dans la
-même transaction (plateforme + entrée miroir du tenant). Suite : 3.2-H clôture, 3.3-A paiements,
-3.3-B licences — non commencées sans validation.
+même transaction (plateforme + entrée miroir du tenant) ; 3.2-H — **phase 3.2 clôturée** (revue
+RLS / droits SQL / migrations / documentation, E2E rejouée deux fois). Suite : 3.3-A paiements,
+3.3-B licences — non commencées sans validation. Non implémentés (feuille de route §13) :
+récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
 `<secteur>.<activité>`, profils UX : navigation, tableau de bord, terminologie, thème — **données**
