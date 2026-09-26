@@ -246,6 +246,8 @@ export interface LicenseSummary {
   valid_from: string;
   valid_until: string;
   max_activations: number;
+  activations_used: number;
+  activations_available: number;
   issued_at: string;
   revoked_at: string | null;
 }
@@ -270,6 +272,8 @@ export interface ConsoleLicense {
   valid_until: string;
   timezone: string;
   max_activations: number;
+  /** Postes actifs sur l'abonnement du site (3.3-B3). */
+  activations_used: number;
   modules: string[];
   features: string[];
   limits: Record<string, number | null>;
@@ -309,3 +313,24 @@ export interface LicenseProposal {
 export type LicenseAction =
   | { kind: 'revoke'; reason: string }
   | { kind: 'reissue'; reason: string; max_activations?: number };
+
+/** Poste d'un site (installation cliente) : jamais l'utilisateur de l'entreprise qui l'a activé. */
+export interface ConsoleActivation {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  site_id: string;
+  site_name: string;
+  subscription_id: string;
+  license_id: string;
+  license_number: string;
+  installation_id: string;
+  label: string;
+  client_version: string | null;
+  status: 'ACTIVE' | 'RELEASED';
+  activated_at: string;
+  last_seen_at: string;
+  released_at: string | null;
+  release_source: 'TENANT' | 'TECHNOVA' | null;
+  release_reason: string | null;
+}

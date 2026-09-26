@@ -72,8 +72,14 @@ images, la CI ni les tests (clés éphémères) ; `.lic` v1 (forme canonique, `k
 abonnement du site aligné ; la licence en vigueur fige modules / fonctionnalités / limites
 (`PlanTerms`) ; révocation **définitive** (site suspendu sans autre couverture), réémission =
 nouvelle licence ; table `licenses` immuable (déclencheur), l'entreprise ne fait que lire.
-B3 (postes), B4 (renouvellement, notifications) : suivent, arrêt après chaque sous-phase si non
-verte. Non implémentés (feuille de route §13) :
+B3 livrée — **postes** (ADR-0035) : `license_activations`, activation par l'installation
+cliente (`installation_id` aléatoire, jamais MAC / processeur / IP ; le Web n'active jamais de
+navigateur) sur le site sélectionné, sous la licence **en vigueur**, quota `max_activations`
+**par abonnement de site** sous verrou, idempotente, refus distincts journalisés
+(« Le nombre maximal de postes autorisés pour ce site est atteint. ») ; contrôle de présence
+(`check-in`, durée hors ligne tolérée) ; libération (entreprise ou TechNova) = une place,
+**rien d'autre** (licence et période inchangées). B4 (renouvellement, notifications) : suit,
+arrêt après chaque sous-phase si non verte. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

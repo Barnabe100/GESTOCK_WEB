@@ -82,8 +82,10 @@ la suite peut être rejouée sur la même base.
   la console (postes proposés puis ajustés, raison, confirmation), téléchargement du `.lic`
   signé, licence et postes autorisés visibles par l'entreprise (site actif), révocation
   (site suspendu), réémission (nouveau numéro, site de nouveau actif), journal de l'entreprise ;
-  sans paiement confirmé : aucune licence, aucune route de licence côté entreprise. **Exige le
-  Signing Service** (voir « Exécution »).
+  sans paiement confirmé : aucune licence, aucune route de licence côté entreprise ; postes
+  (installations simulées par l'API) : quota par site et message, idempotence, contrôle,
+  « postes autorisés · utilisés · disponibles », libération par l'entreprise puis par
+  TechNova. **Exige le Signing Service** (voir « Exécution »).
 - `console-payments.e2e.ts` (Phase 3.3-A) : entreprises (abonnement en attente d'activation)
   et administrateurs TechNova créés à chaque exécution ; déclaration d'un paiement par
   l'entreprise (« En attente »), confirmation puis rejet motivé dans la console, statuts et

@@ -12,7 +12,27 @@ import { ToastContext } from '@/shared/ui/toast';
 
 import { ConsoleAuthProvider } from './ConsoleAuth';
 import { consoleRoutes } from './router';
-import type { ConsoleLicense, ConsolePayment, LicenseProposal } from './types';
+import type { ConsoleActivation, ConsoleLicense, ConsolePayment, LicenseProposal } from './types';
+
+const POSTE: ConsoleActivation = {
+  id: 'act-1',
+  tenant_id: 't-1',
+  tenant_name: 'ABC Commerce',
+  site_id: 'site-1',
+  site_name: 'Boutique',
+  subscription_id: 's-1',
+  license_id: 'l-1',
+  license_number: 'LIC-2026-00001',
+  installation_id: '8f6b2c1e-0000-4000-8000-000000000001',
+  label: 'Caisse 1',
+  client_version: '1.0.0',
+  status: 'ACTIVE',
+  activated_at: '2026-09-26T11:00:00Z',
+  last_seen_at: '2026-09-26T12:00:00Z',
+  released_at: null,
+  release_source: null,
+  release_reason: null,
+};
 
 const ADMIN = { id: 'a1', email: 'admin@technova.example', full_name: 'Awa Admin' };
 
@@ -77,6 +97,7 @@ const LICENSE: ConsoleLicense = {
   valid_until: '2027-09-30',
   timezone: 'Africa/Ouagadougou',
   max_activations: 3,
+  activations_used: 1,
   modules: ['catalog', 'sales'],
   features: [],
   limits: { max_users: 5 },
@@ -142,6 +163,9 @@ function consoleApi({
     if (u.endsWith('/licenses/l-2')) return jsonResponse(REVOKED);
     if (/\/licenses\/l-new$/.test(u)) {
       return jsonResponse({ ...LICENSE, id: 'l-new', license_number: 'LIC-2026-00009' });
+    }
+    if (u.includes('/activations?subscription_id=s-1')) {
+      return jsonResponse({ items: [POSTE], total: 1, limit: 100, offset: 0 });
     }
     if (u.includes('/licenses?')) {
       return jsonResponse({ items: [LICENSE, REVOKED], total: 2, limit: 25, offset: 0 });
@@ -281,5 +305,23 @@ describe('Console TechNova : licences', () => {
     expect(screen.queryByRole('button', { name: /Télécharger/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Révoquer' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Réémettre' })).toBeTruthy();
+  });
+
+  it('postes de la licence : utilisés / autorisés, libération par TechNova avec raison', async () => {
+    consoleApi({ onPost: () => jsonResponse({ ...POSTE, status: 'RELEASED' }) });
+    renderConsole('/tech-admin/licenses/l-1');
+    const postes = await screen.findByTestId('license-postes');
+    expect(postes.textContent).toContain('Postes (1 / 3)');
+    expect(await within(postes).findByText('Caisse 1')).toBeTruthy();
+    fireEvent.click(within(postes).getByRole('button', { name: 'Libérer Caisse 1' }));
+    const form = await screen.findByRole('form', { name: 'Libérer le poste' });
+    fireEvent.change(within(form).getByLabelText(/Raison/), { target: { value: 'PC volé' } });
+    fireEvent.click(within(form).getByLabelText('Je confirme cette action.'));
+    fireEvent.click(within(form).getByRole('button', { name: 'Libérer' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]).toEqual([
+      expect.stringMatching(/\/activations\/act-1\/release$/),
+      { reason: 'PC volé' },
+    ]);
   });
 });

@@ -33,6 +33,7 @@ permissions = [
   "stock.transfer.validate",
   "alerts.*",
   "inventory_count.*",
+  "subscription.activation.check",
 ]
 
 [roles.seller]
@@ -51,6 +52,7 @@ permissions = [
   "stock.level.view",
   "alerts.stock.view",
   "inventory_count.inventory.view",
+  "subscription.activation.check",
 ]
 
 [roles.viewer]

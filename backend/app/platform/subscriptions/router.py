@@ -15,8 +15,9 @@ from app.platform.context import (
     RequestContext,
     require_permission,
 )
+from app.platform.licensing.activations import active_count
 from app.platform.licensing.schemas import LicenseSummary, license_summary
-from app.platform.licensing.service import subscription_licenses
+from app.platform.licensing.service import reference_license, subscription_licenses
 from app.platform.subscriptions.models import Subscription, SubscriptionPaymentStatus
 from app.platform.subscriptions.payments import SubscriptionPaymentService
 from app.platform.subscriptions.plan_policy import PlanPolicy
@@ -82,8 +83,6 @@ def _subscription_out(
     grant = CapabilityService(db, registry).grant(subscription, profile, now)
     site = db.get(Site, subscription.site_id) if subscription.site_id else None
     policy = PlanPolicy(db, grant.terms, registry)
-    licenses = subscription_licenses(db, subscription.id)
-    current = next((lic for lic in licenses if lic.id == grant.terms.license_id), None)
     return SubscriptionOut(
         id=subscription.id,
         site=SiteRef(id=site.id, name=site.name, code=site.code) if site else None,
@@ -103,7 +102,11 @@ def _subscription_out(
         },
         features=sorted(grant.features),
         allowed_access=sorted(grant.access),
-        license=license_summary(current or (licenses[-1] if licenses else None), now),
+        license=license_summary(
+            reference_license(subscription_licenses(db, subscription.id), now),
+            now,
+            active_count(db, subscription.id),
+        ),
     )
 
 

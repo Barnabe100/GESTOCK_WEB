@@ -404,6 +404,8 @@ class ConsoleLicenseOut(BaseModel):
     valid_until: date
     timezone: str
     max_activations: int
+    # Postes actifs sur l'abonnement du site (3.3-B3).
+    activations_used: int
     modules: list[str]
     features: list[str]
     limits: dict[str, int | None]
@@ -441,6 +443,29 @@ class LicenseProposalOut(BaseModel):
     payment_period_end: date
     blocking: str | None
     license_id: uuid.UUID | None
+
+
+class ConsoleActivationOut(BaseModel):
+    """Poste d'un site vu par TechNova : métadonnées de l'installation, jamais l'utilisateur de
+    l'entreprise qui l'a activé."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    tenant_name: str
+    site_id: uuid.UUID
+    site_name: str
+    subscription_id: uuid.UUID
+    license_id: uuid.UUID
+    license_number: str
+    installation_id: uuid.UUID
+    label: str
+    client_version: str | None
+    status: str
+    activated_at: datetime
+    last_seen_at: datetime
+    released_at: datetime | None
+    release_source: str | None
+    release_reason: str | None
 
 
 class LicenseGenerateIn(ReasonIn):

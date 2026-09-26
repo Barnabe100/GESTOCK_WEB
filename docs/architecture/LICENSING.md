@@ -10,7 +10,8 @@ TENANT ── SITE A ── SUBSCRIPTION A ── PAYMENT (CONFIRMED) ── LIC
 ```
 
 État de la phase : **B1** ✅ abonnement par site · **B2** ✅ licences, Signing Service, console
-· B3 postes (activations) · B4 renouvellement et notifications.
+· **B3** ✅ postes (activations, [ADR-0035](../adr/0035-postes-activations.md)) · B4
+renouvellement et notifications.
 
 ## 1. Acteurs et frontières
 
@@ -109,8 +110,37 @@ Vérification : `app.platform.licensing.keyring.verify_document` avec le trousse
 | Console | `GET /payments/{id}/license-proposal` | Période, postes proposés, blocage éventuel |
 | Console | `POST /payments/{id}/license` | Génération (`reason`, `max_activations`) |
 | Console | `POST /licenses/{id}/revoke` · `POST /licenses/{id}/reissue` | Révocation · réémission (`reason`, `max_activations` facultatif) |
+| Entreprise | `GET /license-activations` | Postes des sites visibles (`site_id`, `status`) |
+| Installation | `POST /license-activations` · `POST /license-activations/check-in` | Activation (site sélectionné) · contrôle de présence |
+| Entreprise | `POST /license-activations/{id}/release` | Libération (`reason`) |
+| Console | `GET /activations` · `POST /activations/{id}/release` | Postes (filtres entreprise, abonnement, site, statut) · libération par TechNova |
 
-## 7. Sécurité et tests
+## 7. Postes (activations, Phase 3.3-B3, ADR-0035)
+
+```text
+Installation (Desktop) ── POST /license-activations (X-Site-Id) ──▶ poste ACTIVE
+      │                     quota = max_activations de la licence en vigueur du site
+      └── POST /license-activations/check-in ──▶ présence, licence en vigueur, hors ligne toléré
+Entreprise / TechNova ── libération (raison) ──▶ RELEASED : une place, rien d'autre
+```
+
+- `installation_id` : UUID aléatoire de l'installation (jamais MAC, processeur, IP) ; active
+  sur un seul site à la fois (`409 installation_active_elsewhere`).
+- Quota par abonnement de site, sous verrou de l'abonnement ; idempotence (même installation,
+  même site : `200`, même poste).
+- Refus distincts et journalisés : `license_missing`, `license_expired`, `license_revoked`,
+  `license_not_yet_valid`, `license_invalid`, `license_wrong_site`, `license_superseded`,
+  `activation_quota_reached` (« Le nombre maximal de postes autorisés pour ce site est
+  atteint. »), `installation_active_elsewhere`.
+- Libérer ne suspend pas la licence, n'ajoute ni ne retire de jours ; réactiver réutilise la
+  licence et la période. Quota réduit par réémission : postes existants tolérés, nouveaux
+  refusés.
+- Poste non vu depuis plus de `SM_ACTIVATION_OFFLINE_GRACE_DAYS` jours (défaut 7) : signalé,
+  jamais libéré automatiquement.
+- Le Web n'active jamais de navigateur : la page Abonnement affiche « 3 postes autorisés · 2
+  utilisés · 1 disponible », les postes et la libération.
+
+## 8. Sécurité et tests
 
 - RLS `ENABLE` + `FORCE` ; rôle applicatif `SELECT` seulement ; rôle de la console : lecture,
   `INSERT` `ISSUED`, révocation seulement ; déclencheur d'immutabilité (même pour le
@@ -120,4 +150,6 @@ Vérification : `app.platform.licensing.keyring.verify_document` avec le trousse
   `backend/tests/test_licenses.py` (génération, concurrence, échecs de signature, renouvellement,
   conditions figées, révocation, réémission, filtres, RLS et droits SQL, immutabilité),
   `signing-service/tests` (signature, payloads refusés, HMAC, rejeu, horodatage, démarrage,
-  journaux sans secret, génération de clés). Clés **éphémères** uniquement.
+  journaux sans secret, génération de clés), `backend/tests/test_license_activations.py`
+  (quota, concurrence, idempotence, refus distincts, libération, contrôle, permissions, RLS,
+  droits SQL, finalité, console). Clés **éphémères** uniquement.

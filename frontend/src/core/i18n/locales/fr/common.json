@@ -487,8 +487,29 @@
     "noLicense": "Aucune licence : le site deviendra opérationnel après confirmation de votre paiement et émission de la licence par TechNova.",
     "licenseNumber": "N° {{number}}",
     "licenseValidity": "Valide du {{start}} au {{end}}",
-    "licenseActivations_one": "{{count}} poste autorisé",
-    "licenseActivations_other": "{{count}} postes autorisés"
+    "postes": {
+      "summary": "{{allowed}} · {{used}} · {{available}}",
+      "allowed_one": "{{count}} poste autorisé",
+      "allowed_other": "{{count}} postes autorisés",
+      "used_one": "{{count}} utilisé",
+      "used_other": "{{count}} utilisés",
+      "available_one": "{{count}} disponible",
+      "available_other": "{{count}} disponibles",
+      "empty": "Aucun poste actif",
+      "emptyHelp": "Les postes s'activent depuis l'application installée sur l'ordinateur du site.",
+      "label": "Poste",
+      "version": "Version",
+      "activatedAt": "Activé le",
+      "lastSeen": "Dernière activité",
+      "stale": "Non vu récemment",
+      "release": "Libérer",
+      "releaseTitle": "Libérer le poste « {{label}} »",
+      "releaseHelp": "Libérer un poste libère une place : la licence, sa période et l'abonnement ne changent pas. Le poste devra être réactivé pour être utilisé.",
+      "reason": "Raison",
+      "reasonRequired": "La raison est obligatoire.",
+      "confirmCheck": "Je confirme la libération de ce poste.",
+      "released": "Poste libéré"
+    }
   },
   "errors": {
     "pageNotFound": "Page introuvable",

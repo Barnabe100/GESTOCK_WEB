@@ -5,6 +5,7 @@ import { parseError } from '@/core/api/client';
 import { CONSOLE_API_BASE, consoleRequest } from './api';
 import type {
   Catalog,
+  ConsoleActivation,
   ConsoleLicense,
   ConsolePayment,
   Dashboard,
@@ -237,4 +238,33 @@ export async function downloadLicense(license: ConsoleLicense): Promise<void> {
   link.download = `${license.license_number}.lic`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+// --- Postes (Phase 3.3-B3) ----------------------------------------------------------------------
+
+/** Postes d'un abonnement de site (actifs et libérés). */
+export const useSubscriptionActivations = (subscriptionId: string) =>
+  useQuery({
+    queryKey: ['console', 'activations', subscriptionId],
+    queryFn: () =>
+      consoleRequest<Page<ConsoleActivation>>(
+        `/activations?subscription_id=${encodeURIComponent(subscriptionId)}&limit=100`,
+      ),
+  });
+
+/** Libération d'un poste par TechNova (support) : une place se libère, rien d'autre. */
+export function useReleaseActivation(id: string) {
+  const refresh = useLicenseRefresh();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) =>
+      consoleRequest<ConsoleActivation>(`/activations/${encodeURIComponent(id)}/release`, {
+        method: 'POST',
+        body: { reason },
+      }),
+    onSettled: () => {
+      refresh();
+      void queryClient.invalidateQueries({ queryKey: ['console', 'activations'] });
+    },
+  });
 }

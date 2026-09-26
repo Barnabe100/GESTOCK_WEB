@@ -234,6 +234,14 @@ console : vérifie la signature (trousseau public) ─▶ enregistre la licence 
   trousseau des clés publiques. Service indisponible ou réponse non vérifiable : rien n'est
   enregistré. Détails : [`LICENSING.md`](LICENSING.md).
 
+## 7 ter. Postes (Phase 3.3-B3, ADR-0035)
+
+La fiche d'une licence liste les postes de l'abonnement du site (actifs et libérés : libellé,
+installation, version, dernière activité) et permet de **libérer** un poste (support : poste
+perdu, réinstallation) — raison obligatoire, double audit ; une place se libère, la licence et
+sa période ne changent pas. L'entreprise voit « libéré par TechNova », jamais l'agent ; la
+console ne voit jamais l'utilisateur de l'entreprise qui a activé le poste.
+
 ## 8. Ce qui est implémenté, prévu côté infrastructure, futur
 
 | Sujet | Statut |
@@ -245,6 +253,7 @@ console : vérifie la signature (trousseau public) ─▶ enregistre la licence 
 | Tenants (liste, détail, suspension, réactivation), abonnements (changement de plan, activation manuelle transitoire, prolongation), double audit | **Implémenté** (3.2-G, migration 0018, tests) |
 | Paiements d'abonnement (déclaration par l'entreprise, confirmation / rejet TechNova, double audit, aucune activation) | **Implémenté** (3.3-A, migration 0019, tests, ADR-0032) |
 | Licences : Signing Service séparé (clé privée hors StockManager), génération depuis un paiement confirmé, révocation, réémission, téléchargement `.lic`, double audit | **Implémenté** (3.3-B2, migration 0021, tests, ADR-0034) |
-| Postes (activations), renouvellement, notifications d'échéance | **3.3-B3 / B4** |
+| Postes : activation par l'installation, quota par site, contrôle, libération (entreprise, TechNova) | **Implémenté** (3.3-B3, migration 0022, tests, ADR-0035) |
+| Renouvellement, notifications d'échéance | **3.3-B4** |
 | Déploiement du Signing Service (hôte, secrets montés, réseau privé, clé de production) | **Infrastructure** : image fournie (`signing-service/Dockerfile`), hors Compose de l'application |
 | Catalogue technique éditable, limites modifiables, paramètres SaaS en base, support avec accès aux données métier | **Futur / réévaluation** (hors console en 3.2-F) |

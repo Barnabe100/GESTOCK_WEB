@@ -41,5 +41,6 @@ Statuts : `Proposée` → `Acceptée` | `Rejetée` | `Remplacée par ADR-XXXX`.
 | [0032](0032-paiements-abonnement.md) | Paiements d'abonnement (`SubscriptionPayment`) : déclaration idempotente par l'entreprise (permission `billing`, devise fixée par le serveur), décision définitive de TechNova (`CONFIRMED` / `REJECTED`, verrou, double audit), aucune activation | Acceptée |
 | [0033](0033-abonnement-par-site.md) | 1 site = 1 abonnement : `subscriptions.site_id` (abonnement d'inscription rattaché au premier site), capacités par site, écritures revérifiées pour le site ciblé, limites par site, console par abonnement | Acceptée |
 | [0034](0034-licences-et-signing-service.md) | Licences des sites : Signing Service séparé (Ed25519, clé privée hors StockManager, HMAC), `.lic` v1 canonique, génération depuis un paiement confirmé, conditions figées, révocation définitive, réémission, trousseau public avec rotation | Acceptée |
+| [0035](0035-postes-activations.md) | Postes : activations d'installations (identifiant aléatoire) sous la licence en vigueur, quota par site sous verrou, idempotence, refus distincts journalisés, libération (entreprise, TechNova) sans effet sur la licence | Acceptée |
 
 Modèle : [`TEMPLATE.md`](TEMPLATE.md).

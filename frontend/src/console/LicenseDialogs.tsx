@@ -11,9 +11,9 @@ import { translateError } from '@/shared/lib/errors';
 import { FormField } from '@/shared/ui/FormField';
 import { useToast } from '@/shared/ui/toast';
 
-import { useGenerateLicense, useLicenseAction } from './queries';
+import { useGenerateLicense, useLicenseAction, useReleaseActivation } from './queries';
 import { Details, paymentDay } from './tenantDisplay';
-import type { ConsoleLicense, LicenseProposal } from './types';
+import type { ConsoleActivation, ConsoleLicense, LicenseProposal } from './types';
 
 /** Plafond aligné sur le serveur (`MAX_ACTIVATIONS`), qui revalide de toute façon. */
 const MAX_ACTIVATIONS = 10000;
@@ -267,5 +267,43 @@ export function LicenseActionDialog({
         />
       )}
     </ReasonDialog>
+  );
+}
+
+/** Libération d'un poste par TechNova : une place se libère ; licence et période inchangées. */
+export function ReleaseActivationDialog({
+  activation,
+  onClose,
+}: {
+  activation: ConsoleActivation;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const release = useReleaseActivation(activation.id);
+  return (
+    <ReasonDialog
+      title={t('console:license.postes.releaseTitle')}
+      summary={[
+        [t('console:license.postes.label'), activation.label],
+        [t('console:payment.company'), activation.tenant_name],
+        [t('console:payment.site'), activation.site_name],
+        [t('console:license.postes.installation'), <code>{activation.installation_id}</code>],
+      ]}
+      warning={t('console:license.postes.releaseWarning')}
+      submitLabel={t('console:license.postes.release')}
+      danger
+      pending={release.isPending}
+      error={release.error}
+      onClose={onClose}
+      onSubmit={(reason) =>
+        release.mutate(reason, {
+          onSuccess: () => {
+            toast.success(t('console:license.postes.released'));
+            onClose();
+          },
+        })
+      }
+    />
   );
 }

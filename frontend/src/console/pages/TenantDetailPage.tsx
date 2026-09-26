@@ -145,7 +145,10 @@ function SubscriptionCard({
             s.license ? (
               <Link to={`${CONSOLE_BASE}/licenses/${s.license.id}`}>
                 {s.license.license_number} · <LicenseStateBadge state={s.license.state} /> ·{' '}
-                {t('console:license.activationsCount', { count: s.license.max_activations })}
+                {t('console:license.activationsUsage', {
+                  used: s.license.activations_used,
+                  count: s.license.max_activations,
+                })}
               </Link>
             ) : (
               t('console:license.none')

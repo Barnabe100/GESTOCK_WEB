@@ -166,7 +166,9 @@ test.describe('Licences : console TechNova et entreprise', () => {
     const license = page.getByTestId('license');
     await expect(license).toContainText(number);
     await expect(license).toContainText('Active');
-    await expect(page.getByTestId('license-activations')).toHaveText('3 postes autorisés');
+    await expect(page.getByTestId('license-activations')).toHaveText(
+      '3 postes autorisés · 0 utilisé · 3 disponibles',
+    );
     await expect(page.getByText('Actif').first()).toBeVisible();
 
     // 4. Révocation définitive : le site est suspendu, les données conservées.
@@ -245,5 +247,84 @@ test.describe('Licences : console TechNova et entreprise', () => {
     expect(subscription.status).toBe('pending_activation');
     expect(subscription.license).toBeNull();
     await api.dispose();
+  });
+
+  test('postes : quota par site, message clair, libération (entreprise et TechNova)', async ({
+    page,
+    request,
+    baseURL,
+  }) => {
+    const stamp = stampOf();
+    const tenant = await pendingTenant(request, `${stamp} Postes`);
+    const payment = await declare(request, tenant.token, `LIC-POS-${stamp}`);
+    const admin = createPlatformAdmin(stamp);
+    const api = await consoleApi(baseURL, admin);
+    await api.post(`${CONSOLE}/payments/${payment.id}/confirm`, {
+      headers: CONSOLE_HEADERS,
+      data: { reason: 'Reçu' },
+    });
+    const generated = await api.post(`${CONSOLE}/payments/${payment.id}/license`, {
+      headers: CONSOLE_HEADERS,
+      data: { reason: 'Licence', max_activations: 2 },
+    });
+    expect(generated.status(), await generated.text()).toBe(201);
+    const licence = (await generated.json()) as { id: string };
+    const subscription = (await (
+      await request.get('/api/v1/subscription', { headers: bearer(tenant.token) })
+    ).json()) as { site: { id: string } };
+    const desktop = { ...bearer(tenant.token), 'X-Site-Id': subscription.site.id };
+
+    // Deux installations (client Desktop simulé) : quota atteint à la troisième.
+    const activate = (label: string, installation = crypto.randomUUID()) =>
+      request.post('/api/v1/license-activations', {
+        headers: desktop,
+        data: { installation_id: installation, label, client_version: '1.0.0' },
+      });
+    const first = crypto.randomUUID();
+    expect((await activate('Caisse 1', first)).status()).toBe(201);
+    expect((await activate('Caisse 1', first)).status()).toBe(200); // idempotent
+    expect((await activate('Caisse 2')).status()).toBe(201);
+    const refused = await activate('Caisse 3');
+    expect(refused.status()).toBe(409);
+    const problem = (await refused.json()) as { code: string; detail: string };
+    expect(problem.code).toBe('activation_quota_reached');
+    expect(problem.detail).toBe('Le nombre maximal de postes autorisés pour ce site est atteint.');
+    const checkIn = await request.post('/api/v1/license-activations/check-in', {
+      headers: desktop,
+      data: { installation_id: first },
+    });
+    expect(checkIn.status()).toBe(200);
+
+    // Entreprise : « 2 postes autorisés · 2 utilisés · 0 disponible », libération d'un poste.
+    await loginUi(page, tenant.email, OWNER_PASSWORD, tenant.name);
+    await page.goto('/subscription');
+    const summary = page.getByTestId('license-activations');
+    await expect(summary).toHaveText('2 postes autorisés · 2 utilisés · 0 disponible');
+    await page.getByRole('button', { name: 'Libérer Caisse 2' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('#release-reason').fill(`Remplacé ${stamp}`);
+    await dialog.getByText('Je confirme la libération de ce poste.').click();
+    await dialog.getByRole('button', { name: 'Libérer', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(summary).toHaveText('2 postes autorisés · 1 utilisé · 1 disponible');
+    // La place libérée est réutilisable ; la licence est inchangée.
+    expect((await activate('Caisse 3')).status()).toBe(201);
+
+    // TechNova libère un poste (support) depuis la fiche de la licence.
+    const consolePage = await page.context().newPage();
+    await consoleLogin(consolePage, admin);
+    await consolePage.goto(`/tech-admin/licenses/${licence.id}`);
+    const postes = consolePage.getByTestId('license-postes');
+    await expect(postes).toContainText('Postes (2 / 2)');
+    await postes.getByRole('button', { name: 'Libérer Caisse 1' }).click();
+    await confirmDialog(consolePage, 'Libérer', `Ordinateur volé ${stamp}`);
+    await expect(postes).toContainText('Postes (1 / 2)');
+    const listing = (await (
+      await request.get('/api/v1/license-activations?status=RELEASED', { headers: desktop })
+    ).json()) as { items: { label: string; release_source: string }[] };
+    expect(listing.items.find((a) => a.label === 'Caisse 1')?.release_source).toBe('TECHNOVA');
+    expect(listing.items.find((a) => a.label === 'Caisse 2')?.release_source).toBe('TENANT');
+    await api.dispose();
+    await consolePage.close();
   });
 });

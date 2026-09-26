@@ -17,10 +17,10 @@ import { LicenseStateBadge, StatusBadge } from '@/shared/ui/StatusBadge';
 
 import { AuditChanges } from '../auditDisplay';
 import { CONSOLE_BASE } from '../ConsoleLayout';
-import { LicenseActionDialog } from '../LicenseDialogs';
-import { downloadLicense, useAudit, useLicense } from '../queries';
+import { LicenseActionDialog, ReleaseActivationDialog } from '../LicenseDialogs';
+import { downloadLicense, useAudit, useLicense, useSubscriptionActivations } from '../queries';
 import { Details, paymentDay } from '../tenantDisplay';
-import type { ConsoleLicense, PlatformAuditEntry } from '../types';
+import type { ConsoleActivation, ConsoleLicense, PlatformAuditEntry } from '../types';
 
 function LicenseHistory({ licenseId }: { licenseId: string }) {
   const { t } = useTranslation();
@@ -50,6 +50,77 @@ function LicenseHistory({ licenseId }: { licenseId: string }) {
         />
         <Column field="reason" header={t('console:audit.reason')} />
       </DataTable>
+    </Card>
+  );
+}
+
+/** Postes de l'abonnement du site (actifs et libérés) ; libération par TechNova (support). */
+function LicensePostes({ license: l }: { license: ConsoleLicense }) {
+  const { t } = useTranslation();
+  const activations = useSubscriptionActivations(l.subscription_id);
+  const [releasing, setReleasing] = useState<ConsoleActivation | null>(null);
+  if (activations.isError) {
+    return <ErrorMessage error={activations.error} onRetry={() => void activations.refetch()} />;
+  }
+  return (
+    <Card
+      title={t('console:license.postes.title', {
+        used: l.activations_used,
+        max: l.max_activations,
+      })}
+      data-testid="license-postes"
+    >
+      <DataTable
+        className="sm-table"
+        tableStyle={{ minWidth: '48rem' }}
+        value={activations.data?.items ?? []}
+        loading={activations.isFetching}
+        dataKey="id"
+        emptyMessage={<EmptyState icon="pi pi-desktop" title={t('console:license.postes.empty')} />}
+      >
+        <Column field="label" header={t('console:license.postes.label')} />
+        <Column
+          header={t('console:license.postes.installation')}
+          body={(a: ConsoleActivation) => <code>{a.installation_id.slice(0, 8)}…</code>}
+        />
+        <Column
+          header={t('console:license.postes.version')}
+          body={(a: ConsoleActivation) => a.client_version ?? '—'}
+        />
+        <Column
+          header={t('console:license.postes.lastSeen')}
+          body={(a: ConsoleActivation) => formatDateTime(a.last_seen_at, 'fr')}
+        />
+        <Column
+          header={t('console:license.postes.status')}
+          body={(a: ConsoleActivation) => (
+            <StatusBadge
+              tone={a.status === 'ACTIVE' ? 'success' : 'neutral'}
+              label={t(`console:license.postes.statuses.${a.status}`)}
+            />
+          )}
+        />
+        <Column
+          header=""
+          body={(a: ConsoleActivation) =>
+            a.status === 'ACTIVE' ? (
+              <Button
+                icon="pi pi-power-off"
+                text
+                severity="danger"
+                label={t('console:license.postes.release')}
+                aria-label={`${t('console:license.postes.release')} ${a.label}`}
+                onClick={() => setReleasing(a)}
+              />
+            ) : (
+              <small className="sm-muted">{a.release_reason}</small>
+            )
+          }
+        />
+      </DataTable>
+      {releasing && (
+        <ReleaseActivationDialog activation={releasing} onClose={() => setReleasing(null)} />
+      )}
     </Card>
   );
 }
@@ -224,6 +295,7 @@ export function LicenseDetailPage() {
           </div>
         </Card>
       </div>
+      <LicensePostes license={l} />
       <LicenseContent license={l} />
       <LicenseHistory licenseId={l.id} />
       {kind && (

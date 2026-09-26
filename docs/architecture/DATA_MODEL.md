@@ -97,6 +97,17 @@ revoked_at, revoked_by, revocation_reason, updated_at)` d'une licence `ISSUED` v
 l'unicité `(tenant_id, site_id, id)` et `subscription_payments` l'unicité `(tenant_id,
 subscription_id, id)`, cibles des FK composites.
 
+### Postes (Phase 3.3-B3, isolés par RLS, [ADR-0035](../adr/0035-postes-activations.md))
+
+| Table | Colonnes principales | Règles |
+|---|---|---|
+| `license_activations` | `tenant_id`, `site_id`, `subscription_id`, `license_id` (licence en vigueur à l'activation), `installation_id` (UUID aléatoire de l'installation), `label`, `client_version`, `activated_at`, `activated_by`, `last_seen_at`, `status` (`ACTIVE` / `RELEASED`), `released_at`, `released_by`, `release_source` (`TENANT` / `TECHNOVA`), `release_reason` | FK composites `(tenant_id, site_id, subscription_id)` → `subscriptions (tenant_id, site_id, id)`, `(tenant_id, license_id)` → `licenses` ; index unique partiel `(tenant_id, installation_id) WHERE status = 'ACTIVE'` ; index `(tenant_id, subscription_id, status)` ; `CHECK` libération complète ⇔ `RELEASED`, libellé et raison non vides ; déclencheur `license_activations_final` (identité immuable, poste libéré figé) |
+
+Droits : rôle applicatif `SELECT, INSERT` et `UPDATE (label, client_version, last_seen_at,
+status, released_at, released_by, release_source, release_reason, updated_at)` ; rôle de la
+console `SELECT` et `UPDATE` des colonnes de libération d'un poste `ACTIVE` vers `RELEASED`
+(`platform_release`) ; aucune suppression.
+
 ### Tenant (isolés par RLS)
 
 | Table | Colonnes principales | Contraintes notables |
@@ -261,7 +272,8 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    `id`, `name`, `code` ; `tenant_memberships` — lecture de `id`, `is_owner`, `all_sites` ;
    `membership_sites` — lecture (compteurs d'utilisateurs par site, ADR-0033). Depuis 3.3-B2
    (migration 0021) : `licenses` — lecture, émission (`ISSUED`), révocation seulement ;
-   séquence `license_number_seq` (ADR-0034).
+   séquence `license_number_seq` (ADR-0034). Depuis 3.3-B3 (migration 0022) :
+   `license_activations` — lecture, libération d'un poste actif seulement (ADR-0035).
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

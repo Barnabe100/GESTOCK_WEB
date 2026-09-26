@@ -371,8 +371,6 @@
     "maxActivationsHelp": "Proposé : le nombre de postes demandé à la souscription. Confirmez-le ou ajustez-le ; il sera figé dans la licence.",
     "reissueActivationsHelp": "Conservé sauf changement commercial explicite.",
     "requestedActivations": "Postes demandés",
-    "activationsCount_one": "{{count}} poste",
-    "activationsCount_other": "{{count}} postes",
     "version": "Version",
     "payment": "Paiement",
     "openPayment": "Voir le paiement",
@@ -412,6 +410,25 @@
     "reason": "Raison",
     "reasonHelp": "Obligatoire, enregistrée dans les journaux de la plateforme et de l'entreprise.",
     "reasonRequired": "La raison est obligatoire.",
-    "confirmCheck": "Je confirme cette action."
+    "confirmCheck": "Je confirme cette action.",
+    "activationsUsage_one": "{{used}} / {{count}} poste",
+    "activationsUsage_other": "{{used}} / {{count}} postes",
+    "postes": {
+      "title": "Postes ({{used}} / {{max}})",
+      "empty": "Aucun poste activé",
+      "label": "Poste",
+      "installation": "Installation",
+      "version": "Version",
+      "lastSeen": "Dernière activité",
+      "status": "Statut",
+      "statuses": {
+        "ACTIVE": "Actif",
+        "RELEASED": "Libéré"
+      },
+      "release": "Libérer",
+      "releaseTitle": "Libérer le poste",
+      "releaseWarning": "Une place du quota se libère : la licence, sa période et l'abonnement ne changent pas. L'entreprise voit que TechNova a libéré le poste, jamais votre identité.",
+      "released": "Poste libéré"
+    }
   }
 }

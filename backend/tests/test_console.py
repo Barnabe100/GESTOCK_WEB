@@ -243,6 +243,7 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
     )
     tenant = f"{CONSOLE_PREFIX}/tenants/{{tenant_id}}"
     assert writes == [
+        (f"{CONSOLE_PREFIX}/activations/{{activation_id}}/release", "POST"),
         (f"{CONSOLE_PREFIX}/auth/login", "POST"),
         (f"{CONSOLE_PREFIX}/auth/logout", "POST"),
         (f"{CONSOLE_PREFIX}/licenses/{{license_id}}/reissue", "POST"),

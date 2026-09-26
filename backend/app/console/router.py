@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import func, select
 
+from app.console.activations import ActivationAdminService, ActivationFilters
 from app.console.auth import (
     ConsoleAuthService,
     ConsoleDb,
@@ -28,6 +29,7 @@ from app.console.plans import PlanCommercialService
 from app.console.schemas import (
     ActivationIn,
     CatalogOut,
+    ConsoleActivationOut,
     ConsoleLicenseOut,
     ConsolePaymentOut,
     DashboardOut,
@@ -57,8 +59,10 @@ from app.console.signing import SigningClient
 from app.console.tenants import ACTIVABLE, EXTENDABLE, TenantAdminService, TenantFilters
 from app.core.config import Settings
 from app.platform.catalog.models import BusinessProfile, Plan
-from app.platform.licensing.models import LicenseState
+from app.platform.licensing.activations import active_count
+from app.platform.licensing.models import ActivationStatus, LicenseState
 from app.platform.licensing.schemas import license_summary
+from app.platform.licensing.service import reference_license
 from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
 from app.platform.subscriptions.models import SubscriptionPaymentStatus, SubscriptionStatus
 from app.platform.subscriptions.service import self_service
@@ -291,7 +295,6 @@ def _subscription_out(
         subscription.tenant_id
     )
     own = [lic for lic in licenses if lic.subscription_id == subscription.id]
-    in_force = [lic for lic in own if lic.state(service.now) is LicenseState.ACTIVE]
     controlled = bool(own)
     plan = service.plan(subscription.plan_code)
     limits = service.limits(plan)
@@ -324,7 +327,9 @@ def _subscription_out(
             if code in used
         },
         license=license_summary(
-            in_force[-1] if in_force else (own[-1] if own else None), service.now
+            reference_license(own, service.now),
+            service.now,
+            active_count(service.db, subscription.id),
         ),
         actions=SubscriptionActions(
             can_activate=subscription.status in ACTIVABLE and not controlled,
@@ -596,6 +601,7 @@ def _license_out(row: Any, service: LicenseAdminService) -> ConsoleLicenseOut:
         valid_until=license.valid_until,
         timezone=license.timezone,
         max_activations=license.max_activations,
+        activations_used=active_count(service.db, license.subscription_id),
         modules=list(license.modules),
         features=list(license.features),
         limits=dict(license.limits),
@@ -778,3 +784,72 @@ def generate_license(
     )
     db.commit()
     return _license_out(service.row(license.id), service)
+
+
+# --- Postes (Phase 3.3-B3, ADR-0035) -----------------------------------------------------------
+
+
+def _activation_out(row: Any) -> ConsoleActivationOut:
+    a = row.LicenseActivation
+    return ConsoleActivationOut(
+        id=a.id,
+        tenant_id=a.tenant_id,
+        tenant_name=row.tenant_name,
+        site_id=a.site_id,
+        site_name=row.site_name,
+        subscription_id=a.subscription_id,
+        license_id=a.license_id,
+        license_number=row.license_number,
+        installation_id=a.installation_id,
+        label=a.label,
+        client_version=a.client_version,
+        status=a.status.value,
+        activated_at=a.activated_at,
+        last_seen_at=a.last_seen_at,
+        released_at=a.released_at,
+        release_source=a.release_source.value if a.release_source else None,
+        release_reason=a.release_reason,
+    )
+
+
+@router.get("/activations", response_model=Page[ConsoleActivationOut], tags=["console-licenses"])
+def list_activations(
+    ctx: PlatformAdmin,
+    db: ConsoleDb,
+    now: NowDep,
+    params: Annotated[PageParams, Depends(page_params)],
+    tenant_id: uuid.UUID | None = None,
+    subscription_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    status: ActivationStatus | None = None,
+) -> Page[ConsoleActivationOut]:
+    """Postes (filtres : entreprise, abonnement, site, statut ; tri ``activated_at`` décroissant
+    par défaut, ``last_seen_at``)."""
+    rows, total = ActivationAdminService(db, now).search(
+        ActivationFilters(
+            tenant_id=tenant_id, subscription_id=subscription_id, site_id=site_id, status=status
+        ),
+        params,
+    )
+    return Page(
+        items=[_activation_out(r) for r in rows],
+        total=total,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+@router.post(
+    "/activations/{activation_id}/release",
+    response_model=ConsoleActivationOut,
+    tags=["console-licenses"],
+)
+def release_activation(
+    activation_id: uuid.UUID, body: ReasonIn, ctx: PlatformAdmin, db: ConsoleDb, now: NowDep
+) -> ConsoleActivationOut:
+    """Libère un poste (support TechNova) : une place se libère ; licence, période et abonnement
+    inchangés ; double audit ; ``409 activation_already_released``."""
+    service = ActivationAdminService(db, now)
+    service.release(activation_id, body.reason, ctx.actor, ctx.meta)
+    db.commit()
+    return _activation_out(service.row(activation_id))

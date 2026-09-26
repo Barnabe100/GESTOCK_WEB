@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.platform.catalog.models import Plan
-from app.platform.licensing.models import License, LicenseStatus
+from app.platform.licensing.models import License, LicenseState, LicenseStatus
 from app.platform.subscriptions.models import BillingPeriod, Subscription, SubscriptionStatus
 from app.platform.subscriptions.plan_policy import PlanTerms
 from app.platform.subscriptions.service import add_months, subscription_plan, tenant_subscriptions
@@ -63,6 +63,18 @@ def subscription_licenses(session: Session, subscription_id: uuid.UUID) -> list[
             .order_by(License.starts_at, License.license_version, License.id)
         )
     )
+
+
+def reference_license(licenses: list[License], now: datetime) -> License | None:
+    """Licence qui décrit la situation d'un site : celle en vigueur ; sinon la licence émise
+    (non révoquée) la plus récente — à venir ou échue — ; sinon la dernière révoquée."""
+    in_force = [lic for lic in licenses if lic.state(now) is LicenseState.ACTIVE]
+    if in_force:
+        return max(in_force, key=lambda lic: lic.starts_at)
+    issued = [lic for lic in licenses if lic.status is LicenseStatus.ISSUED]
+    if issued:
+        return max(issued, key=lambda lic: (lic.ends_at, lic.issued_at))
+    return max(licenses, key=lambda lic: lic.issued_at) if licenses else None
 
 
 def terms_of_license(license: License) -> PlanTerms:

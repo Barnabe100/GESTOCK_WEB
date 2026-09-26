@@ -19,11 +19,17 @@ class LicenseSummary(BaseModel):
     valid_from: date
     valid_until: date
     max_activations: int
+    # Postes (3.3-B3) : actifs sur l'abonnement du site, et places restantes sous cette licence
+    # (jamais négatif : un dépassement après réduction du quota est toléré, jamais aggravé).
+    activations_used: int
+    activations_available: int
     issued_at: datetime
     revoked_at: datetime | None
 
 
-def license_summary(license: License | None, now: datetime) -> LicenseSummary | None:
+def license_summary(
+    license: License | None, now: datetime, activations_used: int = 0
+) -> LicenseSummary | None:
     if license is None:
         return None
     return LicenseSummary(
@@ -35,6 +41,8 @@ def license_summary(license: License | None, now: datetime) -> LicenseSummary | 
         valid_from=license.valid_from,
         valid_until=license.valid_until,
         max_activations=license.max_activations,
+        activations_used=activations_used,
+        activations_available=max(license.max_activations - activations_used, 0),
         issued_at=license.issued_at,
         revoked_at=license.revoked_at,
     )

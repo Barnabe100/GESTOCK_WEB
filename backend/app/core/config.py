@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     signing_timeout_seconds: float = 10.0
     # Trousseau des clés PUBLIQUES (vérification) ; défaut : fichier versionné du backend.
     license_public_keys_file: Path | None = None
+    # Postes (3.3-B3) : durée pendant laquelle une installation peut fonctionner sans contacter
+    # le serveur (renvoyée au client lors du contrôle ; au-delà, poste signalé « non vu »).
+    activation_offline_grace_days: int = 7
 
     password_min_length: int = 8
     login_max_failures: int = 5

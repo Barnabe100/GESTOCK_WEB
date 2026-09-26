@@ -49,6 +49,23 @@ const payment = (over: Partial<SubscriptionPayment> = {}): SubscriptionPayment =
   ...over,
 });
 
+const POSTE = {
+  id: 'act-1',
+  site_id: 'site-1',
+  subscription_id: 'sub-1',
+  license_id: 'lic-1',
+  installation_id: '8f6b2c1e-0000-4000-8000-000000000001',
+  label: 'Caisse 1',
+  client_version: '1.0.0',
+  status: 'ACTIVE',
+  activated_at: '2026-09-26T11:00:00Z',
+  last_seen_at: '2026-09-26T12:00:00Z',
+  stale: true,
+  released_at: null,
+  release_source: null,
+  release_reason: null,
+};
+
 const PAYMENTS = [
   payment(),
   payment({
@@ -144,7 +161,7 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
   });
 
   it('licence du site : numéro, état, validité et postes autorisés (lecture seule)', async () => {
-    fetchMock.mockImplementation(async (url) => {
+    fetchMock.mockImplementation(async (url, init) => {
       const u = String(url);
       if (u.endsWith('/subscriptions')) {
         return jsonResponse([
@@ -161,6 +178,8 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
               valid_from: '2026-10-01',
               valid_until: '2027-09-30',
               max_activations: 3,
+              activations_used: 1,
+              activations_available: 2,
               issued_at: '2026-09-26T10:00:00Z',
               revoked_at: null,
             },
@@ -170,14 +189,35 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
       if (u.includes('/subscription/payments?')) {
         return jsonResponse({ items: [], total: 0, limit: 25, offset: 0 });
       }
+      if (u.includes('/license-activations?site_id=site-1')) {
+        return jsonResponse({ items: [POSTE], total: 1, limit: 100, offset: 0 });
+      }
+      if (init?.method === 'POST' && u.endsWith('/license-activations/act-1/release')) {
+        return jsonResponse({ ...POSTE, status: 'RELEASED' });
+      }
       return jsonResponse({ code: 'not_found' }, 404);
     });
-    renderPage(VIEW);
+    renderPage([...VIEW, 'subscription.activation.manage']);
     const license = await screen.findByTestId('license');
     expect(license.textContent).toContain('N° LIC-2026-00007');
     expect(license.textContent).toContain('Active');
     expect(license.textContent).toContain('Valide du 1 oct. 2026 au 30 sept. 2027');
-    expect(screen.getByTestId('license-activations').textContent).toContain('3 postes autorisés');
+    expect((await screen.findByTestId('license-activations')).textContent).toBe(
+      '3 postes autorisés · 1 utilisé · 2 disponibles',
+    );
+    // Postes du site : liste et libération (raison obligatoire, confirmation) ; aucune
+    // activation depuis le Web.
+    expect(await screen.findByText('Caisse 1')).toBeTruthy();
+    expect(screen.getByText('Non vu récemment')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Activer/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Libérer Caisse 1' }));
+    const form = await screen.findByRole('form', { name: 'Libérer le poste « Caisse 1 »' });
+    fireEvent.change(within(form).getByLabelText(/Raison/), { target: { value: 'Remplacé' } });
+    fireEvent.click(within(form).getByLabelText('Je confirme la libération de ce poste.'));
+    fireEvent.click(within(form).getByRole('button', { name: 'Libérer' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]![0]).toMatch(/\/license-activations\/act-1\/release$/);
+    expect(JSON.parse(String(posts()[0]![1]?.body))).toEqual({ reason: 'Remplacé' });
     expect(screen.queryByRole('button', { name: /licence/i })).toBeNull();
   });
 

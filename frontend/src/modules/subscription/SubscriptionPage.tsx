@@ -10,6 +10,7 @@ import { LicenseStateBadge, SubscriptionStatusBadge, StatusBadge } from '@/share
 
 import { useSubscriptions, type LicenseSummary, type SubscriptionDetails } from './api';
 import { SubscriptionPaymentsSection } from './PaymentsSection';
+import { SitePostes } from './SitePostes';
 
 /** Licence du site (lecture seule) : numéro, état, validité, postes autorisés. Les jours de
  * validité sont des dates du fuseau de l'entreprise, affichées telles quelles. */
@@ -34,9 +35,6 @@ function SiteLicense({ license, locale }: { license: LicenseSummary | null; loca
           start: day(license.valid_from),
           end: day(license.valid_until),
         })}
-      </p>
-      <p data-testid="license-activations">
-        {t('subscriptionPage.licenseActivations', { count: license.max_activations })}
       </p>
     </div>
   );
@@ -89,6 +87,7 @@ function SiteSubscription({ subscription: s }: { subscription: SubscriptionDetai
           ))}
         </div>
       </div>
+      {s.site && s.license && <SitePostes siteId={s.site.id} license={s.license} locale={locale} />}
       <div className="sm-tags" aria-label={t('subscriptionPage.allowed')}>
         {s.allowed_access.map((access) => (
           <StatusBadge key={access} tone="info" label={t(`access.${access}`)} />

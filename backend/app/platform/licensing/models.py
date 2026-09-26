@@ -170,3 +170,88 @@ class License(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         if now >= self.ends_at:
             return LicenseState.EXPIRED
         return LicenseState.ACTIVE
+
+
+class ActivationStatus(StrEnum):
+    """Poste d'un site (Phase 3.3-B3). ``RELEASED`` est définitif : libérer un poste libère une
+    place du quota, rien d'autre (la licence, sa période et l'abonnement ne changent pas) ; le
+    réactiver crée une nouvelle activation."""
+
+    ACTIVE = "ACTIVE"
+    RELEASED = "RELEASED"
+
+
+class ReleaseSource(StrEnum):
+    """Qui a libéré le poste : l'entreprise ou TechNova (jamais l'identité de l'agent TechNova
+    côté entreprise)."""
+
+    TENANT = "TENANT"
+    TECHNOVA = "TECHNOVA"
+
+
+class LicenseActivation(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Activation d'un **poste** (installation d'un client, ex. Desktop) sur un site, sous la
+    licence en vigueur de l'abonnement de ce site. Quota : ``max_activations`` de la licence en
+    vigueur, compté par abonnement de site (quotas indépendants d'un site à l'autre).
+
+    ``installation_id`` : identifiant aléatoire (UUID) généré par l'installation — jamais une
+    adresse MAC, un numéro de processeur ou une adresse IP. Une installation n'est active que
+    sur un site à la fois. Le Web n'active jamais de navigateur."""
+
+    __tablename__ = "license_activations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id", "subscription_id"],
+            ["subscriptions.tenant_id", "subscriptions.site_id", "subscriptions.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "license_id"], ["licenses.tenant_id", "licenses.id"], ondelete="RESTRICT"
+        ),
+        # Idempotence et unicité : une installation active au plus une fois par entreprise.
+        Index(
+            "uq_license_activations_active_installation",
+            "tenant_id",
+            "installation_id",
+            unique=True,
+            postgresql_where=text("status = 'ACTIVE'"),
+        ),
+        Index(
+            "ix_license_activations_subscription_status", "tenant_id", "subscription_id", "status"
+        ),
+        CheckConstraint("length(btrim(label)) > 0", name="label_present"),
+        CheckConstraint(
+            "(status = 'RELEASED') = (released_at IS NOT NULL AND release_reason IS NOT NULL "
+            "AND release_source IS NOT NULL)",
+            name="release_consistent",
+        ),
+        CheckConstraint(
+            "release_reason IS NULL OR length(btrim(release_reason)) > 0",
+            name="release_reason_present",
+        ),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    # Licence en vigueur au moment de l'activation (historique ; le quota suit la licence en
+    # vigueur de l'abonnement, renouvellements et réémissions compris).
+    license_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    installation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    client_version: Mapped[str | None] = mapped_column(String(50))
+    activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    activated_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[ActivationStatus] = mapped_column(
+        str_enum(ActivationStatus, "activation_status"), nullable=False
+    )
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    released_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    release_source: Mapped[ReleaseSource | None] = mapped_column(
+        str_enum(ReleaseSource, "activation_release_source")
+    )
+    release_reason: Mapped[str | None] = mapped_column(Text)

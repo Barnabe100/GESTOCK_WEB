@@ -85,6 +85,12 @@ PLATFORM_MODULES: tuple[ModuleManifest, ...] = (
             # Déclarer un paiement d'abonnement à TechNova (Phase 3.3-A) : écriture de nature
             # « facturation » (autorisée même abonnement expiré ou en attente d'activation).
             PermissionDef("subscription.payment.declare", B),
+            # Postes (Phase 3.3-B3) : activer une installation (client Desktop) ou libérer un
+            # poste — administration de la licence, de nature « facturation » (un poste se
+            # libère même abonnement expiré ou suspendu) ; le contrôle d'une installation est
+            # une lecture.
+            PermissionDef("subscription.activation.manage", B),
+            PermissionDef("subscription.activation.check", R),
         ),
         onboarding=SUBSCRIPTION_STEPS,
     ),

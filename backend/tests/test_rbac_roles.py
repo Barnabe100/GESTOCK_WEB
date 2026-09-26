@@ -93,6 +93,7 @@ def test_base_roles(owner: Api) -> None:
         "cash_register.session.open",
         "cash_register.session.close",
         "pos.terminal.use",  # point de vente (Phase 3.0)
+        "subscription.activation.check",  # contrôle du poste installé (Phase 3.3-B3)
     }
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer

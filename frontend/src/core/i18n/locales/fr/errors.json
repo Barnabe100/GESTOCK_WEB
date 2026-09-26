@@ -153,8 +153,8 @@
   "license_already_issued": "Une licence a déjà été générée pour ce paiement.",
   "license_already_revoked": "Cette licence est déjà révoquée.",
   "license_already_reissued": "Cette licence a déjà été réémise.",
-  "license_revoked": "Cette licence est révoquée : elle n'est plus distribuée.",
-  "license_expired": "Cette licence est expirée : elle ne peut être réémise.",
+  "license_revoked": "La licence de ce site est révoquée.",
+  "license_expired": "La licence de ce site est expirée.",
   "license_not_found": "Licence introuvable.",
   "subscription_site_required": "L'abonnement n'est rattaché à aucun site.",
   "subscription_not_licensable": "Cet abonnement ne peut plus recevoir de licence.",
@@ -164,5 +164,14 @@
   "license_signature_invalid": "La signature renvoyée est invalide. Aucune licence n'a été créée.",
   "license_key_unknown": "La clé de signature est inconnue du trousseau. Aucune licence n'a été créée.",
   "license_key_retired": "La clé de signature est retirée. Aucune licence n'a été créée.",
-  "license_format_invalid": "Document de licence invalide."
+  "license_format_invalid": "Document de licence invalide.",
+  "license_missing": "Aucune licence pour ce site : l'abonnement doit être payé et la licence émise par TechNova.",
+  "license_not_yet_valid": "La licence de ce site n'est pas encore valide.",
+  "license_invalid": "Licence invalide.",
+  "license_wrong_site": "Cette licence appartient à un autre site.",
+  "license_superseded": "Cette licence a été remplacée : utilisez la licence en vigueur du site.",
+  "activation_quota_reached": "Le nombre maximal de postes autorisés pour ce site est atteint.",
+  "installation_active_elsewhere": "Ce poste est déjà activé sur un autre site : libérez-le d'abord.",
+  "activation_not_found": "Poste introuvable.",
+  "activation_already_released": "Ce poste est déjà libéré."
 }

@@ -15,8 +15,33 @@ export interface LicenseSummary {
   valid_from: string;
   valid_until: string;
   max_activations: number;
+  /** Postes actifs du site et places restantes (calculés par le serveur). */
+  activations_used: number;
+  activations_available: number;
   issued_at: string;
   revoked_at: string | null;
+}
+
+/**
+ * Poste d'un site : installation cliente activée sous la licence (le Web n'active jamais de
+ * navigateur). Libérer un poste libère une place, rien d'autre.
+ */
+export interface LicenseActivation {
+  id: string;
+  site_id: string;
+  subscription_id: string;
+  license_id: string;
+  installation_id: string;
+  label: string;
+  client_version: string | null;
+  status: 'ACTIVE' | 'RELEASED';
+  activated_at: string;
+  last_seen_at: string;
+  /** Non vu depuis plus que la durée hors ligne tolérée. */
+  stale: boolean;
+  released_at: string | null;
+  release_source: 'TENANT' | 'TECHNOVA' | null;
+  release_reason: string | null;
 }
 
 /** Abonnement d'un site (1 site = 1 abonnement, ADR-0033) ; ``site`` nul : abonnement pris à
@@ -110,5 +135,37 @@ export function useDeclareSubscriptionPayment() {
     mutationFn: (input: SubscriptionPaymentInput) =>
       api.post<SubscriptionPayment>('/subscription/payments', input),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: PAYMENTS_KEY }),
+  });
+}
+
+// --- Postes (Phase 3.3-B3) ----------------------------------------------------------------------
+
+const ACTIVATIONS_KEY = ['subscription', 'activations'] as const;
+
+/** Postes actifs d'un site. */
+export function useSiteActivations(siteId: string | undefined) {
+  return useQuery({
+    queryKey: [...ACTIVATIONS_KEY, siteId],
+    queryFn: ({ signal }) =>
+      api.get<Page<LicenseActivation>>(
+        `/license-activations?site_id=${encodeURIComponent(siteId ?? '')}&status=ACTIVE&limit=100`,
+        signal,
+      ),
+    enabled: Boolean(siteId),
+  });
+}
+
+/** Libère un poste (raison obligatoire) ; le serveur revérifie droits, site et état. */
+export function useReleaseActivation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<LicenseActivation>(`/license-activations/${encodeURIComponent(id)}/release`, {
+        reason,
+      }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ACTIVATIONS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['subscription', 'list'] });
+    },
   });
 }
