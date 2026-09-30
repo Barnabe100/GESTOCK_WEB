@@ -533,16 +533,18 @@ def test_isolation_with_app_role_and_rls(
     with create_session_factory(app_engine)() as db:
         set_db_context(db, tenant_id=b.tenant_id)
         assert db.execute(text("SELECT count(*) FROM payments")).scalar_one() == 0
+        # Colonne modifiable (annulation) : la ligne d'une autre entreprise est invisible.
         updated = db.execute(
-            text("UPDATE payments SET amount = 1 WHERE id = :id"), {"id": payment["id"]}
+            text("UPDATE payments SET cancellation_reason = 'x' WHERE id = :id"),
+            {"id": payment["id"]},
         )
         assert updated.rowcount == 0
         with pytest.raises(DBAPIError, match="row-level security"):
             db.execute(
                 text(
                     "INSERT INTO payments (id, tenant_id, number, sale_id, site_id, amount, "
-                    "method, status, paid_at) VALUES (:id, :tenant, 'PAY-X', :sale, :site, 1, "
-                    "'CASH', 'COMPLETED', now())"
+                    "method, method_label, status, paid_at) VALUES (:id, :tenant, 'PAY-X', "
+                    ":sale, :site, 1, 'CASH', 'Espèces', 'COMPLETED', now())"
                 ),
                 {"id": uuid.uuid4(), "tenant": tenant_a, "sale": sale["id"], "site": priced.site},
             )
@@ -550,6 +552,11 @@ def test_isolation_with_app_role_and_rls(
         set_db_context(db, tenant_id=tenant_a)
         with pytest.raises(DBAPIError, match="permission denied"):
             db.execute(text("DELETE FROM payments"))  # jamais de suppression physique
+        db.rollback()
+        set_db_context(db, tenant_id=tenant_a)
+        # Montant, moyen et monnaie immuables (droits par colonne, Lot 1).
+        with pytest.raises(DBAPIError, match="permission denied"):
+            db.execute(text("UPDATE payments SET amount = 1"))
     # Contraintes en base (session propriétaire, hors application) : site différent de celui de
     # la vente (FK composite), montant nul, annulation sans motif.
     insert = (
