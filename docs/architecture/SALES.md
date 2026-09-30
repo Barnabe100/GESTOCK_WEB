@@ -1,9 +1,10 @@
-# Module Ventes simples (Phase 2.4)
+# Module Ventes (Phase 2.4, révisée par le Lot 1)
 
-Vente **comptant** d'articles du catalogue sur un site, avec client facultatif. Code du
-module : `sales` (dépend de `catalog`, `stock`, `customers` ; libellés « Ventes » via la
-terminologie du profil). Décisions structurantes :
-[ADR-0017](../adr/0017-ventes-prix-validation-annulation.md).
+Vente d'articles du catalogue sur un site, comptant (client facultatif, affiché « Ordinaire ») ou
+à crédit (client identifié obligatoire). Code du module : `sales` (dépend de `catalog`,
+`stock`, `customers` ; libellés « Ventes » via la terminologie du profil). Décisions
+structurantes : [ADR-0017](../adr/0017-ventes-prix-validation-annulation.md),
+[ADR-0037](../adr/0037-encaissement.md) (Lot 1 : numérotation, crédit, portée).
 
 ```text
 Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quantité, prix figé)
@@ -16,11 +17,18 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
 
 | Table | Colonnes | Règles |
 |---|---|---|
-| `sales` | `number` (`VTE-000001`), `site_id`, `customer_id` (nullable), `status`, `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, auteurs et dates de création / validation / annulation, `cancellation_reason` | `UNIQUE (tenant_id, number)` ; `UNIQUE (tenant_id, id)` (cible des futurs paiements / créances) ; FK composites vers `sites` et `customers` du même tenant ; `CHECK` montants ≥ 0, date de validation si validée, motif si annulée |
+| `sales` | `number` (nul au brouillon ; `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la validation ; historique `VTE-000001` conservé), `site_id`, `customer_id` (nullable), `status`, `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, auteurs et dates de création / validation / annulation, `cancellation_reason` | `UNIQUE (tenant_id, number)` ; `UNIQUE (tenant_id, id)` (cible des futurs paiements / créances) ; FK composites vers `sites` et `customers` du même tenant ; `CHECK` montants ≥ 0, date de validation si validée, motif si annulée, **numéro si validée** (`validated_has_number`), exception de crédit complète ou absente (`credit_override_complete`) ; `is_credit`, `credit_override_by` / `_at` / `_reason` / `_amount` (Lot 1) |
 | `sale_lines` | `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price`, `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`, lignes de brouillon) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
 
-- **Numéro** : séquence `sale` de `document_sequences` (par tenant, incrément atomique,
-  annulé avec la transaction).
+- **Numéro (Lot 1)** : `VENT-{CODE_SITE}-{ANNÉE}-{SÉQUENCE}` (ex. `VENT-OUA-2026-000154`),
+  attribué **à la validation** — jamais au brouillon (numéro nul, affiché « non numérotée »).
+  Compteur `document_sequences` par **tenant, site et année** (clé `{site_id}:sale:{année}`,
+  `BIGINT`, incrément atomique, ligne verrouillée jusqu'à la fin de la transaction : numéros
+  distincts et consécutifs sous concurrence, annulé avec la transaction). Six chiffres minimum
+  (présentation), sans limite : `…-999999` puis `…-1000000`. Année dans le fuseau du tenant.
+  Numéro **définitif** après validation (déclencheur `sales_number_immutable`). Les anciens
+  numéros `VTE-…` sont conservés, jamais renumérotés (un brouillon historique garde le sien).
+  Le **code du site** devient non modifiable dès son premier numéro (`409 site_code_locked`).
 - **Calculs (serveur uniquement)** : `line_total = arrondi(quantity × unit_price, 2)` (demi
   supérieur, `Decimal`) ; `subtotal = Σ line_total` ; `total = subtotal` (aucune remise ni
   taxe dans cette phase : la colonne distincte prépare leur arrivée sans migration de sens).
@@ -45,7 +53,7 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
 |---|---|---|
 | Création | permission `create` ; site accessible (`operation_site`) ; ≥ 1 ligne ; articles du tenant, actifs, sans doublon ; quantité > 0 ; client du tenant et **actif** ; date non future | Numéro, prix copiés, totaux, audit `sale.created` |
 | Modification | `update` ; statut `DRAFT` (sinon 409 `sale_not_draft`) ; mêmes contrôles | Lignes remplacées, prix relus, audit `sale.updated` (avant / après) si changement ; site non modifiable |
-| Validation | `validate` ; verrou de la vente ; `DRAFT` ; articles et client toujours actifs ; **prix inchangés** (sinon 409 `sale_prices_changed`) ; stock suffisant | Mouvements `SALE`, statut `VALIDATED`, audit `sale.validated` |
+| Validation | `validate` ; verrou de la vente ; `DRAFT` ; articles et client toujours actifs ; **prix inchangés** (sinon 409 `sale_prices_changed`) ; moyens de paiement disponibles sur le site ; crédit (§ 4 bis) ; stock suffisant | Numéro `VENT-…`, mouvements `SALE`, paiements immédiats, statut `VALIDATED`, audit `sale.validated` (numéro, `is_credit`) |
 | Annulation | `cancel` ; verrou ; pas déjà annulée (409 `sale_already_cancelled`) ; motif 5 à 500 caractères | Validée : mouvements inverses `CANCELLATION` ; brouillon : aucun mouvement ; audit `sale.cancelled` |
 
 **Immuabilité** : une vente validée ou annulée n'est plus modifiable (409). Les lignes ne sont
@@ -82,21 +90,52 @@ Facultatif (vente comptant anonyme si absent). S'il est fourni : même tenant (s
 validation (422 `customer_inactive`). Un client désactivé après validation reste affiché sur
 ses ventes passées. Lecture via `customers/api.py` uniquement.
 
+## 4 bis. Crédit (Lot 1)
+
+Le reste dû à la validation (total − encaissements immédiats) fait de la vente une **vente à
+crédit** (`is_credit`) :
+
+- **client identifié obligatoire** : sans client, `422 credit_customer_required` (`remaining`) ;
+  une vente ordinaire doit être entièrement payée ;
+- permission **`sales.sale.credit_create`** sur le site de la vente (`403 credit_not_allowed`) ;
+  elle ne lève aucune autre règle ;
+- **limite de crédit** du client (`credit_limit` NULL = pas de limite) : exposition projetée
+  > limite ⇒ `422 credit_limit_exceeded` (`credit_limit`, `sale_exposure`,
+  `override_allowed` ; exposition consolidée seulement pour qui voit tous les sites) ;
+- **exception** : `credit_override: {reason}` (5 à 500 caractères) par un utilisateur détenant
+  **`sales.sale.credit_override`** sur le site (`403 credit_override_not_allowed` sinon) ;
+  autorisateur (utilisateur authentifié), date, montant du dépassement et motif enregistrés sur
+  la vente, audit `sale.credit_limit_overridden` ; même transaction, sous le verrou du client
+  (deux validations simultanées pour un même client : la seconde voit la première) ;
+- **statut calculé** `credit_status` : `OPEN` (rien payé), `PARTIAL`, `PAID`, `CANCELLED`
+  (vente annulée), à partir des paiements effectués.
+
+Reprise : `is_credit` renseigné pour les ventes validées existantes (reste dû d'après les
+paiements datés au plus tard de la validation).
+
 ## 5. Sites
 
 `site_id` obligatoire : site actif (`X-Site-Id`) ou choisi à la création parmi les sites
 accessibles au membre (`operation_site`). Liste, consultation et actions limitées aux sites
 visibles (`visible_site_ids`) ; une vente d'un autre site répond 404 `sale_not_found`.
 
+**Portée (Lot 1)** : `sales.sale.view` donne accès à **ses propres ventes** ;
+`sales.sale.view_all` à toutes les ventes des sites autorisés (liste, fiche, paiements ;
+une vente d'un autre utilisateur hors portée répond 404). Évaluée par site (permissions du
+membre sur ce site), jamais par nom de rôle.
+
 ## 6. Permissions et rôles de base
 
 | Permission | Nature | Administrateur | Gestionnaire | Vendeur | Consultant |
 |---|---|---|---|---|---|
-| `sales.sale.view` | read | ✓ | ✓ | ✓ | ✓ |
+| `sales.sale.view` | read (ses ventes) | ✓ | ✓ | ✓ | ✓ |
+| `sales.sale.view_all` | read (toutes celles du site) | ✓ | ✓ | — | ✓ |
 | `sales.sale.create` | write | ✓ | ✓ | ✓ | — |
 | `sales.sale.update` | write (brouillon) | ✓ | ✓ | ✓ | — |
 | `sales.sale.validate` | write (sortie de stock) | ✓ | ✓ | ✓ | — |
 | `sales.sale.cancel` | write (remise en stock) | ✓ | — | — | — |
+| `sales.sale.credit_create` | write (vente à crédit) | ✓ | ✓ | — | — |
+| `sales.sale.credit_override` | write (dépassement de limite justifié) | ✓ | — | — | — |
 
 L'annulation d'une vente validée modifie le stock après coup : réservée par défaut à
 l'Administrateur ; un rôle personnalisé peut l'accorder. Aucun test sur un nom de rôle ;
@@ -140,8 +179,9 @@ encaissements immédiats (`{payments: […]}`) dans la même transaction.
 **Point de vente** : Phase 3.0 — [`POS.md`](POS.md) : `SaleService.checkout` (création +
 validation + paiements en une transaction, idempotent), canal `POS` ; mêmes règles.
 
-**Caisse** : réalisée en Phase 2.9 — [`CASH_REGISTER.md`](CASH_REGISTER.md) (un paiement
-espèces exige une session de caisse ouverte sur le site de la vente).
+**Caisse** : réalisée en Phase 2.9 — [`CASH_REGISTER.md`](CASH_REGISTER.md), optionnelle par
+site depuis le Lot 1 (site avec caisse : un paiement espèces exige la session de
+l'utilisateur ; site sans caisse : aucune session).
 
 Hors périmètre : échéances et relances, ticket / facture PDF, retours et avoirs, remises et promotions, fidélité, POS,
 restaurant. Le module Ventes ne dépend d'aucun module futur ; ceux-ci s'y rattacheront :

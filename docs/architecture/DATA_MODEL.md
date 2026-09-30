@@ -206,7 +206,7 @@ Référence `CLI-000001` : séquence `customer` de `document_sequences`. Détail
 
 | Table | Colonnes principales | Contraintes notables |
 |---|---|---|
-| `sales` | `tenant_id`, `number` (`VTE-000001`), `site_id`, `customer_id` (nullable : vente comptant anonyme), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, `created_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, id)` (cible des futurs paiements) ; FK composites vers `sites` et `customers` ; `CHECK` montants ≥ 0, validée ⇒ `validated_at`, annulée ⇒ motif ; index `(tenant_id, sale_date)` |
+| `sales` | `tenant_id`, `number` (`String(64)`, **nul au brouillon**, `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la validation, historique `VTE-000001` conservé), `site_id`, `customer_id` (nullable : vente ordinaire, entièrement payée), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, `created_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason`, `is_credit`, `credit_override_by` / `_at` / `_reason` / `_amount` (Lot 1) | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, id)` ; FK composites vers `sites` et `customers` ; `CHECK` montants ≥ 0, validée ⇒ `validated_at`, annulée ⇒ motif, validée ⇒ numéro (`validated_has_number`), exception de crédit complète ou absente ; déclencheur `sales_number_immutable` (numéro d'une vente validée définitif) ; index `(tenant_id, sale_date)` |
 | `sale_lines` | `tenant_id`, `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price` (copié du catalogue), `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
 
 Phase 3.0 : `channel` (`BACKOFFICE` par défaut \| `POS`, dimension de reporting) et
@@ -220,10 +220,22 @@ Détails : [`SALES.md`](SALES.md).
 
 | Table | Colonnes principales | Contraintes notables |
 |---|---|---|
-| `payments` | `tenant_id`, `number` (`PAY-000001`), `sale_id`, `site_id`, `amount` (`NUMERIC(18,2)`), `method` (`CASH` \| `MOBILE_MONEY` \| `CARD` \| `BANK_TRANSFER` \| `OTHER`), `provider`, `status` (`PENDING` \| `COMPLETED` \| `CANCELLED`), `reference`, `paid_at`, `idempotency_key`, `created_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, idempotency_key)` ; FK composite `(tenant_id, sale_id, site_id)` → `sales (tenant_id, id, site_id)` (même tenant et même site) et vers `sites` ; `CHECK amount > 0` ; annulé ⇒ date et motif ; index `(tenant_id, sale_id)`, `(tenant_id, paid_at)` ; jamais supprimé |
+| `payments` | `tenant_id`, `number` (`PAY-000001`), `sale_id`, `site_id`, `amount` (`NUMERIC(18,2)`, montant imputé), `method` (type figé : `CASH` \| `MOBILE_MONEY` \| `CARD` \| `BANK_TRANSFER` \| `OTHER`), `payment_method_id` (moyen configuré, FK composite), `method_label` (libellé figé), `amount_received` / `change_given` (espèces, monnaie calculée par le serveur, `CHECK cash_change_consistent`), `provider` (historique), `status` (`PENDING` \| `COMPLETED` \| `CANCELLED`), `reference`, `paid_at`, `idempotency_key`, `created_by`, `cancelled_at`/`_by`, `cancellation_reason` | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, idempotency_key)` ; FK composite `(tenant_id, sale_id, site_id)` → `sales (tenant_id, id, site_id)` (même tenant et même site) et vers `sites` ; `CHECK amount > 0` ; annulé ⇒ date et motif ; index `(tenant_id, sale_id)`, `(tenant_id, paid_at)` ; jamais supprimé |
 
 Numéro : séquence `payment`. Aucun état d'encaissement stocké sur `sales` : payé / reste /
-état sont calculés à partir des paiements `COMPLETED`. Détails : [`PAYMENTS.md`](PAYMENTS.md).
+état sont calculés à partir des paiements `COMPLETED`. Rôle applicatif : mise à jour des seules
+colonnes d'annulation (Lot 1). Détails : [`PAYMENTS.md`](PAYMENTS.md).
+
+### Moyens de paiement et caisse par site (Lot 1, isolés par RLS, [ADR-0037](../adr/0037-encaissement.md))
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `payment_methods` | `tenant_id`, `label` (≤ 60), `kind` (type immuable), `integration_mode` (`MANUAL` \| `API` réservé), `reference_required`, `is_active`, `sort_order`, `created_by` | `UNIQUE (tenant_id, id)` (cible des paiements) ; libellé unique par entreprise (casse ignorée) ; jamais supprimé (`SELECT, INSERT`, `UPDATE` de `label`, `integration_mode`, `reference_required`, `is_active`, `sort_order`, `updated_at`) |
+| `payment_method_sites` | `tenant_id`, `payment_method_id`, `site_id`, `is_enabled`, `updated_at`, `updated_by` | PK `(payment_method_id, site_id)` ; FK composites vers le moyen et le site ; ligne absente = disponible |
+| `cash_site_settings` | `tenant_id`, `site_id` (PK), `enabled`, `updated_at`, `updated_by` | FK composite vers `sites` ; absente = caisse non activée ; verrou exclusif à la désactivation |
+
+Numéros de vente : `document_sequences` (clé `{site_id}:sale:{année}`, `BIGINT`) ;
+`site_has_numbers` fige le code d'un site qui a émis un numéro.
 
 ### Caisse (Phase 2.9, isolée par RLS)
 

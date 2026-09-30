@@ -24,8 +24,16 @@ Aucune table de créances, aucun solde stocké (ni sur la vente, ni sur le clien
 sont calculés à chaque lecture par agrégation SQL (`sales/credit.py`, exposé par `sales/api.py`).
 Aucune migration en Phase 2.8.
 
-Une vente validée **sans client** et non soldée est listée (« Sans client ») et comptée dans le
-total dû, pas dans les clients débiteurs ; elle ne crée aucune exposition client.
+Depuis le Lot 1 ([ADR-0037](../adr/0037-encaissement.md)), une vente à crédit exige un
+**client identifié** (`credit_customer_required`), la permission `sales.sale.credit_create`, et
+la limite ne peut être dépassée qu'avec `sales.sale.credit_override` et une justification
+(auditée) — voir [`SALES.md`](SALES.md) § 4 bis. Chaque créance expose aussi son statut de
+crédit calculé (`credit_status` : `OPEN`, `PARTIAL`, `PAID`, `CANCELLED`). La consultation des
+créances (`receivables.receivable.view`) n'est pas réduite aux ventes de l'utilisateur.
+
+Une vente validée **sans client** et non soldée (données antérieures au Lot 1) reste listée
+(« Sans client ») et comptée dans le total dû, pas dans les clients débiteurs ; elle ne crée
+aucune exposition client.
 
 ## 2. Exposition et limite de crédit
 

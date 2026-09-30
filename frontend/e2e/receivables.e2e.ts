@@ -7,6 +7,7 @@ import {
   ensureCashOpen,
   loginUi,
   OWNER,
+  SALE_NUMBER,
   STANDARD_OWNER,
 } from './support';
 
@@ -93,7 +94,10 @@ async function customer(request: APIRequestContext, s: Setup, name: string, limi
   });
 }
 
-/** Vente de `units` × 10 000 pour un client, brouillon ou validée sans paiement. */
+/**
+ * Vente de `units` × 10 000 pour un client, brouillon (non numéroté) ou validée sans paiement
+ * (numéro `VENT-…` attribué à la validation).
+ */
 async function sale(
   request: APIRequestContext,
   s: Setup,
@@ -106,7 +110,7 @@ async function sale(
     customer_id: customerId,
     lines: [{ article_id: s.articleId, quantity: String(units) }],
   });
-  if (validate) await post(request, s.token, `/sales/${created.id}/validate`, {});
+  if (validate) return post(request, s.token, `/sales/${created.id}/validate`, {});
   return created;
 }
 
@@ -122,6 +126,13 @@ async function openReceivables(page: Page, search: string) {
 }
 
 const row = (page: Page, number: string) => page.getByRole('row').filter({ hasText: number });
+
+/** Numéro définitif lu dans la confirmation de validation. */
+async function validatedNumber(page: Page): Promise<string> {
+  const toast = page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`));
+  await expect(toast).toBeVisible();
+  return ((await toast.innerText()).match(SALE_NUMBER) ?? [''])[0];
+}
 
 async function recordPayment(page: Page, value: string) {
   await page.getByRole('button', { name: 'Enregistrer un paiement' }).click();
@@ -144,25 +155,25 @@ test.describe('Créances / comptes clients', () => {
     await page.goto(`/sales/${draft.id}`);
     await page.getByRole('button', { name: 'Valider la vente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Valider la vente' }).click();
-    await expect(page.getByText(`Vente ${draft.number} validée`)).toBeVisible();
+    const number = await validatedNumber(page);
     // 2. Elle apparaît dans Créances (menu « Ventes et clients »).
-    await openReceivables(page, draft.number);
-    await expect(row(page, draft.number)).toContainText(`Client Crédit ${s.suffix}`);
-    await expect(row(page, draft.number)).toContainText(amount('100 000'));
-    await expect(row(page, draft.number)).toContainText('Non payée');
+    await openReceivables(page, number);
+    await expect(row(page, number)).toContainText(`Client Crédit ${s.suffix}`);
+    await expect(row(page, number)).toContainText(amount('100 000'));
+    await expect(row(page, number)).toContainText('Non payée');
     // 3. Paiement partiel depuis la fiche de la vente, ouverte depuis la créance.
-    await row(page, draft.number).getByRole('button', { name: 'Ouvrir la vente' }).click();
+    await row(page, number).getByRole('button', { name: 'Ouvrir la vente' }).click();
     await expect(page).toHaveURL(new RegExp(`/sales/${draft.id}$`));
     await recordPayment(page, '40000');
     // 4. La créance diminue.
-    await openReceivables(page, draft.number);
-    await expect(row(page, draft.number)).toContainText(amount('60 000'));
-    await expect(row(page, draft.number)).toContainText('Partiellement payée');
+    await openReceivables(page, number);
+    await expect(row(page, number)).toContainText(amount('60 000'));
+    await expect(row(page, number)).toContainText('Partiellement payée');
     // 5-6. Paiement final : la créance disparaît des créances ouvertes.
     await page.goto(`/sales/${draft.id}`);
     await recordPayment(page, '60000');
     await expect(page.getByText('Payée', { exact: true }).first()).toBeVisible();
-    await openReceivables(page, draft.number);
+    await openReceivables(page, number);
     await expect(page.getByText('Aucun résultat')).toBeVisible();
     // 7-8. Annulation d'un paiement : la créance réapparaît.
     await page.goto(`/sales/${draft.id}`);
@@ -177,8 +188,8 @@ test.describe('Créances / comptes clients', () => {
     await dialog.getByLabel(/Motif d'annulation/).fill('Chèque impayé');
     await dialog.getByRole('button', { name: 'Annuler le paiement' }).click();
     await expect(page.getByText('Partiellement payée', { exact: true }).first()).toBeVisible();
-    await openReceivables(page, draft.number);
-    await expect(row(page, draft.number)).toContainText(amount('60 000'));
+    await openReceivables(page, number);
+    await expect(row(page, number)).toContainText(amount('60 000'));
   });
 
   test('limite de crédit : refus au-delà, encaissement immédiat accepté, compte client', async ({
@@ -198,11 +209,13 @@ test.describe('Créances / comptes clients', () => {
     await expect(page.getByText(/Limite de crédit du client dépassée/)).toBeVisible();
     await expect(page.getByText(amount('50 000 F CFA de crédit disponible'))).toBeVisible();
     await expect(dialog).toBeVisible();
+    // Administrateur : dépassement proposé (justification obligatoire) ; ici, il encaisse.
+    await expect(dialog.getByLabel(/Justification du dépassement/)).toBeVisible();
     // Encaissement de 50 000 à la validation : exposition 150 000 = limite, acceptée.
     await dialog.getByLabel('Encaisser un paiement maintenant').check();
     await dialog.getByLabel(/^Montant/).fill('50000');
     await dialog.getByRole('button', { name: 'Valider la vente' }).click();
-    await expect(page.getByText(`Vente ${draft.number} validée`)).toBeVisible();
+    const number = await validatedNumber(page);
     await expect(page.getByText('Partiellement payée', { exact: true }).first()).toBeVisible();
     // Compte client : limite, exposition, crédit disponible, créances.
     await page.goto(`/customers/${client.id}`);
@@ -211,9 +224,7 @@ test.describe('Créances / comptes clients', () => {
     await expect(credit).toContainText('Exposition actuelle');
     await expect(credit).toContainText('2 créances ouvertes');
     await expect(credit.locator('.sm-metric').nth(2)).toContainText(amount('0'));
-    await expect(page.getByRole('row').filter({ hasText: draft.number })).toContainText(
-      amount('50 000'),
-    );
+    await expect(page.getByRole('row').filter({ hasText: number })).toContainText(amount('50 000'));
   });
 
   test('client sans limite : « Non configurée », aucun crédit disponible affiché', async ({

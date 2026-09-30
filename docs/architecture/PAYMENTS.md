@@ -1,7 +1,9 @@
-# Paiements des ventes — Phase 2.7
+# Paiements des ventes — Phase 2.7, révisée par le Lot 1
 
 Encaissements d'une vente, sur sa fiche (module `sales`). API sous
-`/api/v1/sales/{sale_id}/payments`. Décisions : [ADR-0020](../adr/0020-paiements-des-ventes.md).
+`/api/v1/sales/{sale_id}/payments`. Décisions : [ADR-0020](../adr/0020-paiements-des-ventes.md),
+[ADR-0037](../adr/0037-encaissement.md) (Lot 1 : moyens configurables, montant reçu et monnaie,
+caisse optionnelle par site, crédit avec client obligatoire).
 
 ## 1. Règle fondamentale (validée par TechNova)
 
@@ -26,16 +28,52 @@ Table `payments` (tenant-scoped, RLS `ENABLE` + `FORCE`) :
 | `number` | `PAY-000001` (séquence `payment` de `document_sequences`), unique par tenant |
 | `sale_id`, `site_id` | vente payée et son site (copié) — FK composite `(tenant_id, sale_id, site_id)` → `sales` : même tenant **et** même site que la vente |
 | `amount` | `NUMERIC(18,2)`, `CHECK amount > 0` |
-| `method` | `CASH`, `MOBILE_MONEY`, `CARD`, `BANK_TRANSFER`, `OTHER` (catégorie, code technique) |
-| `provider` | précision facultative (Orange Money, Moov Money, Wave…) — sans nouveau code de moyen |
+| `payment_method_id` | moyen **configuré** choisi (Lot 1) — FK composite `(tenant_id, payment_method_id)` → `payment_methods` |
+| `method_label` | libellé du moyen **figé** au paiement (instantané : un renommage ultérieur ne le change pas) |
+| `method` | **type** figé : `CASH`, `MOBILE_MONEY`, `CARD`, `BANK_TRANSFER`, `OTHER` — seul il gouverne le comportement |
+| `provider` | précision historique facultative (conservée ; les libellés configurés la remplacent) |
+| `amount_received`, `change_given` | espèces seulement : montant remis et monnaie rendue, **calculée par le serveur** (`CHECK` : `change_given = amount_received − amount`, `amount_received ≥ amount`, type `CASH`) |
 | `status` | `PENDING` (réservé aux encaissements asynchrones futurs), `COMPLETED`, `CANCELLED` |
 | `reference` | n° de transaction, de reçu, de virement (facultatif) |
 | `paid_at` | date d'encaissement (serveur) |
 | `idempotency_key` | clé fournie par le client, unique par tenant (double soumission) |
 | `created_by`, `cancelled_at` / `_by`, `cancellation_reason` | traçabilité ; annulé ⇒ date et motif (`CHECK`) |
 
-Index : `(tenant_id, sale_id)`, `(tenant_id, paid_at)`, `site_id`. Jamais supprimé (droits du
-rôle applicatif : `SELECT, INSERT, UPDATE`).
+Index : `(tenant_id, sale_id)`, `(tenant_id, paid_at)`, `site_id`. Jamais supprimé ; le rôle
+applicatif ne peut modifier que les colonnes d'annulation (`status`, `cancelled_*`,
+`cancellation_reason`, `updated_at` — droits par colonne, Lot 1) : montant, moyen, instantané et
+monnaie sont immuables en base.
+
+### Moyens de paiement configurables (Lot 1)
+
+Table `payment_methods` (tenant-scoped, RLS) : `label` (unique par entreprise, casse ignorée),
+`kind` (type, **immuable**), `integration_mode` (`MANUAL` ; `API` réservé à une intégration
+future, refusé aujourd'hui : `422 payment_integration_unavailable`), `reference_required`,
+`is_active` (désactivation, jamais de suppression), `sort_order`. Table `payment_method_sites` :
+disponibilité **par site** (ligne absente : disponible ; `is_enabled = false` : désactivé sur ce
+site). Moyens par défaut d'une nouvelle entreprise (modifiables) : Espèces, Mobile Money,
+Carte bancaire, Virement, Autre. Exemples de configuration : Orange Money, Moov Money, Telecel
+Money, Sank Money, Wave (`MOBILE_MONEY`, référence obligatoire).
+
+| Type | Comportement |
+|---|---|
+| `CASH` | montant reçu, **monnaie** calculée par le serveur ; passe par la session de caisse **si** la caisse du site est activée |
+| `MOBILE_MONEY`, `CARD`, `BANK_TRANSFER`, `OTHER` | montant payé ; **jamais de monnaie** (`422 change_not_allowed`) ; jamais de mouvement de caisse |
+
+Un paiement désigne son moyen par `payment_method_id` (compatibilité : `method` seul désigne
+l'**unique** moyen disponible de ce type sur le site, sinon `422 payment_method_required`).
+Moyen inactif ou désactivé sur le site : `422 payment_method_unavailable` ; référence manquante
+si exigée : `422 payment_reference_required`.
+
+### Montant reçu et monnaie (espèces, Lot 1)
+
+- `amount_received` seul : montant imputé = min(reçu, reste dû), monnaie = reçu − imputé.
+  Ex. total 7 500, reçu 10 000 → imputé 7 500, monnaie 2 500.
+- `amount` et `amount_received` : reçu ≥ montant (sinon `422 cash_received_insufficient`).
+- Paiements immédiats d'une validation / du POS : autres moyens imputés **d'abord**, espèces
+  ensuite ; la monnaie ne porte que sur la partie espèces. Ex. total 50 000 : espèces 20 000 +
+  Orange Money 10 000, puis 30 000 remis en espèces pour solder 20 000 → monnaie 10 000.
+- Le mouvement de caisse éventuel porte le montant **imputé** (la monnaie ne reste pas en caisse).
 
 ## 3. Calcul du solde (aucun état stocké)
 
@@ -58,7 +96,9 @@ une pour la fiche. L'état n'existe que pour une vente **validée**.
   l'interface ne sert jamais à calculer le solde.
 - **Paiement partiel, successifs, mixte** : autant de paiements que nécessaire, chacun conservé
   individuellement, avec son moyen (paiement mixte = plusieurs paiements).
-- **Vente sans client** : payable comme toute vente validée.
+- **Vente sans client** (« Ordinaire ») : doit être **entièrement payée** à la validation — le
+  reste dû d'une vente est un crédit, qui exige un client identifié (Lot 1,
+  [`SALES.md`](SALES.md)). Une vente historique sans client restée non soldée reste payable.
 - **Immuable après encaissement** : ni montant ni moyen modifiables (aucune route de
   modification ou de suppression). Une erreur se corrige par **annulation**
   (`COMPLETED → CANCELLED`, motif 5–500 caractères, auteur, date) puis nouveau paiement.
@@ -85,6 +125,12 @@ une pour la fiche. L'état n'existe que pour une vente **validée**.
 | `sales.payment.view` | lecture | ✅ | ✅ | ✅ | ✅ |
 | `sales.payment.create` | écriture | ✅ | ✅ | ✅ | — |
 | `sales.payment.cancel` | écriture | ✅ | — | — | — |
+| `sales.payment_method.manage` | admin | ✅ | — | — | — |
+
+`GET /payment-methods` : `sales.payment.view`, `sales.payment.create` ou
+`sales.payment_method.manage` ; création, modification et disponibilité par site :
+`sales.payment_method.manage`, revérifiée pour le site modifié. Audit `payment_method.created`,
+`payment_method.updated` (avant / après), `payment_method.site_enabled|site_disabled`.
 
 L'annulation d'un paiement suit la convention des autres annulations (ventes, documents de
 stock) : réservée à l'Administrateur par défaut ; un rôle personnalisé peut la recevoir.
@@ -103,11 +149,13 @@ montant, moyen, date. Aucune donnée sensible (pas de numéro de carte).
 
 - **Créances** : réalisées en Phase 2.8 ([`RECEIVABLES.md`](RECEIVABLES.md)) à partir du même
   « payé » (paiements `COMPLETED`), sans modifier les règles de paiement.
-- **Caisse** : réalisée en Phase 2.9 ([`CASH_REGISTER.md`](CASH_REGISTER.md)) : un paiement
-  `CASH` exige une session de caisse ouverte sur le site de la vente et crée son mouvement de
-  caisse dans la même transaction (port `sales/cash_port.py` : la vente et les autres moyens
+- **Caisse** : réalisée en Phase 2.9 ([`CASH_REGISTER.md`](CASH_REGISTER.md)), **optionnelle
+  par site** depuis le Lot 1 : sur un site avec caisse, un paiement `CASH` exige la session
+  ouverte **de l'utilisateur** sur ce site et crée son mouvement de caisse dans la même
+  transaction ; sur un site sans caisse, aucune session ni mouvement (port `sales/cash_port.py` : la vente et les autres moyens
   ne dépendent jamais de la caisse) ; son annulation crée la sortie inverse (session ouverte).
 - **Encaissements asynchrones** (Mobile Money par API, TPE) : statut `PENDING` réservé, déjà
   compté dans le solde engagé pour empêcher un doublon ; confirmation → `COMPLETED`. Le module
   planifié `payments` (« Paiements électroniques ») accueillera ces intégrations.
-- Surpaiement, rendu monnaie, remboursements : non autorisés en V1.
+- Surpaiement et remboursements : non autorisés. Rendu de monnaie : espèces seulement, calculé
+  par le serveur (Lot 1).

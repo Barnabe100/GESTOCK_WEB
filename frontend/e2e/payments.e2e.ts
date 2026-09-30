@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, ensureCashOpen, loginUi, OWNER } from './support';
+import { apiToken, bearer, ensureCashOpen, loginUi, OWNER, SALE_NUMBER } from './support';
 
 /**
  * Phase 2.7 — Paiements des ventes : la validation d'une vente est indépendante de son
@@ -13,6 +13,7 @@ interface Setup {
   reference: string;
   articleId: string;
   siteId: string;
+  customerId: string;
 }
 
 interface Site {
@@ -47,9 +48,14 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     lines: [{ article_id: article.id, quantity: '50', unit_cost: '6000' }],
   });
   await post(`/stock/entries/${entry.id}/validate`, {}, 200);
-  // Espèces : caisse ouverte sur le site (Phase 2.9).
+  // Espèces : caisse du site activée et session du propriétaire ouverte (Lot 1).
   await ensureCashOpen(request, token, site.id);
-  return { token, reference, articleId: article.id, siteId: site.id };
+  // Vente validée non payée = vente à crédit : client identifié obligatoire (Lot 1).
+  const customer = await post('/customers', {
+    customer_type: 'INDIVIDUAL',
+    name: `Client Paiements ${suffix}`,
+  });
+  return { token, reference, articleId: article.id, siteId: site.id, customerId: customer.id };
 }
 
 /** Vente de 10 unités (100 000), brouillon ou validée. */
@@ -57,10 +63,14 @@ async function saleByApi(request: APIRequestContext, s: Setup, validate = true) 
   const headers = bearer(s.token);
   const created = await request.post('/api/v1/sales', {
     headers,
-    data: { site_id: s.siteId, lines: [{ article_id: s.articleId, quantity: '10' }] },
+    data: {
+      site_id: s.siteId,
+      customer_id: s.customerId,
+      lines: [{ article_id: s.articleId, quantity: '10' }],
+    },
   });
   expect(created.status(), await created.text()).toBe(201);
-  const sale = (await created.json()) as { id: string; number: string };
+  const sale = (await created.json()) as { id: string; number: string | null };
   if (validate) {
     expect((await request.post(`/api/v1/sales/${sale.id}/validate`, { headers })).status()).toBe(
       200,
@@ -115,7 +125,9 @@ test.describe('Paiements des ventes', () => {
     await page.goto(`/sales/${sale.id}`);
     await page.getByRole('button', { name: 'Valider la vente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Valider la vente' }).click();
-    await expect(page.getByText(`Vente ${sale.number} validée`)).toBeVisible();
+    // Numéro définitif attribué à la validation (brouillon non numéroté).
+    expect(sale.number).toBeNull();
+    await expect(page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`))).toBeVisible();
     expect(await stockOf(request, s)).toBe('40.000');
     // Validée mais non payée : statut commercial et état d'encaissement distincts.
     await expect(page.getByText('Validée', { exact: true })).toBeVisible();
@@ -186,7 +198,8 @@ test.describe('Paiements des ventes', () => {
     await payByApi(request, s, sale.id, '70000');
     await loginUi(page, OWNER.email, OWNER.password);
     await page.goto(`/sales/${sale.id}`);
-    const dialog = await recordPayment(page, '40000');
+    // Hors espèces, jamais de monnaie : un montant supérieur au solde est refusé.
+    const dialog = await recordPayment(page, '40000', 'Mobile Money');
     await expect(dialog).toContainText(amount('Le montant dépasse le solde à payer (30 000'));
     await dialog.getByRole('button', { name: 'Annuler' }).click();
     await expect(page.getByRole('row').filter({ hasText: /PAY-\d{6}/ })).toHaveCount(1);

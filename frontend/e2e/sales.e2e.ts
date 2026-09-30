@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, createMember, loginUi, OWNER, unique } from './support';
+import { apiToken, bearer, createMember, loginUi, OWNER, SALE_NUMBER, unique } from './support';
 
 /**
  * Phase 2.4 — Ventes simples : parcours complet avec le vrai backend (StockService, RLS,
@@ -75,7 +75,7 @@ async function pick(page: Page, inputId: string, text: string) {
     .click();
 }
 
-/** Saisie d'une vente d'un article (quantité 3), client facultatif ; renvoie son numéro. */
+/** Saisie d'une vente d'un article (quantité 3), client facultatif : brouillon non numéroté. */
 async function enterSale(page: Page, stocked: Stocked, customer?: string) {
   const { reference } = stocked;
   await page.getByRole('link', { name: 'Ventes', exact: true }).click();
@@ -99,16 +99,29 @@ async function enterSale(page: Page, stocked: Stocked, customer?: string) {
   await expect(page.getByTestId('sale-total')).toHaveText(/4\s500/);
   await page.getByRole('button', { name: 'Enregistrer le brouillon' }).click();
   await expect(page.getByText('Brouillon enregistré')).toBeVisible();
-  const heading = page.getByRole('heading', { name: /^Vente VTE-\d{6}$/ });
-  await expect(heading).toBeVisible();
-  return ((await heading.innerText()).match(/VTE-\d{6}/) ?? [''])[0];
+  // Numéro attribué à la validation seulement (Lot 1).
+  await expect(page.getByRole('heading', { name: 'Vente non numérotée' })).toBeVisible();
 }
 
-async function validateSale(page: Page, number: string) {
+/**
+ * Validation ; `pay` : moyen d'un encaissement immédiat du total (vente sans client : entièrement
+ * payée, le crédit exigeant un client). Renvoie le numéro `VENT-…` attribué par le serveur.
+ */
+async function validateSale(page: Page, pay?: string) {
   await page.getByRole('button', { name: 'Valider la vente' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Valider la vente' }).click();
-  await expect(page.getByText(`Vente ${number} validée`)).toBeVisible();
+  const dialog = page.getByRole('dialog');
+  if (pay) {
+    await expect(dialog.getByLabel('Encaisser un paiement maintenant')).toBeChecked();
+    await dialog.locator('.p-dropdown', { has: page.locator('#validate-method') }).click();
+    await page.locator('.p-dropdown-panel').last().getByRole('option', { name: pay }).click();
+  }
+  await dialog.getByRole('button', { name: 'Valider la vente' }).click();
+  const toast = page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`));
+  await expect(toast).toBeVisible();
   await expect(page.getByText('Validée', { exact: true })).toBeVisible();
+  const number = ((await toast.innerText()).match(SALE_NUMBER) ?? [''])[0];
+  await expect(page.getByRole('heading', { name: `Vente ${number}` })).toBeVisible();
+  return number;
 }
 
 test.describe('Ventes', () => {
@@ -120,9 +133,10 @@ test.describe('Ventes', () => {
     const { reference, customer, token } = stocked;
     await loginUi(page, OWNER.email, OWNER.password);
 
-    const number = await enterSale(page, stocked, customer);
+    await enterSale(page, stocked, customer);
     expect(await stockOf(request, stocked)).toBe('10.000'); // brouillon : aucun effet
-    await validateSale(page, number);
+    // Vente à crédit (client identifié, permission du propriétaire).
+    const number = await validateSale(page);
     await expect(page.getByText(new RegExp(customer))).toBeVisible();
     // Vente validée : plus de saisie possible.
     await expect(page.getByRole('button', { name: 'Enregistrer le brouillon' })).toHaveCount(0);
@@ -141,13 +155,11 @@ test.describe('Ventes', () => {
     await expect(movement).toContainText('Vente');
     await expect(movement).toContainText('-3');
 
-    // Audit : création et validation tracées.
+    // Audit : validation tracée avec le numéro définitif (le brouillon n'en a pas).
     await page.getByRole('link', { name: "Journal d'audit", exact: true }).click();
-    for (const action of ['sale.validated', 'sale.created']) {
-      await expect(
-        page.getByRole('row').filter({ hasText: action }).filter({ hasText: number }).first(),
-      ).toBeVisible();
-    }
+    await expect(
+      page.getByRole('row').filter({ hasText: 'sale.validated' }).filter({ hasText: number }),
+    ).toBeVisible();
 
     // Double validation : refusée par le backend, sans nouveau mouvement.
     const sales = (await (
@@ -170,11 +182,11 @@ test.describe('Ventes', () => {
     const password = 'Vendeur-Ventes-E2E-2026';
     const email = await createMember(request, token, 'seller', password);
 
-    // Vente comptant (sans client) saisie et validée par le Vendeur.
+    // Vente comptant (client « Ordinaire ») saisie, payée et validée par le Vendeur.
     await loginUi(page, email, password);
-    const number = await enterSale(page, stocked);
-    await validateSale(page, number);
-    await expect(page.getByText('Sans client')).toBeVisible();
+    await enterSale(page, stocked);
+    const number = await validateSale(page, 'Mobile Money');
+    await expect(page.getByText('Ordinaire', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Annuler la vente' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Rôles', exact: true })).toHaveCount(0);
 
@@ -189,7 +201,18 @@ test.describe('Ventes', () => {
     expect(((await forbidden.json()) as { code: string }).code).toBe('permission_denied');
     expect(await stockOf(request, stocked)).toBe('7.000');
 
-    // L'Administrateur annule : quantités remises en stock par mouvement d'annulation.
+    // L'Administrateur annule : d'abord le paiement (vente payée), puis la vente ; quantités
+    // remises en stock par mouvement d'annulation.
+    const payments = (await (
+      await request.get(`/api/v1/sales/${id}/payments`, { headers: bearer(token) })
+    ).json()) as { items: { id: string }[] };
+    for (const payment of payments.items) {
+      const cancelled = await request.post(`/api/v1/sales/${id}/payments/${payment.id}/cancel`, {
+        headers: bearer(token),
+        data: { reason: 'Remboursement E2E' },
+      });
+      expect(cancelled.status(), await cancelled.text()).toBe(200);
+    }
     await page.context().clearCookies();
     await loginUi(page, OWNER.email, OWNER.password);
     await page.goto(`/sales/${id}`);

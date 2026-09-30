@@ -206,9 +206,10 @@ interface OpenSession {
 }
 
 /**
- * Caisse ouverte sur un site (Phase 2.9 : un paiement en espèces exige une session de caisse
- * ouverte sur le site de la vente). Réutilise une session ouverte existante, sinon ouvre la
- * caisse « Caisse E2E » du site (créée au besoin).
+ * Session de caisse **de l'utilisateur du jeton** ouverte sur un site (Lot 1 : session = site
+ * + poste + utilisateur ; la caisse est optionnelle par site : elle est activée ici, ce qui
+ * exige `organization.site.manage`). Réutilise sa session ouverte, sinon ouvre un poste
+ * « Caisse E2E » libre du site (créé au besoin).
  */
 export async function ensureCashOpen(
   request: APIRequestContext,
@@ -216,20 +217,31 @@ export async function ensureCashOpen(
   siteId: string,
 ): Promise<OpenSession> {
   const headers = bearer(token);
+  const enabled = await request.put(`/api/v1/cash/sites/${siteId}`, {
+    headers,
+    data: { enabled: true },
+  });
+  expect(enabled.status(), await enabled.text()).toBe(200);
+  const me = (await (await request.get('/api/v1/me', { headers })).json()) as {
+    user: { id: string };
+  };
   const open = (await (
-    await request.get(`/api/v1/cash/sessions?status=OPEN&site_id=${siteId}`, { headers })
+    await request.get(
+      `/api/v1/cash/sessions?status=OPEN&site_id=${siteId}&opened_by=${me.user.id}`,
+      { headers },
+    )
   ).json()) as { items: OpenSession[] };
   if (open.items[0]) return open.items[0];
   const registers = (await (
-    await request.get(`/api/v1/cash/registers?site_id=${siteId}&search=Caisse%20E2E`, {
+    await request.get(`/api/v1/cash/registers?site_id=${siteId}&search=Caisse%20E2E&limit=100`, {
       headers,
     })
-  ).json()) as { items: { id: string; is_active: boolean }[] };
-  let registerId = registers.items.find((r) => r.is_active)?.id;
+  ).json()) as { items: { id: string; is_active: boolean; current_session: unknown }[] };
+  let registerId = registers.items.find((r) => r.is_active && r.current_session === null)?.id;
   if (!registerId) {
     const created = await request.post('/api/v1/cash/registers', {
       headers,
-      data: { site_id: siteId, name: 'Caisse E2E' },
+      data: { site_id: siteId, name: unique('Caisse E2E') },
     });
     expect(created.status(), await created.text()).toBe(201);
     registerId = ((await created.json()) as { id: string }).id;
@@ -241,6 +253,23 @@ export async function ensureCashOpen(
   expect(session.status(), await session.text()).toBe(201);
   return (await session.json()) as OpenSession;
 }
+
+/** Identifiant d'un moyen de paiement configuré de l'entreprise, par libellé. */
+export async function paymentMethodId(
+  request: APIRequestContext,
+  token: string,
+  label: string,
+): Promise<string> {
+  const methods = (await (
+    await request.get('/api/v1/payment-methods', { headers: bearer(token) })
+  ).json()) as { id: string; label: string }[];
+  const method = methods.find((m) => m.label === label);
+  expect(method, `moyen de paiement « ${label} » introuvable`).toBeTruthy();
+  return method?.id ?? '';
+}
+
+/** Numéro définitif d'une vente validée : `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` (Lot 1). */
+export const SALE_NUMBER = /VENT-[A-Z0-9-]+-\d{4}-\d{6,}/;
 
 /**
  * SQL exécuté avec le rôle propriétaire de la base (préparation de données de test que

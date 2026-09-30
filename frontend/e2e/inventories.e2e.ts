@@ -130,10 +130,13 @@ test.describe('Inventaires', () => {
       data: { site_id: s.site.id, lines: [{ article_id: s.articleId, quantity: '2' }] },
     });
     expect(sale.status()).toBe(201);
-    const saleId = ((await sale.json()) as { id: string }).id;
-    expect((await request.post(`/api/v1/sales/${saleId}/validate`, { headers })).status()).toBe(
-      200,
-    );
+    const { id: saleId, total } = (await sale.json()) as { id: string; total: string };
+    // Vente sans client : entièrement payée (le crédit exige un client, Lot 1).
+    const validated = await request.post(`/api/v1/sales/${saleId}/validate`, {
+      headers,
+      data: { payments: [{ amount: total, method: 'MOBILE_MONEY' }] },
+    });
+    expect(validated.status(), await validated.text()).toBe(200);
     expect(await stockOf(request, s)).toBe('18.000');
 
     // Terminer, puis valider après confirmation (résumé affiché).

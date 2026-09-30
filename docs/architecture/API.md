@@ -205,11 +205,11 @@ vie : [`SALES.md`](SALES.md) ; décisions : [ADR-0017](../adr/0017-ventes-prix-v
 
 | Méthode | Chemin | Permission | Rôle |
 |---|---|---|---|
-| GET | `/sales` | `sales.sale.view` | Liste des ventes des sites accessibles ; `search` (numéro, code / nom / téléphone du client), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `site_id`, `customer_id`, `date_from`, `date_to` ; tri `number` (défaut décroissant), `sale_date`, `total`, `created_at` |
-| POST | `/sales` | `sales.sale.create` | Créer un **brouillon** (numéro `VTE-000001` attribué, prix copiés du catalogue, totaux calculés) |
+| GET | `/sales` | `sales.sale.view` | Liste des ventes des sites accessibles (ses propres ventes ; toutes celles du site avec `sales.sale.view_all`, Lot 1) ; `search` (numéro, code / nom / téléphone du client), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `site_id`, `customer_id`, `date_from`, `date_to` ; tri `number` (défaut décroissant), `sale_date`, `total`, `created_at` |
+| POST | `/sales` | `sales.sale.create` | Créer un **brouillon** (sans numéro : `number` nul ; prix copiés du catalogue, totaux calculés) |
 | GET | `/sales/{id}` | `sales.sale.view` | Détail avec lignes |
 | PUT | `/sales/{id}` | `sales.sale.update` | Remplacer date, client, observations et lignes d'un brouillon (prix relus) ; site non modifiable |
-| POST | `/sales/{id}/validate` | `sales.sale.validate` | Mouvements `SALE` via `StockService` (tout ou rien) ; statut `VALIDATED` ; corps facultatif `{payments: [{amount, method, …}]}` : encaissements immédiats (exige aussi `sales.payment.create`) ; limite de crédit du client contrôlée (2.8) |
+| POST | `/sales/{id}/validate` | `sales.sale.validate` | Numéro `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` attribué (Lot 1) ; mouvements `SALE` via `StockService` (tout ou rien) ; statut `VALIDATED` ; corps facultatif `{payments: [{payment_method_id, amount?, amount_received?, reference?, cash_register_id?}], credit_override?: {reason}}` : encaissements immédiats (exige aussi `sales.payment.create`) ; reste dû = crédit : client obligatoire (`422 credit_customer_required`), `sales.sale.credit_create` (`403 credit_not_allowed`), limite (`422 credit_limit_exceeded`, `override_allowed`), dépassement avec `sales.sale.credit_override` et justification (`403 credit_override_not_allowed`) |
 | POST | `/sales/{id}/cancel` | `sales.sale.cancel` | `{reason}` (5–500 car.) ; brouillon : abandon ; validée : mouvements `CANCELLATION` (remise en stock, CMUP inchangé) |
 
 Corps : `{site_id?, sale_date?, customer_id?, notes?, lines: [{article_id, quantity}]}` —
@@ -256,6 +256,11 @@ une autre entreprise). Abonnement expiré : consultation seule (`403 subscriptio
 Paiements (2.7) : `SaleOut` expose `paid_amount`, `remaining_amount`, `payment_status`
 (`UNPAID` \| `PARTIALLY_PAID` \| `PAID`, vente validée seulement, calculés) ; `GET /sales` accepte
 le filtre `payment_status` ; annuler une vente encaissée → `409 sale_has_payments`.
+Lot 1 ([ADR-0037](../adr/0037-encaissement.md)) : `SaleOut.number` nul pour un brouillon,
+`is_credit`, `credit_status` (`OPEN` \| `PARTIAL` \| `PAID` \| `CANCELLED`, calculé),
+`credit_override_at`, `credit_override_by_name`, `credit_override_reason`,
+`credit_override_amount`. Modifier le code d'un site qui a émis des numéros :
+`409 site_code_locked` (`PATCH /sites/{id}`).
 
 ### Paiements des ventes (module `sales`) — Phase 2.7
 
@@ -265,12 +270,15 @@ Mêmes contrôles d'accès que la vente (tenant, site accessible / sélectionné
 | Méthode | Chemin | Permission | Rôle |
 |---|---|---|---|
 | GET | `/sales/{sale_id}/payments` | `sales.payment.view` | Historique complet (annulés compris) + `summary` (`total`, `paid_amount`, `remaining_amount`, `payment_status` ; `null` si la vente n'est pas validée) |
-| POST | `/sales/{sale_id}/payments` | `sales.payment.create` | `{amount, method, provider?, reference?, idempotency_key?}` → paiement `COMPLETED` `PAY-000001` (201 ; 200 si même clé : réponse rejouée) |
+| POST | `/sales/{sale_id}/payments` | `sales.payment.create` | `{payment_method_id, amount?, amount_received?, reference?, idempotency_key?, cash_register_id?}` (compatibilité : `method` seul = unique moyen disponible de ce type) → paiement `COMPLETED` `PAY-000001` (201 ; 200 si même clé : réponse rejouée) ; espèces : `amount_received`, monnaie `change_given` calculée par le serveur |
 | GET | `/sales/{sale_id}/payments/{payment_id}` | `sales.payment.view` | Détail |
 | POST | `/sales/{sale_id}/payments/{payment_id}/cancel` | `sales.payment.cancel` | `{reason}` (5–500 car.) → `CANCELLED` ; vente et stock inchangés |
 
-`method` : `CASH` \| `MOBILE_MONEY` \| `CARD` \| `BANK_TRANSFER` \| `OTHER` ; montant > 0,
-2 décimales. Codes : `sale_not_payable` (409, `status`), `payment_exceeds_balance` (422,
+`method` (type, figé) : `CASH` \| `MOBILE_MONEY` \| `CARD` \| `BANK_TRANSFER` \| `OTHER` ;
+`PaymentOut` : `payment_method_id`, `method_label` (instantané), `amount_received`,
+`change_given` ; montant > 0, 2 décimales. Codes Lot 1 : `payment_method_not_found`,
+`payment_method_unavailable`, `payment_method_required`, `payment_method_mismatch`,
+`payment_reference_required`, `change_not_allowed`, `cash_received_insufficient` (422). Codes : `sale_not_payable` (409, `status`), `payment_exceeds_balance` (422,
 `remaining`), `sale_already_paid` (422), `payment_already_cancelled` (409),
 `idempotency_key_reused` (409), `payment_not_found`, `sale_not_found` (404), `site_mismatch`
 (403). Aucune route de modification ni de suppression. Abonnement expiré : consultation seule.
@@ -295,6 +303,17 @@ validation d'une vente : `credit_limit_exceeded` (422 ; `credit_limit`, `sale_ex
 `current_exposure` / `available_credit` pour un membre voyant tous les sites). Aucune route
 d'écriture (405). Abonnement expiré : consultation normale.
 
+### Moyens de paiement (module `sales`) — Lot 1
+
+Règles : [`PAYMENTS.md`](PAYMENTS.md) ; décisions : [ADR-0037](../adr/0037-encaissement.md).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/payment-methods` (`site_id?`) | `sales.payment.view`, `sales.payment.create` ou `sales.payment_method.manage` | Moyens configurés (`disabled_site_ids` ; avec `site_id` accessible : `available`) |
+| POST | `/payment-methods` | `sales.payment_method.manage` | `{label, kind, reference_required?, integration_mode?, sort_order?}` (`API` : `422 payment_integration_unavailable` ; `409 payment_method_label_taken`) |
+| PATCH | `/payment-methods/{id}` | `sales.payment_method.manage` | `label`, `reference_required`, `is_active`, `sort_order` (type immuable : `422`) |
+| PUT | `/payment-methods/{id}/sites/{site_id}` | `sales.payment_method.manage` sur ce site | `{enabled}` : disponibilité sur un site accessible |
+
 ### Caisse (module `cash_register`) — Phase 2.9
 
 Monté sous `/cash`. Règles : [`CASH_REGISTER.md`](CASH_REGISTER.md) ; décisions :
@@ -303,6 +322,8 @@ session.view, session.open, session.close, movement.create}`.
 
 | Méthode | Chemin | Rôle |
 |---|---|---|
+| GET | `/cash/sites` | Caisse par site (Lot 1) : sites visibles, `enabled`, `open_sessions` |
+| PUT | `/cash/sites/{site_id}` | `{enabled}` — `organization.site.manage` sur ce site ; désactivation refusée si une session est ouverte (`409 cash_sessions_open`) |
 | GET / POST | `/cash/registers` | Caisses des sites visibles (`search`, `site_id`, `status`, caisse courante et solde) / création `{site_id?, name, description?}` → `CAI-001` |
 | GET / PATCH | `/cash/registers/{id}` | Détail / `name`, `description` (site non modifiable) |
 | POST | `/cash/registers/{id}/activate`, `/deactivate` | Désactivation refusée si une session est ouverte |
@@ -312,8 +333,10 @@ session.view, session.open, session.close, movement.create}`.
 | GET | `/cash/sessions/{id}/movements`, `/cash/movements` | Journal paginé, solde après chaque mouvement ; `movement_type`, `created_by`, `search`, `min_amount`, `max_amount`, période |
 | POST | `/cash/sessions/{id}/movements` | Entrée / sortie manuelle `{movement_type, amount, category, reason, reference?, idempotency_key?}` (201 ; 200 si rejouée) |
 
-Paiements (2.7) : `method = CASH` exige une session ouverte d'une caisse du site de la vente ;
-champ facultatif `cash_register_id` (aussi dans `payments` de la validation). Codes :
+Paiements : un moyen de type `CASH` exige, **si la caisse du site est activée** (Lot 1), la
+session ouverte **de l'utilisateur** sur un poste du site de la vente ; champ facultatif
+`cash_register_id` (aussi dans `payments` de la validation et du POS). Codes :
+`cash_disabled_for_site`, `cash_sessions_open` (409, Lot 1),
 `cash_session_required`, `cash_register_required`, `cash_insufficient_balance`,
 `cash_movement_type_invalid`, `cash_movement_category_invalid` (422), `cash_session_closed`,
 `cash_session_already_open`, `cash_register_inactive`, `cash_register_has_open_session`,

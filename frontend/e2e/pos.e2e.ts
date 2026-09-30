@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, ensureCashOpen, loginUi, OWNER } from './support';
+import { apiToken, bearer, ensureCashOpen, loginUi, OWNER, SALE_NUMBER } from './support';
 
 /**
  * Phase 3.0 — Point de vente. Chaque test prépare par l'API un article vendu 10 000 (50 u en
@@ -80,7 +80,7 @@ async function lastPosSale(request: APIRequestContext, s: Setup) {
   const page = await get<{ items: SaleOut[] }>(
     request,
     s.token,
-    `/sales?channel=POS&site_id=${s.shop.id}&sort=-number&limit=1`,
+    `/sales?channel=POS&site_id=${s.shop.id}&sort=-created_at&limit=1`,
   );
   return page.items[0] as SaleOut;
 }
@@ -93,6 +93,9 @@ async function cashMovementsOf(request: APIRequestContext, s: Setup, saleNumber:
   );
   return page.items;
 }
+
+/** Titre du reçu : numéro définitif `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` attribué à la validation. */
+const RECORDED = new RegExp(`^Vente ${SALE_NUMBER.source} enregistrée$`);
 
 /** Montant affiché (espaces insécables du format XOF). */
 const amount = (text: string) =>
@@ -116,14 +119,14 @@ async function openPos(page: Page, s: Setup) {
 const tile = (page: Page, s: Setup) =>
   page.getByRole('button', { name: `Ajouter ${s.designation} au panier` });
 
-/** Paiements saisis dans le dialogue (F8) : [moyen, montant]. */
+/** Paiements saisis dans le dialogue (F8) : [moyen, montant] (espèces : montant reçu). */
 async function pay(page: Page, payments: [string, string][]) {
   await page.keyboard.press('F8');
   const dialog = page.getByRole('dialog', { name: 'Paiements (F8)' });
   const methods = dialog.getByRole('group', { name: 'Ajouter un moyen de paiement' });
   for (const [index, [method, value]] of payments.entries()) {
     await methods.getByRole('button', { name: method }).click();
-    await dialog.getByLabel(`Montant du paiement ${index + 1}`).fill(value);
+    await dialog.getByLabel(new RegExp(`^Montant (reçu )?du paiement ${index + 1}$`)).fill(value);
   }
   await dialog.getByRole('button', { name: 'Appliquer' }).click();
   await expect(dialog).toBeHidden();
@@ -150,7 +153,7 @@ test.describe('Point de vente', () => {
     await validate(page);
     const receipt = page.getByTestId('pos-receipt');
     await expect(receipt).toContainText('Espèces');
-    await expect(page.getByRole('dialog', { name: /Vente VTE-\d{6} enregistrée/ })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: RECORDED })).toBeVisible();
     expect(await stockOf(request, s)).toBe('48.000');
     const sale = await lastPosSale(request, s);
     expect([sale.channel, sale.status, sale.payment_status]).toEqual(['POS', 'VALIDATED', 'PAID']);
@@ -189,7 +192,7 @@ test.describe('Point de vente', () => {
     await tile(page, s).click();
     await tile(page, s).click();
     await validate(page);
-    await expect(page.getByRole('dialog', { name: /Vente VTE-\d{6} enregistrée/ })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: RECORDED })).toBeVisible();
     const sale = await lastPosSale(request, s);
     expect([sale.payment_status, sale.remaining_amount]).toEqual(['UNPAID', '20000.00']);
     expect(await stockOf(request, s)).toBe('48.000');
@@ -213,6 +216,20 @@ test.describe('Point de vente', () => {
     const refused = await validate(page);
     await expect(refused).toContainText('Limite de crédit du client dépassée');
     expect(await stockOf(request, s)).toBe('48.000');
+    // Administrateur autorisé : dépassement exceptionnel avec justification (auditée).
+    await refused.getByLabel(/Justification du dépassement/).fill('Client fidèle, accord gérant');
+    await refused.getByRole('button', { name: 'Autoriser le dépassement et valider' }).click();
+    await expect(page.getByRole('dialog', { name: RECORDED })).toBeVisible();
+    const forced = await get<{ credit_override_reason: string; credit_override_amount: string }>(
+      request,
+      s.token,
+      `/sales/${(await lastPosSale(request, s)).id}`,
+    );
+    expect([forced.credit_override_reason, forced.credit_override_amount]).toEqual([
+      'Client fidèle, accord gérant',
+      '10000.00',
+    ]);
+    expect(await stockOf(request, s)).toBe('46.000');
   });
 
   test('paiement mixte : 40 000 espèces + 60 000 Mobile Money', async ({ page, request }) => {
@@ -259,12 +276,14 @@ test.describe('Point de vente', () => {
     await expect(page.getByLabel(`Quantité de ${s.designation}`, { exact: true })).toBeVisible();
     await expect(page.getByTestId('pos-total')).toHaveText(amount('10 000'));
     expect(await overflow()).toBe(false);
+    // Sans client : vente entièrement payée (le crédit exige un client).
+    await pay(page, [['Mobile Money', '10000']]);
     await page.getByRole('button', { name: 'Valider la vente (F10)' }).click();
     await page
       .getByRole('dialog', { name: 'Valider la vente ?' })
       .getByRole('button', { name: 'Valider la vente (F10)' })
       .click();
-    await expect(page.getByRole('dialog', { name: /Vente VTE-\d{6} enregistrée/ })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: RECORDED })).toBeVisible();
     expect(await overflow()).toBe(false);
   });
 });

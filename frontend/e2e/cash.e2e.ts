@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, createActiveSite, loginUi, OWNER } from './support';
+import { apiToken, bearer, createActiveSite, loginUi, OWNER, SALE_NUMBER } from './support';
 
 /**
  * Phase 2.9 — Caisse. Les tests travaillent sur le site « Dépôt E2E » (créé au besoin) pour ne
@@ -18,6 +18,7 @@ interface Setup {
   suffix: string;
   articleId: string;
   depot: string;
+  customerId: string;
 }
 
 const DEPOT = { name: 'Dépôt E2E', code: 'DEPOT-E2E' };
@@ -55,7 +56,18 @@ async function setup(request: APIRequestContext): Promise<Setup> {
       counted_balance: s.theoretical_balance,
     });
   }
+  // Caisse optionnelle par site (Lot 1) : activée pour le dépôt (configuration du site).
+  const enabled = await request.put(`/api/v1/cash/sites/${depot.id}`, {
+    headers: bearer(token),
+    data: { enabled: true },
+  });
+  expect(enabled.status(), await enabled.text()).toBe(200);
   const suffix = Date.now().toString().slice(-7);
+  // Vente validée non payée = vente à crédit : client identifié obligatoire (Lot 1).
+  const customer = await ok(request, token, '/customers', {
+    customer_type: 'INDIVIDUAL',
+    name: `Client Caisse ${suffix}`,
+  });
   const category = await ok(request, token, '/catalog/categories', {
     name: `Caisse E2E ${suffix}`,
   });
@@ -73,13 +85,14 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     lines: [{ article_id: article.id, quantity: '50', unit_cost: '6000' }],
   });
   await ok(request, token, `/stock/entries/${entry.id}/validate`, {});
-  return { token, suffix, articleId: article.id, depot: depot.id };
+  return { token, suffix, articleId: article.id, depot: depot.id, customerId: customer.id };
 }
 
 /** Vente du dépôt de `units` × 10 000, brouillon ou validée. */
 async function sale(request: APIRequestContext, s: Setup, units: number, validate = true) {
   const created = await ok(request, s.token, '/sales', {
     site_id: s.depot,
+    customer_id: s.customerId,
     lines: [{ article_id: s.articleId, quantity: String(units) }],
   });
   if (validate) await ok(request, s.token, `/sales/${created.id}/validate`, {});
@@ -106,15 +119,16 @@ test.describe('Caisse', () => {
     const name = `Caisse E2E ${s.suffix}`;
     await loginUi(page, OWNER.email, OWNER.password);
 
-    // 1. Création de la caisse (site du dépôt).
-    await page.getByRole('link', { name: 'Caisses', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Caisses' })).toBeVisible();
-    await page.getByRole('button', { name: 'Nouvelle caisse' }).first().click();
+    // 1. Création du poste de caisse (ordinateur du dépôt, dont la caisse est activée).
+    await page.getByRole('link', { name: 'Postes de caisse', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Postes de caisse' })).toBeVisible();
+    await expect(page.getByTestId(`cash-site-${s.depot}`)).toContainText('Caisse activée');
+    await page.getByRole('button', { name: 'Nouveau poste' }).first().click();
     const create = page.getByRole('dialog');
     await pickOption(page, 'register-site', DEPOT.name);
-    await create.getByLabel(/Nom de la caisse/).fill(name);
+    await create.getByLabel(/Nom du poste/).fill(name);
     await create.getByRole('button', { name: 'Enregistrer' }).click();
-    await expect(page.getByText(/Caisse CAI-\d{3} créée/)).toBeVisible();
+    await expect(page.getByText(/Poste CAI-\d{3} créé/)).toBeVisible();
 
     // 2. Ouverture avec un fond initial de 100 000.
     await page.getByRole('searchbox').fill(name);
@@ -137,7 +151,9 @@ test.describe('Caisse', () => {
     await validate.getByLabel('Encaisser un paiement maintenant').check();
     await expect(validate).toContainText(`Encaissé dans : ${name}`);
     await validate.getByRole('button', { name: 'Valider la vente' }).click();
-    await expect(page.getByText(`Vente ${draft.number} validée`)).toBeVisible();
+    const toast = page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`));
+    await expect(toast).toBeVisible();
+    const number = ((await toast.innerText()).match(SALE_NUMBER) ?? [''])[0];
     await expect(page.getByText('Payée', { exact: true }).first()).toBeVisible();
     const payment = page.getByRole('row').filter({ hasText: /PAY-\d{6}/ });
     await expect(payment).toContainText('Espèces');
@@ -146,7 +162,7 @@ test.describe('Caisse', () => {
     // 5-6. Mouvement de caisse lié à la vente ; solde 150 000.
     await page.goto(sessionUrl);
     const cashIn = page.getByRole('row').filter({ hasText: 'Encaissement vente' });
-    await expect(cashIn.getByRole('link', { name: new RegExp(draft.number) })).toBeVisible();
+    await expect(cashIn.getByRole('link', { name: number })).toBeVisible();
     await expect(summary(page).locator('.sm-metric').nth(3)).toContainText(amount('150 000'));
 
     // 7. Entrée manuelle de 10 000.
@@ -203,9 +219,9 @@ test.describe('Caisse', () => {
     await page.goto(`/sales/${unpaid.id}`);
     await page.getByRole('button', { name: 'Enregistrer un paiement' }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog).toContainText('Aucune caisse ouverte sur le site de la vente');
+    await expect(dialog).toContainText('Aucune session de caisse ouverte à votre nom');
     await dialog.getByRole('button', { name: 'Enregistrer le paiement' }).click();
-    await expect(dialog.getByText(/ouvrez une session de caisse/).last()).toBeVisible();
+    await expect(dialog.getByText(/ouvrez votre session/).last()).toBeVisible();
     await dialog.getByRole('button', { name: 'Annuler' }).click();
     await expect(page.getByRole('row').filter({ hasText: /PAY-\d{6}/ })).toHaveCount(0);
     const api = await call(request, s.token, 'post', `/sales/${unpaid.id}/payments`, {
@@ -250,7 +266,7 @@ test.describe('Caisse', () => {
     const overflow = () =>
       page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     await page.goto('/cash/registers');
-    await expect(page.getByRole('heading', { name: 'Caisses' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Postes de caisse' })).toBeVisible();
     expect(await overflow()).toBe(false);
     await page.goto(`/cash/sessions/${session.id}`);
     await expect(summary(page)).toContainText(amount('5 000'));

@@ -135,8 +135,17 @@ la suite peut être rejouée sur la même base.
   validation (paiement, mouvement lié, solde 150 000), entrée, sortie, clôture (théorique
   130 000, compté 128 500, écart −1 500), session fermée refusant tout mouvement ; paiement
   espèces sans caisse ouverte refusé ; idempotence (un paiement, un mouvement) ; mobile.
-  `payments.e2e.ts` et `receivables.e2e.ts` ouvrent au besoin la caisse « Caisse E2E » de la
-  boutique (`ensureCashOpen`).
+  `payments.e2e.ts`, `pos.e2e.ts` et `receivables.e2e.ts` activent la caisse de la boutique et
+  ouvrent au besoin la session **du propriétaire** sur un poste « Caisse E2E » libre
+  (`ensureCashOpen`, Lot 1 : session = site + poste + utilisateur).
+- `encaissement.e2e.ts` (Lot 1, ADR-0037) : crée par la CLI une entreprise à chaque exécution
+  (deux sites **sans caisse**) ; vente en espèces sans session (montant reçu 10 000 pour 7 500,
+  monnaie 2 500 calculée par le serveur, numéro `VENT-{SITE}-{ANNÉE}-000001`) ; moyen configuré
+  « Orange Money » (référence obligatoire) créé par l'interface puis encaissé sur un site sans
+  caisse (séquence propre au site) ; paiement mixte (monnaie sur la seule partie espèces) ;
+  caisse activée pour un site, session, vente en espèces, désactivation refusée tant que la
+  session est ouverte, clôture puis désactivation ; crédit refusé sans client, accepté avec ;
+  isolation site A ≠ site B ≠ autre entreprise.
 - `signup.e2e.ts` (Phase 3.2-A) : publie le plan STANDARD le temps du test (SQL propriétaire,
   `../backend` ou `E2E_BACKEND_DIR`), inscription complète depuis la page de connexion,
   abonnement en attente d'activation (site accepté, catégorie refusée), refus générique d'un

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, loginUi, OWNER, provisionTenant, tokenFor } from './support';
+import { bearer, loginUi, OWNER, provisionTenant, SALE_NUMBER, tokenFor } from './support';
 
 /**
  * Phase 3.1 — Profils d'activité et profils UX. Chaque exécution crée, par la CLI TechNova,
@@ -125,7 +125,10 @@ test.describe('Profils d’activité', () => {
       .getByRole('dialog', { name: 'Valider la vente ?' })
       .getByRole('button', { name: 'Valider la vente (F10)' })
       .click();
-    await expect(page.getByRole('dialog', { name: /Vente VTE-\d{6} enregistrée/ })).toBeVisible();
+    // Numéro définitif attribué à la validation (Lot 1).
+    await expect(
+      page.getByRole('dialog', { name: new RegExp(`^Vente ${SALE_NUMBER.source} enregistrée$`) }),
+    ).toBeVisible();
   });
 
   test('Restaurant : expérience dédiée, fonctionnalités futures jamais accessibles', async ({

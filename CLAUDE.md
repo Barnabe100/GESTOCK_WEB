@@ -92,8 +92,24 @@ défaut J-30 … J+7, essais J-5/J-1/J0) créés par le job idempotent
 `stockmanager notifications run` (cron, rôle SQL de la console, verrou consultatif, job manqué :
 seule l'étape la plus récente), lu / non lu par membre, visibles par site avec
 `subscription.subscription.view`. Aucun téléchargement `.lic` par l'entreprise dans le Web
-(décision finale : le Desktop est traité séparément). Moyens de paiement configurables : étape
-ultérieure (actuellement manuels : espèces, Orange Money sans API). Non implémentés (feuille de route §13) :
+(décision finale : le Desktop est traité séparément). **Lot 1 livré — encaissement**
+([ADR-0037](docs/adr/0037-encaissement.md)) : moyens de paiement **configurables**
+(`payment_methods` par entreprise, `payment_method_sites` par site, **type** `CASH` /
+`MOBILE_MONEY` / `CARD` / `BANK_TRANSFER` / `OTHER` = comportement, jamais le libellé ; saisie
+manuelle, `API` réservé ; référence obligatoire ou non ; instantané `method_label` sur le
+paiement ; `sales.payment_method.manage`) ; **caisse optionnelle par site**
+(`cash_site_settings` ; site sans caisse : espèces sans session ; activation par
+`organization.site.manage` revérifiée pour le site ; désactivation refusée si une session est
+ouverte) ; **poste de caisse = machine** (`CashRegister`), **session = site + poste +
+utilisateur** (jamais la session d'autrui) ; espèces : **montant reçu et monnaie calculés par le
+serveur** sur la seule partie espèces ; **crédit** = reste dû à la validation : client
+obligatoire, `sales.sale.credit_create`, limite dépassable seulement avec
+`sales.sale.credit_override` + justification (autorisateur, date, montant, audit), statut
+calculé `OPEN`/`PARTIAL`/`PAID`/`CANCELLED` ; numéro **`VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la
+validation** (brouillon non numéroté, compteur par tenant + site + année, `VTE-…` historiques
+conservés, numéro validé figé par déclencheur, code de site figé) ; portée `sales.sale.view` =
+ses ventes, `sales.sale.view_all` = toutes (migration 0025). Ne pas passer au lot suivant sans
+validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
