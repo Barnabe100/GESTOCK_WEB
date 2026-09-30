@@ -35,6 +35,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Caisse par site : `/cash/sites` servi à part (panneau en tête de la page des postes). */
+const SITES = [
+  { site_id: 's1', site_name: 'Boutique', site_code: 'BOU', enabled: true, open_sessions: 1 },
+  { site_id: 's2', site_name: 'Dépôt', site_code: 'DEP', enabled: false, open_sessions: 0 },
+];
+const sitesOr = (url: unknown, fallback: () => Response) =>
+  String(url).includes('/cash/sites') ? jsonResponse(SITES) : fallback();
+
 describe('caisses', () => {
   const REGISTERS = [
     register(),
@@ -49,7 +57,7 @@ describe('caisses', () => {
   ];
 
   it('statut, caissier et solde théorique ; actions selon l’état', async () => {
-    fetchMock.mockImplementation(async () => pageOf(REGISTERS));
+    fetchMock.mockImplementation(async (url) => sitesOr(url, () => pageOf(REGISTERS)));
     renderWithCapabilities(withToast(<RegistersPage />, show), { permissions: SELLER });
     const open = (await screen.findByText('Caisse principale')).closest('tr') as HTMLElement;
     expect(within(open).getByText('Ouverte')).toBeTruthy();
@@ -66,15 +74,17 @@ describe('caisses', () => {
     expect(within(inactive).getByText('Inactif')).toBeTruthy();
     expect(within(inactive).queryByRole('button', { name: 'Ouvrir la caisse' })).toBeNull();
     // Vendeur : aucune gestion des caisses.
-    expect(screen.queryByRole('button', { name: 'Nouvelle caisse' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nouveau poste' })).toBeNull();
+    // Configuration de la caisse par site : réservée à `organization.site.manage`.
+    expect(screen.queryByRole('button', { name: /Désactiver la caisse/ })).toBeNull();
     expect(document.body.textContent).not.toMatch(/\bOPEN\b|\bCLOSED\b/);
   });
 
   it('ouverture : fond initial seul, le serveur fixe utilisateur et heure', async () => {
-    fetchMock.mockImplementation(async (_url, init) =>
+    fetchMock.mockImplementation(async (url, init) =>
       init?.method === 'POST'
         ? jsonResponse(cashSession({ opening_float: '50000.00' }), 201)
-        : pageOf(REGISTERS),
+        : sitesOr(url, () => pageOf(REGISTERS)),
     );
     renderWithCapabilities(withToast(<RegistersPage />, show), { permissions: SELLER });
     const row = (await screen.findByText('Caisse secondaire')).closest('tr') as HTMLElement;
@@ -99,12 +109,61 @@ describe('caisses', () => {
   });
 
   it('gestionnaire : création et filtres serveur', async () => {
-    fetchMock.mockImplementation(async () => pageOf(REGISTERS));
+    fetchMock.mockImplementation(async (url) => sitesOr(url, () => pageOf(REGISTERS)));
     renderWithCapabilities(withToast(<RegistersPage />, show), { permissions: MANAGER });
     await screen.findByText('Caisse principale');
-    expect(screen.getAllByRole('button', { name: 'Nouvelle caisse' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Nouveau poste' }).length).toBeGreaterThan(0);
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'CAI-2' } });
     await waitFor(() => expect(calls('/cash/registers?').at(-1)).toContain('search=CAI-2'));
+  });
+});
+
+describe('caisse par site (optionnelle)', () => {
+  const ADMIN = [...MANAGER, 'organization.site.manage'];
+  const puts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT');
+
+  it('état par site ; activation directe ; désactivation confirmée', async () => {
+    fetchMock.mockImplementation(async (url, init) =>
+      init?.method === 'PUT'
+        ? jsonResponse({ ...SITES[1], enabled: true })
+        : sitesOr(url, () => pageOf([])),
+    );
+    renderWithCapabilities(withToast(<RegistersPage />, show), { permissions: ADMIN });
+    const shop = await screen.findByTestId('cash-site-s1');
+    expect(within(shop).getByText('Caisse activée')).toBeTruthy();
+    expect(within(shop).getByText('1 session ouverte')).toBeTruthy();
+    const depot = screen.getByTestId('cash-site-s2');
+    expect(within(depot).getByText('Sans caisse')).toBeTruthy();
+    fireEvent.click(within(depot).getByRole('button', { name: 'Activer la caisse — Dépôt' }));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(String(puts()[0]?.[0])).toContain('/cash/sites/s2');
+    expect(JSON.parse(String(puts()[0]?.[1]?.body))).toEqual({ enabled: true });
+    fireEvent.click(within(shop).getByRole('button', { name: 'Désactiver la caisse — Boutique' }));
+    expect(await screen.findByText(/Désactiver la caisse de Boutique/)).toBeTruthy();
+    expect(puts()).toHaveLength(1);
+  });
+
+  it('désactivation refusée par le serveur (session ouverte) : message explicite', async () => {
+    fetchMock.mockImplementation(async (url, init) =>
+      init?.method === 'PUT'
+        ? jsonResponse({ code: 'cash_sessions_open', detail: 'x', open_sessions: 1 }, 409)
+        : sitesOr(url, () => pageOf([])),
+    );
+    renderWithCapabilities(withToast(<RegistersPage />, show), { permissions: ADMIN });
+    const shop = await screen.findByTestId('cash-site-s1');
+    fireEvent.click(within(shop).getByRole('button', { name: 'Désactiver la caisse — Boutique' }));
+    await screen.findByText(/Désactiver la caisse de Boutique/);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Désactiver la caisse' }).at(-1) as HTMLElement,
+    );
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'error',
+          summary: expect.stringContaining('clôturez-la avant de désactiver la caisse') as string,
+        }),
+      ),
+    );
   });
 });
 

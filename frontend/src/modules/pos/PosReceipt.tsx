@@ -31,7 +31,7 @@ export function PosReceipt({
 
   return (
     <Dialog
-      header={t('pos.saleRecorded', { number: sale.number })}
+      header={t('pos.saleRecorded', { number: sale.number ?? '' })}
       visible
       onHide={onNewSale}
       className="sm-dialog"
@@ -58,10 +58,22 @@ export function PosReceipt({
             </tr>
             {payments.map((p) => (
               <tr key={p.id}>
-                <td>{t(`payment.method.${p.method}`)}</td>
+                <td>{p.method_label}</td>
                 <td className="sm-num">{money(p.amount)}</td>
               </tr>
             ))}
+            {payments
+              .filter((p) => p.amount_received !== null)
+              .map((p) => (
+                <tr key={`${p.id}-cash`}>
+                  <td>
+                    {t('pos.receivedAndChange', { received: money(p.amount_received ?? '0') })}
+                  </td>
+                  <td className="sm-num" data-testid="receipt-change">
+                    {money(p.change_given ?? '0')}
+                  </td>
+                </tr>
+              ))}
             <tr>
               <td>{t('pos.remaining')}</td>
               <td className="sm-num" data-testid="receipt-remaining">

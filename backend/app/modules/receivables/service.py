@@ -34,6 +34,7 @@ from app.modules.receivables.schemas import (
     ReceivableSummary,
 )
 from app.modules.sales.api import (
+    CreditStatus,
     PaymentService,
     balances_query,
     customer_exposure,
@@ -166,7 +167,9 @@ class ReceivableService:
             raise NotFoundError("Créance introuvable", code=NOT_FOUND)
         ensure_document_site(self.ctx, row.site_id, NOT_FOUND)
         base = self._to_out([row])[0]
-        payments = PaymentService(self.db, self.ctx, self.now).history_out(sale_id)
+        # Créances : permission propre (``receivables.receivable.view``), sans la portée
+        # « ses propres ventes » des ventes ; sites accessibles seulement.
+        payments = PaymentService(self.db, self.ctx, self.now).history_out(sale_id, own_scope=False)
         return ReceivableDetail(
             **base.model_dump(), is_open=row.remaining_amount > 0, payments=payments
         )
@@ -233,6 +236,13 @@ class ReceivableService:
                     paid_amount=r.paid_amount,
                     remaining_amount=max(r.remaining_amount, ZERO),
                     payment_status=payment_status(r.total, r.paid_amount),
+                    credit_status=(
+                        CreditStatus.PAID
+                        if r.remaining_amount <= 0
+                        else CreditStatus.OPEN
+                        if r.paid_amount <= 0
+                        else CreditStatus.PARTIAL
+                    ),
                 )
             )
         return result

@@ -14,11 +14,14 @@ constitue une créance (phase ultérieure).
   paiement. Annuler un paiement n'annule PAS la vente et ne touche jamais au stock.
 - **Double soumission** : clé d'idempotence facultative fournie par le client ; la même clé
   renvoie le paiement déjà créé (réponse rejouée) au lieu d'un doublon.
-- **Espèces et caisse** (Phase 2.9, ADR-0022) : un paiement ``CASH`` exige une session de
-  caisse ouverte sur le site de la vente ; le paiement et son mouvement de caisse sont créés
-  dans la MÊME transaction (tout ou rien), via le port ``cash_port`` (la vente ne dépend pas
-  de la caisse). Son annulation crée la sortie inverse dans la même
-  session, si elle est encore ouverte. Les autres moyens ne touchent jamais la caisse.
+- **Moyens configurés** (Lot 1, ADR-0037) : le paiement fige le moyen choisi (identifiant,
+  libellé, type) ; le **type** seul gouverne le comportement.
+- **Espèces** : montant reçu et monnaie calculés par le serveur, sur la seule partie espèces
+  (aucun autre moyen ne rend de monnaie). Site **avec** caisse (ADR-0022, révisée) : le
+  paiement et son mouvement sont créés dans la MÊME transaction, dans la session ouverte **par
+  l'utilisateur** sur ce site (site + poste + utilisateur) ; son annulation crée la sortie
+  inverse dans la même session, si elle est encore ouverte. Site **sans** caisse : aucune
+  session, aucun mouvement.
 """
 
 import uuid
@@ -33,6 +36,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.modules.sales.cash_port import cash_ledger
 from app.modules.sales.models import (
+    ConfiguredPaymentMethod,
     Payment,
     PaymentMethod,
     PaymentStatus,
@@ -40,6 +44,7 @@ from app.modules.sales.models import (
     SalePaymentStatus,
     SaleStatus,
 )
+from app.modules.sales.payment_methods import PaymentMethodService
 from app.modules.sales.schemas import PaymentCreate, PaymentOut, PaymentSummary
 from app.modules.stock.api import round_money
 from app.platform.audit.service import audit_action
@@ -108,14 +113,15 @@ class PaymentService:
 
     # --- Lecture ------------------------------------------------------------------------------
 
-    def _sale(self, sale_id: uuid.UUID, *, lock: bool = False) -> Sale:
-        # Même contrôle d'accès que la vente : tenant (RLS), site accessible / sélectionné.
+    def _sale(self, sale_id: uuid.UUID, *, lock: bool = False, own_scope: bool = True) -> Sale:
+        # Même contrôle d'accès que la vente : tenant (RLS), site accessible / sélectionné,
+        # portée « ses propres ventes » sans ``sales.sale.view_all``.
         from app.modules.sales.service import SaleService
 
-        return SaleService(self.db, self.ctx, self.now).get(sale_id, lock=lock)
+        return SaleService(self.db, self.ctx, self.now).get(sale_id, lock=lock, own_scope=own_scope)
 
-    def history(self, sale_id: uuid.UUID) -> tuple[Sale, list[Payment]]:
-        sale = self._sale(sale_id)
+    def history(self, sale_id: uuid.UUID, *, own_scope: bool = True) -> tuple[Sale, list[Payment]]:
+        sale = self._sale(sale_id, own_scope=own_scope)
         payments = list(
             self.db.scalars(
                 select(Payment)
@@ -125,9 +131,9 @@ class PaymentService:
         )
         return sale, payments
 
-    def history_out(self, sale_id: uuid.UUID) -> list[PaymentOut]:
+    def history_out(self, sale_id: uuid.UUID, *, own_scope: bool = True) -> list[PaymentOut]:
         """Historique complet des paiements d'une vente (annulés compris), pour l'API."""
-        sale, payments = self.history(sale_id)
+        sale, payments = self.history(sale_id, own_scope=own_scope)
         return self.to_out(sale, payments)
 
     def summary(self, sale: Sale) -> PaymentSummary | None:
@@ -151,8 +157,68 @@ class PaymentService:
 
     # --- Écritures ----------------------------------------------------------------------------
 
+    def resolve_method(self, site_id: uuid.UUID, data: PaymentCreate) -> ConfiguredPaymentMethod:
+        """Moyen utilisable sur le site, champs cohérents avec son type (référence, monnaie)."""
+        method = PaymentMethodService(self.db, self.ctx, self.now).resolve(
+            site_id, data.payment_method_id, data.method
+        )
+        if method.reference_required and not (data.reference or "").strip():
+            raise BusinessRuleError(
+                "La référence de la transaction est obligatoire pour ce moyen de paiement",
+                code="payment_reference_required",
+                extra={"label": method.label},
+            )
+        if method.kind is not PaymentMethod.CASH and data.amount_received is not None:
+            raise BusinessRuleError(
+                "Seules les espèces rendent la monnaie : indiquez le montant payé",
+                code="change_not_allowed",
+            )
+        if (
+            data.amount is not None
+            and data.amount_received is not None
+            and round_money(data.amount_received) < round_money(data.amount)
+        ):
+            raise BusinessRuleError(
+                "Le montant reçu est inférieur au montant payé",
+                code="cash_received_insufficient",
+            )
+        return method
+
+    @staticmethod
+    def applied_amount(data: PaymentCreate, remaining: Decimal) -> Decimal:
+        """Montant imputé sur la vente : celui indiqué, sinon (espèces) min(reçu, reste dû)."""
+        if data.amount is not None:
+            return round_money(data.amount)
+        assert data.amount_received is not None
+        return min(round_money(data.amount_received), remaining)
+
+    def plan(
+        self, site_id: uuid.UUID, total: Decimal, payments: Sequence[PaymentCreate]
+    ) -> list[tuple[PaymentCreate, Decimal]]:
+        """Paiements immédiats d'une validation, dans l'ordre d'imputation (autres moyens
+        d'abord, espèces ensuite : la monnaie ne porte que sur les espèces) avec leur montant
+        imputé. Aucune écriture : sert au contrôle du crédit avant la sortie de stock."""
+        resolved = [(p, self.resolve_method(site_id, p)) for p in payments]
+        ordered = [r for r in resolved if r[1].kind is not PaymentMethod.CASH] + [
+            r for r in resolved if r[1].kind is PaymentMethod.CASH
+        ]
+        remaining = total
+        planned: list[tuple[PaymentCreate, Decimal]] = []
+        for data, _ in ordered:
+            amount = self.applied_amount(data, max(remaining, ZERO))
+            if amount <= 0 or amount > remaining:
+                raise BusinessRuleError(
+                    "Le montant dépasse le reste à payer",
+                    code="payment_exceeds_balance",
+                    extra={"remaining": format(max(remaining, ZERO), "f")},
+                )
+            remaining -= amount
+            planned.append((data.model_copy(update={"amount": amount}), amount))
+        return planned
+
     def create(self, sale_id: uuid.UUID, data: PaymentCreate) -> tuple[Payment, bool]:
-        """Encaissement (effectué immédiatement en V1). Renvoie ``(paiement, rejoué)``."""
+        """Encaissement (effectué immédiatement ; saisie manuelle). Renvoie ``(paiement,
+        rejoué)``."""
         # Verrou de la vente : sérialise les paiements concurrents et l'annulation de la vente.
         sale = self._sale(sale_id, lock=True)
         if data.idempotency_key is not None:
@@ -160,11 +226,17 @@ class PaymentService:
                 select(Payment).where(Payment.idempotency_key == data.idempotency_key)
             ).one_or_none()
             if existing is not None:
-                if (
-                    existing.sale_id == sale.id
-                    and existing.amount == data.amount
-                    and existing.method is data.method
-                ):
+                same_method = (
+                    existing.payment_method_id == data.payment_method_id
+                    if data.payment_method_id is not None
+                    else existing.method is data.method
+                )
+                same_amount = (
+                    existing.amount == round_money(data.amount)
+                    if data.amount is not None
+                    else existing.amount_received == round_money(data.amount_received or ZERO)
+                )
+                if existing.sale_id == sale.id and same_method and same_amount:
                     return existing, True  # double soumission : réponse rejouée
                 raise ConflictError(
                     "Clé d'idempotence déjà utilisée pour un autre paiement",
@@ -176,28 +248,38 @@ class PaymentService:
                 code="sale_not_payable",
                 extra={"status": sale.status.value},
             )
-        amount = round_money(data.amount)
+        method = self.resolve_method(sale.site_id, data)
         committed = paid_amounts(self.db, {sale.id}, COMMITTED).get(sale.id, ZERO)
         remaining = max(sale.total - committed, ZERO)
         if remaining <= 0:
             raise BusinessRuleError(
                 "Cette vente est déjà entièrement payée", code="sale_already_paid"
             )
+        amount = self.applied_amount(data, remaining)
         if amount > remaining:
             raise BusinessRuleError(
                 "Le montant dépasse le reste à payer",
                 code="payment_exceeds_balance",
                 extra={"remaining": format(remaining, "f")},
             )
+        received: Decimal | None = None
+        change: Decimal | None = None
+        if method.kind is PaymentMethod.CASH and data.amount_received is not None:
+            received = round_money(data.amount_received)
+            change = received - amount
         payment = Payment(
             tenant_id=self.ctx.tenant_id,
             number=next_number(self.db, self.ctx.tenant_id, SEQUENCE_KEY, PREFIX),
             sale_id=sale.id,
             site_id=sale.site_id,
             amount=amount,
-            method=data.method,
+            method=method.kind,
+            payment_method_id=method.id,
+            method_label=method.label,
             provider=data.provider,
             reference=data.reference,
+            amount_received=received,
+            change_given=change,
             status=PaymentStatus.COMPLETED,
             paid_at=self.now,
             idempotency_key=data.idempotency_key,
@@ -207,28 +289,25 @@ class PaymentService:
         self.db.flush()
         cash: dict[str, Any] = {}
         if payment.method is PaymentMethod.CASH:
-            # Espèces : mouvement de caisse dans la même transaction (sinon rien n'est créé).
-            # Sans caisse disponible (module Caisse inactif) : refus, jamais d'espèces hors
-            # caisse ; les autres moyens de paiement ne dépendent jamais de la caisse.
+            if received is not None:
+                cash = {"amount_received": format(received, "f"), "change": format(change, "f")}
+            # Site avec caisse : mouvement dans la session de l'utilisateur (même transaction).
+            # Site sans caisse (ou module Caisse inactif) : aucune session, aucun mouvement.
             ledger = cash_ledger(self.db, self.ctx, self.now, require_module=True)
-            if ledger is None:
-                raise BusinessRuleError(
-                    "Aucune caisse disponible pour encaisser en espèces",
-                    code="cash_session_required",
+            if ledger is not None and ledger.site_cash_enabled(sale.site_id):
+                movement = ledger.record_sale_cash_in(
+                    site_id=sale.site_id,
+                    payment_id=payment.id,
+                    payment_number=payment.number,
+                    amount=payment.amount,
+                    sale_id=sale.id,
+                    sale_number=sale.number or "",
+                    cash_register_id=data.cash_register_id,
                 )
-            movement = ledger.record_sale_cash_in(
-                site_id=sale.site_id,
-                payment_id=payment.id,
-                payment_number=payment.number,
-                amount=payment.amount,
-                sale_id=sale.id,
-                sale_number=sale.number,
-                cash_register_id=data.cash_register_id,
-            )
-            cash = {
-                "cash_session_id": str(movement.cash_session_id),
-                "cash_register_id": str(movement.cash_register_id),
-            }
+                cash |= {
+                    "cash_session_id": str(movement.cash_session_id),
+                    "cash_register_id": str(movement.cash_register_id),
+                }
         after = summarize(sale.total, committed + amount)
         self._audit("created", sale, payment, {"status": PaymentStatus.COMPLETED.value, **cash})
         self._audit("completed", sale, payment, {**self._balance(after), **cash})
@@ -290,6 +369,8 @@ class PaymentService:
                 "sale_number": sale.number,
                 "amount": format(payment.amount, "f"),
                 "method": payment.method.value,
+                "payment_method_id": str(payment.payment_method_id),
+                "method_label": payment.method_label,
                 "paid_at": payment.paid_at.isoformat(),
                 **data,
             },
@@ -316,7 +397,11 @@ class PaymentService:
                 site_id=p.site_id,
                 amount=p.amount,
                 method=p.method,
+                payment_method_id=p.payment_method_id,
+                method_label=p.method_label,
                 provider=p.provider,
+                amount_received=p.amount_received,
+                change_given=p.change_given,
                 status=p.status,
                 reference=p.reference,
                 paid_at=p.paid_at,

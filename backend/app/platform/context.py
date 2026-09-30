@@ -150,6 +150,15 @@ class RequestContext:
     def has_feature(self, code: str) -> bool:
         return code in self.capabilities.features
 
+    def has_site_permission(self, site_id: uuid.UUID, code: str) -> bool:
+        """``code`` détenu sur ``site_id`` (capacités résolues pour CE site : un rôle limité à
+        un site ne vaut que sur ce site ; jamais de test sur un nom de rôle)."""
+        if self.site is not None and self.site.id == site_id:
+            return code in self.capabilities.permissions
+        if site_id not in self.capabilities.accessible_site_ids:
+            return False
+        return code in self.site_capabilities(site_id).permissions
+
     def ensure_site_allows(self, site_id: uuid.UUID) -> None:
         """1 site = 1 abonnement (ADR-0033) : une opération qui **écrit** sur un site doit être
         autorisée par l'abonnement de CE site, même si elle est lancée sans site sélectionné

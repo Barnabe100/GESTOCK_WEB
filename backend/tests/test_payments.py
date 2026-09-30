@@ -39,6 +39,8 @@ def _sale(
     w: World, quantity: str = "10", validate: bool = True, api: Api | None = None, **extra: Any
 ) -> dict[str, Any]:
     client = api or w.owner
+    if "customer_id" not in extra:
+        extra["customer_id"] = sh.credit_customer(w)  # validée sans paiement : vente à crédit
     created = client.post(
         "/sales",
         json={
@@ -163,10 +165,17 @@ def test_partial_successive_and_mixed_payments(priced: World) -> None:
 
 
 def test_anonymous_sale_and_customer_receivable(priced: World) -> None:
-    counter = _sale(priced, "5")  # vente comptoir, sans client
+    # Vente comptoir sans client (« Ordinaire ») : payée à la validation (un reste dû sans
+    # client serait un crédit sans client, refusé — Lot 1).
+    counter = _sale(priced, "5", validate=False, customer_id=None)
     assert counter["customer_id"] is None
-    _paid(priced.owner, counter, "50000")
-    assert _summary(priced.owner, counter)[2] == "PAID"
+    refused = priced.owner.post(f"/sales/{counter['id']}/validate")
+    assert refused.json()["code"] == "credit_customer_required"
+    counter = priced.owner.post(
+        f"/sales/{counter['id']}/validate",
+        json={"payments": [{"amount": "50000", "method": "CASH"}]},
+    ).json()
+    assert _summary(priced.owner, counter)[2] == "PAID" and not counter["is_credit"]
     customer = priced.owner.post(
         "/customers", json={"customer_type": "INDIVIDUAL", "name": "Awa Traoré"}
     ).json()
@@ -387,11 +396,25 @@ def test_permissions_by_base_role(priced: World, client: TestClient) -> None:
     seller = sh.member(priced, client, "vendeur@example.com", "seller", all_sites=True)
     viewer = sh.member(priced, client, "consultant@example.com", "viewer", all_sites=True)
     sale = _sale(priced)
-    # Vendeur et Gestionnaire : consultation et encaissement, sans annulation.
-    for api in (seller, manager):
-        payment = _paid(api, sale, "10000")
-        denied = _cancel(api, sale, payment, "Tentative")
+    # Vendeur (ses ventes seulement) et Gestionnaire : encaissement, sans annulation.
+    assert _pay(seller, sale, "10000").json()["code"] == "sale_not_found"
+    own = seller.post(
+        "/sales",
+        json={
+            "site_id": priced.site,
+            "lines": [{"article_id": priced.articles[0], "quantity": "1"}],
+        },
+    ).json()
+    own = seller.post(
+        f"/sales/{own['id']}/validate", json={"payments": [{"amount": "10000", "method": "CARD"}]}
+    ).json()
+    for api, target in ((seller, own), (manager, sale)):
+        payments = _history(api, target)["items"]
+        # Espèces : session propre à chaque utilisateur (le propriétaire tient la caisse ici).
+        payment = payments[0] if api is seller else _paid(api, target, "10000", "MOBILE_MONEY")
+        denied = _cancel(api, target, payment, "Tentative")
         assert denied.status_code == 403 and denied.json()["code"] == "permission_denied"
+    _paid(manager, sale, "10000", "MOBILE_MONEY")
     # Consultant : consultation seule.
     assert len(_history(viewer, sale)["items"]) == 2
     refused = _pay(viewer, sale, "1000")
@@ -403,10 +426,13 @@ def test_permissions_by_base_role(priced: World, client: TestClient) -> None:
 
 def test_custom_role_permissions(priced: World, client: TestClient) -> None:
     cashier = _custom_member(
-        priced, client, "caisse@example.com", ["sales.payment.view", "sales.payment.create"]
+        priced,
+        client,
+        "caisse@example.com",
+        ["sales.sale.view_all", "sales.payment.view", "sales.payment.create"],
     )
     sale = _sale(priced)
-    payment = _paid(cashier, sale, "5000")
+    payment = _paid(cashier, sale, "5000", "MOBILE_MONEY")
     assert _cancel(cashier, sale, payment, "Tentative").status_code == 403
     reader = _custom_member(priced, client, "lecteur@example.com", ["sales.sale.view"])
     assert reader.get(f"/sales/{sale['id']}/payments").json()["code"] == "permission_denied"

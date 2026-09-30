@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.modules.sales.api import PaymentOut, SalePaymentStatus
+from app.modules.sales.api import CreditStatus, PaymentOut, SalePaymentStatus
 from app.shared.schemas import Money
 
 
@@ -25,6 +25,9 @@ class ReceivableOut(BaseModel):
     paid_amount: Money
     remaining_amount: Money
     payment_status: SalePaymentStatus
+    # Situation du crédit (Lot 1) : OPEN (rien payé), PARTIAL ; une créance soldée n'est plus
+    # listée (PAID), une vente annulée non plus (CANCELLED).
+    credit_status: CreditStatus
 
 
 class ReceivableSummary(BaseModel):

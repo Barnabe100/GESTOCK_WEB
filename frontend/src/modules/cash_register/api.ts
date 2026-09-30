@@ -3,7 +3,11 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '@/core/api/client';
 import type { Page } from '@/shared/lib/serverTable';
 
-/** Caisse d'un site (jamais d'un utilisateur). Code CAI-001 attribué par le serveur. */
+/**
+ * Poste de caisse d'un site : l'ordinateur / la machine physique (jamais un utilisateur ni une
+ * installation de licence). Un site peut avoir plusieurs postes. Code CAI-001 attribué par le
+ * serveur.
+ */
 export interface CashRegister {
   id: string;
   code: string;
@@ -117,6 +121,33 @@ export interface MovementInput {
 }
 
 export const cashKeys = { all: ['cash'] as const };
+
+/** Caisse d'un site (optionnelle) : activée ou non, sessions ouvertes. */
+export interface CashSite {
+  site_id: string;
+  site_name: string;
+  site_code: string;
+  enabled: boolean;
+  open_sessions: number;
+}
+
+export function useCashSites(enabled = true) {
+  return useQuery({
+    queryKey: [...cashKeys.all, 'sites'],
+    queryFn: ({ signal }) => api.get<CashSite[]>('/cash/sites', signal),
+    enabled,
+  });
+}
+
+/** Activation de la caisse d'un site (désactivation refusée tant qu'une session est ouverte). */
+export function useCashSiteMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ siteId, enabled }: { siteId: string; enabled: boolean }) =>
+      api.put<CashSite>(`/cash/sites/${siteId}`, { enabled }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: cashKeys.all }),
+  });
+}
 
 export function useCashRegisters(query: string, enabled = true) {
   return useQuery({

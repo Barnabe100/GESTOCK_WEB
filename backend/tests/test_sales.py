@@ -19,11 +19,15 @@ from tests.stock_helpers import World
 
 
 def _sale(w: World, lines: list[tuple[int, str]], **extra: Any) -> dict[str, Any]:
+    """Brouillon ; client du monde de test par défaut : validée sans paiement, la vente est à
+    crédit (client obligatoire, Lot 1). ``customer_id=None`` : vente sans client."""
     body = {
         "site_id": w.site,
         "lines": [{"article_id": w.articles[i], "quantity": q} for i, q in lines],
         **extra,
     }
+    if "customer_id" not in extra:
+        body["customer_id"] = sh.credit_customer(w)
     response = w.owner.post("/sales", json=body)
     assert response.status_code == 201, response.text
     return dict(response.json())
@@ -64,8 +68,9 @@ def test_create_draft_with_server_side_prices(world: World, owner_db: Session) -
         total="1",
         subtotal="1",
     )
-    assert (sale["number"], sale["status"]) == ("VTE-000001", "DRAFT")
-    assert sale["customer_id"] is None  # vente comptant anonyme
+    # Aucun numéro au brouillon (Lot 1) : attribué à la validation.
+    assert (sale["number"], sale["status"]) == (None, "DRAFT")
+    assert sale["customer_id"] == world.customer
     first, second = sale["lines"]
     assert (first["quantity"], first["unit_price"], first["line_total"]) == (
         "2.500",
@@ -75,7 +80,7 @@ def test_create_draft_with_server_side_prices(world: World, owner_db: Session) -
     assert second["line_total"] == "150.00"
     assert (sale["subtotal"], sale["total"]) == ("525.00", "525.00")
     assert sh.level(owner_db, world, 0) == ("none", "none")  # brouillon : aucun effet
-    assert _sale(world, [(0, "1")])["number"] == "VTE-000002"
+    assert _sale(world, [(0, "1")])["number"] is None
 
 
 def test_line_total_rounding_is_decimal(world: World) -> None:
@@ -148,7 +153,8 @@ def test_validation_moves_stock_through_stock_service(world: World, owner_db: Se
     assert body["status"] == "VALIDATED" and body["validated_at"] and body["validated_by_name"]
     assert sh.level(owner_db, world, 0) == ("7.000", "100.0000")  # CMUP inchangé
     # Mouvement SALE : quantité négative, coût = CMUP du site, numéro de la vente.
-    assert _movements(owner_db) == [("-3.000", "VTE-000001", "100.0000")]
+    assert body["number"] == "VENT-PRINCIPAL-2026-000001"
+    assert _movements(owner_db) == [("-3.000", body["number"], "100.0000")]
     row = owner_db.execute(
         text(
             "SELECT site_id::text, article_id::text, source_type FROM stock_movements "
@@ -157,7 +163,7 @@ def test_validation_moves_stock_through_stock_service(world: World, owner_db: Se
     ).one()
     assert tuple(row) == (world.site, world.articles[0], "sale")
     journal = world.owner.get("/stock/movements", params={"movement_type": "SALE"}).json()
-    assert journal["items"][0]["document_number"] == "VTE-000001"
+    assert journal["items"][0]["document_number"] == body["number"]
 
 
 def test_insufficient_stock_leaves_everything_unchanged(world: World, owner_db: Session) -> None:
@@ -221,7 +227,11 @@ def test_validated_sale_is_immutable(world: World) -> None:
         response = world.owner.put(f"/sales/{sale['id']}", json=body)
         assert response.status_code == 409 and response.json()["code"] == "sale_not_draft"
     after = world.owner.get(f"/sales/{sale['id']}").json()
-    assert (after["total"], after["customer_id"], after["site_id"]) == ("150.00", None, world.site)
+    assert (after["total"], after["customer_id"], after["site_id"]) == (
+        "150.00",
+        sale["customer_id"],
+        world.site,
+    )
 
 
 def test_draft_update_and_price_change_before_validation(world: World) -> None:
@@ -299,7 +309,8 @@ def test_cancel_draft_and_validated_sale(world: World, owner_db: Session) -> Non
     assert cancelled["status"] == "CANCELLED" and cancelled["cancellation_reason"]
     # Remise en stock par mouvement inverse, au coût de la sortie ; CMUP inchangé.
     assert sh.level(owner_db, world, 0) == ("10.000", "100.0000")
-    assert _movements(owner_db, "CANCELLATION") == [("4.000", "VTE-000002", "100.0000")]
+    number = world.owner.get(f"/sales/{sale['id']}").json()["number"]
+    assert _movements(owner_db, "CANCELLATION") == [("4.000", number, "100.0000")]
     linked = owner_db.execute(
         text(
             "SELECT count(*) FROM stock_movements c JOIN stock_movements o "
@@ -309,7 +320,7 @@ def test_cancel_draft_and_validated_sale(world: World, owner_db: Session) -> Non
     ).scalar_one()
     assert linked == 1
     # Le mouvement SALE d'origine reste intact (historique).
-    assert _movements(owner_db) == [("-4.000", "VTE-000002", "100.0000")]
+    assert _movements(owner_db) == [("-4.000", number, "100.0000")]
     again = world.owner.post(f"/sales/{sale['id']}/cancel", json={"reason": "Encore une fois"})
     assert again.status_code == 409 and again.json()["code"] == "sale_already_cancelled"
 
@@ -380,19 +391,22 @@ def test_list_filters_and_sort(world: World) -> None:
         },
     ).json()
 
-    def numbers(**params: str) -> list[str]:
+    number = world.owner.get(f"/sales/{second['id']}").json()["number"]
+
+    def ids(**params: str) -> list[str]:
         response = world.owner.get("/sales", params=params)
         assert response.status_code == 200, response.text
-        return [s["number"] for s in response.json()["items"]]
+        return [s["id"] for s in response.json()["items"]]
 
-    assert numbers() == [other_site["number"], second["number"], first["number"]]
-    assert numbers(status="VALIDATED") == [second["number"]]
-    assert numbers(site_id=world.site2) == [other_site["number"]]
-    assert numbers(customer_id=customer["id"]) == [second["number"]]
-    assert numbers(search="ouédraogo") == [second["number"]]
-    assert numbers(search="vte-000001") == [first["number"]]
-    assert numbers(sort="-total")[0] == second["number"]
-    assert numbers(date_from="2999-01-01") == []
+    # Tri par défaut : les plus récentes d'abord (les brouillons n'ont pas de numéro).
+    assert ids() == [other_site["id"], second["id"], first["id"]]
+    assert ids(status="VALIDATED") == [second["id"]]
+    assert ids(site_id=world.site2) == [other_site["id"]]
+    assert ids(customer_id=customer["id"]) == [second["id"]]
+    assert ids(search="ouédraogo") == [second["id"]]
+    assert ids(search=number.lower()) == [second["id"]]
+    assert ids(sort="-total")[0] == second["id"]
+    assert ids(date_from="2999-01-01") == []
     page = world.owner.get("/sales", params={"limit": 1}).json()
     assert page["total"] == 3 and len(page["items"]) == 1
     assert world.owner.get("/sales", params={"sort": "site"}).json()["code"] == "invalid_sort"
@@ -409,15 +423,30 @@ def test_permissions_by_base_role(world: World, client: Any) -> None:
     viewer = sh.member(world, client, "consultant@example.com", "viewer", all_sites=True)
     body = {"site_id": world.site, "lines": [{"article_id": world.articles[0], "quantity": "1"}]}
 
-    # Vendeur, Gestionnaire, Administrateur : vente complète (création → validation).
+    # Vendeur, Gestionnaire, Administrateur : vente complète (création → validation) ; payée
+    # comptant (le crédit est réservé à ``sales.sale.credit_create``, que le Vendeur n'a pas).
+    cash = {"payments": [{"method": "CASH", "amount": "150"}]}
     for api in (seller, manager, admin):
         created = api.post("/sales", json=body)
         assert created.status_code == 201, created.text
         sale = created.json()
         assert api.put(f"/sales/{sale['id']}", json=body).status_code == 200
-        assert _validate(api, sale).status_code == 200
+        assert api.post(f"/sales/{sale['id']}/validate", json=cash).status_code == 200
+    credit = {**body, "customer_id": sh.credit_customer(world)}
+    for api, expected in ((seller, 403), (manager, 200), (admin, 200)):
+        sale = api.post("/sales", json=credit).json()
+        response = _validate(api, sale)
+        assert response.status_code == expected, response.text
+    assert _validate(seller, seller.post("/sales", json=credit).json()).json()["code"] == (
+        "credit_not_allowed"
+    )
+    # Portée : le Vendeur ne voit que ses ventes ; les autres, toutes celles du site.
+    seller_ids = {s["id"] for s in seller.get("/sales", params={"limit": 50}).json()["items"]}
+    assert len(seller_ids) == 3
+    assert viewer.get("/sales", params={"limit": 50}).json()["total"] == 7
     # Annulation : administration seulement.
-    sale = world.owner.get("/sales", params={"status": "VALIDATED"}).json()["items"][0]
+    sale = manager.get("/sales", params={"status": "VALIDATED"}).json()["items"][0]
+    assert seller.get(f"/sales/{sale['id']}").json()["code"] == "sale_not_found"
     for api in (seller, manager, viewer):
         denied = api.post(f"/sales/{sale['id']}/cancel", json={"reason": "Tentative"})
         assert denied.status_code == 403 and denied.json()["code"] == "permission_denied"
@@ -461,7 +490,8 @@ def test_site_scope(world: World, client: Any) -> None:
         json={"site_id": world.site, "lines": [{"article_id": world.articles[0], "quantity": "1"}]},
     )
     assert own.status_code == 201
-    assert _validate(shop_seller, own.json()).status_code == 200
+    paid = {"payments": [{"method": "CASH", "amount": "150"}]}
+    assert shop_seller.post(f"/sales/{own.json()['id']}/validate", json=paid).status_code == 200
 
 
 def test_expired_subscription_blocks_sales(world: World, owner_db: Session) -> None:
@@ -482,9 +512,13 @@ def test_audit_trail(world: World) -> None:
     sh.validated_entry(world, [(0, "10", "100")])
     sale = _sale(world, [(0, "1")])
     world.owner.put(
-        f"/sales/{sale['id']}", json={"lines": [{"article_id": world.articles[0], "quantity": "2"}]}
+        f"/sales/{sale['id']}",
+        json={
+            "customer_id": sale["customer_id"],
+            "lines": [{"article_id": world.articles[0], "quantity": "2"}],
+        },
     )
-    _validate(world.owner, sale)
+    assert _validate(world.owner, sale).status_code == 200
     world.owner.post(f"/sales/{sale['id']}/cancel", json={"reason": "Erreur de saisie"})
     items = world.owner.get("/audit-logs", params={"action": "sale."}).json()["items"]
     assert [i["action"] for i in items] == [
@@ -494,7 +528,8 @@ def test_audit_trail(world: World) -> None:
         "sale.created",
     ]
     cancelled, validated, updated, created = (i["data"] for i in items)
-    assert created["number"] == "VTE-000001" and created["total"] == "150.00"
+    assert created["number"] is None and created["total"] == "150.00"
+    assert validated["number"] == "VENT-PRINCIPAL-2026-000001" and validated["is_credit"]
     assert updated["before"]["lines"][0]["quantity"] == "1.000"
     assert updated["after"]["lines"][0]["quantity"] == "2.000"
     assert (validated["previous_status"], validated["status"], validated["total"]) == (

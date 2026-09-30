@@ -4,6 +4,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -12,13 +13,14 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db import Base
+from app.core.db import Base, TenantFiltered
 from app.platform.models_base import IdMixin, TenantScopedMixin, TimestampMixin, str_enum
 
 MONEY = Numeric(18, 2)
@@ -67,10 +69,22 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             "AND cancellation_reason IS NOT NULL)",
             name="cancelled_has_reason",
         ),
+        # Numéro attribué à la validation (Lot 1) : jamais de vente validée (même annulée ensuite)
+        # sans numéro ; un brouillon abandonné n'en a pas.
+        CheckConstraint("validated_at IS NULL OR number IS NOT NULL", name="validated_has_number"),
+        # Exception de limite de crédit : autorisateur, date, justification et montant ensemble.
+        CheckConstraint(
+            "(credit_override_by IS NULL) = (credit_override_at IS NULL) "
+            "AND (credit_override_by IS NULL) = (credit_override_reason IS NULL) "
+            "AND (credit_override_by IS NULL) = (credit_override_amount IS NULL)",
+            name="credit_override_complete",
+        ),
         Index("ix_sales_tenant_date", "tenant_id", "sale_date"),
     )
 
-    number: Mapped[str] = mapped_column(String(20), nullable=False)
+    # ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` attribué à la VALIDATION (Lot 1, ADR-0037) ; nul pour un
+    # brouillon ; les numéros historiques (``VTE-000001``) sont conservés tels quels.
+    number: Mapped[str | None] = mapped_column(String(64))
     site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
     status: Mapped[SaleStatus] = mapped_column(
@@ -95,6 +109,15 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     cancellation_reason: Mapped[str | None] = mapped_column(String(500))
+    # Vente à crédit : reste dû à la validation (client obligatoire, ``sales.sale.credit_create``).
+    is_credit: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    # Dépassement exceptionnel de la limite de crédit (``sales.sale.credit_override``).
+    credit_override_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    credit_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    credit_override_reason: Mapped[str | None] = mapped_column(String(500))
+    credit_override_amount: Mapped[Decimal | None] = mapped_column(MONEY)
 
     lines: Mapped[list["SaleLine"]] = relationship(
         cascade="all, delete-orphan", order_by="SaleLine.line_no", lazy="selectin"
@@ -142,6 +165,23 @@ class PaymentMethod(StrEnum):
     OTHER = "OTHER"
 
 
+class PaymentIntegration(StrEnum):
+    """Mode de saisie d'un moyen de paiement : manuel (montant + référence) ; ``API`` réservé à
+    une intégration future (Orange Money, cartes…), sans changer le modèle du paiement."""
+
+    MANUAL = "MANUAL"
+    API = "API"
+
+
+class CreditStatus(StrEnum):
+    """Situation d'une vente à crédit, CALCULÉE (jamais stockée)."""
+
+    OPEN = "OPEN"  # rien payé
+    PARTIAL = "PARTIAL"
+    PAID = "PAID"
+    CANCELLED = "CANCELLED"
+
+
 class PaymentStatus(StrEnum):
     PENDING = "PENDING"  # réservé aux encaissements asynchrones futurs (non créé en V1)
     COMPLETED = "COMPLETED"  # encaissé : compte dans le montant payé
@@ -179,7 +219,18 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         ForeignKeyConstraint(
             ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
         ),
+        ForeignKeyConstraint(
+            ["tenant_id", "payment_method_id"],
+            ["payment_methods.tenant_id", "payment_methods.id"],
+            ondelete="RESTRICT",
+        ),
         CheckConstraint("amount > 0", name="amount_positive"),
+        # Espèces : montant reçu ≥ montant imputé, monnaie = reçu − imputé ; ailleurs : rien.
+        CheckConstraint(
+            "(amount_received IS NULL AND change_given IS NULL) OR (method = 'CASH' "
+            "AND amount_received >= amount AND change_given = amount_received - amount)",
+            name="cash_change_consistent",
+        ),
         CheckConstraint(
             "status <> 'CANCELLED' OR (cancelled_at IS NOT NULL "
             "AND cancellation_reason IS NOT NULL)",
@@ -194,11 +245,19 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # Site de la vente (copié) : exploitable par la future caisse sans jointure.
     site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Type du moyen (comportement : monnaie et caisse pour ``CASH``), figé au paiement.
     method: Mapped[PaymentMethod] = mapped_column(
         str_enum(PaymentMethod, "payment_method"), nullable=False
     )
-    # Précision facultative du moyen (opérateur Mobile Money, réseau de carte…).
+    # Moyen configuré (Lot 1) et son libellé figé au paiement : renommer ou désactiver le moyen
+    # ne change jamais l'historique. Paiements antérieurs : moyen par défaut du même type.
+    payment_method_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    method_label: Mapped[str] = mapped_column(String(60), nullable=False)
+    # Précision facultative saisie autrefois (opérateur Mobile Money…), conservée telle quelle.
     provider: Mapped[str | None] = mapped_column(String(50))
+    # Espèces : montant remis par le client et monnaie rendue (calculée par le serveur).
+    amount_received: Mapped[Decimal | None] = mapped_column(MONEY)
+    change_given: Mapped[Decimal | None] = mapped_column(MONEY)
     status: Mapped[PaymentStatus] = mapped_column(
         str_enum(PaymentStatus, "payment_status"), nullable=False
     )
@@ -209,3 +268,62 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     cancellation_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class ConfiguredPaymentMethod(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Moyen de paiement configuré par l'entreprise (Lot 1, ADR-0037) : libellé libre (« Orange
+    Money », « Wave »…), **type** qui gouverne le comportement (``CASH`` : monnaie et caisse),
+    saisie manuelle (intégration API future), référence obligatoire ou non. Jamais supprimé :
+    désactivé. Disponible sur tous les sites, sauf désactivation pour un site."""
+
+    __tablename__ = "payment_methods"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "label"),
+        CheckConstraint("length(btrim(label)) > 0", name="label_not_blank"),
+    )
+
+    label: Mapped[str] = mapped_column(String(60), nullable=False)
+    kind: Mapped[PaymentMethod] = mapped_column(
+        str_enum(PaymentMethod, "payment_method_kind"), nullable=False
+    )
+    integration_mode: Mapped[PaymentIntegration] = mapped_column(
+        str_enum(PaymentIntegration, "payment_integration"),
+        default=PaymentIntegration.MANUAL,
+        server_default=PaymentIntegration.MANUAL.value,
+        nullable=False,
+    )
+    reference_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+
+
+class PaymentMethodSite(TenantFiltered, Base):
+    """Disponibilité d'un moyen de paiement sur un site (ligne absente : disponible)."""
+
+    __tablename__ = "payment_method_sites"
+    __table_args__ = (
+        PrimaryKeyConstraint("payment_method_id", "site_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "payment_method_id"],
+            ["payment_methods.tenant_id", "payment_methods.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    payment_method_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))

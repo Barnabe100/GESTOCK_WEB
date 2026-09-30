@@ -28,11 +28,13 @@ import { StatusFilter } from '@/shared/ui/StatusFilter';
 import { useToast } from '@/shared/ui/toast';
 
 import { useCashMutations, useCashRegisters, type CashRegister } from './api';
+import { CashSitesPanel } from './CashSitesPanel';
 import { OpenSessionDialog } from './OpenSessionDialog';
 import { RegisterDialog } from './RegisterDialog';
 
 /**
- * Caisses des sites visibles : statut (ouverte / fermée / désactivée), caissier de la session
+ * Caisse par site (optionnelle) puis postes de caisse (ordinateurs) des sites visibles :
+ * statut (ouverte / fermée / désactivée), caissier de la session
  * en cours et solde théorique calculé par le serveur ; ouverture, session, clôture, gestion.
  */
 export default function RegistersPage() {
@@ -95,6 +97,7 @@ export default function RegistersPage() {
           )
         }
       />
+      <CashSitesPanel />
       <FilterBar
         onReset={() => {
           setSearch('');

@@ -105,7 +105,10 @@ describe('navigation pilotée par le profil UX', () => {
       'stock',
       'admin',
     ]);
-    expect(sections[1]).toEqual(['sales', ['pos', 'sales', 'customers', 'receivables']]);
+    expect(sections[1]).toEqual([
+      'sales',
+      ['pos', 'sales', 'payment-methods', 'customers', 'receivables'],
+    ]);
     expect(sections[4]?.[1]).toContain('stock-transfers');
   });
 
@@ -160,7 +163,7 @@ describe('navigation pilotée par le profil UX', () => {
     const sections = outline(caps(layout, { modules: [...CORE, 'sales', 'customers', 'alerts'] }));
     expect(sections).toEqual([
       ['home', ['dashboard']],
-      ['sales', ['sales', 'customers']],
+      ['sales', ['sales', 'payment-methods', 'customers']],
       // Rubriques par défaut créées à la suite, dans l'ordre des modules.
       ['stock', ['stock-alerts']],
       [

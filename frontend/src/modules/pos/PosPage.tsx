@@ -5,17 +5,21 @@ import { IconField } from 'primereact/iconfield';
 import { InputIcon } from 'primereact/inputicon';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
-import { useCallback, useEffect, useReducer, useState } from 'react';
+import { InputTextarea } from 'primereact/inputtextarea';
+import { useCallback, useContext, useEffect, useReducer, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
+import { ApiError } from '@/core/api/client';
+import { AuthContext } from '@/core/auth/AuthContext';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { useCashSessions } from '@/modules/cash_register/api';
+import { useCashSessions, useCashSites } from '@/modules/cash_register/api';
 import type { Customer } from '@/modules/customers/api';
 import { paymentError } from '@/modules/sales/ui';
 import { formatMoney, formatQuantity, subtractMoney, sumMoney } from '@/shared/lib/decimal';
 import { useDebouncedValue } from '@/shared/lib/serverTable';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { FormField } from '@/shared/ui/FormField';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
@@ -23,7 +27,7 @@ import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { useCheckout, usePosArticles, type CheckoutResult, type PosArticle } from './api';
 import { cartReducer, cartTotal, lineTotal, validQuantity } from './cart';
 import { PosCustomerDialog } from './PosCustomerDialog';
-import { PosPaymentDialog, type PosPayment } from './PosPaymentDialog';
+import { PosPaymentDialog, toCheckoutPayment, type PosPayment } from './PosPaymentDialog';
 import { PosReceipt } from './PosReceipt';
 import { RecentSalesDialog } from './RecentSalesDialog';
 
@@ -58,12 +62,26 @@ export default function PosPage() {
   const [dialog, setDialog] = useState<PosDialog>(null);
   const [result, setResult] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [overrideAllowed, setOverrideAllowed] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const [tab, setTab] = useState<'catalog' | 'cart'>('catalog');
   const checkout = useCheckout();
-  const cashVisible = hasModule('cash_register') && can('cash_register.session.view');
+  const userId = useContext(AuthContext)?.user?.id ?? null;
+  const cashVisible =
+    hasModule('cash_register') &&
+    can('cash_register.session.view') &&
+    can('cash_register.register.view');
+  // Caisse optionnelle par site : état affiché seulement si elle est activée pour ce site.
+  const cashSites = useCashSites(cashVisible);
+  const cashEnabled = cashSites.data?.some((s) => s.site_id === siteId && s.enabled) === true;
   const openSessions = useCashSessions(
-    new URLSearchParams({ status: 'OPEN', site_id: siteId ?? '', limit: '5' }).toString(),
-    cashVisible && siteId !== null,
+    new URLSearchParams({
+      status: 'OPEN',
+      site_id: siteId ?? '',
+      limit: '5',
+      ...(userId ? { opened_by: userId } : {}),
+    }).toString(),
+    cashVisible && cashEnabled && siteId !== null,
   );
 
   const money = (v: string) => formatMoney(v, currency, locale);
@@ -82,6 +100,8 @@ export default function PosPage() {
     setCartKey(crypto.randomUUID());
     setResult(null);
     setError(null);
+    setOverrideAllowed(false);
+    setOverrideReason('');
     setDialog(null);
     setTab('catalog');
     document.getElementById('pos-search')?.focus();
@@ -114,7 +134,7 @@ export default function PosPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [dialog, result, lines.length, canPay, canSell]);
 
-  const confirm = () => {
+  const confirm = (withOverride = false) => {
     if (!siteId) return;
     setError(null);
     checkout.mutate(
@@ -125,11 +145,8 @@ export default function PosPage() {
           article_id: l.article.article_id,
           quantity: validQuantity(l.quantity) ?? '0',
         })),
-        payments: payments.map((p) => ({
-          amount: p.amount,
-          method: p.method,
-          cash_register_id: p.method === 'CASH' ? cashRegisterId : null,
-        })),
+        payments: payments.map((p) => toCheckoutPayment(p, cashRegisterId)),
+        credit_override: withOverride ? { reason: overrideReason.trim() } : null,
         idempotency_key: cartKey,
       },
       {
@@ -137,13 +154,21 @@ export default function PosPage() {
           setDialog(null);
           setResult(data);
         },
-        onError: (e) => setError(paymentError(t, e, currency, locale)),
+        onError: (e) => {
+          setError(paymentError(t, e, currency, locale));
+          // Dépassement de limite : proposé seulement si le serveur le permet à l'utilisateur.
+          setOverrideAllowed(
+            e instanceof ApiError &&
+              e.code === 'credit_limit_exceeded' &&
+              e.extra.override_allowed === true,
+          );
+        },
       },
     );
   };
 
   const cashStatus = () => {
-    if (!cashVisible || !siteId || !openSessions.data) return null;
+    if (!cashVisible || !cashEnabled || !siteId || !openSessions.data) return null;
     const open = openSessions.data.items;
     return open.length === 0 ? (
       <StatusBadge tone="warning" icon="pi pi-box" label={t('pos.noCashOpen')} />
@@ -376,7 +401,7 @@ export default function PosPage() {
                 </div>
                 {payments.map((p) => (
                   <div key={p.key}>
-                    <dt>{t(`payment.method.${p.method}`)}</dt>
+                    <dt>{p.label}</dt>
                     <dd>{money(p.amount)}</dd>
                   </div>
                 ))}
@@ -478,6 +503,22 @@ export default function PosPage() {
               />
             )}
             {error && <Message severity="error" text={error} />}
+            {overrideAllowed && (
+              <FormField
+                id="pos-override-reason"
+                label={t('sales.overrideReason')}
+                help={t('sales.overrideReasonHelp')}
+                required
+              >
+                <InputTextarea
+                  id="pos-override-reason"
+                  rows={3}
+                  maxLength={500}
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                />
+              </FormField>
+            )}
             <div className="sm-dialog-actions">
               <Button
                 type="button"
@@ -485,13 +526,24 @@ export default function PosPage() {
                 text
                 onClick={() => setDialog(null)}
               />
+              {overrideAllowed && (
+                <Button
+                  type="button"
+                  icon="pi pi-shield"
+                  label={t('sales.overrideAndValidate')}
+                  severity="warning"
+                  disabled={overrideReason.trim().length < 5}
+                  loading={checkout.isPending}
+                  onClick={() => confirm(true)}
+                />
+              )}
               <Button
                 type="button"
                 icon="pi pi-check"
                 label={t('pos.validate')}
                 loading={checkout.isPending}
                 autoFocus
-                onClick={confirm}
+                onClick={() => confirm()}
               />
             </div>
           </div>

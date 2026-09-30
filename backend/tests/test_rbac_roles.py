@@ -98,7 +98,8 @@ def test_base_roles(owner: Api) -> None:
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer
     assert not any(p.startswith(("users.", "audit.", "organization.module.")) for p in viewer)
-    assert all(p.endswith(".view") for p in viewer)
+    # Consultation seulement (dont la consultation de toutes les ventes du site, Lot 1).
+    assert all(p.endswith((".view", ".view_all")) for p in viewer)
 
     assert set(_roles(owner, kind="system")) == {"administrator", "manager", "seller", "viewer"}
 

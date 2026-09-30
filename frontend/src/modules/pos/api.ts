@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/core/api/client';
-import type { Payment, PaymentMethod, Sale } from '@/modules/sales/api';
+import type { Payment, Sale } from '@/modules/sales/api';
 import type { Page } from '@/shared/lib/serverTable';
 
 /** Article du point de vente : prix du catalogue et stock du site (indicatifs). */
@@ -24,11 +24,16 @@ export interface CheckoutInput {
   site_id: string;
   customer_id: string | null;
   lines: { article_id: string; quantity: string }[];
+  /** Espèces : montant reçu (monnaie calculée par le serveur) ; autres moyens : montant payé. */
   payments: {
-    amount: string;
-    method: PaymentMethod;
+    payment_method_id: string;
+    amount: string | null;
+    amount_received: string | null;
+    reference: string | null;
     cash_register_id: string | null;
   }[];
+  /** Dépassement de la limite de crédit autorisé (si le serveur le permet à l'utilisateur). */
+  credit_override?: { reason: string } | null;
   /** Une clé par panier : une double soumission renvoie la même vente. */
   idempotency_key: string;
 }

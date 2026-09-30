@@ -1,9 +1,11 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.sales.models import (
+    CreditStatus,
+    PaymentIntegration,
     PaymentMethod,
     PaymentStatus,
     SaleChannel,
@@ -61,7 +63,8 @@ class SaleLineOut(BaseModel):
 
 class SaleOut(BaseModel):
     id: uuid.UUID
-    number: str
+    # Nul pour un brouillon : ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` attribué à la validation.
+    number: str | None
     site_id: uuid.UUID
     site_name: str
     customer_id: uuid.UUID | None
@@ -86,6 +89,13 @@ class SaleOut(BaseModel):
     paid_amount: Money | None = None
     remaining_amount: Money | None = None
     payment_status: SalePaymentStatus | None = None
+    # Crédit (Lot 1) : reste dû à la validation ; situation calculée à partir des paiements.
+    is_credit: bool = False
+    credit_status: CreditStatus | None = None
+    credit_override_at: datetime | None = None
+    credit_override_by_name: str | None = None
+    credit_override_reason: str | None = None
+    credit_override_amount: Money | None = None
     lines: list[SaleLineOut] = Field(default_factory=list)
 
 
@@ -93,18 +103,51 @@ class SaleOut(BaseModel):
 
 
 class PaymentCreate(BaseModel):
-    """Montant > 0 (2 décimales) ; le serveur recalcule le solde et refuse tout surpaiement.
-    ``idempotency_key`` : identifiant généré par le client pour une saisie ; une seconde
-    soumission avec la même clé renvoie le paiement déjà créé (aucun doublon)."""
+    """Paiement d'une vente validée ; le serveur recalcule le solde et refuse tout surpaiement.
 
-    amount: PositiveMoney
-    method: PaymentMethod
+    - ``payment_method_id`` : moyen configuré (Lot 1). Compatibilité : ``method`` seul (type)
+      désigne l'unique moyen disponible de ce type sur le site.
+    - ``amount`` : montant imputé sur la vente. Espèces : ``amount_received`` (montant remis par
+      le client) peut le remplacer — montant imputé = min(reçu, reste dû) — ou le compléter
+      (reçu ≥ montant) ; la monnaie (reçu − imputé) est calculée par le serveur. Aucun autre
+      moyen ne rend de monnaie.
+    - ``idempotency_key`` : identifiant généré par le client pour une saisie ; une seconde
+      soumission avec la même clé renvoie le paiement déjà créé (aucun doublon)."""
+
+    amount: PositiveMoney | None = None
+    amount_received: PositiveMoney | None = None
+    payment_method_id: uuid.UUID | None = None
+    method: PaymentMethod | None = None
     provider: Optional50 = None
     reference: Optional100 = None
     idempotency_key: uuid.UUID | None = None
-    # Espèces : caisse du site de la vente (facultatif ; choisie par le serveur si une seule
-    # session est ouverte sur le site, ou celle ouverte par l'utilisateur).
+    # Espèces sur un site avec caisse : poste de la session de l'utilisateur (facultatif s'il
+    # n'a qu'une session ouverte sur le site).
     cash_register_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _complete(self) -> "PaymentCreate":
+        if self.payment_method_id is None and self.method is None:
+            raise ValueError("moyen de paiement obligatoire (payment_method_id)")
+        if self.amount is None and self.amount_received is None:
+            raise ValueError("montant obligatoire (amount ou amount_received)")
+        return self
+
+
+class CreditOverride(BaseModel):
+    """Dépassement exceptionnel de la limite de crédit : justification obligatoire (5 à 500
+    caractères) ; l'autorisateur est l'utilisateur authentifié, qui doit détenir
+    ``sales.sale.credit_override`` sur le site de la vente."""
+
+    reason: str = Field(max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def _min_length(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 5:
+            raise ValueError("la justification doit contenir au moins 5 caractères")
+        return value
 
 
 class SaleValidate(BaseModel):
@@ -113,17 +156,22 @@ class SaleValidate(BaseModel):
     limite de crédit du client (ADR-0021)."""
 
     payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
+    credit_override: CreditOverride | None = None
 
 
 class PaymentOut(BaseModel):
     id: uuid.UUID
     number: str
     sale_id: uuid.UUID
-    sale_number: str
+    sale_number: str | None
     site_id: uuid.UUID
     amount: Money
     method: PaymentMethod
+    payment_method_id: uuid.UUID | None
+    method_label: str
     provider: str | None
+    amount_received: Money | None
+    change_given: Money | None
     status: PaymentStatus
     reference: str | None
     paid_at: datetime
@@ -156,6 +204,7 @@ class SaleCheckout(SaleCreate):
     un panier ; une seconde soumission renvoie la vente déjà enregistrée."""
 
     payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
+    credit_override: CreditOverride | None = None
     idempotency_key: uuid.UUID
 
 
@@ -164,3 +213,48 @@ class CheckoutOut(BaseModel):
     payments: list[PaymentOut]
     # Vrai si la clé avait déjà été traitée (réponse rejouée, aucune nouvelle écriture).
     replayed: bool
+
+
+# --- Moyens de paiement configurables (Lot 1) ---------------------------------------------------
+
+
+class PaymentMethodCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=60)
+    kind: PaymentMethod
+    reference_required: bool = False
+    integration_mode: PaymentIntegration = PaymentIntegration.MANUAL
+    sort_order: int = Field(default=0, ge=0, le=9999)
+
+
+class PaymentMethodUpdate(BaseModel):
+    """Le type n'est jamais modifiable (comportement des paiements déjà enregistrés)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, min_length=1, max_length=60)
+    reference_required: bool | None = None
+    integration_mode: PaymentIntegration | None = None
+    is_active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=9999)
+
+
+class PaymentMethodSiteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
+class PaymentMethodOut(BaseModel):
+    id: uuid.UUID
+    label: str
+    kind: PaymentMethod
+    integration_mode: PaymentIntegration
+    reference_required: bool
+    is_active: bool
+    sort_order: int
+    # Sites où le moyen est désactivé (disponible partout ailleurs s'il est actif).
+    disabled_site_ids: list[uuid.UUID]
+    # Avec ``site_id`` en filtre : utilisable sur ce site.
+    available: bool | None = None

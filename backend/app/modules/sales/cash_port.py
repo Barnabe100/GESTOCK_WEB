@@ -5,9 +5,10 @@ module Ventes déclare ici l'interface dont il a besoin ; le module Caisse (``ca
 qui dépend des ventes) l'implémente et l'enregistre au chargement. Aucune dépendance
 ``sales → cash_register``, aucun cycle :
 
-- caisse absente, module Caisse inactif pour le tenant : un paiement espèces est refusé
-  (``cash_session_required``) ; ventes et paiements électroniques restent possibles ;
-- caisse active : paiement espèces et mouvement de caisse dans la même transaction.
+- module Caisse inactif pour le tenant, ou caisse non activée pour le site (Lot 1) : les
+  espèces sont encaissées sans session ni mouvement de caisse ;
+- caisse activée pour le site : paiement espèces et mouvement de caisse dans la même
+  transaction, dans la session ouverte par l'utilisateur.
 """
 
 import uuid
@@ -26,6 +27,8 @@ CASH_MODULE = "cash_register"
 
 class CashLedger(Protocol):
     """Opérations de caisse utilisées par les paiements (implémentées par ``CashService``)."""
+
+    def site_cash_enabled(self, site_id: uuid.UUID) -> bool: ...
 
     def record_sale_cash_in(
         self,

@@ -10,70 +10,13 @@ import { ToastContext } from '@/shared/ui/toast';
 
 import type { Payment, PaymentSummary, Sale } from './api';
 import SalePage from './SalePage';
+import { PAYMENT_METHODS_FIXTURE, paymentFixture, saleFixture } from './testData';
 
 // Espaces insécables normalisés comme le fait Testing Library.
 const money = (v: string) => formatMoney(v, 'XOF', 'fr').replace(/\s/g, ' ');
 
-const sale = (over: Partial<Sale> = {}): Sale => ({
-  id: 'v1',
-  number: 'VTE-000123',
-  site_id: 's1',
-  site_name: 'Boutique',
-  customer_id: 'c1',
-  customer_code: 'CLI-000001',
-  customer_name: 'Awa Ouédraogo',
-  status: 'VALIDATED',
-  sale_date: '2026-09-24',
-  notes: null,
-  subtotal: '100000.00',
-  total: '100000.00',
-  line_count: 1,
-  created_at: '2026-09-24T08:00:00Z',
-  updated_at: '2026-09-24T08:00:00Z',
-  created_by_name: 'Moussa',
-  validated_at: '2026-09-24T08:05:00Z',
-  validated_by_name: 'Moussa',
-  cancelled_at: null,
-  cancelled_by_name: null,
-  cancellation_reason: null,
-  paid_amount: '30000.00',
-  remaining_amount: '70000.00',
-  payment_status: 'PARTIALLY_PAID',
-  lines: [
-    {
-      id: 'l1',
-      line_no: 1,
-      article_id: 'a1',
-      article_reference: 'CIM-50',
-      article_designation: 'Ciment 50 kg',
-      unit: 'sac',
-      quantity: '10.000',
-      unit_price: '10000.00',
-      line_total: '100000.00',
-    },
-  ],
-  ...over,
-});
-
-const payment = (over: Partial<Payment> = {}): Payment => ({
-  id: 'p1',
-  number: 'PAY-000001',
-  sale_id: 'v1',
-  sale_number: 'VTE-000123',
-  site_id: 's1',
-  amount: '10000.00',
-  method: 'CASH',
-  provider: null,
-  status: 'COMPLETED',
-  reference: null,
-  paid_at: '2026-09-24T09:00:00Z',
-  created_at: '2026-09-24T09:00:00Z',
-  created_by_name: 'Moussa',
-  cancelled_at: null,
-  cancelled_by_name: null,
-  cancellation_reason: null,
-  ...over,
-});
+const sale = saleFixture;
+const payment = paymentFixture;
 
 const summary = (over: Partial<PaymentSummary> = {}): PaymentSummary => ({
   total: '100000.00',
@@ -111,13 +54,14 @@ describe('paiements sur la fiche vente', () => {
     history = {
       summary: summary(),
       items: [
-        payment(),
+        payment({ amount_received: '15000.00', change_given: '5000.00' }),
         payment({
           id: 'p2',
           number: 'PAY-000002',
           amount: '20000.00',
           method: 'MOBILE_MONEY',
-          provider: 'Orange Money',
+          payment_method_id: 'pm2',
+          method_label: 'Orange Money',
           reference: 'OM-42',
         }),
       ],
@@ -128,6 +72,7 @@ describe('paiements sur la fiche vente', () => {
       if (init?.method === 'POST') {
         return postResponse ?? jsonResponse(payment({ id: 'p3', number: 'PAY-000003' }), 201);
       }
+      if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
       if (u.includes('/payments')) {
         return jsonResponse({ sale_id: 'v1', sale_status: current.status, ...history });
       }
@@ -161,11 +106,16 @@ describe('paiements sur la fiche vente', () => {
     expect(screen.getByText('Validée')).toBeTruthy();
     expect(screen.queryByText('PARTIALLY_PAID')).toBeNull();
     const second = screen.getByText('PAY-000002').closest('tr') as HTMLElement;
-    expect(within(second).getByText('Mobile Money — Orange Money')).toBeTruthy();
+    // Libellé figé au moment du paiement (instantané), jamais le code du type.
+    expect(within(second).getByText('Orange Money')).toBeTruthy();
     expect(within(second).getByText('OM-42')).toBeTruthy();
     expect(within(second).getByText('Effectué')).toBeTruthy();
     const first = screen.getByText('PAY-000001').closest('tr') as HTMLElement;
     expect(within(first).getByText('Espèces')).toBeTruthy();
+    // Espèces : montant reçu et monnaie rendue calculée par le serveur.
+    expect(
+      within(first).getByText(`Reçu : ${money('15000')} · monnaie rendue : ${money('5000')}`),
+    ).toBeTruthy();
   });
 
   it.each([
@@ -189,53 +139,81 @@ describe('paiements sur la fiche vente', () => {
     },
   );
 
-  it('enregistrer : solde affiché, montant proposé, moyens traduits, envoi avec clé', async () => {
+  it('enregistrer : moyens configurés du site, référence obligatoire, envoi avec clé', async () => {
     render();
     fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer un paiement' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(`Solde à payer : ${money('70000')}`)).toBeTruthy();
-    const amount = within(dialog).getByLabelText(/^Montant/) as HTMLInputElement;
-    expect(amount.value).toBe('70000');
-    // Moyens de paiement en français (jamais les codes techniques).
+    // Espèces par défaut : le montant saisi est le montant reçu.
+    const received = (await within(dialog).findByLabelText(/^Montant reçu/)) as HTMLInputElement;
+    expect(received.value).toBe('70000');
+    expect(
+      fetchMock.mock.calls.some(([u]) => String(u).includes('/payment-methods?site_id=s1')),
+    ).toBe(true);
     fireEvent.click(dialog.querySelector('#payment-method')?.closest('.p-dropdown') as Element);
-    for (const label of [
-      'Espèces',
-      'Mobile Money',
-      'Carte bancaire',
-      'Virement bancaire',
-      'Autre',
-    ]) {
+    for (const label of ['Espèces', 'Orange Money', 'Carte bancaire']) {
       expect(
         (await screen.findAllByRole('option', { name: label, hidden: true })).length,
       ).toBeGreaterThan(0);
     }
     fireEvent.click(
-      screen.getAllByRole('option', { name: 'Mobile Money', hidden: true }).at(-1) as Element,
+      screen.getAllByRole('option', { name: 'Orange Money', hidden: true }).at(-1) as Element,
     );
-    fireEvent.change(await within(dialog).findByLabelText('Opérateur'), {
-      target: { value: 'Wave' },
-    });
+    const amount = await within(dialog).findByLabelText(/^Montant\b(?! reçu)/);
     fireEvent.change(amount, { target: { value: '30 000' } });
-    fireEvent.change(within(dialog).getByLabelText('Référence'), { target: { value: 'W-1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer le paiement' }));
+    expect(await within(dialog).findByText('Référence de la transaction obligatoire')).toBeTruthy();
+    expect(posts(fetchMock)).toHaveLength(0);
+    fireEvent.change(within(dialog).getByLabelText(/^Référence/), { target: { value: 'OM-1' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer le paiement' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     const [url, init] = posts(fetchMock)[0] ?? [];
     expect(String(url)).toContain('/sales/v1/payments');
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(body).toMatchObject({
+      payment_method_id: 'pm2',
       amount: '30000',
-      method: 'MOBILE_MONEY',
-      provider: 'Wave',
-      reference: 'W-1',
+      amount_received: null,
+      reference: 'OM-1',
     });
     expect(String(body.idempotency_key)).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('espèces : montant reçu envoyé, monnaie calculée par le serveur affichée', async () => {
+    postResponse = jsonResponse(
+      payment({
+        id: 'p3',
+        number: 'PAY-000003',
+        amount: '70000.00',
+        amount_received: '80000.00',
+        change_given: '10000.00',
+      }),
+      201,
+    );
+    render();
+    fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer un paiement' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(await within(dialog).findByLabelText(/^Montant reçu/), {
+      target: { value: '80000' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer le paiement' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    const body = JSON.parse(String(posts(fetchMock)[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      payment_method_id: 'pm1',
+      amount: null,
+      amount_received: '80000',
+    });
+    await waitFor(() => expect(show).toHaveBeenCalled());
+    const detail = JSON.stringify(show.mock.calls[0]?.[0]).replace(/\s/g, ' ');
+    expect(detail).toContain(`Monnaie à rendre : ${money('10000')}`);
   });
 
   it('montant invalide : erreur sans envoi ; surpaiement refusé par le serveur : message clair', async () => {
     render();
     fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer un paiement' }));
     const dialog = await screen.findByRole('dialog');
-    const amount = within(dialog).getByLabelText(/^Montant/);
+    const amount = await within(dialog).findByLabelText(/^Montant/);
     for (const bad of ['0', '-5', '12,345', 'abc']) {
       fireEvent.change(amount, { target: { value: bad } });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer le paiement' }));
@@ -298,7 +276,7 @@ describe('paiements sur la fiche vente', () => {
 
   it('sans permission de consultation des paiements : aucune section ni requête', async () => {
     render(['sales.sale.view']);
-    expect(await screen.findByRole('heading', { name: /VTE-000123/ })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: /VENT-BOU-2026-000123/ })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Paiements' })).toBeNull();
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/payments'))).toBe(false);
   });

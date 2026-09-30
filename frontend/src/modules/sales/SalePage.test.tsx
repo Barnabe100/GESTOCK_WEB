@@ -9,6 +9,7 @@ import { jsonResponse, pageOf, renderWithCapabilities } from '@/shared/testing';
 import { ToastContext } from '@/shared/ui/toast';
 
 import SalePage from './SalePage';
+import { PAYMENT_METHODS_FIXTURE } from './testData';
 
 // Espaces insécables normalisés comme le fait Testing Library.
 const money = (v: string) => formatMoney(v, 'XOF', 'fr').replace(/\s/g, ' ');
@@ -28,7 +29,8 @@ const line = (over: Record<string, unknown> = {}) => ({
 
 const draft = {
   id: 'v1',
-  number: 'VTE-000001',
+  // Brouillon : aucun numéro (attribué à la validation).
+  number: null,
   site_id: 's1',
   site_name: 'Boutique',
   customer_id: null,
@@ -48,11 +50,25 @@ const draft = {
   cancelled_at: null,
   cancelled_by_name: null,
   cancellation_reason: null,
+  is_credit: false,
+  credit_status: null,
+  credit_override_at: null,
+  credit_override_by_name: null,
+  credit_override_reason: null,
+  credit_override_amount: null,
   lines: [line()],
+};
+
+const withCustomer = {
+  ...draft,
+  customer_id: 'c1',
+  customer_code: 'CLI-000001',
+  customer_name: 'Awa Ouédraogo',
 };
 
 const validated = {
   ...draft,
+  number: 'VENT-BOU-2026-000001',
   status: 'VALIDATED',
   customer_id: 'c1',
   customer_code: 'CLI-000001',
@@ -114,7 +130,7 @@ describe('saisie et consultation d’une vente', () => {
       route: '/sales/new',
     });
     expect(await screen.findByRole('heading', { name: 'Nouvelle vente' })).toBeTruthy();
-    expect(screen.getByPlaceholderText('Vente comptant (sans client)')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Client ordinaire (sans client)')).toBeTruthy();
     // Sans permission de validation : enregistrement du brouillon seulement.
     expect(screen.queryByRole('button', { name: 'Valider la vente' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
@@ -139,7 +155,7 @@ describe('saisie et consultation d’une vente', () => {
       path: '/sales/:id',
       route: '/sales/v1',
     });
-    expect(await screen.findByRole('heading', { name: 'Vente VTE-000001' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Vente non numérotée' })).toBeTruthy();
     expect(screen.getByTestId('sale-total').textContent?.replace(/\s/g, ' ')).toBe(
       money('3000.00'),
     );
@@ -203,38 +219,40 @@ describe('saisie et consultation d’une vente', () => {
     await act(async () => {
       accept?.click();
     });
-    await waitFor(() =>
-      expect(show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          severity: 'error',
-          summary: 'Stock insuffisant : VIS-001 (disponible : 1).',
-        }),
-      ),
-    );
+    // Refus affiché dans le dialogue, conservé pour corriger.
+    expect(
+      await within(dialog).findByText('Stock insuffisant : VIS-001 (disponible : 1).'),
+    ).toBeTruthy();
     // Brouillon non modifié : aucun PUT, une seule tentative de validation.
     expect(methodCalls(fetchMock, 'PUT')).toHaveLength(0);
     expect(methodCalls(fetchMock, 'POST')).toHaveLength(1);
   });
 
-  it('validation avec encaissement immédiat : paiements envoyés dans la même requête', async () => {
-    fetchMock.mockImplementation(async (url, init) =>
-      init?.method === 'POST' && String(url).endsWith('/validate')
+  it('sans client : encaissement exigé, montant reçu en espèces envoyé dans la même requête', async () => {
+    fetchMock.mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
+      return init?.method === 'POST' && u.endsWith('/validate')
         ? jsonResponse(validated)
-        : jsonResponse(draft),
-    );
+        : jsonResponse(draft);
+    });
     renderWithCapabilities(withToast(<SalePage />, show), {
       permissions: [...SELLER, 'sales.payment.create'],
       path: '/sales/:id',
       route: '/sales/v1',
     });
+    expect(await screen.findByRole('heading', { name: 'Vente non numérotée' })).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Valider la vente' }));
     const dialog = await screen.findByRole('dialog');
-    expect(dialog.textContent).toContain('dans la limite de son crédit');
-    fireEvent.click(within(dialog).getByLabelText('Encaisser un paiement maintenant'));
-    // Montant proposé : le total ; le serveur recalcule et contrôle.
-    const amount = within(dialog).getByLabelText(/^Montant/) as HTMLInputElement;
+    expect(dialog.textContent).toContain('une vente à crédit exige un client identifié');
+    // Encaissement coché d'emblée ; espèces par défaut : montant reçu = total proposé.
+    expect(
+      (within(dialog).getByLabelText('Encaisser un paiement maintenant') as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    const amount = (await within(dialog).findByLabelText(/^Montant reçu/)) as HTMLInputElement;
     expect(amount.value).toBe('3000');
-    fireEvent.change(amount, { target: { value: '1 000' } });
+    fireEvent.change(amount, { target: { value: '5 000' } });
     await act(async () => {
       within(dialog).getByRole('button', { name: 'Valider la vente' }).click();
     });
@@ -242,12 +260,50 @@ describe('saisie et consultation d’une vente', () => {
     const [url, init] = methodCalls(fetchMock, 'POST')[0] ?? [];
     expect(String(url)).toContain('/api/v1/sales/v1/validate');
     expect(JSON.parse(String(init?.body))).toEqual({
-      // Caisse choisie par le serveur (aucune caisse indiquée sans droit de consultation).
-      payments: [{ amount: '1000', method: 'CASH', cash_register_id: null }],
+      // Monnaie calculée par le serveur ; poste choisi par le serveur (aucun indiqué ici).
+      payments: [
+        {
+          payment_method_id: 'pm1',
+          amount: null,
+          amount_received: '5000',
+          reference: null,
+          cash_register_id: null,
+        },
+      ],
+      credit_override: null,
     });
     await waitFor(() =>
-      expect(show).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' })),
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'success',
+          summary: 'Vente VENT-BOU-2026-000001 validée',
+        }),
+      ),
     );
+  });
+
+  it('crédit refusé sans client : message du serveur affiché dans le dialogue', async () => {
+    fetchMock.mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
+      return init?.method === 'POST' && u.endsWith('/validate')
+        ? jsonResponse({ code: 'credit_customer_required', detail: 'x', remaining: '3000.00' }, 422)
+        : jsonResponse(draft);
+    });
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: [...SELLER, 'sales.payment.create', 'sales.sale.credit_create'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider la vente' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText('Encaisser un paiement maintenant'));
+    await act(async () => {
+      within(dialog).getByRole('button', { name: 'Valider la vente' }).click();
+    });
+    expect(
+      await within(dialog).findByText(/Une vente à crédit exige un client identifié/),
+    ).toBeTruthy();
   });
 
   it('limite de crédit dépassée : message détaillé, dialogue conservé', async () => {
@@ -260,13 +316,14 @@ describe('saisie et consultation d’une vente', () => {
               status: 422,
               credit_limit: '100000.00',
               sale_exposure: '3000.00',
+              override_allowed: false,
             },
             422,
           )
-        : jsonResponse(draft),
+        : jsonResponse(withCustomer),
     );
     renderWithCapabilities(withToast(<SalePage />, show), {
-      permissions: SELLER,
+      permissions: [...SELLER, 'sales.sale.credit_create'],
       path: '/sales/:id',
       route: '/sales/v1',
     });
@@ -274,19 +331,62 @@ describe('saisie et consultation d’une vente', () => {
     const dialog = await screen.findByRole('dialog');
     // Sans droit d'encaisser : pas d'encaissement immédiat proposé.
     expect(within(dialog).queryByLabelText('Encaisser un paiement maintenant')).toBeNull();
+    expect(dialog.textContent).toContain('dans la limite de son crédit');
     await act(async () => {
       within(dialog).getByRole('button', { name: 'Valider la vente' }).click();
     });
-    await waitFor(() =>
-      expect(show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          severity: 'error',
-          summary: expect.stringMatching(/^Limite de crédit du client dépassée/) as string,
-        }),
-      ),
-    );
+    expect(await within(dialog).findByText(/^Limite de crédit du client dépassée/)).toBeTruthy();
     expect(JSON.parse(String(methodCalls(fetchMock, 'POST')[0]?.[1]?.body ?? 'null'))).toBeNull();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    // Dépassement non permis par le serveur à cet utilisateur : aucune justification proposée.
+    expect(within(dialog).queryByLabelText(/Justification du dépassement/)).toBeNull();
+  });
+
+  it('dépassement permis par le serveur : justification obligatoire, envoyée à la validation', async () => {
+    fetchMock.mockImplementation(async (url, init) => {
+      if (init?.method === 'POST' && String(url).endsWith('/validate')) {
+        const body = JSON.parse(String(init.body ?? 'null')) as {
+          credit_override?: unknown;
+        } | null;
+        return body?.credit_override
+          ? jsonResponse({ ...validated, is_credit: true, credit_status: 'OPEN' })
+          : jsonResponse(
+              {
+                code: 'credit_limit_exceeded',
+                detail: 'x',
+                credit_limit: '1000.00',
+                sale_exposure: '3000.00',
+                override_allowed: true,
+              },
+              422,
+            );
+      }
+      return jsonResponse(withCustomer);
+    });
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: [...ALL, 'sales.sale.credit_create', 'sales.sale.credit_override'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider la vente' }));
+    const dialog = await screen.findByRole('dialog');
+    await act(async () => {
+      within(dialog).getByRole('button', { name: 'Valider la vente' }).click();
+    });
+    const reason = await within(dialog).findByLabelText(/Justification du dépassement/);
+    const override = within(dialog).getByRole('button', {
+      name: 'Autoriser le dépassement et valider',
+    });
+    expect((override as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(reason, { target: { value: 'Client fidèle' } });
+    expect((override as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {
+      override.click();
+    });
+    await waitFor(() => expect(methodCalls(fetchMock, 'POST')).toHaveLength(2));
+    expect(JSON.parse(String(methodCalls(fetchMock, 'POST')[1]?.[1]?.body))).toEqual({
+      payments: [],
+      credit_override: { reason: 'Client fidèle' },
+    });
   });
 
   it('vente validée : lecture seule ; annulation réservée à la permission', async () => {
@@ -329,7 +429,7 @@ describe('saisie et consultation d’une vente', () => {
       route: '/sales/v1',
     });
     expect(await screen.findByText('Brouillon')).toBeTruthy();
-    expect(screen.getByText('Sans client')).toBeTruthy();
+    expect(screen.getByText('Ordinaire')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Enregistrer le brouillon' })).toBeNull();
   });
   it('ajout d’un article par recherche : prix repris, doublon refusé', async () => {

@@ -11,6 +11,7 @@ from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
 from app.platform.licensing.service import tenant_terms
 from app.platform.registry import ModuleRegistry
+from app.platform.sequences.service import site_has_numbers
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
 from app.platform.subscriptions.plan_policy import PlanTerms
 from app.platform.subscriptions.service import (
@@ -175,6 +176,16 @@ class SiteService:
     def update(self, site_id: uuid.UUID, data: SiteUpdate) -> Site:
         site = self.get(site_id)
         changes = data.model_dump(exclude_unset=True)
+        if (
+            "code" in changes
+            and changes["code"] != site.code
+            and site_has_numbers(self.db, site.id)
+        ):
+            # Le code figure dans des numéros déjà émis (VENT-{CODE}-…) : il reste stable.
+            raise ConflictError(
+                "Ce site a déjà émis des numéros portant son code : le code ne peut plus changer",
+                code="site_code_locked",
+            )
         before = {k: getattr(site, k) for k in changes}
         for key, value in changes.items():
             setattr(site, key, value)

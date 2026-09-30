@@ -1,8 +1,13 @@
-"""Caisse (Phase 2.9, ADR-0022) : caisses d'un site, sessions, mouvements.
+"""Caisse (Phase 2.9, ADR-0022 ; Lot 1 Encaissement, ADR-0037) : postes, sessions, mouvements.
 
 ```text
-Tenant → Site → Caisse (cash_registers) → Session (cash_sessions) → Mouvements (cash_movements)
+Tenant → Site (caisse activée ou non : cash_site_settings)
+           → Poste de caisse (cash_registers : l'ordinateur / la machine physique)
+               → Session (cash_sessions : site + poste + utilisateur) → Mouvements
 ```
+
+La caisse est **optionnelle et activée par site** : un site sans caisse vend et encaisse (même en
+espèces) sans session, sans fond, sans clôture ni comptage.
 
 FK composites de bout en bout : un mouvement appartient au même tenant, au même site et à la
 même caisse que sa session ; une session, au même site que sa caisse ; un encaissement de vente
@@ -32,7 +37,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base
+from app.core.db import Base, TenantFiltered
 from app.platform.models_base import IdMixin, TenantScopedMixin, TimestampMixin, str_enum
 
 MONEY = Numeric(18, 2)
@@ -88,9 +93,30 @@ OUT_CATEGORIES = (
 )
 
 
+class CashSiteSetting(TenantFiltered, Base):
+    """Utilisation de la caisse par un site (Lot 1) : activée ou non par l'administrateur du
+    site. Ligne absente : caisse non activée. Jamais désactivée avec une session ouverte."""
+
+    __tablename__ = "cash_site_settings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+
+
 class CashRegister(IdMixin, TenantScopedMixin, TimestampMixin, Base):
-    """Caisse d'un site (ressource du site, jamais d'un utilisateur). Jamais supprimée :
-    désactivée ; son site ne change pas (historique)."""
+    """**Poste de caisse** d'un site : l'ordinateur / la machine physique utilisée pour
+    encaisser (jamais une installation sous licence, un utilisateur ni une session). Un site peut
+    en avoir plusieurs. Jamais supprimé : désactivé ; son site ne change pas (historique)."""
 
     __tablename__ = "cash_registers"
     __table_args__ = (

@@ -47,7 +47,8 @@ describe('liste des ventes', () => {
         }),
         sale({
           id: 'v2',
-          number: 'VTE-000002',
+          // Brouillon : aucun numéro (attribué à la validation).
+          number: null,
           customer_id: null,
           customer_code: null,
           customer_name: null,
@@ -68,7 +69,7 @@ describe('liste des ventes', () => {
     renderWithCapabilities(<SalesPage />, { permissions: ['sales.sale.view'] });
     expect(await screen.findByText('VTE-000001')).toBeTruthy();
     expect(screen.getByText('Awa Ouédraogo')).toBeTruthy();
-    expect(screen.getByText('Sans client')).toBeTruthy();
+    expect(screen.getByText('Ordinaire')).toBeTruthy();
     expect(screen.getByText(formatMoney('4500.00', 'XOF', 'fr').replace(/\s/g, ' '))).toBeTruthy();
     expect(screen.getByText('Validée')).toBeTruthy();
     expect(screen.getByText('Brouillon')).toBeTruthy();
@@ -106,7 +107,7 @@ describe('liste des ventes', () => {
     const validated = (await screen.findByText('VTE-000001')).closest('tr') as HTMLElement;
     expect(within(validated).getByText('Validée')).toBeTruthy();
     expect(within(validated).getByText('Partiellement payée')).toBeTruthy();
-    const draft = screen.getByText('VTE-000002').closest('tr') as HTMLElement;
+    const draft = screen.getByText('non numérotée').closest('tr') as HTMLElement;
     expect(within(draft).getByText('—')).toBeTruthy(); // brouillon : pas d'encaissement
     const filter = screen.getByLabelText('Paiement', { selector: 'input, select, span, div' });
     fireEvent.click(filter.closest('.p-dropdown') ?? filter);

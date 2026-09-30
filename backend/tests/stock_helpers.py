@@ -18,6 +18,8 @@ class World:
     articles: list[str]
     supplier: str
     reasons: dict[str, str]
+    # Client créé à la demande (``credit_customer``) : une vente à crédit exige un client.
+    customer: str | None = None
 
 
 def make_world(provision: Any, api_for: Any) -> World:
@@ -117,11 +119,30 @@ def member(w: World, client: TestClient, email: str, template: str, **access: An
     return Api(client, login(client, email).json()["access_token"])
 
 
+def credit_customer(w: World) -> str:
+    """Client du monde de test (créé à la première demande) : une vente validée avec un reste
+    dû est une vente à crédit, qui exige un client identifié (Lot 1)."""
+    if w.customer is None:
+        response = w.owner.post(
+            "/customers", json={"customer_type": "INDIVIDUAL", "name": "Client comptoir"}
+        )
+        assert response.status_code == 201, response.text
+        w.customer = response.json()["id"]
+    return w.customer
+
+
+def enable_cash(api: Api, site: str) -> None:
+    """Caisse activée pour le site (Lot 1 : optionnelle, activée par l'administrateur)."""
+    response = api.put(f"/cash/sites/{site}", json={"enabled": True})
+    assert response.status_code == 200, response.text
+
+
 def open_cash(
     w: World, site: str | None = None, opening_float: str = "0", name: str = "Caisse test"
 ) -> dict[str, Any]:
-    """Caisse ouverte sur un site (défaut : site principal) : les paiements espèces exigent une
-    session de caisse ouverte sur le site de la vente (Phase 2.9)."""
+    """Session ouverte par le propriétaire sur un site (défaut : site principal) dont la caisse
+    est activée : les paiements espèces de ce site passent alors par sa session (Phase 2.9)."""
+    enable_cash(w.owner, site or w.site)
     register = w.owner.post("/cash/registers", json={"site_id": site or w.site, "name": name})
     assert register.status_code == 201, register.text
     session = w.owner.post(

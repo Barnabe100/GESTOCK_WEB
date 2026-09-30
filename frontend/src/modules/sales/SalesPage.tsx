@@ -173,7 +173,13 @@ export default function SalesPage() {
           />
         }
       >
-        <Column field="number" header={t('sales.number')} sortable bodyClassName="sm-nowrap" />
+        <Column
+          field="number"
+          header={t('sales.number')}
+          sortable
+          bodyClassName="sm-nowrap"
+          body={(s: Sale) => s.number ?? t('sales.draftNumber')}
+        />
         <Column
           field="sale_date"
           header={t('sales.date')}

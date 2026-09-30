@@ -44,11 +44,16 @@ def _body(
     key: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
+    """Panier ; client du monde de test par défaut (un reste dû fait une vente à crédit, qui
+    exige un client, Lot 1) ; ``customer_id=None`` : client « Ordinaire »."""
     return {
         "site_id": w.site,
         "lines": [{"article_id": w.articles[i], "quantity": q} for i, q in lines],
         "payments": [{"amount": a, "method": m} for a, m in payments],
         "idempotency_key": key or str(uuid.uuid4()),
+        "customer_id": extra.pop("customer_id")
+        if "customer_id" in extra
+        else sh.credit_customer(w),
         **extra,
     }
 
@@ -186,6 +191,7 @@ def test_checkout_cash_uses_the_open_cash_session(priced: World) -> None:
 
 
 def test_checkout_cash_without_session_changes_nothing(priced: World, owner_db: Session) -> None:
+    sh.enable_cash(priced.owner, priced.site)  # caisse activée : les espèces exigent SA session
     refused = _checkout(priced.owner, _body(priced, [(0, "3")], [("30000", "CASH")]))
     assert refused.status_code == 422 and refused.json()["code"] == "cash_session_required"
     # Tout ou rien : ni vente (même brouillon), ni stock, ni paiement, ni mouvement.
@@ -227,11 +233,11 @@ def test_electronic_payments_without_any_cash_register(priced: World) -> None:
     priced.owner.post(f"/cash/registers/{register['id']}/deactivate")
     second = _done(priced.owner, _body(priced, [(0, "1")], [("10000", "OTHER")]))
     assert second["sale"]["payment_status"] == "PAID"
-    # Module Caisse désactivé : POS et ventes disponibles, espèces refusées.
+    # Module Caisse désactivé : POS et ventes disponibles, espèces comprises (sans caisse).
     assert priced.owner.put("/modules/cash_register", json={"enabled": False}).status_code == 204
     assert _done(priced.owner, _body(priced, [(0, "1")], [("10000", "CARD")]))["sale"]
     cash = _checkout(priced.owner, _body(priced, [(0, "1")], [("10000", "CASH")]))
-    assert cash.json()["code"] == "cash_session_required"
+    assert cash.status_code == 201, cash.text
 
 
 @pytest.mark.parametrize(
@@ -334,7 +340,12 @@ def test_permissions(priced: World, client: TestClient) -> None:
         priced,
         client,
         "sans-encaissement@example.com",
-        ["pos.terminal.use", "sales.sale.create", "sales.sale.validate"],
+        [
+            "pos.terminal.use",
+            "sales.sale.create",
+            "sales.sale.validate",
+            "sales.sale.credit_create",
+        ],
     )
     assert _done(no_payment, _body(priced, [(0, "1")]))["sale"]
     refused = _checkout(no_payment, _body(priced, [(0, "1")], [("10000", "CARD")]))
@@ -354,13 +365,14 @@ def test_site_scope(priced: World, client: TestClient) -> None:
         assert response.status_code == 403 and response.json()["code"] == "site_access_denied"
     # Site sélectionné : la vente y est rattachée ; un autre site demandé est refusé.
     shop.site_id = uuid.UUID(priced.site)
-    sale = _done(shop, _body(priced, [(0, "1")], site_id=None))["sale"]
+    sale = _done(shop, _body(priced, [(0, "1")], [("10000", "CARD")], site_id=None))["sale"]
     assert sale["site_id"] == priced.site
     mismatch = _checkout(shop, _body(priced, [(0, "1")], site_id=priced.site2))
     assert mismatch.status_code == 403 and mismatch.json()["code"] == "site_mismatch"
 
 
 def test_subscription_and_module(priced: World, owner_db: Session) -> None:
+    sh.credit_customer(priced)  # créé avant l'expiration (écriture)
     owner_db.execute(
         text("UPDATE subscriptions SET current_period_end = now() - interval '90 days'")
     )

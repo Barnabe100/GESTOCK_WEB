@@ -89,6 +89,8 @@ def _sale(w: World, index: int, quantity: str, validate: bool = True) -> dict[st
         json={
             "site_id": w.site,
             "lines": [{"article_id": w.articles[index], "quantity": quantity}],
+            # Validée sans paiement : vente à crédit, client obligatoire (Lot 1).
+            "customer_id": sh.credit_customer(w),
         },
     )
     assert sale.status_code == 201, sale.text

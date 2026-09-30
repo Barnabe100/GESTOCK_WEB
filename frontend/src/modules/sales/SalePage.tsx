@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
 
+import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { ArticlePicker, toArticleOption, type ArticleOption } from '@/modules/stock/ArticlePicker';
 import {
@@ -34,6 +35,7 @@ import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
 import {
   useSale,
   useSaleMutations,
+  type CreditOverride,
   type ImmediatePayment,
   type Sale,
   type SaleInput,
@@ -163,16 +165,34 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
 
   // Validation : confirmation, encaissement immédiat facultatif (le reste dû est une créance).
   const [validating, setValidating] = useState<FormValues | null>(null);
-  const onValidate = form.handleSubmit((values) => setValidating(values));
-  const confirmValidation = async (values: FormValues, payments: ImmediatePayment[]) => {
+  const [validationError, setValidationError] = useState<{
+    message: string;
+    overrideAllowed: boolean;
+  } | null>(null);
+  const onValidate = form.handleSubmit((values) => {
+    setValidationError(null);
+    setValidating(values);
+  });
+  const confirmValidation = async (
+    values: FormValues,
+    payments: ImmediatePayment[],
+    creditOverride: CreditOverride | null,
+  ) => {
     try {
       const saved = form.formState.isDirty || !sale ? await persist(values) : sale;
-      const validated = await validate.mutateAsync({ id: saved.id, payments });
+      const validated = await validate.mutateAsync({ id: saved.id, payments, creditOverride });
       setValidating(null);
-      toast.success(t('sales.validated', { number: validated.number }));
+      toast.success(t('sales.validated', { number: validated.number ?? '' }));
     } catch (error) {
-      // Refus (stock, prix, limite de crédit…) : dialogue conservé pour corriger ou encaisser.
-      toast.error(saleError(t, error, locale, currency));
+      // Refus (stock, prix, crédit…) : dialogue conservé pour corriger, encaisser ou, si le
+      // serveur le permet à cet utilisateur, autoriser le dépassement de la limite de crédit.
+      setValidationError({
+        message: saleError(t, error, locale, currency),
+        overrideAllowed:
+          error instanceof ApiError &&
+          error.code === 'credit_limit_exceeded' &&
+          error.extra.override_allowed === true,
+      });
     }
   };
 
@@ -334,8 +354,13 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
         <ValidateSaleDialog
           total={displayTotal}
           siteId={validating.site_id ?? sale?.site_id ?? null}
+          hasCustomer={validating.customer !== null}
           pending={save.isPending || validate.isPending}
-          onConfirm={(payments) => void confirmValidation(validating, payments)}
+          error={validationError?.message ?? null}
+          overrideAllowed={validationError?.overrideAllowed ?? false}
+          onConfirm={(payments, creditOverride) =>
+            void confirmValidation(validating, payments, creditOverride)
+          }
           onClose={() => setValidating(null)}
         />
       )}
@@ -359,6 +384,18 @@ function SaleSummary({ sale }: { sale: Sale }) {
       sale.customer_name
         ? `${sale.customer_name} (${sale.customer_code})`
         : t('sales.anonymousShort'),
+    ],
+    [t('sales.credit'), sale.credit_status ? t(`sales.creditStatus.${sale.credit_status}`) : null],
+    [
+      t('sales.creditOverride'),
+      sale.credit_override_at
+        ? t('sales.creditOverrideDetail', {
+            amount: formatMoney(sale.credit_override_amount ?? '0', currency, locale),
+            name: sale.credit_override_by_name ?? '',
+            date: formatDateTime(sale.credit_override_at, locale, timezone),
+            reason: sale.credit_override_reason ?? '',
+          })
+        : null,
     ],
     [t('sales.notes'), sale.notes],
     [t('stock.createdBy'), at(sale.created_by_name, sale.created_at)],
@@ -416,7 +453,7 @@ function CancelDialog({ sale, onClose }: { sale: Sale; onClose: () => void }) {
       { id: sale.id, reason: reason.trim() },
       {
         onSuccess: () => {
-          toast.success(t('sales.cancelled', { number: sale.number }));
+          toast.success(t('sales.cancelled', { number: sale.number ?? t('sales.draftNumber') }));
           onClose();
         },
         onError: (error) => toast.error(saleError(t, error, capabilities.tenant.locale)),
@@ -486,10 +523,10 @@ export default function SalePage() {
   return (
     <>
       <PageHeader
-        title={sale ? `${t('sales.one')} ${sale.number}` : t('sales.new')}
+        title={sale ? `${t('sales.one')} ${sale.number ?? t('sales.draftNumber')}` : t('sales.new')}
         breadcrumbs={[
           { label: t('sales.title'), to: '/sales' },
-          { label: sale ? sale.number : t('sales.new') },
+          { label: sale ? (sale.number ?? t('sales.draftNumber')) : t('sales.new') },
         ]}
         actions={
           <div className="sm-tags">

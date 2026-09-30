@@ -3,8 +3,7 @@ import { Card } from 'primereact/card';
 import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
 import { Dialog } from 'primereact/dialog';
-import { Dropdown } from 'primereact/dropdown';
-import { InputText } from 'primereact/inputtext';
+import type { TFunction } from 'i18next';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
 import { useState } from 'react';
@@ -12,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { CashRegisterChoice } from '@/modules/cash_register/CashRegisterChoice';
-import { formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
+import { formatMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
@@ -23,19 +22,41 @@ import { RowActions } from '@/shared/ui/RowActions';
 import { useToast } from '@/shared/ui/toast';
 
 import {
-  PAYMENT_METHODS,
+  useAvailablePaymentMethods,
   usePaymentMutations,
   useSalePayments,
   type Payment,
-  type PaymentMethod,
   type PaymentSummary,
   type Sale,
 } from './api';
+import {
+  defaultMethodId,
+  PaymentFields,
+  toPaymentInput,
+  type PaymentDraft,
+  type PaymentDraftErrors,
+} from './PaymentFields';
 import { PaymentStatusBadge, SalePaymentBadge, paymentError } from './ui';
 
 /** « 70000.00 » → « 70000 » : valeur proposée dans le champ montant (aucun calcul). */
 function toInput(value: string): string {
   return value.replace(/\.00$/, '');
+}
+
+/** Confirmation d'un paiement : numéro, montant et, en espèces, monnaie calculée par le serveur. */
+export function paymentRecordedMessage(
+  t: TFunction,
+  payment: Payment,
+  currency: string,
+  locale: string,
+): string {
+  const recorded = t('payment.recorded', {
+    number: payment.number,
+    amount: formatMoney(payment.amount, currency, locale),
+  });
+  return payment.change_given !== null && /[1-9]/.test(payment.change_given)
+    ? `${recorded} — ${t('payment.changeGiven', { amount: formatMoney(payment.change_given, currency, locale) })}`
+    : recorded;
 }
 
 function PaymentDialog({
@@ -52,44 +73,43 @@ function PaymentDialog({
   const { capabilities } = useCapabilities();
   const { currency, locale } = capabilities.tenant;
   const { create } = usePaymentMutations(sale.id);
-  const [amount, setAmount] = useState(toInput(summary.remaining_amount));
-  const [method, setMethod] = useState<PaymentMethod>('CASH');
-  const [provider, setProvider] = useState('');
-  const [reference, setReference] = useState('');
+  const { methods, isPending } = useAvailablePaymentMethods(sale.site_id);
+  const [draft, setDraft] = useState<PaymentDraft>({
+    methodId: null,
+    amount: toInput(summary.remaining_amount),
+    reference: '',
+  });
   const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
-  const [amountError, setAmountError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<PaymentDraftErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
   // Une clé par saisie : double clic ou nouvel envoi après une coupure → aucun doublon.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const remaining = formatMoney(summary.remaining_amount, currency, locale);
+  const methodId = draft.methodId ?? defaultMethodId(methods);
+  const current = { ...draft, methodId };
+  const method = methods.find((m) => m.id === methodId);
 
   const submit = () => {
-    const normalized = normalizeDecimal(amount, 2);
-    if (normalized === null || !/[1-9]/.test(normalized)) {
-      setAmountError(t('payment.invalidAmount'));
+    const result = toPaymentInput(t, current, methods);
+    if ('errors' in result) {
+      setErrors(result.errors);
       return;
     }
-    setAmountError(null);
+    setErrors({});
+    setServerError(null);
     create.mutate(
       {
-        amount: normalized,
-        method,
-        provider: method === 'MOBILE_MONEY' ? provider.trim() || null : null,
-        reference: reference.trim() || null,
+        ...result.input,
         idempotency_key: idempotencyKey,
-        cash_register_id: method === 'CASH' ? cashRegisterId : null,
+        cash_register_id: method?.kind === 'CASH' ? cashRegisterId : null,
       },
       {
         onSuccess: (payment) => {
-          toast.success(
-            t('payment.recorded', {
-              number: payment.number,
-              amount: formatMoney(payment.amount, currency, locale),
-            }),
-          );
+          toast.success(paymentRecordedMessage(t, payment, currency, locale));
           onClose();
         },
-        // Refus du serveur (ex. montant supérieur au reste) : affiché sous le champ.
-        onError: (error) => setAmountError(paymentError(t, error, currency, locale)),
+        // Refus du serveur (ex. montant supérieur au reste, référence manquante) : affiché.
+        onError: (error) => setServerError(paymentError(t, error, currency, locale)),
       },
     );
   };
@@ -105,60 +125,27 @@ function PaymentDialog({
         }}
       >
         <Message severity="info" text={t('payment.remainingToPay', { amount: remaining })} />
-        <FormField
-          id="payment-amount"
-          label={t('payment.amount')}
-          required
-          error={amountError ?? undefined}
-          help={t('payment.amountHelp', { currency })}
-        >
-          <InputText
-            id="payment-amount"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            invalid={amountError !== null}
+        {isPending ? (
+          <LoadingState />
+        ) : (
+          <PaymentFields
+            idPrefix="payment"
+            methods={methods}
+            draft={current}
+            errors={errors}
+            onChange={(patch) => setDraft((d) => ({ ...d, methodId, ...patch }))}
+            currency={currency}
             autoFocus
           />
-        </FormField>
-        <FormField id="payment-method" label={t('payment.methodLabel')} required>
-          <Dropdown
-            inputId="payment-method"
-            value={method}
-            onChange={(e) => setMethod(e.value as PaymentMethod)}
-            options={PAYMENT_METHODS.map((m) => ({ value: m, label: t(`payment.method.${m}`) }))}
-          />
-        </FormField>
-        {method === 'CASH' && (
+        )}
+        {method?.kind === 'CASH' && (
           <CashRegisterChoice
             siteId={sale.site_id}
             value={cashRegisterId}
             onChange={setCashRegisterId}
           />
         )}
-        {method === 'MOBILE_MONEY' && (
-          <FormField id="payment-provider" label={t('payment.provider')}>
-            <InputText
-              id="payment-provider"
-              value={provider}
-              maxLength={50}
-              placeholder={t('payment.providerPlaceholder')}
-              onChange={(e) => setProvider(e.target.value)}
-            />
-          </FormField>
-        )}
-        <FormField
-          id="payment-reference"
-          label={t('payment.reference')}
-          help={t('payment.referenceHelp')}
-        >
-          <InputText
-            id="payment-reference"
-            value={reference}
-            maxLength={100}
-            onChange={(e) => setReference(e.target.value)}
-          />
-        </FormField>
+        {serverError && <Message severity="error" text={serverError} />}
         <div className="sm-dialog-actions">
           <Button type="button" label={t('actions.cancel')} text onClick={onClose} />
           <Button
@@ -166,6 +153,7 @@ function PaymentDialog({
             icon="pi pi-check"
             label={t('payment.save')}
             loading={create.isPending}
+            disabled={methods.length === 0}
           />
         </div>
       </form>
@@ -318,11 +306,19 @@ export function PaymentsPanel({ sale }: { sale: Sale }) {
           <Column field="number" header={t('payment.number')} bodyClassName="sm-nowrap" />
           <Column
             header={t('payment.methodLabel')}
-            body={(p: Payment) =>
-              p.provider
-                ? `${t(`payment.method.${p.method}`)} — ${p.provider}`
-                : t(`payment.method.${p.method}`)
-            }
+            body={(p: Payment) => (
+              <div>
+                {p.provider ? `${p.method_label} — ${p.provider}` : p.method_label}
+                {p.amount_received !== null && (
+                  <div className="sm-help">
+                    {t('payment.receivedAndChange', {
+                      received: money(p.amount_received),
+                      change: money(p.change_given ?? '0'),
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           />
           <Column header={t('payment.reference')} body={(p: Payment) => p.reference ?? '—'} />
           <Column

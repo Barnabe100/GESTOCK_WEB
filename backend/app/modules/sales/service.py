@@ -1,4 +1,11 @@
-"""Ventes comptant : brouillon → validée (sortie de stock) → annulée.
+"""Ventes : brouillon → validée (sortie de stock) → annulée.
+
+Lot 1 (ADR-0037) : numéro ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` attribué à la **validation**
+(compteur par tenant, site et année ; aucun numéro au brouillon ; numéros historiques
+conservés) ; vente à **crédit** (reste dû à la validation) : client obligatoire, permission
+``sales.sale.credit_create``, dépassement de limite seulement avec ``sales.sale.credit_override``
+et justification ; portée : ``sales.sale.view`` = ses propres ventes, ``sales.sale.view_all`` =
+toutes les ventes du site (permission évaluée site par site, jamais le nom d'un rôle).
 
 La validation s'exécute dans UNE transaction (celle de la requête) : verrou de la vente,
 contrôles, verrou du client et contrôle de sa limite de crédit (ADR-0021),
@@ -17,7 +24,7 @@ from typing import Any
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
+from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
 from app.modules.catalog.api import ArticleRef, get_article_refs
 from app.modules.customers.api import (
     CustomerRef,
@@ -27,6 +34,7 @@ from app.modules.customers.api import (
 )
 from app.modules.sales.credit import customer_exposure
 from app.modules.sales.models import (
+    CreditStatus,
     Payment,
     PaymentStatus,
     Sale,
@@ -38,6 +46,7 @@ from app.modules.sales.models import (
 from app.modules.sales.payment_service import ZERO as MONEY_ZERO
 from app.modules.sales.payment_service import paid_amounts, paid_subquery, payment_status
 from app.modules.sales.schemas import (
+    CreditOverride,
     PaymentCreate,
     SaleCheckout,
     SaleCreate,
@@ -45,6 +54,7 @@ from app.modules.sales.schemas import (
     SaleLineOut,
     SaleOut,
 )
+from app.modules.sales.scope import site_can
 from app.modules.stock.api import (
     MovementRequest,
     MovementType,
@@ -59,13 +69,16 @@ from app.modules.stock.api import (
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
-from app.platform.sequences.service import next_number
+from app.platform.sequences.service import next_number, site_sequence_key
 from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, apply_sort, paginate, search_filter
 
 SOURCE_TYPE = "sale"
-SEQUENCE_KEY = "sale"
-PREFIX = "VTE"
+SEQUENCE_KIND = "sale"
+PREFIX = "VENT"
+VIEW_ALL = "sales.sale.view_all"
+CREDIT_CREATE = "sales.sale.credit_create"
+CREDIT_OVERRIDE = "sales.sale.credit_override"
 ZERO = Decimal("0")
 QUANTITY_STEP = Decimal("0.001")  # NUMERIC(18,3) : même valeur en réponse, en audit et en base
 
@@ -74,7 +87,19 @@ SORTABLE = {
     "sale_date": Sale.sale_date,
     "total": Sale.total,
     "created_at": Sale.created_at,
+    "validated_at": Sale.validated_at,
 }
+
+
+def credit_status(sale: Sale, paid: Decimal) -> CreditStatus | None:
+    """Situation d'une vente à crédit, calculée à partir des paiements effectués."""
+    if not sale.is_credit:
+        return None
+    if sale.status is SaleStatus.CANCELLED:
+        return CreditStatus.CANCELLED
+    if paid <= 0:
+        return CreditStatus.OPEN
+    return CreditStatus.PARTIAL if paid < sale.total else CreditStatus.PAID
 
 
 class SaleService:
@@ -98,8 +123,9 @@ class SaleService:
         payment: SalePaymentStatus | None = None,
         channel: SaleChannel | None = None,
     ) -> tuple[list[Sale], int]:
-        # Périmètre : ventes des sites visibles par le membre (site sélectionné ou ses sites).
-        stmt: Select[tuple[Sale]] = select(Sale).where(Sale.site_id.in_(visible_site_ids(self.ctx)))
+        # Périmètre : ventes des sites visibles ; sur un site sans ``view_all``, ses propres
+        # ventes seulement.
+        stmt: Select[tuple[Sale]] = select(Sale).where(self._scope())
         by_number = search_filter(search, Sale.number)
         if by_number is not None:
             # Numéro de vente, ou code / nom / téléphone du client.
@@ -136,10 +162,22 @@ class SaleService:
                     SalePaymentStatus.PAID: paid >= Sale.total,
                 }[payment]
             )
-        stmt = apply_sort(stmt, params.sort, SORTABLE, "-number", Sale.id)
+        stmt = apply_sort(stmt, params.sort, SORTABLE, "-created_at", Sale.id)
         return paginate(self.db, stmt, params)
 
-    def get(self, sale_id: uuid.UUID, *, lock: bool = False) -> Sale:
+    def _scope(self) -> Any:
+        full: set[uuid.UUID] = set()
+        own: set[uuid.UUID] = set()
+        for site_id in visible_site_ids(self.ctx):
+            (full if site_can(self.ctx, site_id, VIEW_ALL) else own).add(site_id)
+        return or_(
+            Sale.site_id.in_(full),
+            and_(Sale.site_id.in_(own), Sale.created_by == self.ctx.user.id),
+        )
+
+    def get(self, sale_id: uuid.UUID, *, lock: bool = False, own_scope: bool = True) -> Sale:
+        """Vente d'un site accessible. ``own_scope`` : portée de ``sales.sale.view`` (ses propres
+        ventes sans ``view_all``) ; les créances (permission propre) la lèvent en lecture."""
         stmt = select(Sale).where(Sale.id == sale_id)
         if lock:
             # Verrou du document : deux validations simultanées s'exécutent l'une après l'autre ;
@@ -149,6 +187,13 @@ class SaleService:
         if sale is None:
             raise NotFoundError("Vente introuvable", code="sale_not_found")
         ensure_document_site(self.ctx, sale.site_id, "sale_not_found")
+        if (
+            own_scope
+            and sale.created_by != self.ctx.user.id
+            and not site_can(self.ctx, sale.site_id, VIEW_ALL)
+        ):
+            # Portée « ses propres ventes » : la vente d'un autre utilisateur est introuvable.
+            raise NotFoundError("Vente introuvable", code="sale_not_found")
         return sale
 
     # --- Règles -------------------------------------------------------------------------------
@@ -254,37 +299,90 @@ class SaleService:
             data={"number": sale.number, **data},
         )
 
-    def _check_credit(self, sale: Sale, prepaid: Decimal) -> None:
-        """Limite de crédit (ADR-0021) : la validation crée une exposition égale au reste dû de
-        la vente (total − encaissements immédiats). Refusée si l'exposition projetée du client
-        (restes dus de ses ventes validées, tous sites) dépasse sa limite. Limite nulle = non
-        configurée : aucun contrôle ; vente entièrement payée : aucune exposition, aucun
-        contrôle. Verrou du client (après celui de la vente, ordre constant) : deux validations
-        simultanées pour le même client s'exécutent l'une après l'autre et la seconde voit
-        l'exposition créée par la première."""
+    def _check_credit(self, sale: Sale, prepaid: Decimal, override: CreditOverride | None) -> None:
+        """Vente à crédit (Lot 1) : reste dû à la validation (total − encaissements immédiats).
+        Client obligatoire ; permission ``sales.sale.credit_create`` sur le site ; limite de
+        crédit (ADR-0021) : l'exposition projetée du client (restes dus de ses ventes validées,
+        tous sites) ne dépasse pas sa limite — sinon, dépassement exceptionnel seulement avec
+        ``sales.sale.credit_override`` et une justification (autorisateur, date, montant et
+        audit enregistrés). Limite nulle = non configurée. Verrou du client (après celui de la
+        vente, ordre constant) : deux validations simultanées pour le même client s'exécutent
+        l'une après l'autre et la seconde voit l'exposition créée par la première."""
+        new_exposure = max(sale.total - prepaid, MONEY_ZERO)
+        sale.is_credit = new_exposure > 0
+        if not sale.is_credit:
+            return
         if sale.customer_id is None:
-            return  # vente sans client : aucune exposition client
+            raise BusinessRuleError(
+                "Une vente à crédit exige un client identifié",
+                code="credit_customer_required",
+                extra={"remaining": format(new_exposure, "f")},
+            )
+        if not site_can(self.ctx, sale.site_id, CREDIT_CREATE):
+            raise ForbiddenError(
+                "Vous n'êtes pas autorisé à vendre à crédit", code="credit_not_allowed"
+            )
         credit = get_customer_credit(self.db, sale.customer_id, lock=True)
         if credit is None or credit.credit_limit is None:
             return
-        new_exposure = max(sale.total - prepaid, MONEY_ZERO)
-        if new_exposure <= 0:
-            return
         current, _ = customer_exposure(self.db, sale.customer_id)
-        if current + new_exposure <= credit.credit_limit:
+        excess = current + new_exposure - credit.credit_limit
+        if excess <= 0:
             return
-        extra: dict[str, Any] = {
-            "credit_limit": format(credit.credit_limit, "f"),
-            "sale_exposure": format(new_exposure, "f"),
-        }
-        # Exposition consolidée (tous sites) : seulement pour qui voit tous les sites.
-        if sees_all_sites(self.ctx):
-            extra["current_exposure"] = format(current, "f")
-            extra["available_credit"] = format(max(credit.credit_limit - current, MONEY_ZERO), "f")
-        raise BusinessRuleError(
-            "La limite de crédit du client serait dépassée",
-            code="credit_limit_exceeded",
-            extra=extra,
+        can_override = site_can(self.ctx, sale.site_id, CREDIT_OVERRIDE)
+        if override is None:
+            extra: dict[str, Any] = {
+                "credit_limit": format(credit.credit_limit, "f"),
+                "sale_exposure": format(new_exposure, "f"),
+                "override_allowed": can_override,
+            }
+            # Exposition consolidée (tous sites) : seulement pour qui voit tous les sites.
+            if sees_all_sites(self.ctx):
+                extra["current_exposure"] = format(current, "f")
+                extra["available_credit"] = format(
+                    max(credit.credit_limit - current, MONEY_ZERO), "f"
+                )
+            raise BusinessRuleError(
+                "La limite de crédit du client serait dépassée",
+                code="credit_limit_exceeded",
+                extra=extra,
+            )
+        if not can_override:
+            raise ForbiddenError(
+                "Vous n'êtes pas autorisé à dépasser la limite de crédit",
+                code="credit_override_not_allowed",
+            )
+        sale.credit_override_by = self.ctx.user.id
+        sale.credit_override_at = self.now
+        sale.credit_override_reason = override.reason
+        sale.credit_override_amount = excess
+        self._audit(
+            "credit_limit_overridden",
+            sale,
+            {
+                "customer_id": str(sale.customer_id),
+                "credit_limit": format(credit.credit_limit, "f"),
+                "current_exposure": format(current, "f"),
+                "sale_exposure": format(new_exposure, "f"),
+                "excess": format(excess, "f"),
+                "reason": override.reason,
+            },
+        )
+
+    def _assign_number(self, sale: Sale) -> None:
+        """Numéro définitif ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` à la validation : compteur par
+        tenant, site et année (BIGINT, ligne verrouillée jusqu'à la fin de la transaction) ; 6
+        chiffres minimum, sans limite. Un numéro historique (``VTE-…``) n'est jamais changé."""
+        if sale.number is not None:
+            return
+        site = self.db.get(Site, sale.site_id)
+        assert site is not None
+        year = tenant_today(self.ctx, self.now).year
+        sale.number = next_number(
+            self.db,
+            self.ctx.tenant_id,
+            site_sequence_key(site.id, SEQUENCE_KIND, year),
+            f"{PREFIX}-{site.code.upper()}-{year}",
         )
 
     def _stock(self) -> StockService:
@@ -303,7 +401,7 @@ class SaleService:
         sale = Sale(
             tenant_id=self.ctx.tenant_id,
             site_id=site_id,
-            number=next_number(self.db, self.ctx.tenant_id, SEQUENCE_KEY, PREFIX),
+            number=None,  # attribué à la validation
             status=SaleStatus.DRAFT,
             channel=channel,
             idempotency_key=idempotency_key,
@@ -338,7 +436,7 @@ class SaleService:
             ensure_document_site(self.ctx, existing.site_id, "sale_not_found")
             return existing, True
         sale = self.create(data, channel=channel, idempotency_key=data.idempotency_key)
-        return self.validate(sale.id, data.payments), False
+        return self.validate(sale.id, data.payments, data.credit_override), False
 
     def update(self, sale_id: uuid.UUID, data: SaleInput) -> Sale:
         """Brouillon seulement ; lignes remplacées et prix relus dans le catalogue."""
@@ -354,7 +452,12 @@ class SaleService:
             self._audit("updated", sale, {"before": before, "after": after})
         return sale
 
-    def validate(self, sale_id: uuid.UUID, payments: Sequence[PaymentCreate] = ()) -> Sale:
+    def validate(
+        self,
+        sale_id: uuid.UUID,
+        payments: Sequence[PaymentCreate] = (),
+        credit_override: CreditOverride | None = None,
+    ) -> Sale:
         """Validation (sortie de stock) et, facultativement, encaissements immédiats dans la
         même transaction : une vente payée comptant à la validation ne crée aucune exposition
         de crédit. Les paiements passent par ``PaymentService`` (mêmes règles qu'en 2.7)."""
@@ -377,7 +480,14 @@ class SaleService:
                 code="sale_prices_changed",
                 extra={"articles": changed},
             )
-        self._check_credit(sale, sum((p.amount for p in payments), MONEY_ZERO))
+        from app.modules.sales.payment_service import PaymentService
+
+        payment_service = PaymentService(self.db, self.ctx, self.now)
+        planned = payment_service.plan(sale.site_id, sale.total, payments)
+        self._check_credit(
+            sale, sum((amount for _, amount in planned), MONEY_ZERO), credit_override
+        )
+        self._assign_number(sale)
         # Sortie de stock : exclusivement via le moteur central (verrous, tout ou rien).
         self._stock().apply(
             sale.site_id,
@@ -407,14 +517,11 @@ class SaleService:
                 "total": format(sale.total, "f"),
                 "lines": len(sale.lines),
                 "customer_id": str(sale.customer_id) if sale.customer_id else None,
+                "is_credit": sale.is_credit,
             },
         )
-        if payments:
-            from app.modules.sales.payment_service import PaymentService
-
-            payment_service = PaymentService(self.db, self.ctx, self.now)
-            for payment in payments:
-                payment_service.create(sale.id, payment)
+        for payment, _ in planned:
+            payment_service.create(sale.id, payment)
         return sale
 
     def cancel(self, sale_id: uuid.UUID, reason: str) -> Sale:
@@ -480,7 +587,12 @@ class SaleService:
     # --- Sortie API ---------------------------------------------------------------------------
 
     def to_out(self, sales: Sequence[Sale], *, with_lines: bool = False) -> list[SaleOut]:
-        users = {u for s in sales for u in (s.created_by, s.validated_by, s.cancelled_by) if u}
+        users = {
+            u
+            for s in sales
+            for u in (s.created_by, s.validated_by, s.cancelled_by, s.credit_override_by)
+            if u
+        }
         user_names = _names(self.db, User, users, User.full_name)
         site_names = _names(self.db, Site, {s.site_id for s in sales}, Site.name)
         customers = get_customer_refs(self.db, {s.customer_id for s in sales if s.customer_id})
@@ -490,7 +602,9 @@ class SaleService:
             else {}
         )
         # Montants payés des ventes validées : une seule agrégation pour toute la page.
-        paid = paid_amounts(self.db, {s.id for s in sales if s.status is SaleStatus.VALIDATED})
+        paid = paid_amounts(
+            self.db, {s.id for s in sales if s.status is SaleStatus.VALIDATED or s.is_credit}
+        )
         result = []
         for sale in sales:
             customer = customers.get(sale.customer_id) if sale.customer_id else None
@@ -523,6 +637,12 @@ class SaleService:
                     paid_amount=sale_paid if validated else None,
                     remaining_amount=max(sale.total - sale_paid, MONEY_ZERO) if validated else None,
                     payment_status=payment_status(sale.total, sale_paid) if validated else None,
+                    is_credit=sale.is_credit,
+                    credit_status=credit_status(sale, sale_paid),
+                    credit_override_at=sale.credit_override_at,
+                    credit_override_by_name=user_names.get(sale.credit_override_by),
+                    credit_override_reason=sale.credit_override_reason,
+                    credit_override_amount=sale.credit_override_amount,
                     lines=[_line_out(line, refs) for line in sale.lines] if with_lines else [],
                 )
             )

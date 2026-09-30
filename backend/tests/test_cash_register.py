@@ -26,8 +26,8 @@ from tests.stock_helpers import World
 
 @pytest.fixture
 def priced(world: World, owner_db: Session) -> World:
-    """Article 0 vendu 10 000 ; 200 en stock sur le site principal, 100 au dépôt. Aucune
-    caisse."""
+    """Article 0 vendu 10 000 ; 200 en stock sur le site principal, 100 au dépôt. Caisse
+    activée sur les deux sites (Lot 1), aucun poste."""
     owner_db.execute(
         text("UPDATE catalog_articles SET sale_price = 10000 WHERE id = :id"),
         {"id": world.articles[0]},
@@ -35,6 +35,8 @@ def priced(world: World, owner_db: Session) -> World:
     owner_db.commit()
     sh.validated_entry(world, [(0, "200", "6000")])
     sh.validated_entry(world, [(0, "100", "6000")], site_id=world.site2)
+    sh.enable_cash(world.owner, world.site)
+    sh.enable_cash(world.owner, world.site2)
     return world
 
 
@@ -69,6 +71,8 @@ def _sale(
         json={
             "site_id": site or w.site,
             "lines": [{"article_id": w.articles[0], "quantity": str(amount // 10000)}],
+            # Validée sans paiement : vente à crédit, client obligatoire (Lot 1).
+            "customer_id": sh.credit_customer(w),
             **extra,
         },
     )
@@ -316,11 +320,17 @@ def test_cash_register_choice(priced: World, client: TestClient) -> None:
     assert set(ambiguous.json()["cash_register_ids"]) == {first["id"], second["id"]}
     _paid(priced.owner, sale, "10000", cash_register_id=second["id"])
     assert len(_journal(priced.owner, s2)) == 1 and _journal(priced.owner, s1) == []
-    # Un vendeur qui a ouvert sa propre caisse y encaisse par défaut.
+    # Un vendeur encaisse dans SA session (site + poste + utilisateur), jamais dans celle
+    # d'un autre : sans session à lui, les espèces sont refusées.
     seller = sh.member(priced, client, "vendeur@example.com", "seller", all_sites=True)
+    body = {"site_id": priced.site, "lines": [{"article_id": priced.articles[0], "quantity": "2"}]}
+    cash = {"payments": [{"amount": "20000", "method": "CASH"}]}
+    mine = seller.post("/sales", json=body).json()
+    refused = seller.post(f"/sales/{mine['id']}/validate", json=cash)
+    assert refused.json()["code"] == "cash_session_required"
     assert _close(priced.owner, s1, "0").status_code == 200
     own = _opened(seller, first)
-    _paid(seller, sale, "20000")
+    assert seller.post(f"/sales/{mine['id']}/validate", json=cash).status_code == 200
     assert [m["amount"] for m in _journal(priced.owner, own)] == ["20000.00"]
     assert [m["created_by_name"] for m in _journal(priced.owner, own)] == ["vendeur@example.com"]
 
@@ -344,7 +354,9 @@ def test_immediate_cash_payment_at_validation(priced: World, owner_db: Session) 
     session = _opened(priced.owner, _register(priced))
     validated = priced.owner.post(f"/sales/{draft['id']}/validate", json=body)
     assert validated.status_code == 200 and validated.json()["payment_status"] == "PAID"
-    assert [m["source_number"] for m in _journal(priced.owner, session)] == [draft["number"]]
+    assert [m["source_number"] for m in _journal(priced.owner, session)] == [
+        validated.json()["number"]
+    ]
 
 
 # --- Entrées, sorties, journal, solde -------------------------------------------------------------
@@ -699,7 +711,18 @@ def test_permissions_by_base_role(priced: World, client: TestClient) -> None:
     session = _opened(seller, register, "1000")
     manual = _move(seller, session, "MANUAL_CASH_IN", "10", "OTHER")
     assert manual.status_code == 403 and manual.json()["code"] == "permission_denied"
-    _paid(seller, _sale(priced, 10000), "10000")
+    own_sale = seller.post(
+        "/sales",
+        json={
+            "site_id": priced.site,
+            "lines": [{"article_id": priced.articles[0], "quantity": "1"}],
+        },
+    ).json()
+    paid = seller.post(
+        f"/sales/{own_sale['id']}/validate",
+        json={"payments": [{"amount": "10000", "method": "CASH"}]},
+    )
+    assert paid.status_code == 200, paid.text
     # Gestionnaire : gestion opérationnelle complète.
     assert _move(manager, session, "MANUAL_CASH_OUT", "500", "EXPENSE").status_code == 201
     assert _register(priced, "Caisse gestionnaire", api=manager)["code"] == "CAI-002"
@@ -772,9 +795,9 @@ def test_expired_subscription_keeps_consultation(priced: World, owner_db: Sessio
 
 
 def test_sales_do_not_depend_on_the_cash_module(priced: World, owner_db: Session) -> None:
-    """Règle (Phase 3.0) : la vente ne dépend pas de la caisse ; seul un paiement espèces en a
-    besoin. Module Caisse désactivé : ventes et paiements électroniques possibles, espèces
-    refusées ; module Ventes désactivé : la caisse (qui en dépend) l'est aussi."""
+    """Règle (Phase 3.0, Lot 1) : la vente ne dépend pas de la caisse. Module Caisse désactivé :
+    ventes et paiements possibles, **espèces comprises** (sans session ni mouvement) ; module
+    Ventes désactivé : la caisse (qui en dépend) l'est aussi."""
     session = _opened(priced.owner, _register(priced), "1000")
     cash_sale = _sale(priced, 10000)
     _paid(priced.owner, cash_sale, "10000")
@@ -785,8 +808,9 @@ def test_sales_do_not_depend_on_the_cash_module(priced: World, owner_db: Session
     sale = _sale(priced, 30000)
     _paid(priced.owner, sale, "10000", "MOBILE_MONEY")
     _paid(priced.owner, sale, "10000", "CARD")
-    refused = _pay(priced.owner, sale, "10000")
-    assert refused.status_code == 422 and refused.json()["code"] == "cash_session_required"
+    before = _count(owner_db, "SELECT count(*) FROM cash_movements")
+    _paid(priced.owner, sale, "10000")  # espèces sans caisse : aucun mouvement de caisse
+    assert _count(owner_db, "SELECT count(*) FROM cash_movements") == before
     # Un encaissement espèces déjà enregistré reste inversé à l'annulation du paiement.
     payment = priced.owner.get(f"/sales/{cash_sale['id']}/payments").json()["items"][0]
     cancelled = priced.owner.post(
@@ -829,6 +853,7 @@ def test_audit_trail(priced: World) -> None:
     logs = priced.owner.get("/audit-logs", params={"action": "cash_", "limit": 50}).json()
     by_action = {log["action"]: log for log in logs["items"]}
     assert set(by_action) == {
+        "cash_site.enabled",
         "cash_register.created",
         "cash_register.updated",
         "cash_session.opened",

@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, Field, PlainSerializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
 from app.modules.cash_register.models import (
     CashMovementCategory,
@@ -147,3 +147,20 @@ class CashMovementOut(BaseModel):
     created_by_name: str | None
     # Solde de la session après ce mouvement (tous les mouvements de la session, dans l'ordre).
     balance_after: SignedMoney
+
+
+# --- Caisse par site (Lot 1) -------------------------------------------------------------------
+
+
+class CashSiteOut(BaseModel):
+    site_id: uuid.UUID
+    site_name: str
+    site_code: str
+    enabled: bool
+    open_sessions: int
+
+
+class CashSiteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool

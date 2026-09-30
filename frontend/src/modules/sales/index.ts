@@ -13,9 +13,22 @@ export const salesModule: FrontendModule = {
       path: '/sales',
       permission: 'sales.sale.view',
     },
+    {
+      key: 'payment-methods',
+      labelKey: 'nav.paymentMethods',
+      group: 'sales',
+      icon: 'pi pi-wallet',
+      path: '/sales/payment-methods',
+      permission: 'sales.payment_method.manage',
+    },
   ],
   routes: [
     { path: 'sales', component: lazy(() => import('./SalesPage')), permission: 'sales.sale.view' },
+    {
+      path: 'sales/payment-methods',
+      component: lazy(() => import('./PaymentMethodsPage')),
+      permission: 'sales.payment_method.manage',
+    },
     {
       path: 'sales/new',
       component: lazy(() => import('./SalePage')),

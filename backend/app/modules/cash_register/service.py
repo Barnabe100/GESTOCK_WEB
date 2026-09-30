@@ -25,6 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select, and_, case, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
@@ -39,6 +40,7 @@ from app.modules.cash_register.models import (
     CashRegister,
     CashSession,
     CashSessionStatus,
+    CashSiteSetting,
 )
 from app.modules.cash_register.schemas import (
     CashMovementCreate,
@@ -364,6 +366,12 @@ class CashService:
         register = self.get_register(register_id, lock=True)
         if not register.is_active:
             raise ConflictError("Cette caisse est désactivée", code="cash_register_inactive")
+        # Verrou partagé du réglage du site : une désactivation concurrente attend (et voit
+        # ensuite cette session ouverte), une ouverture ne voit jamais un site désactivé.
+        if not self._site_enabled(register.site_id, lock="share"):
+            raise ConflictError(
+                "La caisse n'est pas activée pour ce site", code="cash_disabled_for_site"
+            )
         existing = self._open_session_of(register.id)
         if existing is not None:
             raise ConflictError(
@@ -729,6 +737,9 @@ class CashService:
     def _session_for_cash(
         self, site_id: uuid.UUID, cash_register_id: uuid.UUID | None
     ) -> CashSession:
+        """Session de l'utilisateur (Lot 1 : session = site + poste + utilisateur) : jamais
+        celle d'un autre utilisateur, jamais d'un autre site. Plusieurs sessions ouvertes par
+        l'utilisateur sur le site (plusieurs postes) : le poste doit être précisé."""
         candidates = list(
             self.db.scalars(
                 select(CashSession)
@@ -736,6 +747,7 @@ class CashService:
                 .where(
                     CashSession.site_id == site_id,
                     CashSession.status == CashSessionStatus.OPEN,
+                    CashSession.opened_by == self.ctx.user.id,
                     CashRegister.is_active.is_(True),
                 )
                 .order_by(CashSession.opened_at)
@@ -744,18 +756,14 @@ class CashService:
         if cash_register_id is not None:
             candidates = [s for s in candidates if s.cash_register_id == cash_register_id]
         elif len(candidates) > 1:
-            own = [s for s in candidates if s.opened_by == self.ctx.user.id]
-            if len(own) != 1:
-                raise BusinessRuleError(
-                    "Plusieurs caisses sont ouvertes sur ce site : choisissez la caisse",
-                    code="cash_register_required",
-                    extra={"cash_register_ids": [str(s.cash_register_id) for s in candidates]},
-                )
-            candidates = own
+            raise BusinessRuleError(
+                "Vous avez plusieurs sessions ouvertes sur ce site : choisissez le poste",
+                code="cash_register_required",
+                extra={"cash_register_ids": [str(s.cash_register_id) for s in candidates]},
+            )
         if not candidates:
             raise BusinessRuleError(
-                "Aucune caisse ouverte sur le site de la vente : ouvrez une session de caisse "
-                "pour encaisser en espèces",
+                "Ouvrez votre session de caisse sur ce site pour encaisser en espèces",
                 code="cash_session_required",
             )
         # Verrou de la session choisie, puis contrôle : une clôture concurrente l'emporte.
@@ -765,6 +773,103 @@ class CashService:
                 "La session de caisse vient d'être clôturée", code="cash_session_required"
             )
         return session
+
+    # --- Activation de la caisse par site (Lot 1) ---------------------------------------------
+
+    def _site_enabled(self, site_id: uuid.UUID, *, lock: str | None = None) -> bool:
+        stmt = select(CashSiteSetting.enabled).where(CashSiteSetting.site_id == site_id)
+        if lock == "share":
+            stmt = stmt.with_for_update(read=True)
+        elif lock == "update":
+            stmt = stmt.with_for_update()
+        return bool(self.db.scalar(stmt))
+
+    def site_cash_enabled(self, site_id: uuid.UUID) -> bool:
+        """Port des ventes : la caisse est-elle activée pour ce site ?"""
+        return self._site_enabled(site_id)
+
+    def site_settings(self) -> list[dict[str, Any]]:
+        """Sites visibles : caisse activée ou non, sessions ouvertes."""
+        site_ids = filter_site_ids(self.ctx, None)
+        if not site_ids:
+            return []
+        sites = list(self.db.scalars(select(Site).where(Site.id.in_(site_ids)).order_by(Site.name)))
+        enabled: dict[uuid.UUID, bool] = {
+            row[0]: row[1]
+            for row in self.db.execute(
+                select(CashSiteSetting.site_id, CashSiteSetting.enabled).where(
+                    CashSiteSetting.site_id.in_(site_ids)
+                )
+            )
+        }
+        open_counts: dict[uuid.UUID, int] = {
+            row[0]: row[1]
+            for row in self.db.execute(
+                select(CashSession.site_id, func.count())
+                .where(
+                    CashSession.site_id.in_(site_ids),
+                    CashSession.status == CashSessionStatus.OPEN,
+                )
+                .group_by(CashSession.site_id)
+            )
+        }
+        return [
+            {
+                "site_id": site.id,
+                "site_name": site.name,
+                "site_code": site.code,
+                "enabled": bool(enabled.get(site.id, False)),
+                "open_sessions": int(open_counts.get(site.id, 0)),
+            }
+            for site in sites
+        ]
+
+    def set_site_cash(self, site_id: uuid.UUID, enabled: bool) -> bool:
+        """Active ou désactive la caisse d'un site. Désactivation refusée tant qu'une session
+        est ouverte sur le site (verrou exclusif du réglage : aucune ouverture concurrente)."""
+        if site_id not in self.ctx.capabilities.accessible_site_ids:
+            raise NotFoundError("Site introuvable", code="site_not_found")
+        self.db.execute(
+            insert(CashSiteSetting)
+            .values(
+                tenant_id=self.ctx.tenant_id,
+                site_id=site_id,
+                enabled=False,
+                updated_at=self.now,
+                updated_by=self.ctx.user.id,
+            )
+            .on_conflict_do_nothing(index_elements=["site_id"])
+        )
+        previous = self._site_enabled(site_id, lock="update")
+        if previous == enabled:
+            return enabled
+        if not enabled:
+            open_sessions = self.db.scalar(
+                select(func.count()).where(
+                    CashSession.site_id == site_id,
+                    CashSession.status == CashSessionStatus.OPEN,
+                )
+            )
+            if open_sessions:
+                raise ConflictError(
+                    "Une session de caisse est encore ouverte sur ce site : clôturez-la avant "
+                    "de désactiver la caisse",
+                    code="cash_sessions_open",
+                    extra={"open_sessions": int(open_sessions or 0)},
+                )
+        setting = self.db.get(CashSiteSetting, site_id)
+        assert setting is not None
+        setting.enabled = enabled
+        setting.updated_at = self.now
+        setting.updated_by = self.ctx.user.id
+        self.db.flush()
+        self._audit(
+            "cash_site.enabled" if enabled else "cash_site.disabled",
+            "site",
+            site_id,
+            site_id,
+        )
+        return enabled
 
     def record_sale_cash_reversal(
         self, *, payment_id: uuid.UUID, reason: str

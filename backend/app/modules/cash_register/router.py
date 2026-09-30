@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
+from app.core.errors import ForbiddenError
 from app.modules.cash_register.models import CashMovementType, CashSessionStatus
 from app.modules.cash_register.schemas import (
     CashMovementCreate,
@@ -15,6 +16,8 @@ from app.modules.cash_register.schemas import (
     CashSessionClose,
     CashSessionOpen,
     CashSessionOut,
+    CashSiteOut,
+    CashSiteUpdate,
 )
 from app.modules.cash_register.service import CashService
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
@@ -30,8 +33,34 @@ SessionView = Annotated[RequestContext, Depends(require_permission(f"{P}.session
 SessionOpen = Annotated[RequestContext, Depends(require_permission(f"{P}.session.open"))]
 SessionClose = Annotated[RequestContext, Depends(require_permission(f"{P}.session.close"))]
 MovementCreate = Annotated[RequestContext, Depends(require_permission(f"{P}.movement.create"))]
+SiteManage = Annotated[RequestContext, Depends(require_permission("organization.site.manage"))]
 Paging = Annotated[PageParams, Depends(page_params)]
+SITE_MANAGE = "organization.site.manage"
 Amount = Annotated[Decimal | None, Query(ge=0, max_digits=18, decimal_places=2)]
+
+# --- Caisse par site (Lot 1) : optionnelle, activée par l'administrateur du site -------------
+
+
+@router.get("/sites", response_model=list[CashSiteOut])
+def list_cash_sites(ctx: RegisterView, db: DbSession, now: NowDep) -> list[CashSiteOut]:
+    return [CashSiteOut(**row) for row in CashService(db, ctx, now).site_settings()]
+
+
+@router.put("/sites/{site_id}", response_model=CashSiteOut)
+def set_cash_site(
+    site_id: uuid.UUID, body: CashSiteUpdate, ctx: SiteManage, db: DbSession, now: NowDep
+) -> CashSiteOut:
+    """Configuration du site : ``organization.site.manage`` revérifiée pour CE site."""
+    if site_id in ctx.capabilities.accessible_site_ids and not ctx.has_site_permission(
+        site_id, SITE_MANAGE
+    ):
+        raise ForbiddenError("Permission insuffisante sur ce site", code="permission_denied")
+    service = CashService(db, ctx, now)
+    service.set_site_cash(site_id, body.enabled)
+    db.commit()
+    row = next(r for r in service.site_settings() if r["site_id"] == site_id)
+    return CashSiteOut(**row)
+
 
 # --- Caisses ---------------------------------------------------------------------------------
 

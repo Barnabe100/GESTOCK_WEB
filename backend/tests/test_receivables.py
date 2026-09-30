@@ -226,9 +226,17 @@ def test_draft_and_cancelled_sales_are_never_receivables(priced: World) -> None:
         assert missing.status_code == 404 and missing.json()["code"] == "receivable_not_found"
 
 
-def test_sale_without_customer_is_a_receivable_without_debtor(priced: World) -> None:
-    counter = _sale(priced, 20000)
+def test_sale_without_customer_is_a_receivable_without_debtor(
+    priced: World, owner_db: Session
+) -> None:
+    """Données antérieures au Lot 1 : une vente à crédit sans client reste une créance, sans
+    débiteur identifié (une nouvelle vente à crédit exige un client)."""
     customer = _customer(priced)
+    counter = _sale(priced, 20000, customer)
+    owner_db.execute(
+        text("UPDATE sales SET customer_id = NULL WHERE id = :id"), {"id": counter["id"]}
+    )
+    owner_db.commit()
     _sale(priced, 30000, customer)
     items = {r["sale_number"]: r for r in _receivables(priced.owner)["items"]}
     assert items[counter["number"]]["customer_id"] is None
@@ -391,8 +399,8 @@ def test_credit_limit_100000(priced: World) -> None:
     # Exactement la limite : accepté (refus seulement au-delà).
     assert _validate(priced, _draft(priced, 30000, customer)).status_code == 200
     assert _exposure(priced.owner, customer)["available_credit"] == "0.00"
-    # Vente sans client : jamais soumise à une limite client.
-    assert _validate(priced, _draft(priced, 90000)).status_code == 200
+    # Vente à crédit sans client : refusée (Lot 1), quelle que soit la limite.
+    assert _validate(priced, _draft(priced, 90000)).json()["code"] == "credit_customer_required"
 
 
 def test_credit_limit_500000_examples(priced: World) -> None:
@@ -417,7 +425,7 @@ def test_credit_limit_500000_examples(priced: World) -> None:
 
 
 def test_immediate_payments_follow_payment_rules(priced: World, client: TestClient) -> None:
-    sale = _draft(priced, 100000)
+    sale = _draft(priced, 100000, _customer(priced))
     over = _validate(priced, sale, ("60000", "CASH"), ("50000", "CARD"))
     assert over.status_code == 422 and over.json()["code"] == "payment_exceeds_balance"
     assert priced.owner.get(f"/sales/{sale['id']}").json()["status"] == "DRAFT"
@@ -430,7 +438,13 @@ def test_immediate_payments_follow_payment_rules(priced: World, client: TestClie
         priced,
         client,
         "valideur@example.com",
-        ["sales.sale.view", "sales.sale.create", "sales.sale.validate"],
+        [
+            "sales.sale.view",
+            "sales.sale.view_all",
+            "sales.sale.create",
+            "sales.sale.validate",
+            "sales.sale.credit_create",
+        ],
     )
     denied = _validate(priced, sale, ("100000", "CASH"), api=validator)
     assert denied.status_code == 403 and denied.json()["code"] == "permission_denied"
@@ -551,7 +565,8 @@ def test_site_scope(priced: World, client: TestClient) -> None:
     customer = _customer(priced, limit="100000")
     shop_sale = _sale(priced, 30000, customer)
     depot_sale = _sale(priced, 50000, customer, site_id=priced.site2)
-    shop = sh.member(priced, client, "boutique@example.com", "seller", site_ids=[priced.site])
+    # Gestionnaire (vente à crédit autorisée) limité à la boutique.
+    shop = sh.member(priced, client, "boutique@example.com", "manager", site_ids=[priced.site])
     # Un membre limité à la boutique ne voit que les créances de la boutique.
     assert set(_open(shop)) == {shop_sale["number"]}
     assert _open(shop, site_id=priced.site2) == {}

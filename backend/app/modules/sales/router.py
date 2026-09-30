@@ -90,7 +90,7 @@ def validate_sale(
     if payments and not ctx.has_permission("sales.payment.create"):
         raise ForbiddenError("Permission insuffisante", code="permission_denied")
     service = SaleService(db, ctx, now)
-    sale = service.validate(sale_id, payments)
+    sale = service.validate(sale_id, payments, body.credit_override if body else None)
     db.commit()
     return service.to_out([sale], with_lines=True)[0]
 
