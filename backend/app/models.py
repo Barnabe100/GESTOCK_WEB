@@ -31,6 +31,7 @@ from app.platform.catalog.models import (
 )
 from app.platform.identity.models import AuthSession, User
 from app.platform.licensing.models import License, LicenseActivation
+from app.platform.notifications.models import Notification, NotificationRead
 from app.platform.onboarding.models import OnboardingStep
 from app.platform.ratelimit.models import RateLimitHit
 from app.platform.sequences.models import DocumentSequence
@@ -59,6 +60,8 @@ __all__ = [
     "LicenseActivation",
     "MembershipRole",
     "MembershipSite",
+    "Notification",
+    "NotificationRead",
     "OnboardingStep",
     "PlatformAuditLog",
     "PlatformSession",

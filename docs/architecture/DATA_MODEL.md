@@ -108,6 +108,24 @@ status, released_at, released_by, release_source, release_reason, updated_at)` ;
 console `SELECT` et `UPDATE` des colonnes de libération d'un poste `ACTIVE` vers `RELEASED`
 (`platform_release`) ; aucune suppression.
 
+### Renouvellement et rappels d'échéance (Phase 3.3-B4, isolés par RLS, [ADR-0036](../adr/0036-renouvellement-et-notifications.md))
+
+| Table | Colonnes principales | Règles |
+|---|---|---|
+| `notifications` | `tenant_id`, `site_id`, `subscription_id`, `kind` (`subscription.expiry`), `step` (jours avant l'échéance, négatif après), `reference_date` (dernier jour couvert, fuseau de l'entreprise), `status` (`SENT` / `SKIPPED`), `data` (JSONB : jours restants, plan, statut effectif, essai), `created_at` | Unicité `(tenant_id, subscription_id, kind, step, reference_date)` (idempotence du job) ; FK composites `(tenant_id, site_id)` → `sites`, `(tenant_id, subscription_id)` → `subscriptions` ; index `(tenant_id, created_at)` |
+| `notification_reads` | `tenant_id`, `notification_id`, `user_id`, `read_at` | Clé `(notification_id, user_id)` : lu / non lu **par membre** ; FK composite `(tenant_id, notification_id)` → `notifications` |
+
+Colonnes ajoutées (migration 0023) : `plans.included_activations` (défaut 1),
+`plans.monthly_activation_price`, `plans.annual_activation_price` (paramètres commerciaux) ;
+`subscriptions.included_activations_at_subscription`,
+`subscriptions.activation_price_at_subscription` (tarif figé, `CHECK` : renseignés ensemble et
+avec le prix de base) ; `subscription_payments.requested_activations` (1 à 10 000, demande
+explicite ; figée par le déclencheur de finalité). Droits : rôle applicatif `SELECT` sur
+`notifications`, `SELECT, INSERT` sur `notification_reads` (politique `own_reads` : membre
+courant seulement) ; rôle de la console `SELECT, INSERT` sur `notifications` (job), `UPDATE` des
+colonnes de tarif par poste des plans et des abonnements ; aucune mise à jour ni suppression de
+notification.
+
 ### Tenant (isolés par RLS)
 
 | Table | Colonnes principales | Contraintes notables |
@@ -273,7 +291,8 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    `membership_sites` — lecture (compteurs d'utilisateurs par site, ADR-0033). Depuis 3.3-B2
    (migration 0021) : `licenses` — lecture, émission (`ISSUED`), révocation seulement ;
    séquence `license_number_seq` (ADR-0034). Depuis 3.3-B3 (migration 0022) :
-   `license_activations` — lecture, libération d'un poste actif seulement (ADR-0035).
+   `license_activations` — lecture, libération d'un poste actif seulement (ADR-0035). Depuis
+   3.3-B4 (migration 0023) : `notifications` — lecture et insertion (job des rappels, ADR-0036).
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

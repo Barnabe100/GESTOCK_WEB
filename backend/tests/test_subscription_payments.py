@@ -63,8 +63,6 @@ def _body(subscription_id: uuid.UUID, **fields: Any) -> dict[str, Any]:
     return {
         "subscription_id": str(subscription_id),
         "amount": "10000.00",
-        "period_start": "2026-10-01",
-        "period_end": "2026-11-01",
         "payment_method": "BANK_TRANSFER",
         "declared_reference": "VIR-2026-001",
         "idempotency_key": str(uuid.uuid4()),
@@ -72,7 +70,8 @@ def _body(subscription_id: uuid.UUID, **fields: Any) -> dict[str, Any]:
 
 
 def _declare(api: Api, subscription_id: uuid.UUID, **fields: Any) -> dict[str, Any]:
-    response = api.post("/subscription/payments", json=_body(subscription_id, **fields))
+    body = {k: v for k, v in _body(subscription_id, **fields).items() if v is not None}
+    response = api.post("/subscription/payments", json=body)
     assert response.status_code == 201, response.text
     return dict(response.json())
 
@@ -192,10 +191,13 @@ def test_declared_currency_follows_the_frozen_subscription_price(
     _sql(
         owner_db,
         "UPDATE subscriptions SET price_at_subscription = 15000, "
-        "currency_at_subscription = 'EUR' WHERE tenant_id = :t",
+        "currency_at_subscription = 'EUR', included_activations_at_subscription = 1 "
+        "WHERE tenant_id = :t",
         t=alpha.tenant_id,
     )
-    assert _declare(owner, alpha.subscription_id)["currency"] == "EUR"
+    # Tarif figé : montant calculé par le serveur, jamais saisi par le client (3.3-B4).
+    payment = _declare(owner, alpha.subscription_id, amount=None)
+    assert (payment["currency"], payment["amount"]) == ("EUR", "15000.00")
 
 
 def test_payment_list_is_paginated_filtered_and_sorted(
@@ -232,7 +234,10 @@ def test_payment_list_is_paginated_filtered_and_sorted(
         {"declared_reference": "x" * 101},
         {"payment_method": "BITCOIN"},
         {"idempotency_key": "pas-une-uuid"},
-        {"period_start": "2026-13-01"},
+        {"requested_activations": 0},
+        # La période n'est jamais fournie par le client (3.3-B4, R3).
+        {"period_start": "2026-10-01"},
+        {"period_end": "2026-11-01"},
     ],
 )
 def test_declaration_validation(owner: Api, alpha: Any, fields: dict[str, Any]) -> None:
@@ -240,19 +245,14 @@ def test_declaration_validation(owner: Api, alpha: Any, fields: dict[str, Any]) 
     assert response.status_code == 422, response.text
 
 
-def test_declared_period_is_checked(owner: Api, alpha: Any) -> None:
-    for start, end, code in (
-        ("2026-10-01", "2026-10-01", "invalid_period"),
-        ("2026-10-01", "2026-09-01", "invalid_period"),
-        ("2026-10-01", "2028-10-02", "period_too_long"),
-    ):
-        response = owner.post(
-            "/subscription/payments",
-            json=_body(alpha.subscription_id, period_start=start, period_end=end),
-        )
-        assert response.status_code == 422
-        assert response.json()["code"] == code
-    _declare(owner, alpha.subscription_id, period_start="2026-10-01", period_end="2028-10-01")
+def test_declared_period_is_computed_by_the_server(owner: Api, alpha: Any) -> None:
+    """R3 : la période est celle du devis serveur (aujourd'hui, période de facturation)."""
+    payment = _declare(owner, alpha.subscription_id)
+    quote = owner.get(f"/subscriptions/{alpha.subscription_id}/renewal-quote").json()
+    assert (payment["period_start"], payment["period_end"]) == (
+        quote["valid_from"],
+        quote["valid_until"],
+    )
 
 
 @pytest.mark.parametrize(

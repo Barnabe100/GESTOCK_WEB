@@ -6,7 +6,15 @@ import {
   type Page,
 } from '@playwright/test';
 
-import { adminCliWithInput, bearer, loginUi, ownerSql, provisionTenant, tokenFor } from './support';
+import {
+  adminCliWithInput,
+  bearer,
+  declareSubscriptionPayment,
+  loginUi,
+  ownerSql,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Phase 3.3-A — Paiements d'abonnement (ADR-0032) : l'entreprise déclare, TechNova confirme
@@ -55,23 +63,10 @@ async function pendingTenant(request: APIRequestContext, label: string) {
 }
 
 async function declare(request: APIRequestContext, token: string, reference: string) {
-  const subscription = (await (
-    await request.get('/api/v1/subscription', { headers: bearer(token) })
-  ).json()) as { id: string };
-  const response = await request.post('/api/v1/subscription/payments', {
-    headers: bearer(token),
-    data: {
-      subscription_id: subscription.id,
-      amount: '15000',
-      period_start: '2026-10-01',
-      period_end: '2026-11-01',
-      payment_method: 'MOBILE_MONEY',
-      declared_reference: reference,
-      idempotency_key: crypto.randomUUID(),
-    },
+  return declareSubscriptionPayment(request, token, reference, {
+    amount: '15000',
+    method: 'MOBILE_MONEY',
   });
-  expect(response.status(), await response.text()).toBe(201);
-  return (await response.json()) as { id: string; status: string };
 }
 
 async function consoleLogin(page: Page, email: string) {
@@ -125,9 +120,12 @@ test.describe("Paiements d'abonnement : entreprise et console TechNova", () => {
     await page.goto('/subscription');
     await page.getByRole('button', { name: 'Déclarer un paiement' }).click();
     const form = page.getByRole('dialog');
-    await form.locator('#subscription-payment-amount').fill('10000');
-    await form.locator('#subscription-payment-start').fill('2026-10-01');
-    await form.locator('#subscription-payment-end').fill('2026-11-01');
+    // Période et postes calculés par le serveur ; montant saisi seulement sans tarif.
+    await expect(form.getByTestId('renewal-quote')).toBeVisible();
+    await expect(form.locator('#subscription-payment-start')).toHaveCount(0);
+    if ((await form.getByTestId('renewal-amount').count()) === 0) {
+      await form.locator('#subscription-payment-amount').fill('10000');
+    }
     await form.locator('#subscription-payment-reference').fill(confirmedRef);
     await form.getByRole('button', { name: 'Déclarer le paiement' }).click();
     await expect(form).toHaveCount(0);

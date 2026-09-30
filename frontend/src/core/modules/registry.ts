@@ -4,6 +4,7 @@ import type {
   NavGroup,
   NavItem,
   NavSection,
+  TopbarItem,
   UiCapabilities,
 } from './types';
 
@@ -69,6 +70,16 @@ export function buildRoutes(
 ): ModuleRoute[] {
   return activeModules(registry, caps).flatMap((module) =>
     module.routes.filter((route) => isAllowed(route, caps)),
+  );
+}
+
+/** Éléments de la barre supérieure autorisés (modules actifs, permission, fonctionnalité). */
+export function buildTopbarItems(
+  registry: readonly FrontendModule[],
+  caps: UiCapabilities,
+): TopbarItem[] {
+  return activeModules(registry, caps).flatMap((module) =>
+    (module.topbar ?? []).filter((item) => isAllowed(item, caps)),
   );
 }
 

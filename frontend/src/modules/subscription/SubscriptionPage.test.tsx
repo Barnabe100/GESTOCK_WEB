@@ -12,6 +12,7 @@ import type { SubscriptionDetails, SubscriptionPayment } from './api';
 import SubscriptionPage from './SubscriptionPage';
 
 const money = (v: string) => formatMoney(v, 'XOF', 'fr').replace(/\s/g, ' ');
+const text = (el: HTMLElement) => (el.textContent ?? '').replace(/\s/g, ' ');
 
 const SUBSCRIPTION: SubscriptionDetails = {
   id: 'sub-1',
@@ -30,7 +31,38 @@ const SUBSCRIPTION: SubscriptionDetails = {
   features: [],
   allowed_access: ['read', 'admin', 'billing'],
   license: null,
+  effective_plan: { code: 'STANDARD', name: 'Standard' },
+  next_plan: null,
+  renewal: {
+    subscription_id: 'sub-1',
+    site_id: 'site-1',
+    kind: 'initial',
+    plan: { code: 'STANDARD', name: 'Standard' },
+    billing_period: 'monthly',
+    valid_from: '2026-10-01',
+    valid_until: '2026-10-31',
+    activations: 2,
+    current_activations: null,
+    activations_explicit: false,
+    amount: null,
+    currency: 'XOF',
+    coverage_end: null,
+    grace_continuity: false,
+    renewal_due: false,
+  },
 };
+
+type Quote = SubscriptionDetails['renewal'];
+/** Devis calculé par le serveur : postes demandés pris en compte, tarif éventuel. */
+const quoteFor = (base: Quote, requested: number | null, unit: string | null): Quote => ({
+  ...base,
+  activations: requested ?? base.activations,
+  activations_explicit: requested !== null && requested !== base.activations,
+  amount:
+    unit === null
+      ? null
+      : (10000 + Math.max(0, (requested ?? base.activations) - 2) * Number(unit)).toFixed(2),
+});
 
 const payment = (over: Partial<SubscriptionPayment> = {}): SubscriptionPayment => ({
   id: 'pay-1',
@@ -41,6 +73,7 @@ const payment = (over: Partial<SubscriptionPayment> = {}): SubscriptionPayment =
   period_end: '2026-11-01',
   payment_method: 'BANK_TRANSFER',
   declared_reference: 'VIR-001',
+  requested_activations: null,
   declared_by: 'u-me',
   status: 'PENDING',
   created_at: '2026-09-25T10:00:00Z',
@@ -83,7 +116,14 @@ const PAYMENTS = [
 const fetchMock = vi.fn<typeof fetch>();
 const show = vi.fn();
 
-function api(onPost?: (body: Record<string, unknown>) => Response | Promise<Response>) {
+function api(
+  onPost?: (body: Record<string, unknown>) => Response | Promise<Response>,
+  {
+    subscription = SUBSCRIPTION,
+    unit = null as string | null,
+    notifications = [] as unknown[],
+  } = {},
+) {
   fetchMock.mockImplementation(async (url, init) => {
     const u = String(url);
     if (init?.method === 'POST' && u.endsWith('/subscription/payments')) {
@@ -93,7 +133,24 @@ function api(onPost?: (body: Record<string, unknown>) => Response | Promise<Resp
     if (u.includes('/subscription/payments?')) {
       return jsonResponse({ items: PAYMENTS, total: 3, limit: 25, offset: 0 });
     }
-    if (u.endsWith('/subscriptions')) return jsonResponse([SUBSCRIPTION]);
+    if (u.includes('/renewal-quote')) {
+      const requested = new URL(u, 'http://x').searchParams.get('requested_activations');
+      return jsonResponse(
+        quoteFor(subscription.renewal, requested ? Number(requested) : null, unit),
+      );
+    }
+    if (u.includes('/notifications?')) {
+      return jsonResponse({
+        items: notifications,
+        total: notifications.length,
+        limit: 5,
+        offset: 0,
+      });
+    }
+    if (init?.method === 'POST' && u.includes('/notifications/')) {
+      return new Response(null, { status: 204 });
+    }
+    if (u.endsWith('/subscriptions')) return jsonResponse([subscription]);
     return jsonResponse({ code: 'not_found' }, 404);
   });
 }
@@ -118,12 +175,7 @@ async function openForm() {
 }
 
 function fill(form: HTMLElement, values: Record<string, string>) {
-  const fields: Record<string, string> = {
-    amount: 'Montant',
-    start: 'Début de la période couverte',
-    end: 'Fin de la période couverte',
-    reference: 'Référence',
-  };
+  const fields: Record<string, string> = { amount: 'Montant', reference: 'Référence' };
   for (const [key, value] of Object.entries(values)) {
     fireEvent.change(within(form).getByLabelText(fields[key] as string, { exact: false }), {
       target: { value },
@@ -251,22 +303,25 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
     );
   });
 
-  it('formulaire : validation avant envoi (montant, dates, référence)', async () => {
+  it('formulaire : période et postes calculés par le serveur, validation avant envoi', async () => {
     api();
     renderPage(DECLARE);
     const form = await openForm();
+    // Période et postes affichés, jamais saisis.
+    const quote = await within(form).findByTestId('renewal-quote');
+    expect(quote.textContent).toContain('du 1 oct. 2026 au 31 oct. 2026');
+    expect(within(form).getByTestId('renewal-postes').textContent).toBe('2 postes');
+    expect(within(form).queryByLabelText(/Début de la période/)).toBeNull();
+    // Offre sans tarif : le montant convenu est demandé.
+    fireEvent.click(within(form).getByRole('button', { name: 'Déclarer le paiement' }));
+    expect(await within(form).findByText(/Champ obligatoire/)).toBeTruthy();
+    fill(form, { amount: '10,001', reference: 'X' });
     fireEvent.click(within(form).getByRole('button', { name: 'Déclarer le paiement' }));
     expect(await within(form).findByText(/Montant invalide/)).toBeTruthy();
-    expect(within(form).getAllByText(/Champ obligatoire/).length).toBeGreaterThan(0);
-
-    fill(form, { amount: '10,001', start: '2026-10-01', end: '2026-09-01', reference: 'X' });
-    fireEvent.click(within(form).getByRole('button', { name: 'Déclarer le paiement' }));
-    expect(await within(form).findByText('La fin de période doit suivre son début.')).toBeTruthy();
-    expect(within(form).getByText(/Montant invalide/)).toBeTruthy();
     expect(posts()).toHaveLength(0);
   });
 
-  it('déclaration : aucun champ de décision envoyé, clé d’idempotence, envoi unique', async () => {
+  it('déclaration : ni période ni décision envoyées, clé d’idempotence, envoi unique', async () => {
     let release: (r: Response) => void = () => undefined;
     const bodies: Record<string, unknown>[] = [];
     api((body) => {
@@ -277,12 +332,8 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
     });
     renderPage(DECLARE);
     const form = await openForm();
-    fill(form, {
-      amount: '10 000,50',
-      start: '2026-10-01',
-      end: '2026-11-01',
-      reference: '  VIR-2026-9  ',
-    });
+    await within(form).findByTestId('renewal-quote');
+    fill(form, { amount: '10 000,50', reference: '  VIR-2026-9  ' });
     const submit = within(form).getByRole('button', { name: 'Déclarer le paiement' });
     fireEvent.click(submit);
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -303,37 +354,131 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
       'declared_reference',
       'idempotency_key',
       'payment_method',
-      'period_end',
-      'period_start',
       'subscription_id',
     ]);
     expect(body).toMatchObject({
       subscription_id: 'sub-1',
       amount: '10000.50',
-      period_start: '2026-10-01',
-      period_end: '2026-11-01',
       payment_method: 'BANK_TRANSFER',
       declared_reference: 'VIR-2026-9',
     });
     expect(body.idempotency_key).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it('offre tarifée : montant du serveur, postes demandés explicitement', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    api(
+      (body) => {
+        bodies.push(body);
+        return jsonResponse(payment({ id: 'pay-new' }), 201);
+      },
+      { unit: '3000' },
+    );
+    renderPage(DECLARE);
+    const form = await openForm();
+    expect(text(await within(form).findByTestId('renewal-amount'))).toBe(money('10000.00'));
+    expect(within(form).queryByLabelText(/^Montant/)).toBeNull();
+    fireEvent.click(within(form).getByLabelText('Demander un autre nombre de postes'));
+    const input = within(form).getByLabelText(/Nombre de postes souhaité/);
+    fireEvent.change(input, { target: { value: '5' } });
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect(text(within(form).getByTestId('renewal-amount'))).toBe(money('19000.00')),
+    );
+    expect(within(form).getByTestId('renewal-postes').textContent).toContain('5 postes');
+    expect(within(form).getByTestId('renewal-postes').textContent).toContain('à confirmer');
+    fill(form, { reference: 'OM-7' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Déclarer le paiement' }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty('amount');
+    expect(bodies[0]).toMatchObject({ requested_activations: 5, declared_reference: 'OM-7' });
+  });
+
   it('refus du serveur : message traduit, même clé au nouvel envoi', async () => {
     const keys: unknown[] = [];
     api((body) => {
       keys.push(body.idempotency_key);
-      return jsonResponse(
-        { code: 'period_too_long', detail: 'Période trop longue', max_months: 24 },
-        422,
-      );
+      return jsonResponse({ code: 'amount_computed_by_server', detail: 'x' }, 422);
     });
     renderPage(DECLARE);
     const form = await openForm();
-    fill(form, { amount: '1000', start: '2026-10-01', end: '2029-10-01', reference: 'R' });
+    await within(form).findByTestId('renewal-quote');
+    fill(form, { amount: '1000', reference: 'R' });
     fireEvent.click(within(form).getByRole('button', { name: 'Déclarer le paiement' }));
-    expect(await within(form).findByText('Période trop longue (24 mois au plus).')).toBeTruthy();
+    expect(await within(form).findByText(/calculé par le serveur/)).toBeTruthy();
     fireEvent.click(within(form).getByRole('button', { name: 'Déclarer le paiement' }));
     await waitFor(() => expect(keys).toHaveLength(2));
     expect(keys[0]).toBe(keys[1]);
+  });
+
+  it('R4 : offre en vigueur, offre au prochain renouvellement, « Renouveler »', async () => {
+    const renewing: SubscriptionDetails = {
+      ...SUBSCRIPTION,
+      status: 'active',
+      effective_status: 'past_due',
+      plan_code: 'ENTREPRISE',
+      plan_name: 'Entreprise',
+      next_plan: { code: 'ENTREPRISE', name: 'Entreprise' },
+      renewal: {
+        ...SUBSCRIPTION.renewal,
+        kind: 'renewal',
+        plan: { code: 'ENTREPRISE', name: 'Entreprise' },
+        valid_from: '2026-09-28',
+        valid_until: '2026-10-27',
+        activations: 3,
+        current_activations: 3,
+        renewal_due: true,
+        grace_continuity: true,
+      },
+    };
+    api(undefined, { subscription: renewing });
+    renderPage(DECLARE);
+    expect((await screen.findByTestId('effective-plan')).textContent).toBe('Standard');
+    expect(screen.getByTestId('next-plan').textContent).toBe(
+      'Au prochain renouvellement : Entreprise',
+    );
+    const next = screen.getByTestId('next-period');
+    expect(next.textContent).toContain('du 28 sept. 2026 au 27 oct. 2026 · 3 postes');
+    expect(next.textContent).toContain('sans perte de jours');
+    fireEvent.click(within(next).getByRole('button', { name: 'Renouveler' }));
+    const form = await screen.findByRole('form', { name: 'Déclarer un paiement à TechNova' });
+    expect((await within(form).findByTestId('renewal-postes')).textContent).toBe('3 postes');
+    expect(within(form).getByTestId('renewal-quote').textContent).toContain('Entreprise');
+  });
+
+  it('sans la permission de déclarer : pas de « Renouveler »', async () => {
+    api(undefined, {
+      subscription: {
+        ...SUBSCRIPTION,
+        renewal: { ...SUBSCRIPTION.renewal, kind: 'renewal', renewal_due: true },
+      },
+    });
+    renderPage(VIEW);
+    await screen.findByTestId('next-period');
+    expect(screen.queryByRole('button', { name: 'Renouveler' })).toBeNull();
+  });
+
+  it('rappels d’échéance non lus en tête de page, marqués comme lus', async () => {
+    api(undefined, {
+      notifications: [
+        {
+          id: 'n-1',
+          kind: 'subscription.expiry',
+          step: 0,
+          reference_date: '2026-10-31',
+          site: { id: 'site-1', name: 'Boutique', code: 'BTQ' },
+          subscription_id: 'sub-1',
+          data: { days_left: 0 },
+          created_at: '2026-10-31T08:00:00Z',
+          read_at: null,
+        },
+      ],
+    });
+    renderPage(VIEW);
+    const reminder = await screen.findByTestId('expiry-reminder');
+    expect(reminder.textContent).toContain("Votre licence expire aujourd'hui : site Boutique.");
+    fireEvent.click(within(reminder).getByRole('button', { name: 'Marquer comme lu' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]![0]).toMatch(/\/notifications\/n-1\/read$/);
   });
 });

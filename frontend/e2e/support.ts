@@ -303,3 +303,34 @@ export function changePlanOfSites(tenantId: string, siteIds: string[], plan: str
     )
     .join('\n');
 }
+
+/**
+ * Déclare un paiement d'abonnement par l'API (Phase 3.3-B4) : la période est calculée par le
+ * serveur ; le montant n'est envoyé que pour une offre sans tarif (sinon, calculé par le serveur).
+ */
+export async function declareSubscriptionPayment(
+  request: APIRequestContext,
+  token: string,
+  reference: string,
+  { amount, method = 'BANK_TRANSFER' }: { amount: string; method?: string },
+): Promise<{ id: string; status: string; amount: string }> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const subscription = (await (await request.get('/api/v1/subscription', { headers })).json()) as {
+    id: string;
+  };
+  const quote = (await (
+    await request.get(`/api/v1/subscriptions/${subscription.id}/renewal-quote`, { headers })
+  ).json()) as { amount: string | null };
+  const response = await request.post('/api/v1/subscription/payments', {
+    headers,
+    data: {
+      subscription_id: subscription.id,
+      ...(quote.amount === null ? { amount } : {}),
+      payment_method: method,
+      declared_reference: reference,
+      idempotency_key: crypto.randomUUID(),
+    },
+  });
+  expect(response.status(), await response.text()).toBe(201);
+  return (await response.json()) as { id: string; status: string; amount: string };
+}

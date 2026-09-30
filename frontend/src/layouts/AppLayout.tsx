@@ -8,7 +8,7 @@ import { NavLink, useNavigate } from 'react-router';
 import { useAuth } from '@/core/auth/AuthContext';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { profileLabel } from '@/core/capabilities/profile';
-import { buildNavigationSections } from '@/core/modules/registry';
+import { buildNavigationSections, buildTopbarItems } from '@/core/modules/registry';
 import type { FrontendModule } from '@/core/modules/types';
 
 const ALL_SITES = '__all__';
@@ -86,6 +86,10 @@ export function AppLayout({
   // Thème du profil UX : accent (palette contrôlée) et densité ; présentation seulement.
   const theme = capabilities.ux?.theme;
   const sectorIcon = theme?.icon ?? capabilities.profile.sector?.icon ?? 'pi pi-briefcase';
+  const topbarItems = useMemo(
+    () => buildTopbarItems(modules, capabilities),
+    [modules, capabilities],
+  );
 
   const siteOptions = [
     { value: ALL_SITES, label: t('layout.allSites') },
@@ -141,6 +145,9 @@ export function AppLayout({
             />
           </div>
           <div className="sm-topbar-user">
+            {topbarItems.map(({ key, component: Item }) => (
+              <Item key={key} />
+            ))}
             {auth.memberships.length > 1 && (
               <Button
                 icon="pi pi-sync"

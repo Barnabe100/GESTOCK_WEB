@@ -32,6 +32,7 @@ const PENDING: ConsolePayment = {
   period_end: '2026-11-01',
   payment_method: 'BANK_TRANSFER',
   declared_reference: 'VIR-001',
+  requested_activations: null,
   status: 'PENDING',
   created_at: '2026-09-25T10:00:00Z',
   decided_at: null,

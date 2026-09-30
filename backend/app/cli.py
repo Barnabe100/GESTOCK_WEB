@@ -9,6 +9,7 @@ import os
 import sys
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,7 @@ from app.console.admins import (
     revoke_platform_admin,
 )
 from app.console.audit import CLI_ACTOR, PlatformActor
+from app.console.notifications import RenewalNoticeJob
 from app.core.config import Settings, get_settings
 from app.core.db import create_db_engine, create_session_factory, set_db_context
 from app.core.errors import AppError, NotFoundError
@@ -203,6 +205,25 @@ def cmd_platform_admin_revoke(args: argparse.Namespace, settings: Settings) -> i
     return 0
 
 
+def cmd_notifications_run(args: argparse.Namespace, settings: Settings) -> int:
+    """Rappels d'échéance (3.3-B4) : quotidien (cron / systemd), idempotent, sans rafale ; rôle
+    SQL de la console (aucune donnée métier). Une exécution concurrente s'arrête sans écrire."""
+    now = datetime.fromisoformat(args.now) if args.now else utcnow()
+    if now.tzinfo is None:
+        raise SystemExit("--now doit préciser le fuseau (ex. 2026-09-30T08:00:00+00:00)")
+    with _session(settings.platform_database_url, settings) as session:
+        result = RenewalNoticeJob(session, settings.renewal_notice_steps, now, _cli_actor()).run()
+        session.commit()
+    if result.locked:
+        print("Une autre exécution est en cours : rien à faire.")
+        return 0
+    print(
+        f"Abonnements examinés : {result.examined} · rappels envoyés : {result.sent} · "
+        f"étapes manquées notées : {result.skipped}"
+    )
+    return 0
+
+
 def cmd_platform_admin_list(args: argparse.Namespace, settings: Settings) -> int:
     with _session(settings.migration_database_url, settings) as session:
         admins = list_platform_admins(session)
@@ -302,6 +323,14 @@ def build_parser() -> argparse.ArgumentParser:
     admins_sub.add_parser("list", help="Lister les administrateurs TechNova").set_defaults(
         func=cmd_platform_admin_list
     )
+
+    notifications = sub.add_parser("notifications", help="Notifications applicatives")
+    notifications_sub = notifications.add_subparsers(dest="notifications_command", required=True)
+    run = notifications_sub.add_parser(
+        "run", help="Rappels d'échéance des abonnements (quotidien, idempotent)"
+    )
+    run.add_argument("--now", help="Instant de référence ISO 8601 (tests, rattrapage)")
+    run.set_defaults(func=cmd_notifications_run)
     return parser
 
 

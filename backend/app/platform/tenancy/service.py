@@ -14,9 +14,10 @@ from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
 from app.platform.subscriptions.plan_policy import PlanTerms
 from app.platform.subscriptions.service import (
+    freeze_tariff,
     period_enabled,
+    plan_tariff,
     self_service,
-    subscription_price,
     unattached_subscription,
 )
 from app.platform.tenancy.models import Site, TenantModule
@@ -126,7 +127,6 @@ class SiteService:
             action = "subscription.site_attached"
         else:
             assert plan is not None and data.billing_period is not None
-            price, currency = subscription_price(plan, data.billing_period)
             now = utcnow()
             subscription = Subscription(
                 tenant_id=self.ctx.tenant_id,
@@ -137,10 +137,9 @@ class SiteService:
                 started_at=now,
                 current_period_start=now,
                 current_period_end=now,
-                price_at_subscription=price,
-                currency_at_subscription=currency,
                 requested_activations=data.requested_activations,
             )
+            freeze_tariff(subscription, plan_tariff(plan, data.billing_period))
             self.db.add(subscription)
             action = "subscription.created"
         self.db.flush()

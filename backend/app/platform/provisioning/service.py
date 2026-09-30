@@ -23,7 +23,7 @@ from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import BillingPeriod, Subscription, SubscriptionStatus
-from app.platform.subscriptions.service import period_end, subscription_price
+from app.platform.subscriptions.service import freeze_tariff, period_end, plan_tariff
 from app.platform.tenancy.models import Site, SiteKind, Tenant, TenantModule
 from app.shared.ids import new_id
 
@@ -285,7 +285,6 @@ class TenantProvisioningService:
         else:
             status = SubscriptionStatus.ACTIVE
             end = period_end(self.now, cmd.billing_period)
-        price, currency = subscription_price(plan, cmd.billing_period)
         subscription = Subscription(
             tenant_id=tenant_id,
             plan_code=plan.code,
@@ -294,9 +293,8 @@ class TenantProvisioningService:
             started_at=self.now,
             current_period_start=self.now,
             current_period_end=end,
-            price_at_subscription=price,
-            currency_at_subscription=currency,
         )
+        freeze_tariff(subscription, plan_tariff(plan, cmd.billing_period))
         self.db.add(subscription)
         return subscription
 

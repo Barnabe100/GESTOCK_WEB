@@ -133,11 +133,38 @@ def coverage(licenses: list[License], today: date) -> Coverage | None:
     return Coverage(first_day=first, last_day=last)
 
 
-def next_valid_from(licenses: list[License], today: date) -> date:
-    """Début d'une nouvelle licence : lendemain de la couverture en cours (renouvellement : la
-    période continue, aucun jour perdu ni offert), sinon aujourd'hui."""
+def next_valid_from(licenses: list[License], today: date, grace_days: int = 0) -> date:
+    """Début d'une nouvelle licence (3.3-B2, R2 3.3-B4) :
+
+    - couverture en cours : son lendemain (renouvellement anticipé, aucun jour perdu ni offert) ;
+    - dernière licence émise échue depuis au plus ``grace_days`` jours (période de grâce) : son
+      lendemain aussi — la grâce est une tolérance d'accès, pas un nouveau point de départ ; la
+      nouvelle licence peut donc commencer avant aujourd'hui ;
+    - sinon (aucune licence, ou expirée au-delà de la grâce) : aujourd'hui, jamais rétroactif.
+
+    Une licence révoquée ne compte jamais (la révocation est définitive, ADR-0034)."""
     covered = coverage(licenses, today)
-    return covered.last_day + timedelta(days=1) if covered else today
+    if covered:
+        return covered.last_day + timedelta(days=1)
+    issued = [lic for lic in licenses if lic.status is LicenseStatus.ISSUED]
+    if issued:
+        last_day = max(lic.valid_until for lic in issued)
+        if last_day >= today:
+            # Licence future non contiguë (licence en vigueur révoquée) : jamais de
+            # chevauchement, la nouvelle période suit.
+            return last_day + timedelta(days=1)
+        if today <= last_day + timedelta(days=grace_days):
+            return last_day + timedelta(days=1)
+    return today
+
+
+def grace_days_of(session: Session, licenses: list[License], subscription: Subscription) -> int:
+    """Délai de grâce applicable à la continuité : celui du plan de la dernière licence émise
+    (sinon celui du plan de l'abonnement)."""
+    issued = [lic for lic in licenses if lic.status is LicenseStatus.ISSUED]
+    code = max(issued, key=lambda lic: lic.valid_until).plan_code if issued else None
+    plan = session.get(Plan, code or subscription.plan_code)
+    return plan.grace_days if plan is not None else 0
 
 
 def sync_subscription(

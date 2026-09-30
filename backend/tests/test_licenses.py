@@ -76,27 +76,27 @@ def _cget(c: TestClient, path: str, **kw: Any) -> Any:
     return c.get(f"{CONSOLE_PREFIX}{path}", **kw)
 
 
-def _declare(owner: Api, subscription_id: uuid.UUID, reference: str = "VIR-1") -> str:
-    response = owner.post(
-        "/subscription/payments",
-        json={
-            "subscription_id": str(subscription_id),
-            "amount": "10000.00",
-            "period_start": "2026-10-01",
-            "period_end": "2026-11-01",
-            "payment_method": "BANK_TRANSFER",
-            "declared_reference": reference,
-            "idempotency_key": str(uuid.uuid4()),
-        },
-    )
+def _declare(owner: Api, subscription_id: Any, reference: str = "VIR-1", **fields: Any) -> str:
+    """Déclaration d'UN site : montant calculé par le serveur si un tarif est figé, sinon
+    montant convenu (offre sur devis) ; période toujours calculée par le serveur."""
+    quote = owner.get(f"/subscriptions/{subscription_id}/renewal-quote").json()
+    body = {
+        "subscription_id": str(subscription_id),
+        "payment_method": "BANK_TRANSFER",
+        "declared_reference": reference,
+        "idempotency_key": str(uuid.uuid4()),
+    } | fields
+    if quote["amount"] is None:
+        body.setdefault("amount", "10000.00")
+    response = owner.post("/subscription/payments", json=body)
     assert response.status_code == 201, response.text
     return str(response.json()["id"])
 
 
 def _confirmed_payment(
-    owner: Api, admin: TestClient, subscription_id: uuid.UUID, ref: str = "V1"
+    owner: Api, admin: TestClient, subscription_id: Any, ref: str = "V1", **fields: Any
 ) -> str:
-    payment_id = _declare(owner, subscription_id, ref)
+    payment_id = _declare(owner, subscription_id, ref, **fields)
     confirmed = _cpost(admin, f"/payments/{payment_id}/confirm", {"reason": "Virement reçu"})
     assert confirmed.status_code == 200, confirmed.text
     return payment_id
@@ -163,7 +163,10 @@ def test_generation_issues_signed_licence_and_activates_the_site(
     proposal = _cget(admin, f"/payments/{payment}/license-proposal").json()
     today = _today()
     assert proposal["blocking"] is None
-    assert proposal["requested_activations"] == 2 and proposal["max_activations"] == 2
+    # Première licence : postes demandés à la souscription (R1 : aucune demande explicite).
+    assert proposal["initial_requested_activations"] == 2
+    assert proposal["requested_activations"] is None and proposal["current_activations"] is None
+    assert proposal["max_activations"] == 2
     assert proposal["valid_from"] == today.isoformat()
 
     response = _generate(admin, payment, max_activations=3)

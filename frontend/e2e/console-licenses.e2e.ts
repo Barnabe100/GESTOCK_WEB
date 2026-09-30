@@ -8,7 +8,15 @@ import {
   type Page,
 } from '@playwright/test';
 
-import { adminCliWithInput, bearer, loginUi, ownerSql, provisionTenant, tokenFor } from './support';
+import {
+  adminCliWithInput,
+  bearer,
+  declareSubscriptionPayment,
+  loginUi,
+  ownerSql,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Phase 3.3-B2 — Licences (ADR-0034) : paiement confirmé → licence générée par TechNova dans
@@ -58,23 +66,10 @@ async function pendingTenant(request: APIRequestContext, label: string) {
 }
 
 async function declare(request: APIRequestContext, token: string, reference: string) {
-  const subscription = (await (
-    await request.get('/api/v1/subscription', { headers: bearer(token) })
-  ).json()) as { id: string };
-  const response = await request.post('/api/v1/subscription/payments', {
-    headers: bearer(token),
-    data: {
-      subscription_id: subscription.id,
-      amount: '25000',
-      period_start: '2026-10-01',
-      period_end: '2026-11-01',
-      payment_method: 'BANK_TRANSFER',
-      declared_reference: reference,
-      idempotency_key: crypto.randomUUID(),
-    },
+  return declareSubscriptionPayment(request, token, reference, {
+    amount: '25000',
+    method: 'BANK_TRANSFER',
   });
-  expect(response.status(), await response.text()).toBe(201);
-  return (await response.json()) as { id: string };
 }
 
 async function consoleApi(baseURL: string | undefined, email: string) {

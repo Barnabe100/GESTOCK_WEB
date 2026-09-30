@@ -22,6 +22,10 @@ export interface PlanCommercial {
   commercial_description: string | null;
   display_order: number;
   trial_days: number;
+  /** Postes compris dans le prix de base ; au-delà, prix par poste (3.3-B4). */
+  included_activations: number;
+  monthly_activation_price: string | null;
+  annual_activation_price: string | null;
 }
 
 export interface Plan extends PlanCommercial {
@@ -224,6 +228,8 @@ export interface ConsolePayment {
   period_end: string;
   payment_method: string;
   declared_reference: string;
+  /** Nombre de postes demandé explicitement par l'entreprise (nul : reconduction). */
+  requested_activations: number | null;
   status: SubscriptionPaymentStatus;
   created_at: string;
   decided_at: string | null;
@@ -302,8 +308,16 @@ export interface LicenseProposal {
   timezone: string;
   valid_from: string;
   valid_until: string;
-  requested_activations: number;
+  /** Postes demandés à la souscription (première licence seulement). */
+  initial_requested_activations: number;
+  /** Postes de la licence de référence du site (nul : première licence). */
+  current_activations: number | null;
+  /** Changement demandé explicitement avec ce paiement (nul : reconduction). */
+  requested_activations: number | null;
+  /** Proposition, à confirmer ou ajuster par TechNova. */
   max_activations: number;
+  /** Renouvellement pendant le délai de grâce : la période suit la licence échue. */
+  grace_continuity: boolean;
   payment_period_start: string;
   payment_period_end: string;
   blocking: string | null;

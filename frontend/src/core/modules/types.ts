@@ -29,11 +29,20 @@ export interface ModuleRoute {
   feature?: string;
 }
 
+/** Élément de la barre supérieure (ex. indicateur des notifications) fourni par un module. */
+export interface TopbarItem {
+  key: string;
+  component: ComponentType;
+  permission?: string;
+  feature?: string;
+}
+
 /** Module frontend : même `code` que le module backend correspondant. */
 export interface FrontendModule {
   code: string;
   navigation: NavItem[];
   routes: ModuleRoute[];
+  topbar?: TopbarItem[];
 }
 
 /** Sous-ensemble des capacités utile à la construction de l'interface. */

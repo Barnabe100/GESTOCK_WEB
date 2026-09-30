@@ -33,6 +33,9 @@ const PLAN: PlanDetail = {
   commercial_description: null,
   display_order: 1,
   trial_days: 0,
+  included_activations: 1,
+  monthly_activation_price: null,
+  annual_activation_price: null,
   self_service: true,
   updated_at: '2026-09-25T10:00:00Z',
   structure: {
@@ -232,6 +235,35 @@ describe('Console TechNova', () => {
     await waitFor(() =>
       expect(show).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' })),
     );
+  });
+
+  it('tarif des postes : postes compris et prix par poste envoyés, validation', async () => {
+    consoleApi();
+    renderConsole('/tech-admin/plans/STANDARD');
+    const included = (await screen.findByLabelText(
+      'Postes compris dans le prix de base',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(included.value).toBe('1'));
+    fireEvent.input(screen.getByLabelText(/Raison de la modification/), {
+      target: { value: 'Tarif des postes' },
+    });
+    fireEvent.input(included, { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
+    expect(await screen.findByText(/Nombre de postes invalide/)).toBeTruthy();
+    fireEvent.input(included, { target: { value: '2' } });
+    fireEvent.input(screen.getByLabelText('Prix mensuel par poste supplémentaire'), {
+      target: { value: '2500' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Confirmer' }),
+    );
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(JSON.parse(String(patches()[0]?.[1]?.body))).toEqual({
+      reason: 'Tarif des postes',
+      included_activations: 2,
+      monthly_activation_price: '2500',
+    });
   });
 
   it('validations : montant invalide bloqué ; aucune modification signalée', async () => {

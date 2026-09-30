@@ -42,7 +42,12 @@ COMMERCIAL_FIELDS = (
     "commercial_description",
     "display_order",
     "trial_days",
+    # Tarification par poste (3.3-B4).
+    "included_activations",
+    "monthly_activation_price",
+    "annual_activation_price",
 )
+ACTIVATION_PRICE_FIELDS = ("monthly_activation_price", "annual_activation_price")
 CENT = Decimal("0.01")
 # (période, champ « proposée », champ prix)
 PERIODS = (
@@ -127,7 +132,7 @@ class PlanCommercialService:
     ) -> Plan:
         plan = self.get(code, for_update=True)
         requested: dict[str, Any] = data.model_dump(exclude_unset=True, exclude={"reason"})
-        for _, _, price_field in PERIODS:
+        for price_field in (*(p for _, _, p in PERIODS), *ACTIVATION_PRICE_FIELDS):
             if requested.get(price_field) is not None:
                 requested[price_field] = Decimal(requested[price_field]).quantize(CENT)
         if "commercial_description" in requested:
@@ -166,6 +171,10 @@ class PlanCommercialService:
 
     def _validate(self, plan: Plan, state: dict[str, Any]) -> None:
         """Cohérence des paramètres commerciaux (le frontend n'est jamais la seule barrière)."""
+        if state["included_activations"] is None:
+            raise BusinessRuleError(
+                "Le nombre de postes compris est obligatoire", code="included_activations_required"
+            )
         currency = state["currency"]
         if currency is not None and currency not in known_currencies(self.db):
             raise BusinessRuleError(
@@ -178,7 +187,9 @@ class PlanCommercialService:
                     code="price_required",
                     extra={"period": period},
                 )
-        has_price = any(state[price_field] is not None for _, _, price_field in PERIODS)
+        has_price = any(state[price_field] is not None for _, _, price_field in PERIODS) or any(
+            state[field] is not None for field in ACTIVATION_PRICE_FIELDS
+        )
         if has_price and currency is None:
             raise BusinessRuleError("Un prix exige une devise", code="currency_required")
         open_period = any(state[enabled_field] for _, enabled_field, _ in PERIODS)

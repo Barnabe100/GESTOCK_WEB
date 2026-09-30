@@ -1,9 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
+import { Checkbox } from 'primereact/checkbox';
 import { Column } from 'primereact/column';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
+import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
 import type { TFunction } from 'i18next';
@@ -30,7 +32,9 @@ import { useToast } from '@/shared/ui/toast';
 import {
   SUBSCRIPTION_PAYMENT_METHODS,
   useDeclareSubscriptionPayment,
+  useRenewalQuote,
   useSubscriptionPayments,
+  type RenewalQuote,
   type SubscriptionDetails,
   type SubscriptionPayment,
   type SubscriptionPaymentMethod,
@@ -42,75 +46,115 @@ const STATUSES: SubscriptionPaymentStatus[] = ['PENDING', 'CONFIRMED', 'REJECTED
 function subscriptionLabel(t: TFunction, s: SubscriptionDetails): string {
   return `${s.site?.name ?? t('subscriptionPage.unattached')} · ${s.plan_name}`;
 }
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Jour déclaré (sans heure) : affiché tel quel, sans conversion de fuseau. */
+/** Jour (sans heure) du fuseau de l'entreprise : affiché tel quel, sans conversion. */
 const day = (value: string, locale: string) => formatDate(value, locale, 'UTC');
 
+const validAmount = (v: string) => {
+  const normalized = normalizeDecimal(v, 2);
+  return normalized !== null && /[1-9]/.test(normalized);
+};
+
 /**
- * Contrôles d'ergonomie seulement : le serveur revalide tout (montant, période, référence) et
- * fixe lui-même la devise et le statut.
+ * Contrôles d'ergonomie seulement : période, postes et montant sont calculés par le serveur
+ * (R3) ; il revalide tout et fixe lui-même la devise et le statut.
  */
-const schema = z
-  .object({
-    amount: z.string().refine((v) => {
-      const normalized = normalizeDecimal(v, 2);
-      return normalized !== null && /[1-9]/.test(normalized);
-    }, 'amount'),
-    period_start: z.string().regex(DAY, 'required'),
-    period_end: z.string().regex(DAY, 'required'),
-    payment_method: z.enum(SUBSCRIPTION_PAYMENT_METHODS),
-    declared_reference: z.string().trim().min(1, 'required').max(100),
-  })
-  .refine((v) => v.period_end > v.period_start, { path: ['period_end'], message: 'order' });
+const schema = z.object({
+  amount: z.string(),
+  payment_method: z.enum(SUBSCRIPTION_PAYMENT_METHODS),
+  declared_reference: z.string().trim().min(1, 'required').max(100),
+});
 type FormValues = z.infer<typeof schema>;
 
-function DeclarePaymentDialog({
+/** Prochaine période du site telle que calculée par le serveur. */
+function QuoteSummary({ quote, locale }: { quote: RenewalQuote; locale: string }) {
+  const { t } = useTranslation();
+  return (
+    <dl className="sm-details" data-testid="renewal-quote">
+      <div>
+        <dt>{t('renewal.period')}</dt>
+        <dd>
+          {t('renewal.periodValue', {
+            start: day(quote.valid_from, locale),
+            end: day(quote.valid_until, locale),
+          })}
+        </dd>
+      </div>
+      <div>
+        <dt>{t('renewal.plan')}</dt>
+        <dd>
+          {quote.plan.name} · {t(`billingPeriod.${quote.billing_period}`)}
+        </dd>
+      </div>
+      <div>
+        <dt>{t('renewal.postes')}</dt>
+        <dd data-testid="renewal-postes">
+          {t('renewal.postesValue', { count: quote.activations })}
+          {quote.activations_explicit && ` · ${t('renewal.postesChanged')}`}
+        </dd>
+      </div>
+      {quote.amount !== null && quote.currency && (
+        <div>
+          <dt>{t('renewal.amount')}</dt>
+          <dd className="sm-strong" data-testid="renewal-amount">
+            {formatMoney(quote.amount, quote.currency, locale)}
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+export function DeclarePaymentDialog({
   subscriptions,
+  initialSubscriptionId,
   onClose,
 }: {
   subscriptions: SubscriptionDetails[];
+  initialSubscriptionId?: string;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const { capabilities } = useCapabilities();
+  const locale = capabilities.tenant.locale;
   const declare = useDeclareSubscriptionPayment();
   // Une clé par saisie : double clic ou nouvel envoi après une coupure → aucun doublon.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<unknown>(null);
   // Abonnement payé : celui d'un site (1 site = 1 abonnement, ADR-0033).
-  const [subscriptionId, setSubscriptionId] = useState(subscriptions[0]?.id ?? '');
+  const [subscriptionId, setSubscriptionId] = useState(
+    initialSubscriptionId ?? subscriptions[0]?.id ?? '',
+  );
+  // R1 : les postes sont reconduits ; un autre nombre n'est demandé qu'explicitement.
+  const [changePostes, setChangePostes] = useState(false);
+  const current = subscriptions.find((s) => s.id === subscriptionId)?.renewal.activations ?? 1;
+  const [postes, setPostes] = useState<number>(current);
+  const quote = useRenewalQuote(subscriptionId, changePostes ? postes : null);
+  const [amountError, setAmountError] = useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      amount: '',
-      period_start: '',
-      period_end: '',
-      payment_method: 'BANK_TRANSFER',
-      declared_reference: '',
-    },
+    defaultValues: { amount: '', payment_method: 'BANK_TRANSFER', declared_reference: '' },
   });
   const errors = form.formState.errors;
-  const errorText = (field: keyof FormValues) => {
-    const message = errors[field]?.message;
-    if (!message) return undefined;
-    if (message === 'amount') return t('subscriptionPayments.invalidAmount');
-    if (message === 'order') return t('subscriptionPayments.periodOrder');
-    if (message === 'required') return t('validation.required');
-    if (errors[field]?.type === 'too_big') return t('validation.tooLong');
-    return t('validation.invalid');
-  };
+  const needsAmount = quote.data !== undefined && quote.data.amount === null;
+  const referenceError = errors.declared_reference
+    ? errors.declared_reference.type === 'too_big'
+      ? t('validation.tooLong')
+      : t('validation.required')
+    : undefined;
 
   const onSubmit = form.handleSubmit((values) => {
-    if (declare.isPending) return;
+    if (declare.isPending || !quote.data) return;
+    if (needsAmount && !validAmount(values.amount)) {
+      setAmountError(true);
+      return;
+    }
     setError(null);
     declare.mutate(
       {
         subscription_id: subscriptionId,
-        amount: normalizeDecimal(values.amount, 2) ?? values.amount,
-        period_start: values.period_start,
-        period_end: values.period_end,
+        ...(needsAmount ? { amount: normalizeDecimal(values.amount, 2) ?? values.amount } : {}),
+        ...(changePostes ? { requested_activations: postes } : {}),
         payment_method: values.payment_method,
         declared_reference: values.declared_reference.trim(),
         idempotency_key: idempotencyKey,
@@ -149,7 +193,12 @@ function DeclarePaymentDialog({
             <Dropdown
               inputId="subscription-payment-subscription"
               value={subscriptionId}
-              onChange={(e) => setSubscriptionId(e.value as string)}
+              onChange={(e) => {
+                const next = subscriptions.find((s) => s.id === e.value);
+                setSubscriptionId(e.value as string);
+                setChangePostes(false);
+                setPostes(next?.renewal.activations ?? 1);
+              }}
               options={subscriptions.map((s) => ({
                 value: s.id,
                 label: subscriptionLabel(t, s),
@@ -157,51 +206,58 @@ function DeclarePaymentDialog({
             />
           </FormField>
         )}
-        <FormField
-          id="subscription-payment-amount"
-          label={t('subscriptionPayments.amount')}
-          required
-          error={errorText('amount')}
-          help={t('subscriptionPayments.amountHelp', {
-            currency: capabilities.tenant.currency,
-          })}
-        >
-          <InputText
-            id="subscription-payment-amount"
-            inputMode="decimal"
-            invalid={Boolean(errors.amount)}
-            autoFocus
-            {...form.register('amount')}
+        {quote.isError && <Message severity="error" text={translateError(t, quote.error)} />}
+        {quote.data && (
+          <>
+            <QuoteSummary quote={quote.data} locale={locale} />
+            {quote.data.grace_continuity && (
+              <Message severity="warn" text={t('renewal.graceContinuity')} />
+            )}
+          </>
+        )}
+        <div className="sm-checkbox">
+          <Checkbox
+            inputId="subscription-payment-change-postes"
+            checked={changePostes}
+            onChange={(e) => setChangePostes(Boolean(e.checked))}
           />
-        </FormField>
-        <div className="sm-form-grid">
-          <FormField
-            id="subscription-payment-start"
-            label={t('subscriptionPayments.periodStart')}
-            required
-            error={errorText('period_start')}
-          >
-            <InputText
-              id="subscription-payment-start"
-              type="date"
-              invalid={Boolean(errors.period_start)}
-              {...form.register('period_start')}
-            />
-          </FormField>
-          <FormField
-            id="subscription-payment-end"
-            label={t('subscriptionPayments.periodEnd')}
-            required
-            error={errorText('period_end')}
-          >
-            <InputText
-              id="subscription-payment-end"
-              type="date"
-              invalid={Boolean(errors.period_end)}
-              {...form.register('period_end')}
-            />
-          </FormField>
+          <label htmlFor="subscription-payment-change-postes">{t('renewal.changePostes')}</label>
         </div>
+        {changePostes && (
+          <FormField
+            id="subscription-payment-postes"
+            label={t('renewal.requestedPostes')}
+            required
+            help={t('renewal.requestedPostesHelp')}
+          >
+            <InputNumber
+              inputId="subscription-payment-postes"
+              value={postes}
+              min={1}
+              max={10000}
+              showButtons
+              onValueChange={(e) => setPostes(Math.max(1, Math.min(10000, e.value ?? 1)))}
+            />
+          </FormField>
+        )}
+        {needsAmount && (
+          <FormField
+            id="subscription-payment-amount"
+            label={t('subscriptionPayments.amount')}
+            required
+            error={amountError ? t('subscriptionPayments.invalidAmount') : undefined}
+            help={t('subscriptionPayments.amountHelp', {
+              currency: capabilities.tenant.currency,
+            })}
+          >
+            <InputText
+              id="subscription-payment-amount"
+              inputMode="decimal"
+              invalid={amountError}
+              {...form.register('amount', { onChange: () => setAmountError(false) })}
+            />
+          </FormField>
+        )}
         <FormField
           id="subscription-payment-method"
           label={t('subscriptionPayments.method')}
@@ -227,7 +283,7 @@ function DeclarePaymentDialog({
           id="subscription-payment-reference"
           label={t('subscriptionPayments.reference')}
           required
-          error={errorText('declared_reference')}
+          error={referenceError}
           help={t('subscriptionPayments.referenceHelp')}
         >
           <InputText
@@ -244,6 +300,7 @@ function DeclarePaymentDialog({
             icon="pi pi-send"
             label={t('subscriptionPayments.submit')}
             loading={declare.isPending}
+            disabled={!quote.data}
           />
         </div>
       </form>
@@ -344,12 +401,19 @@ export function SubscriptionPaymentsSection({
             field="period_start"
             sortable
             header={t('subscriptionPayments.period')}
-            body={(p: SubscriptionPayment) =>
-              t('subscriptionPayments.periodValue', {
-                start: day(p.period_start, locale),
-                end: day(p.period_end, locale),
-              })
-            }
+            body={(p: SubscriptionPayment) => (
+              <div>
+                {t('subscriptionPayments.periodValue', {
+                  start: day(p.period_start, locale),
+                  end: day(p.period_end, locale),
+                })}
+                {p.requested_activations !== null && (
+                  <div className="sm-help">
+                    {t('renewal.postesRequested', { count: p.requested_activations })}
+                  </div>
+                )}
+              </div>
+            )}
           />
           <Column
             header={t('subscriptionPayments.method')}

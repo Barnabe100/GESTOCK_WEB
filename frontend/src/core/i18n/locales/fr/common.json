@@ -473,7 +473,7 @@
     "usage": "Utilisation",
     "unlimited": "Illimité",
     "allowed": "Accès autorisés",
-    "renewInfo": "Chaque site a son propre abonnement et sa propre licence. Pour renouveler, déclarez votre paiement : TechNova émettra la licence de la période suivante.",
+    "renewInfo": "Chaque site a son propre abonnement et sa propre licence. Pour renouveler, déclarez votre paiement : TechNova émettra la licence de la période suivante, qui commence au lendemain de la licence en cours (aucun jour perdu). Les droits restent ceux de la licence en vigueur jusque-là.",
     "limitNames": {
       "max_sites": "Sites",
       "max_users": "Utilisateurs"
@@ -509,7 +509,9 @@
       "reasonRequired": "La raison est obligatoire.",
       "confirmCheck": "Je confirme la libération de ce poste.",
       "released": "Poste libéré"
-    }
+    },
+    "effectivePlan": "Offre en vigueur",
+    "nextPlan": "Au prochain renouvellement : {{plan}}"
   },
   "errors": {
     "pageNotFound": "Page introuvable",
@@ -1451,5 +1453,59 @@
     "ACTIVE": "Active",
     "EXPIRED": "Expirée",
     "REVOKED": "Révoquée"
+  },
+  "renewal": {
+    "title": "Prochaine période",
+    "nextValue": "du {{start}} au {{end}} · {{postes}}",
+    "period": "Période",
+    "periodValue": "du {{start}} au {{end}}",
+    "plan": "Offre",
+    "postes": "Postes",
+    "postesValue_one": "{{count}} poste",
+    "postesValue_other": "{{count}} postes",
+    "postesChanged": "changement demandé, à confirmer par TechNova",
+    "postesRequested_one": "{{count}} poste demandé",
+    "postesRequested_other": "{{count}} postes demandés",
+    "amount": "Montant",
+    "renew": "Renouveler",
+    "payFirst": "Déclarer le paiement",
+    "graceContinuity": "Renouvellement pendant le délai de grâce : la nouvelle période suit immédiatement la licence échue, sans perte de jours.",
+    "changePostes": "Demander un autre nombre de postes",
+    "requestedPostes": "Nombre de postes souhaité",
+    "requestedPostesHelp": "TechNova confirme ou ajuste ce nombre à l'émission de la licence. Les postes déjà actifs restent actifs."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "Rappels d'échéance des licences de vos sites. L'historique est conservé.",
+    "bell_zero": "Notifications",
+    "bell_one": "Notifications : {{count}} non lue",
+    "bell_other": "Notifications : {{count}} non lues",
+    "company": "l'entreprise",
+    "remindersTitle": "Rappels d'échéance",
+    "history": "Voir toutes les notifications",
+    "markRead": "Marquer comme lu",
+    "markAllRead": "Tout marquer comme lu",
+    "filter": "Filtrer les notifications",
+    "all": "Toutes",
+    "unreadOnly": "Non lues",
+    "empty": "Aucune notification.",
+    "date": "Date",
+    "message": "Message",
+    "state": "État",
+    "read": "Lu",
+    "step": "J{{step}}",
+    "toSubscription": "Gérer les abonnements et les renouvellements",
+    "license": {
+      "before_one": "La licence du site {{site}} expire dans {{count}} jour (le {{date}}).",
+      "before_other": "La licence du site {{site}} expire dans {{count}} jours (le {{date}}).",
+      "today": "Votre licence expire aujourd'hui : site {{site}}.",
+      "after": "La licence du site {{site}} a expiré : le site n'est plus couvert depuis le {{date}}."
+    },
+    "trial": {
+      "before_one": "La période d'essai du site {{site}} se termine dans {{count}} jour (le {{date}}).",
+      "before_other": "La période d'essai du site {{site}} se termine dans {{count}} jours (le {{date}}).",
+      "today": "La période d'essai du site {{site}} se termine aujourd'hui.",
+      "after": "La période d'essai du site {{site}} est terminée depuis le {{date}}."
+    }
   }
 }

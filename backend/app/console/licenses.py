@@ -41,7 +41,9 @@ from app.platform.licensing.models import (
     LicenseState,
     LicenseStatus,
 )
+from app.platform.licensing.renewal import renewal_quote
 from app.platform.licensing.service import (
+    grace_days_of,
     local_day,
     local_midnight,
     next_valid_from,
@@ -91,6 +93,9 @@ class Proposal:
     valid_from: date
     valid_until: date
     max_activations: int
+    current_activations: int | None
+    requested_activations: int | None
+    grace_continuity: bool
     blocking: str | None
     existing_license_id: uuid.UUID | None
 
@@ -260,8 +265,14 @@ class LicenseAdminService:
         subscription = self.db.get(Subscription, payment.subscription_id)
         assert subscription is not None
         tenant = self._tenant(payment.tenant_id)
-        today = local_day(self.now, tenant.timezone)
-        valid_from = next_valid_from(subscription_licenses(self.db, subscription.id), today)
+        # Même devis que celui présenté à l'entreprise (R1–R3) : période, plan, postes.
+        quote = renewal_quote(
+            self.db,
+            subscription,
+            timezone=tenant.timezone,
+            now=self.now,
+            requested_activations=payment.requested_activations,
+        )
         existing = self._licenses_of_payment(payment.id)
         # Colonnes autorisées au rôle de la console seulement (jamais l'entité complète).
         site_name = (
@@ -275,9 +286,14 @@ class LicenseAdminService:
             tenant_name=tenant.name,
             site_name=site_name,
             timezone=tenant.timezone,
-            valid_from=valid_from,
-            valid_until=period_last_day(valid_from, subscription.billing_period),
-            max_activations=subscription.requested_activations,
+            valid_from=quote.valid_from,
+            valid_until=quote.valid_until,
+            # R1 : quota de la licence de référence reconduit, sauf demande explicite du client
+            # (portée par le paiement) ; TechNova confirme ou ajuste.
+            max_activations=quote.activations,
+            current_activations=quote.current_activations,
+            requested_activations=payment.requested_activations,
+            grace_continuity=quote.grace_continuity,
             blocking=self._blocking(payment, subscription, tenant),
             existing_license_id=existing[-1].id if existing else None,
         )
@@ -449,7 +465,12 @@ class LicenseAdminService:
             extra = {"license_id": str(existing[-1].id)} if existing else {}
             raise self._refuse(blocking, **extra)
         licenses = subscription_licenses(self.db, subscription.id)
-        valid_from = next_valid_from(licenses, local_day(self.now, tenant.timezone))
+        # R2 : continuité pendant la période de grâce (la grâce ne décale pas la période).
+        valid_from = next_valid_from(
+            licenses,
+            local_day(self.now, tenant.timezone),
+            grace_days_of(self.db, licenses, subscription),
+        )
         license, _ = self._issue(
             subscription=subscription,
             payment_id=payment.id,

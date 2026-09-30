@@ -47,16 +47,75 @@ def self_service(plan: Plan) -> bool:
     )
 
 
+@dataclass(frozen=True)
+class Tariff:
+    """Tarif d'une période (3.3-B4) : prix de base couvrant ``included_activations`` postes,
+    plus ``activation_price`` par poste supplémentaire (nul : postes supplémentaires sur devis).
+    ``price`` nul : aucun tarif publié pour cette période (offre sur devis)."""
+
+    price: Decimal | None
+    currency: str | None
+    included_activations: int | None
+    activation_price: Decimal | None
+
+    def amount(self, activations: int) -> Decimal | None:
+        """Montant d'une période pour ``activations`` postes ; ``None`` si aucun tarif."""
+        if self.price is None or self.included_activations is None:
+            return None
+        extra = max(activations - self.included_activations, 0)
+        if extra and self.activation_price is None:
+            return None
+        return self.price + extra * (self.activation_price or Decimal(0))
+
+
+NO_TARIFF = Tariff(price=None, currency=None, included_activations=None, activation_price=None)
+
+
+def plan_tariff(plan: Plan, billing_period: BillingPeriod) -> Tariff:
+    """Tarif de la période dans le catalogue de TechNova (si cette période est ouverte)."""
+    if billing_period is BillingPeriod.MONTHLY and plan.monthly_price_enabled:
+        price, unit = plan.monthly_price, plan.monthly_activation_price
+    elif billing_period is BillingPeriod.ANNUAL and plan.annual_price_enabled:
+        price, unit = plan.annual_price, plan.annual_activation_price
+    else:
+        return NO_TARIFF
+    return Tariff(
+        price=price,
+        currency=plan.currency,
+        included_activations=plan.included_activations,
+        activation_price=unit,
+    )
+
+
+def freeze_tariff(subscription: Subscription, tariff: Tariff) -> None:
+    """Fige le tarif dans l'abonnement : une modification ultérieure du catalogue n'a aucun
+    effet rétroactif (seuls un changement de plan décidé par TechNova le refige)."""
+    subscription.price_at_subscription = tariff.price
+    subscription.currency_at_subscription = tariff.currency if tariff.price is not None else None
+    subscription.included_activations_at_subscription = (
+        tariff.included_activations if tariff.price is not None else None
+    )
+    subscription.activation_price_at_subscription = (
+        tariff.activation_price if tariff.price is not None else None
+    )
+
+
+def subscription_tariff(subscription: Subscription) -> Tariff:
+    """Tarif figé de l'abonnement (base du montant de ses paiements)."""
+    return Tariff(
+        price=subscription.price_at_subscription,
+        currency=subscription.currency_at_subscription,
+        included_activations=subscription.included_activations_at_subscription,
+        activation_price=subscription.activation_price_at_subscription,
+    )
+
+
 def subscription_price(
     plan: Plan, billing_period: BillingPeriod
 ) -> tuple[Decimal | None, str | None]:
-    """Prix de la période souscrite, à figer dans l'abonnement : celui du plan si TechNova a
-    ouvert cette période (prix et devise), sinon aucun."""
-    if billing_period is BillingPeriod.MONTHLY and plan.monthly_price_enabled:
-        return plan.monthly_price, plan.currency
-    if billing_period is BillingPeriod.ANNUAL and plan.annual_price_enabled:
-        return plan.annual_price, plan.currency
-    return None, None
+    """Prix de base de la période souscrite (voir ``plan_tariff`` pour le tarif complet)."""
+    tariff = plan_tariff(plan, billing_period)
+    return tariff.price, tariff.currency
 
 
 @dataclass(frozen=True)
@@ -91,10 +150,10 @@ def apply_plan_change(subscription: Subscription, plan: Plan) -> PlanChange:
     )
     if subscription.plan_code == plan.code:
         return previous
-    price, currency = subscription_price(plan, subscription.billing_period)
+    tariff = plan_tariff(plan, subscription.billing_period)
     subscription.plan_code = plan.code
-    subscription.price_at_subscription = price
-    subscription.currency_at_subscription = currency
+    freeze_tariff(subscription, tariff)
+    price, currency = tariff.price, tariff.currency if tariff.price is not None else None
     return PlanChange(
         previous_plan=previous.previous_plan,
         plan=plan.code,

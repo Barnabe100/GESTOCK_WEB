@@ -48,6 +48,11 @@ class PlanOut(BaseModel):
     commercial_description: str | None
     display_order: int
     trial_days: int
+    # Tarification par poste (3.3-B4) : postes compris dans le prix de base, prix de chaque
+    # poste supplémentaire par période (nul : sur devis).
+    included_activations: int
+    monthly_activation_price: Money | None
+    annual_activation_price: Money | None
     # Souscriptible depuis l'inscription publique (règle unique, celle de l'inscription).
     self_service: bool
     updated_at: datetime
@@ -98,6 +103,9 @@ class PlanCommercialUpdate(BaseModel):
     commercial_description: str | None = Field(default=None, max_length=2000)
     display_order: int | None = Field(default=None, ge=0, le=9999)
     trial_days: int | None = Field(default=None, ge=0, le=365)
+    included_activations: int | None = Field(default=None, ge=1, le=10_000)
+    monthly_activation_price: Money | None = None
+    annual_activation_price: Money | None = None
     reason: str = Field(min_length=1, max_length=500)
 
     @field_validator("reason")
@@ -373,6 +381,8 @@ class ConsolePaymentOut(BaseModel):
     period_end: date
     payment_method: str
     declared_reference: str
+    # Changement explicite du nombre de postes demandé par l'entreprise (3.3-B4, R1).
+    requested_activations: int | None
     status: str
     created_at: datetime
     decided_at: datetime | None
@@ -437,8 +447,16 @@ class LicenseProposalOut(BaseModel):
     timezone: str
     valid_from: date
     valid_until: date
-    requested_activations: int
+    # Postes demandés à la souscription (première licence seulement).
+    initial_requested_activations: int
+    # Postes de la licence de référence du site (nul : première licence).
+    current_activations: int | None
+    # Changement explicite demandé par l'entreprise avec ce paiement (R1) ; nul : reconduction.
+    requested_activations: int | None
+    # Proposition : demande explicite, sinon postes actuels, sinon postes demandés initialement.
     max_activations: int
+    # La période commence avant aujourd'hui : renouvellement pendant la grâce (R2).
+    grace_continuity: bool
     payment_period_start: date
     payment_period_end: date
     blocking: str | None

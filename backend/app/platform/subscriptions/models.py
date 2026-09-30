@@ -73,6 +73,15 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             name="price_snapshot_complete",
         ),
         CheckConstraint("requested_activations >= 1", name="requested_activations_positive"),
+        # Tarif par poste figé avec le prix de base (3.3-B4).
+        CheckConstraint(
+            "(included_activations_at_subscription IS NULL) = (price_at_subscription IS NULL)",
+            name="included_activations_snapshot_complete",
+        ),
+        CheckConstraint(
+            "activation_price_at_subscription IS NULL OR price_at_subscription IS NOT NULL",
+            name="activation_price_snapshot_complete",
+        ),
     )
 
     site_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
@@ -94,6 +103,10 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # tarif du plan ne change pas rétroactivement l'abonnement (nul : aucun prix affiché).
     price_at_subscription: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     currency_at_subscription: Mapped[str | None] = mapped_column(String(3))
+    # Tarif par poste figé en même temps (3.3-B4) : postes compris dans le prix de base et prix
+    # de chaque poste supplémentaire (nul : sur devis).
+    included_activations_at_subscription: Mapped[int | None] = mapped_column(Integer)
+    activation_price_at_subscription: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     # Nombre de postes demandé par le client à la souscription (défaut : 1) ; TechNova le
     # confirme ou l'ajuste à la génération de la licence, qui le fige (3.3-B).
     requested_activations: Mapped[int] = mapped_column(
@@ -143,6 +156,10 @@ class SubscriptionPayment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         # Cible de la clé étrangère des licences (paiement de CET abonnement).
         UniqueConstraint("tenant_id", "subscription_id", "id"),
         CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(
+            "requested_activations IS NULL OR requested_activations BETWEEN 1 AND 10000",
+            name="requested_activations_range",
+        ),
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="iso_currency"),
         CheckConstraint("period_end > period_start", name="period_ordered"),
         CheckConstraint("length(btrim(declared_reference)) > 0", name="reference_present"),
@@ -174,6 +191,9 @@ class SubscriptionPayment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # Référence de l'opération (n° de virement, de transaction Mobile Money…).
     declared_reference: Mapped[str] = mapped_column(String(100), nullable=False)
     idempotency_key: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    # Nombre de postes demandé EXPLICITEMENT pour la période payée (3.3-B4) ; nul : quota de la
+    # licence en vigueur reconduit. TechNova le confirme ou l'ajuste à la génération.
+    requested_activations: Mapped[int | None] = mapped_column(Integer)
     declared_by: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )

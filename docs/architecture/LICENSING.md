@@ -10,8 +10,9 @@ TENANT ── SITE A ── SUBSCRIPTION A ── PAYMENT (CONFIRMED) ── LIC
 ```
 
 État de la phase : **B1** ✅ abonnement par site · **B2** ✅ licences, Signing Service, console
-· **B3** ✅ postes (activations, [ADR-0035](../adr/0035-postes-activations.md)) · B4
-renouvellement et notifications.
+· **B3** ✅ postes (activations, [ADR-0035](../adr/0035-postes-activations.md)) · **B4** ✅
+renouvellement et rappels d'échéance ([ADR-0036](../adr/0036-renouvellement-et-notifications.md),
+§ 9).
 
 ## 1. Acteurs et frontières
 
@@ -38,11 +39,15 @@ PAYMENT CONFIRMED ──génération──▶ ISSUED ──révocation──▶ 
 - **Génération** : paiement `CONFIRMED` exigé (`409 payment_not_confirmed`), abonnement rattaché
   à un site, entreprise active, une licence au plus par paiement (`409 license_already_issued`).
 - **Période** : jours inclus du fuseau de l'entreprise. Début = lendemain de la couverture en
-  cours (renouvellement contigu), sinon aujourd'hui ; fin = début + période de facturation − 1
-  jour (01/10/2026 annuel → 30/09/2027). Une période manuelle transitoire (3.2-G) en cours est
-  remplacée par la première licence.
-- **Postes** (`max_activations`) : proposé = `requested_activations` de l'abonnement (défaut 1),
-  confirmé ou ajusté par TechNova, figé. Consommé par les activations de postes (3.3-B3).
+  cours (renouvellement contigu) ; sans couverture, lendemain de la dernière licence si elle est
+  échue depuis au plus le délai de grâce (continuité, 3.3-B4), sinon aujourd'hui (jamais
+  rétroactif) ; fin = début + période de facturation − 1 jour (01/10/2026 annuel →
+  30/09/2027). Une période manuelle transitoire (3.2-G) en cours est remplacée par la première
+  licence.
+- **Postes** (`max_activations`) : proposé = demande explicite de l'entreprise avec le paiement,
+  sinon postes de la licence de référence du site, sinon (première licence)
+  `requested_activations` de l'abonnement (défaut 1) ; confirmé ou ajusté par TechNova, figé.
+  Consommé par les activations de postes (3.3-B3).
 - **Révocation** : définitive ; sans autre licence couvrant ce jour, l'abonnement du site passe
   `suspended` (régularisation seulement), les données sont conservées.
 - **Réémission** : révoque l'ancienne (si besoin) et émet une nouvelle licence (nouveau numéro,
@@ -114,6 +119,8 @@ Vérification : `app.platform.licensing.keyring.verify_document` avec le trousse
 | Installation | `POST /license-activations` · `POST /license-activations/check-in` | Activation (site sélectionné) · contrôle de présence |
 | Entreprise | `POST /license-activations/{id}/release` | Libération (`reason`) |
 | Console | `GET /activations` · `POST /activations/{id}/release` | Postes (filtres entreprise, abonnement, site, statut) · libération par TechNova |
+| Entreprise | `GET /subscriptions` → `renewal`, `effective_plan`, `next_plan` · `GET /subscriptions/{id}/renewal-quote` | Devis de la prochaine période (3.3-B4) |
+| Entreprise | `GET /notifications` · `GET /notifications/unread-count` · `POST /notifications/{id}/read` · `POST /notifications/read-all` | Rappels d'échéance (3.3-B4) |
 
 ## 7. Postes (activations, Phase 3.3-B3, ADR-0035)
 
@@ -140,7 +147,38 @@ Entreprise / TechNova ── libération (raison) ──▶ RELEASED : une place
 - Le Web n'active jamais de navigateur : la page Abonnement affiche « 3 postes autorisés · 2
   utilisés · 1 disponible », les postes et la libération.
 
-## 8. Sécurité et tests
+## 8. Renouvellement et rappels d'échéance (Phase 3.3-B4, ADR-0036)
+
+```text
+Entreprise ── « Renouveler » (site) ── devis serveur : période, postes, montant
+      │         (GET /subscriptions/{id}/renewal-quote ; seule demande possible : autre nombre
+      │          de postes, explicite)
+      └── POST /subscription/payments (sans période ; montant seulement sans tarif)
+TechNova ── confirme ── génère la licence suivante (lendemain de la licence en cours)
+Job quotidien ── stockmanager notifications run ── rappels J-30 … J+7 (idempotents)
+```
+
+- **R1** postes reconduits (licence de référence) ; changement seulement explicite, confirmé
+  ou ajusté par TechNova. Postes actifs jamais libérés par un renouvellement ni par
+  l'expiration ; quota réduit toléré (nouvelles activations refusées).
+- **R2** renouvellement pendant la grâce : la nouvelle période suit la licence échue ; au-delà,
+  elle commence le jour de la génération.
+- **R3** période, postes et montant calculés par le serveur (`amount_computed_by_server`,
+  `amount_required`) ; le client ne fournit jamais la période.
+- **R4** page Abonnement : « Offre en vigueur » (licence en vigueur) et « Au prochain
+  renouvellement » ; les droits restent ceux de la licence en vigueur, sans job de bascule.
+- **Tarif** : prix de base + postes au-delà de `included_activations` × prix par poste (mensuel
+  / annuel), paramètres commerciaux de TechNova figés sur l'abonnement du site.
+- **Rappels** : étapes `SM_RENEWAL_NOTICE_DAYS` (défaut `30,15,10,5,1,0,-1,-7`), essais J-5 /
+  J-1 / J0 ; `active`, `past_due`, `expired`, `trial` ; jamais `pending_activation`,
+  `suspended`, `cancelled` ni entreprise suspendue ; unicité (abonnement, étape, échéance) ;
+  job manqué : seule l'étape la plus récente est envoyée (les autres `SKIPPED`) ; verrou
+  consultatif (pas d'exécutions simultanées). Cron d'exemple :
+  `15 6 * * * cd /srv/stockmanager/backend && uv run stockmanager notifications run`.
+- **Révocation** : aucune substitution automatique par une licence déjà payée (ADR-0034) ;
+  réémission explicite par TechNova.
+
+## 9. Sécurité et tests
 
 - RLS `ENABLE` + `FORCE` ; rôle applicatif `SELECT` seulement ; rôle de la console : lecture,
   `INSERT` `ISSUED`, révocation seulement ; déclencheur d'immutabilité (même pour le
@@ -152,4 +190,8 @@ Entreprise / TechNova ── libération (raison) ──▶ RELEASED : une place
   `signing-service/tests` (signature, payloads refusés, HMAC, rejeu, horodatage, démarrage,
   journaux sans secret, génération de clés), `backend/tests/test_license_activations.py`
   (quota, concurrence, idempotence, refus distincts, libération, contrôle, permissions, RLS,
-  droits SQL, finalité, console). Clés **éphémères** uniquement.
+  droits SQL, finalité, console), `backend/tests/test_renewal.py` (devis, R1–R4, grâce, tarif
+  figé, postes conservés / augmentés / réduits, expiration, révocation sans repli, réémission),
+  `backend/tests/test_notifications.py` (chaque étape, essais, statuts exclus, idempotence,
+  échéance modifiée, job manqué, concurrence, CLI, visibilité par site et par droit, lu / non
+  lu, isolation, RLS). Clés **éphémères** uniquement.

@@ -12,7 +12,7 @@ import { FormField } from '@/shared/ui/FormField';
 import { useToast } from '@/shared/ui/toast';
 
 import { useGenerateLicense, useLicenseAction, useReleaseActivation } from './queries';
-import { Details, paymentDay } from './tenantDisplay';
+import { Details, paymentDay, postesRows } from './tenantDisplay';
 import type { ConsoleActivation, ConsoleLicense, LicenseProposal } from './types';
 
 /** Plafond aligné sur le serveur (`MAX_ACTIVATIONS`), qui revalide de toute façon. */
@@ -174,9 +174,13 @@ export function GenerateLicenseDialog({
           }),
           'proposal-validity',
         ],
-        [t('console:license.requestedActivations'), String(proposal.requested_activations)],
+        ...postesRows(t, proposal),
       ]}
-      warning={t('console:license.generateWarning')}
+      warning={
+        proposal.grace_continuity
+          ? `${t('console:license.graceContinuity')} ${t('console:license.generateWarning')}`
+          : t('console:license.generateWarning')
+      }
       submitLabel={t('console:license.generateAction')}
       pending={generate.isPending}
       error={generate.error}

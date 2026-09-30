@@ -56,7 +56,7 @@ idempotent, devise fixée par le serveur, aucun champ de décision accepté du c
 **définitive** (`PENDING` → `CONFIRMED` | `REJECTED`) par TechNova seule dans la console
 (`/payments/{id}/confirm|reject`, verrou, raison obligatoire — motif du rejet visible par
 l'entreprise —, double audit ; rôle SQL de la console limité aux colonnes de décision) ;
-**Payment CONFIRMED ≠ activation** : rien n'est activé. **3.3-B en cours (licences)** : B1 livrée —
+**Payment CONFIRMED ≠ activation** : rien n'est activé. **3.3-B livrée (licences)** : B1 livrée —
 **1 site = 1 abonnement** (ADR-0033) : `subscriptions.site_id` (abonnement d'inscription rattaché
 au premier site), nouveau site = abonnement `pending_activation` au plan publié choisi (pas
 d'essai), capacités **par site** (sans site : union des abonnements), toute écriture sur un site
@@ -78,8 +78,20 @@ navigateur) sur le site sélectionné, sous la licence **en vigueur**, quota `ma
 **par abonnement de site** sous verrou, idempotente, refus distincts journalisés
 (« Le nombre maximal de postes autorisés pour ce site est atteint. ») ; contrôle de présence
 (`check-in`, durée hors ligne tolérée) ; libération (entreprise ou TechNova) = une place,
-**rien d'autre** (licence et période inchangées). B4 (renouvellement, notifications) : suit,
-arrêt après chaque sous-phase si non verte. Non implémentés (feuille de route §13) :
+**rien d'autre** (licence et période inchangées). B4 livrée — **renouvellement par site et rappels d'échéance** (ADR-0036) : devis
+**calculé par le serveur** (`GET /subscriptions/{id}/renewal-quote` ; la déclaration n'accepte
+plus de période, montant seulement pour une offre sans tarif) ; postes reconduits depuis la
+licence de référence, autre nombre seulement sur **demande explicite** confirmée par TechNova ;
+pendant la grâce, la licence suivante suit la licence échue (aucun jour perdu), au-delà elle
+commence le jour même (jamais rétroactive) ; « Offre en vigueur » (licence) ≠ « Au prochain
+renouvellement », droits de la licence en vigueur sans job de bascule ; tarif plan + postes
+(`included_activations`, prix par poste) figé sur l'abonnement du site ; postes jamais libérés
+par un renouvellement ni l'expiration ; rappels `notifications` (étapes `SM_RENEWAL_NOTICE_DAYS`,
+défaut J-30 … J+7, essais J-5/J-1/J0) créés par le job idempotent
+`stockmanager notifications run` (cron, rôle SQL de la console, verrou consultatif, job manqué :
+seule l'étape la plus récente), lu / non lu par membre, visibles par site avec
+`subscription.subscription.view`. Moyens de paiement configurables et téléchargement du `.lic`
+par l'entreprise : non faits. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
@@ -240,6 +252,7 @@ uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données c
 uv run uvicorn app.main:app --reload --port 8000
 uv run stockmanager platform-admin create --email … --name "…"   # compte TechNova (CLI seule)
 uv run uvicorn app.console.main:app --reload --port 8001   # console TechNova (SM_PLATFORM_*)
+uv run stockmanager notifications run     # rappels d'échéance (cron quotidien, idempotent)
 #   licences : SM_SIGNING_SERVICE_URL, SM_SIGNING_CLIENT_SECRET, SM_LICENSE_PUBLIC_KEYS_FILE
 
 # Signing Service (depuis signing-service/, déployé À PART ; clé privée hors dépôt)

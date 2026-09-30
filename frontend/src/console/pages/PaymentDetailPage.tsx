@@ -26,7 +26,7 @@ import { AuditChanges } from '../auditDisplay';
 import { CONSOLE_BASE } from '../ConsoleLayout';
 import { GenerateLicenseDialog } from '../LicenseDialogs';
 import { useAudit, useLicenseProposal, usePayment, usePaymentDecision } from '../queries';
-import { Details, paymentDay } from '../tenantDisplay';
+import { Details, paymentDay, postesRows } from '../tenantDisplay';
 import type { ConsolePayment, PaymentDecision, PlatformAuditEntry } from '../types';
 
 type Kind = PaymentDecision['kind'];
@@ -181,9 +181,16 @@ function PaymentLicense({ payment }: { payment: ConsolePayment }) {
                   end: paymentDay(p.valid_until),
                 }),
               ],
-              [t('console:license.requestedActivations'), String(p.requested_activations)],
+              ...postesRows(t, p),
             ]}
           />
+          {p.grace_continuity && (
+            <Message
+              severity="info"
+              text={t('console:license.graceContinuity')}
+              data-testid="grace-continuity"
+            />
+          )}
           <p className="sm-help">{t('console:license.generateHelp')}</p>
           <div className="sm-quick-actions">
             <Button
@@ -290,6 +297,13 @@ export function PaymentDetailPage() {
               ],
               [t('console:payment.method'), t(`subscriptionPaymentMethod.${p.payment_method}`)],
               [t('console:payment.reference'), p.declared_reference],
+              [
+                t('console:payment.requestedActivations'),
+                p.requested_activations === null
+                  ? t('console:license.renewalSame')
+                  : String(p.requested_activations),
+                'payment-requested-activations',
+              ],
               [t('console:payment.declaredAt'), formatDateTime(p.created_at, 'fr')],
             ]}
           />

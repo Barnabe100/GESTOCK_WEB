@@ -173,5 +173,9 @@
   "activation_quota_reached": "Le nombre maximal de postes autorisés pour ce site est atteint.",
   "installation_active_elsewhere": "Ce poste est déjà activé sur un autre site : libérez-le d'abord.",
   "activation_not_found": "Poste introuvable.",
-  "activation_already_released": "Ce poste est déjà libéré."
+  "activation_already_released": "Ce poste est déjà libéré.",
+  "amount_computed_by_server": "Le montant est calculé par le serveur à partir du tarif de votre offre : ne le saisissez pas.",
+  "amount_required": "Aucun tarif n'est défini pour cette offre : indiquez le montant convenu avec TechNova.",
+  "notification_not_found": "Notification introuvable.",
+  "included_activations_required": "Indiquez le nombre de postes compris dans le prix de base."
 }

@@ -67,6 +67,12 @@ cd backend && SM_SIGNING_SERVICE_URL=http://127.0.0.1:8100 \
   uv run uvicorn app.console.main:app --port 8001
 ```
 
+Renouvellement (`renewal.e2e.ts`, Phase 3.3-B4) : même Signing Service ; le scénario lance
+lui-même le job des rappels (`stockmanager notifications run --now …`, dans `../backend` ou
+`E2E_BACKEND_DIR`) avec une date proche de l'échéance de sa propre licence. Le job étant
+global, il crée aussi des rappels (idempotents) pour les autres entreprises de la base de
+développement.
+
 La console TechNova exige le rôle SQL `stockmanager_platform`
 (`docker/postgres/init/02-platform-role.sh`) ; `console.e2e.ts` crée lui-même un
 administrateur TechNova par la CLI (`stockmanager platform-admin create`).

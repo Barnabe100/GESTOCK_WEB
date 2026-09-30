@@ -64,6 +64,57 @@ export interface SubscriptionDetails {
   allowed_access: string[];
   /** Licence en vigueur du site, sinon la plus récente ; nulle : aucune licence. */
   license: LicenseSummary | null;
+  /** Offre dont les droits sont en vigueur (celle de la licence en vigueur, R4). */
+  effective_plan: PlanRef;
+  /** Offre de la prochaine licence si elle diffère (changement de plan non encore effectif). */
+  next_plan: PlanRef | null;
+  /** Prochaine période du site, calculée par le serveur. */
+  renewal: RenewalQuote;
+}
+
+export interface PlanRef {
+  code: string;
+  name: string;
+}
+
+/**
+ * Devis de la prochaine période d'un site (Phase 3.3-B4) : période, postes et montant sont
+ * **calculés par le serveur** ; l'interface les affiche seulement. ``amount`` nul : offre sans
+ * tarif (montant convenu avec TechNova, saisi à la déclaration).
+ */
+export interface RenewalQuote {
+  subscription_id: string;
+  site_id: string | null;
+  kind: 'initial' | 'renewal';
+  plan: PlanRef;
+  billing_period: 'monthly' | 'annual';
+  valid_from: string;
+  valid_until: string;
+  activations: number;
+  current_activations: number | null;
+  activations_explicit: boolean;
+  amount: string | null;
+  currency: string | null;
+  coverage_end: string | null;
+  /** La période commence avant aujourd'hui : renouvellement pendant la grâce, sans perte. */
+  grace_continuity: boolean;
+  /** Action « Renouveler » proposée. */
+  renewal_due: boolean;
+}
+
+/** Devis pour un autre nombre de postes (demande explicite ; TechNova confirme). */
+export function useRenewalQuote(subscriptionId: string, requestedActivations: number | null) {
+  return useQuery({
+    queryKey: ['subscription', 'quote', subscriptionId, requestedActivations],
+    queryFn: ({ signal }) =>
+      api.get<RenewalQuote>(
+        `/subscriptions/${encodeURIComponent(subscriptionId)}/renewal-quote` +
+          (requestedActivations ? `?requested_activations=${requestedActivations}` : ''),
+        signal,
+      ),
+    enabled: Boolean(subscriptionId),
+    placeholderData: (previous) => previous,
+  });
 }
 
 /** Abonnements de l'entreprise (sites accessibles au membre). */
@@ -97,6 +148,8 @@ export interface SubscriptionPayment {
   period_end: string;
   payment_method: SubscriptionPaymentMethod;
   declared_reference: string;
+  /** Nombre de postes demandé explicitement pour cette période (nul : reconduction). */
+  requested_activations: number | null;
   declared_by: string;
   status: SubscriptionPaymentStatus;
   created_at: string;
@@ -105,14 +158,14 @@ export interface SubscriptionPayment {
 }
 
 /**
- * Déclaration : aucun champ de décision ni de devise (fixés par le serveur ou par TechNova ;
- * le serveur refuse tout champ inconnu).
+ * Déclaration : ni période, ni devise, ni champ de décision (calculés par le serveur ou fixés
+ * par TechNova ; le serveur refuse tout champ inconnu). ``amount`` seulement pour une offre sans
+ * tarif ; ``requested_activations`` seulement pour demander un autre nombre de postes.
  */
 export interface SubscriptionPaymentInput {
   subscription_id: string;
-  amount: string;
-  period_start: string;
-  period_end: string;
+  amount?: string;
+  requested_activations?: number;
   payment_method: SubscriptionPaymentMethod;
   declared_reference: string;
   idempotency_key: string;
@@ -135,6 +188,56 @@ export function useDeclareSubscriptionPayment() {
     mutationFn: (input: SubscriptionPaymentInput) =>
       api.post<SubscriptionPayment>('/subscription/payments', input),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: PAYMENTS_KEY }),
+  });
+}
+
+// --- Rappels d'échéance (Phase 3.3-B4, ADR-0036) ------------------------------------------------
+
+/** Rappel d'échéance d'un site : lu / non lu propre au membre ; historique conservé. */
+export interface AppNotification {
+  id: string;
+  kind: 'subscription.expiry';
+  /** Jours avant l'échéance (négatif : après). */
+  step: number;
+  /** Dernier jour couvert (jour du fuseau de l'entreprise). */
+  reference_date: string;
+  site: { id: string; name: string; code: string } | null;
+  subscription_id: string | null;
+  data: { days_left?: number; plan_code?: string; effective_status?: string; trial?: boolean };
+  created_at: string;
+  read_at: string | null;
+}
+
+const NOTIFICATIONS_KEY = ['notifications'] as const;
+
+export function useNotifications(query: string, enabled = true) {
+  return useQuery({
+    queryKey: [...NOTIFICATIONS_KEY, 'list', query],
+    queryFn: ({ signal }) => api.get<Page<AppNotification>>(`/notifications?${query}`, signal),
+    placeholderData: (previous) => previous,
+    enabled,
+  });
+}
+
+export function useUnreadNotifications(enabled: boolean) {
+  return useQuery({
+    queryKey: [...NOTIFICATIONS_KEY, 'unread'],
+    queryFn: ({ signal }) => api.get<{ unread: number }>('/notifications/unread-count', signal),
+    enabled,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+/** Marque une notification (ou toutes, ``id`` nul) comme lue par le membre. */
+export function useMarkNotificationsRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | null) =>
+      api.post<void>(
+        id ? `/notifications/${encodeURIComponent(id)}/read` : '/notifications/read-all',
+        {},
+      ),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
   });
 }
 

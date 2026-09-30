@@ -226,7 +226,8 @@ class CapabilityService:
             profile_code=profile.code,
             sector_code=profile.sector_code,
             ux_profile_code=profile.ux_profile_code,
-            plan_code=representative.plan.code,
+            # Offre dont les droits sont en vigueur (licence en vigueur, sinon plan) : R4.
+            plan_code=representative.terms.plan_code,
             subscription_status=representative.status,
             subscription_id=representative.subscription.id,
             allowed_access=frozenset().union(*(g.access for g in grants)),

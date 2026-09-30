@@ -14,7 +14,6 @@ confirmé n'active rien : l'activation viendra de la licence (3.3-B).
 """
 
 import uuid
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -23,43 +22,26 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
+from app.platform.licensing.renewal import renewal_quote
 from app.platform.subscriptions.models import (
     Subscription,
     SubscriptionPayment,
     SubscriptionPaymentStatus,
 )
 from app.platform.subscriptions.schemas import SubscriptionPaymentCreate
-from app.platform.subscriptions.service import add_months
+from app.shared.clock import utcnow
 from app.shared.pagination import PageParams, apply_sort, paginate
-
-# Période couverte : au plus 24 mois (saisie manifestement erronée au-delà).
-MAX_PERIOD_MONTHS = 24
-
-
-def check_declared_period(data: SubscriptionPaymentCreate) -> None:
-    if data.period_end <= data.period_start:
-        raise BusinessRuleError("La fin de période doit suivre son début", code="invalid_period")
-    if (
-        data.period_end
-        > add_months(
-            datetime.combine(data.period_start, datetime.min.time()), MAX_PERIOD_MONTHS
-        ).date()
-    ):
-        raise BusinessRuleError(
-            f"Période trop longue ({MAX_PERIOD_MONTHS} mois au plus)",
-            code="period_too_long",
-            extra={"max_months": MAX_PERIOD_MONTHS},
-        )
 
 
 def _same_declaration(existing: SubscriptionPayment, data: SubscriptionPaymentCreate) -> bool:
+    """Même demande (double soumission) : mêmes champs **saisis** par le client ; la période et
+    le montant calculés par le serveur n'en font pas partie."""
     return (
         existing.subscription_id == data.subscription_id
-        and existing.amount == data.amount
-        and existing.period_start == data.period_start
-        and existing.period_end == data.period_end
         and existing.payment_method is data.payment_method
         and existing.declared_reference == data.declared_reference
+        and existing.requested_activations == data.requested_activations
+        and (data.amount is None or existing.amount == data.amount)
     )
 
 
@@ -114,17 +96,42 @@ class SubscriptionPaymentService:
                 "Clé d'idempotence déjà utilisée pour une autre déclaration",
                 code="idempotency_key_reused",
             )
-        check_declared_period(data)
+        quote = renewal_quote(
+            self.db,
+            subscription,
+            timezone=self.ctx.tenant.timezone,
+            now=utcnow(),
+            requested_activations=data.requested_activations,
+        )
+        # Montant : calculé par le serveur (tarif figé de l'abonnement) ; saisi par le client
+        # seulement pour une offre sur devis (aucun tarif figé).
+        if quote.amount is not None:
+            if data.amount is not None:
+                raise BusinessRuleError(
+                    "Le montant est calculé par le serveur", code="amount_computed_by_server"
+                )
+            amount = quote.amount
+        elif data.amount is None:
+            raise BusinessRuleError(
+                "Aucun tarif pour cette offre : indiquez le montant convenu avec TechNova",
+                code="amount_required",
+            )
+        else:
+            amount = data.amount
         payment = SubscriptionPayment(
             tenant_id=self.ctx.tenant_id,
             subscription_id=subscription.id,
-            amount=data.amount,
+            amount=amount,
             currency=subscription.currency_at_subscription or self.ctx.tenant.currency,
-            period_start=data.period_start,
-            period_end=data.period_end,
+            # Période calculée par le serveur (informative : celle de la licence sera recalculée
+            # par le serveur à sa génération) ; jamais fournie par le client.
+            period_start=quote.valid_from,
+            period_end=quote.valid_until,
             payment_method=data.payment_method,
             declared_reference=data.declared_reference,
             idempotency_key=data.idempotency_key,
+            # Changement de quota : seulement s'il est demandé explicitement (R1).
+            requested_activations=quote.activations if quote.activations_explicit else None,
             declared_by=self.ctx.user.id,
             status=SubscriptionPaymentStatus.PENDING,
         )
@@ -137,6 +144,8 @@ class SubscriptionPaymentService:
             "period_end": payment.period_end.isoformat(),
             "payment_method": payment.payment_method.value,
             "declared_reference": payment.declared_reference,
+            "requested_activations": payment.requested_activations,
+            "kind": quote.kind,
         }
         audit_action(
             self.db,

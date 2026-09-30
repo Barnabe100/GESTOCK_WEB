@@ -8,6 +8,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _DEV_JWT_SECRET = "dev-only-insecure-secret-change-me-0123456789"
 
 
+def parse_notice_days(value: str) -> tuple[int, ...]:
+    """``"30,15,…,-7"`` → ``(30, 15, …, -7)`` ; entiers distincts entre -60 et 365."""
+    try:
+        steps = {int(part) for part in value.split(",") if part.strip()}
+    except ValueError as exc:
+        raise ValueError("SM_RENEWAL_NOTICE_DAYS : entiers séparés par des virgules") from exc
+    if not steps or any(not -60 <= step <= 365 for step in steps):
+        raise ValueError("SM_RENEWAL_NOTICE_DAYS : au moins une étape, entre -60 et 365 jours")
+    return tuple(sorted(steps, reverse=True))
+
+
 class Settings(BaseSettings):
     """Configuration de l'application, lue depuis l'environnement (préfixe SM_)."""
 
@@ -81,6 +92,14 @@ class Settings(BaseSettings):
     # Postes (3.3-B3) : durée pendant laquelle une installation peut fonctionner sans contacter
     # le serveur (renvoyée au client lors du contrôle ; au-delà, poste signalé « non vu »).
     activation_offline_grace_days: int = 7
+    # Notifications d'échéance (3.3-B4) : jours avant (positifs) ou après (négatifs) le dernier
+    # jour couvert par la licence. Unique source de la liste (``renewal_notice_steps``).
+    renewal_notice_days: str = "30,15,10,5,1,0,-1,-7"
+
+    @property
+    def renewal_notice_steps(self) -> tuple[int, ...]:
+        """Étapes triées de la plus lointaine à la plus tardive (ex. 30 … -7)."""
+        return parse_notice_days(self.renewal_notice_days)
 
     password_min_length: int = 8
     login_max_failures: int = 5
@@ -88,6 +107,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_production_secrets(self) -> "Settings":
+        parse_notice_days(self.renewal_notice_days)  # configuration invalide : refus au démarrage
         if self.environment == "production":
             secret = self.jwt_secret.get_secret_value()
             if secret == _DEV_JWT_SECRET or len(secret) < 32:

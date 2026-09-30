@@ -50,6 +50,7 @@ const PAYMENT: ConsolePayment = {
   period_end: '2026-11-01',
   payment_method: 'BANK_TRANSFER',
   declared_reference: 'VIR-001',
+  requested_activations: null,
   status: 'CONFIRMED',
   created_at: '2026-09-25T10:00:00Z',
   decided_at: '2026-09-26T08:00:00Z',
@@ -70,8 +71,11 @@ const PROPOSAL: LicenseProposal = {
   timezone: 'Africa/Ouagadougou',
   valid_from: '2026-10-01',
   valid_until: '2027-09-30',
-  requested_activations: 2,
+  initial_requested_activations: 2,
+  current_activations: null,
+  requested_activations: null,
   max_activations: 2,
+  grace_continuity: false,
   payment_period_start: '2026-10-01',
   payment_period_end: '2027-09-30',
   blocking: null,
@@ -240,6 +244,35 @@ describe('Console TechNova : licences', () => {
     expect(url).toMatch(/\/payments\/p-1\/license$/);
     expect(body).toEqual({ reason: 'Virement vérifié', max_activations: 3 });
     await waitFor(() => expect(router.state.location.pathname).toBe('/tech-admin/licenses/l-new'));
+  });
+
+  it('renouvellement : postes actuels, demande explicite, continuité de grâce', async () => {
+    consoleApi({
+      proposal: {
+        ...PROPOSAL,
+        current_activations: 3,
+        requested_activations: 5,
+        max_activations: 5,
+        grace_continuity: true,
+      },
+    });
+    renderConsole('/tech-admin/payments/p-1');
+    const card = await screen.findByTestId('payment-license');
+    expect((await within(card).findByTestId('proposal-current')).textContent).toBe('3');
+    expect(within(card).getByTestId('proposal-request').textContent).toBe('5');
+    expect(within(card).getByTestId('proposal-max').textContent).toBe('5');
+    expect(within(card).getByTestId('grace-continuity').textContent).toContain('aucun jour perdu');
+    expect(within(card).queryByTestId('proposal-initial')).toBeNull();
+    fireEvent.click(within(card).getByRole('button', { name: 'Générer la licence' }));
+    const form = await screen.findByRole('form', { name: 'Générer la licence' });
+    expect((within(form).getByLabelText(/Postes autorisés/) as HTMLInputElement).value).toBe('5');
+  });
+
+  it('renouvellement sans demande : reconduction affichée', async () => {
+    consoleApi({ proposal: { ...PROPOSAL, current_activations: 4, max_activations: 4 } });
+    renderConsole('/tech-admin/payments/p-1');
+    const request = await screen.findByTestId('proposal-request');
+    expect(request.textContent).toBe('Reconduction (aucun changement demandé)');
   });
 
   it('génération impossible : raison du serveur affichée, aucun bouton', async () => {
