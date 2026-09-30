@@ -191,7 +191,7 @@ def test_declared_currency_follows_the_frozen_subscription_price(
     _sql(
         owner_db,
         "UPDATE subscriptions SET price_at_subscription = 15000, "
-        "currency_at_subscription = 'EUR', included_activations_at_subscription = 1 "
+        "currency_at_subscription = 'EUR' "
         "WHERE tenant_id = :t",
         t=alpha.tenant_id,
     )

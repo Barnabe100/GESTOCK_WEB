@@ -49,26 +49,28 @@ def self_service(plan: Plan) -> bool:
 
 @dataclass(frozen=True)
 class Tariff:
-    """Tarif d'une période (3.3-B4) : prix de base couvrant ``included_activations`` postes,
-    plus ``activation_price`` par poste supplémentaire (nul : postes supplémentaires sur devis).
-    ``price`` nul : aucun tarif publié pour cette période (offre sur devis)."""
+    """Tarif d'une période (3.3-B4, ADR-0036) : ``price`` = prix du **premier poste**,
+    ``activation_price`` = prix de chaque poste supplémentaire (nul : postes supplémentaires sur
+    devis). ``price`` nul : aucun tarif publié pour cette période (offre sur devis).
+
+    Formule **fixe** (seuls ses paramètres sont configurables par TechNova) :
+    montant = premier poste + (postes − 1) × poste supplémentaire."""
 
     price: Decimal | None
     currency: str | None
-    included_activations: int | None
     activation_price: Decimal | None
 
     def amount(self, activations: int) -> Decimal | None:
         """Montant d'une période pour ``activations`` postes ; ``None`` si aucun tarif."""
-        if self.price is None or self.included_activations is None:
+        if self.price is None:
             return None
-        extra = max(activations - self.included_activations, 0)
+        extra = max(activations - 1, 0)
         if extra and self.activation_price is None:
             return None
         return self.price + extra * (self.activation_price or Decimal(0))
 
 
-NO_TARIFF = Tariff(price=None, currency=None, included_activations=None, activation_price=None)
+NO_TARIFF = Tariff(price=None, currency=None, activation_price=None)
 
 
 def plan_tariff(plan: Plan, billing_period: BillingPeriod) -> Tariff:
@@ -79,12 +81,7 @@ def plan_tariff(plan: Plan, billing_period: BillingPeriod) -> Tariff:
         price, unit = plan.annual_price, plan.annual_activation_price
     else:
         return NO_TARIFF
-    return Tariff(
-        price=price,
-        currency=plan.currency,
-        included_activations=plan.included_activations,
-        activation_price=unit,
-    )
+    return Tariff(price=price, currency=plan.currency, activation_price=unit)
 
 
 def freeze_tariff(subscription: Subscription, tariff: Tariff) -> None:
@@ -92,9 +89,6 @@ def freeze_tariff(subscription: Subscription, tariff: Tariff) -> None:
     effet rétroactif (seuls un changement de plan décidé par TechNova le refige)."""
     subscription.price_at_subscription = tariff.price
     subscription.currency_at_subscription = tariff.currency if tariff.price is not None else None
-    subscription.included_activations_at_subscription = (
-        tariff.included_activations if tariff.price is not None else None
-    )
     subscription.activation_price_at_subscription = (
         tariff.activation_price if tariff.price is not None else None
     )
@@ -105,7 +99,6 @@ def subscription_tariff(subscription: Subscription) -> Tariff:
     return Tariff(
         price=subscription.price_at_subscription,
         currency=subscription.currency_at_subscription,
-        included_activations=subscription.included_activations_at_subscription,
         activation_price=subscription.activation_price_at_subscription,
     )
 

@@ -84,14 +84,16 @@ plus de période, montant seulement pour une offre sans tarif) ; postes recondui
 licence de référence, autre nombre seulement sur **demande explicite** confirmée par TechNova ;
 pendant la grâce, la licence suivante suit la licence échue (aucun jour perdu), au-delà elle
 commence le jour même (jamais rétroactive) ; « Offre en vigueur » (licence) ≠ « Au prochain
-renouvellement », droits de la licence en vigueur sans job de bascule ; tarif plan + postes
-(`included_activations`, prix par poste) figé sur l'abonnement du site ; postes jamais libérés
+renouvellement », droits de la licence en vigueur sans job de bascule ; tarif à formule **fixe** premier poste + (postes − 1) × poste
+supplémentaire (seuls ces prix, périodes, devise, publication sont paramétrables par TechNova ;
+migration 0024) figé sur l'abonnement du site ; postes jamais libérés
 par un renouvellement ni l'expiration ; rappels `notifications` (étapes `SM_RENEWAL_NOTICE_DAYS`,
 défaut J-30 … J+7, essais J-5/J-1/J0) créés par le job idempotent
 `stockmanager notifications run` (cron, rôle SQL de la console, verrou consultatif, job manqué :
 seule l'étape la plus récente), lu / non lu par membre, visibles par site avec
-`subscription.subscription.view`. Moyens de paiement configurables et téléchargement du `.lic`
-par l'entreprise : non faits. Non implémentés (feuille de route §13) :
+`subscription.subscription.view`. Aucun téléchargement `.lic` par l'entreprise dans le Web
+(décision finale : le Desktop est traité séparément). Moyens de paiement configurables : étape
+ultérieure (actuellement manuels : espèces, Orange Money sans API). Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

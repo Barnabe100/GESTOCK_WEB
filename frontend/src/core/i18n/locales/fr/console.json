@@ -93,16 +93,15 @@
     "fields": {
       "listed": "Publié",
       "monthly_price_enabled": "Période mensuelle proposée",
-      "monthly_price": "Prix mensuel",
+      "monthly_price": "Prix mensuel (premier poste)",
       "annual_price_enabled": "Période annuelle proposée",
-      "annual_price": "Prix annuel",
+      "annual_price": "Prix annuel (premier poste)",
       "currency": "Devise",
       "price_display_enabled": "Afficher le prix au public",
       "contact_required": "Souscription sur contact commercial uniquement",
       "commercial_description": "Description commerciale",
       "display_order": "Ordre d'affichage",
       "trial_days": "Durée d'essai (jours)",
-      "included_activations": "Postes compris dans le prix de base",
       "monthly_activation_price": "Prix mensuel par poste supplémentaire",
       "annual_activation_price": "Prix annuel par poste supplémentaire"
     },
@@ -137,8 +136,7 @@
     "historyTitle": "Historique des modifications",
     "historyEmpty": "Aucune modification enregistrée pour ce plan.",
     "activationPricing": "Tarif des postes",
-    "activationPricingHelp": "Montant d'une période = prix de base + postes au-delà de ceux compris × prix par poste. Figé à la souscription de chaque site ; les abonnements existants conservent leur tarif.",
-    "activationsInvalid": "Nombre de postes invalide (entier de 1 à 10 000)."
+    "activationPricingHelp": "Montant d'une période = prix du premier poste + (nombre de postes − 1) × prix d'un poste supplémentaire. Tarif figé à la souscription de chaque site : une révision ne modifie ni les abonnements existants, ni leurs paiements, ni leurs licences."
   },
   "limits": {
     "max_sites": "Sites",

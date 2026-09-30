@@ -47,11 +47,6 @@ const integer = z
   .trim()
   .regex(/^\d{1,4}$/, 'console:plan.integerInvalid');
 
-const postes = z
-  .string()
-  .trim()
-  .regex(/^[1-9]\d{0,3}$|^10000$/, 'console:plan.activationsInvalid');
-
 const schema = z.object({
   listed: z.boolean(),
   price_display_enabled: z.boolean(),
@@ -64,7 +59,6 @@ const schema = z.object({
   commercial_description: z.string().max(2000),
   display_order: integer,
   trial_days: integer,
-  included_activations: postes,
   monthly_activation_price: amount,
   annual_activation_price: amount,
   reason: z.string().trim().min(1, 'console:plan.reasonRequired').max(500),
@@ -80,7 +74,6 @@ const FIELDS: Field[] = [
   'annual_price_enabled',
   'annual_price',
   'currency',
-  'included_activations',
   'monthly_activation_price',
   'annual_activation_price',
   'price_display_enabled',
@@ -109,7 +102,6 @@ function toForm(plan: PlanCommercial): FormValues {
     commercial_description: plan.commercial_description ?? '',
     display_order: String(plan.display_order),
     trial_days: String(plan.trial_days),
-    included_activations: String(plan.included_activations),
     monthly_activation_price: plan.monthly_activation_price ?? '',
     annual_activation_price: plan.annual_activation_price ?? '',
     reason: '',
@@ -137,7 +129,6 @@ function fromForm(values: FormValues): PlanCommercial {
     commercial_description: values.commercial_description.trim() || null,
     display_order: Number(values.display_order),
     trial_days: Number(values.trial_days),
-    included_activations: Number(values.included_activations),
     monthly_activation_price: price(values.monthly_activation_price),
     annual_activation_price: price(values.annual_activation_price),
   };
@@ -325,17 +316,6 @@ function CommercialForm({ plan }: { plan: PlanDetail }) {
         description={t('console:plan.activationPricingHelp')}
       >
         <div className="sm-form-grid">
-          <FormField
-            id="included_activations"
-            label={t('console:plan.fields.included_activations')}
-            error={errorOf('included_activations')}
-          >
-            <InputText
-              id="included_activations"
-              inputMode="numeric"
-              {...form.register('included_activations')}
-            />
-          </FormField>
           <FormField
             id="monthly_activation_price"
             label={t('console:plan.fields.monthly_activation_price')}

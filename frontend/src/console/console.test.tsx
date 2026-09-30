@@ -33,7 +33,6 @@ const PLAN: PlanDetail = {
   commercial_description: null,
   display_order: 1,
   trial_days: 0,
-  included_activations: 1,
   monthly_activation_price: null,
   annual_activation_price: null,
   self_service: true,
@@ -212,7 +211,9 @@ describe('Console TechNova', () => {
   it('modification : raison obligatoire, récapitulatif confirmé, seuls les champs modifiés envoyés', async () => {
     consoleApi();
     renderConsole('/tech-admin/plans/STANDARD');
-    const annual = (await screen.findByLabelText('Prix annuel')) as HTMLInputElement;
+    const annual = (await screen.findByLabelText(
+      'Prix annuel (premier poste)',
+    )) as HTMLInputElement;
     await waitFor(() => expect(annual.value).toBe('120000.00'));
     fireEvent.input(annual, { target: { value: '150000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
@@ -224,7 +225,9 @@ describe('Console TechNova', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Prix annuel : 120.000.*→ 150.000/)).toBeTruthy();
+    expect(
+      within(dialog).getByText(/Prix annuel \(premier poste\) : 120.000.*→ 150.000/),
+    ).toBeTruthy();
     expect(patches()).toHaveLength(0);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     await waitFor(() => expect(patches()).toHaveLength(1));
@@ -237,22 +240,22 @@ describe('Console TechNova', () => {
     );
   });
 
-  it('tarif des postes : postes compris et prix par poste envoyés, validation', async () => {
+  it('tarif des postes : prix du premier poste et du poste supplémentaire, rien d’autre', async () => {
     consoleApi();
     renderConsole('/tech-admin/plans/STANDARD');
-    const included = (await screen.findByLabelText(
-      'Postes compris dans le prix de base',
+    const monthly = (await screen.findByLabelText(
+      'Prix mensuel (premier poste)',
     )) as HTMLInputElement;
-    await waitFor(() => expect(included.value).toBe('1'));
+    await waitFor(() => expect(monthly.value).toBe('10000.00'));
+    // La forme de la formule n'est pas paramétrable : aucun « nombre de postes compris ».
+    expect(screen.queryByLabelText(/postes compris/i)).toBeNull();
+    expect(screen.getByText(/premier poste \+ \(nombre de postes − 1\)/)).toBeTruthy();
     fireEvent.input(screen.getByLabelText(/Raison de la modification/), {
       target: { value: 'Tarif des postes' },
     });
-    fireEvent.input(included, { target: { value: '0' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
-    expect(await screen.findByText(/Nombre de postes invalide/)).toBeTruthy();
-    fireEvent.input(included, { target: { value: '2' } });
+    fireEvent.input(monthly, { target: { value: '6000' } });
     fireEvent.input(screen.getByLabelText('Prix mensuel par poste supplémentaire'), {
-      target: { value: '2500' },
+      target: { value: '2000' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }));
     fireEvent.click(
@@ -261,15 +264,17 @@ describe('Console TechNova', () => {
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(JSON.parse(String(patches()[0]?.[1]?.body))).toEqual({
       reason: 'Tarif des postes',
-      included_activations: 2,
-      monthly_activation_price: '2500',
+      monthly_price: '6000',
+      monthly_activation_price: '2000',
     });
   });
 
   it('validations : montant invalide bloqué ; aucune modification signalée', async () => {
     consoleApi();
     renderConsole('/tech-admin/plans/STANDARD');
-    const monthly = (await screen.findByLabelText('Prix mensuel')) as HTMLInputElement;
+    const monthly = (await screen.findByLabelText(
+      'Prix mensuel (premier poste)',
+    )) as HTMLInputElement;
     await waitFor(() => expect(monthly.value).toBe('10000.00'));
     fireEvent.input(screen.getByLabelText(/Raison de la modification/), {
       target: { value: 'Test' },

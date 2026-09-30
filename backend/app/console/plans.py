@@ -42,8 +42,7 @@ COMMERCIAL_FIELDS = (
     "commercial_description",
     "display_order",
     "trial_days",
-    # Tarification par poste (3.3-B4).
-    "included_activations",
+    # Prix de chaque poste supplémentaire (3.3-B4 ; le prix de la période est celui du 1er).
     "monthly_activation_price",
     "annual_activation_price",
 )
@@ -171,10 +170,6 @@ class PlanCommercialService:
 
     def _validate(self, plan: Plan, state: dict[str, Any]) -> None:
         """Cohérence des paramètres commerciaux (le frontend n'est jamais la seule barrière)."""
-        if state["included_activations"] is None:
-            raise BusinessRuleError(
-                "Le nombre de postes compris est obligatoire", code="included_activations_required"
-            )
         currency = state["currency"]
         if currency is not None and currency not in known_currencies(self.db):
             raise BusinessRuleError(

@@ -91,7 +91,7 @@ test.describe('Console TechNova', () => {
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Modifier le plan Standard ?');
-    await expect(dialog).toContainText(/Prix mensuel : — → 7.500/);
+    await expect(dialog).toContainText(/Prix mensuel \(premier poste\) : — → 7.500/);
     await dialog.getByRole('button', { name: 'Confirmer' }).click();
     await expect(page.getByText('Paramètres commerciaux enregistrés')).toBeVisible();
     await expect(page.getByTestId('plan-badges')).toContainText('Publié');

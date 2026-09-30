@@ -244,10 +244,12 @@ console ne voit jamais l'utilisateur de l'entreprise qui a activé le poste.
 
 ## 7 quater. Renouvellement, tarif par poste, rappels (Phase 3.3-B4, ADR-0036)
 
-- **Offres** : paramètres commerciaux `included_activations` (postes compris dans le prix de
-  base, défaut 1), `monthly_activation_price`, `annual_activation_price` (prix d'un poste
-  supplémentaire, devise obligatoire) ; raison, confirmation, audit avant / après ; figés sur
-  l'abonnement de chaque site à la souscription (jamais rétroactifs).
+- **Offres** : formule fixe — prix du premier poste + (postes − 1) × prix d'un poste
+  supplémentaire. Paramètres : prix du premier poste (`monthly_price`, `annual_price`), prix
+  d'un poste supplémentaire (`monthly_activation_price`, `annual_activation_price`, devise
+  obligatoire), périodes, devise, publication ; raison, confirmation, audit avant / après ;
+  figés sur l'abonnement de chaque site à la souscription (jamais rétroactifs : abonnements,
+  paiements et licences existants inchangés).
 - **Paiement → licence** : la proposition affiche les postes de la licence actuelle, la demande
   explicite de l'entreprise (sinon « Reconduction ») et la proposition, que TechNova confirme ou
   ajuste ; pendant la grâce, la période suit la licence échue (aucun jour perdu).

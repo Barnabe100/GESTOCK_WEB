@@ -140,7 +140,6 @@ class Plan(TimestampMixin, Base):
         ),
         CheckConstraint("annual_price IS NULL OR annual_price >= 0", name="annual_price_positive"),
         CheckConstraint("trial_days >= 0", name="trial_days_positive"),
-        CheckConstraint("included_activations >= 1", name="included_activations_positive"),
         CheckConstraint(
             "monthly_activation_price IS NULL OR monthly_activation_price >= 0",
             name="monthly_activation_price_positive",
@@ -201,12 +200,10 @@ class Plan(TimestampMixin, Base):
     )
     # Essai gratuit à l'inscription (0 : aucun essai ; jamais activé sans configuration).
     trial_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    # Tarification par poste (Phase 3.3-B4) : le prix de la période couvre ``included_activations``
-    # postes ; chaque poste supplémentaire coûte ``<période>_activation_price`` (nul : postes
-    # supplémentaires sur devis TechNova). Prix d'un site = prix de base + postes supplémentaires.
-    included_activations: Mapped[int] = mapped_column(
-        Integer, default=1, server_default="1", nullable=False
-    )
+    # Tarification par poste (Phase 3.3-B4, ADR-0036) : le prix de la période
+    # (``monthly_price`` / ``annual_price``) est celui du **premier poste** ; chaque poste
+    # supplémentaire coûte ``<période>_activation_price`` (nul : postes supplémentaires sur devis).
+    # Formule fixe : premier poste + (postes − 1) × poste supplémentaire.
     monthly_activation_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     annual_activation_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 

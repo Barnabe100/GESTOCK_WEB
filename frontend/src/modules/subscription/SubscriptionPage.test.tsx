@@ -61,7 +61,7 @@ const quoteFor = (base: Quote, requested: number | null, unit: string | null): Q
   amount:
     unit === null
       ? null
-      : (10000 + Math.max(0, (requested ?? base.activations) - 2) * Number(unit)).toFixed(2),
+      : (10000 + Math.max(0, (requested ?? base.activations) - 1) * Number(unit)).toFixed(2),
 });
 
 const payment = (over: Partial<SubscriptionPayment> = {}): SubscriptionPayment => ({
@@ -376,14 +376,14 @@ describe('Abonnement : paiements déclarés à TechNova', () => {
     );
     renderPage(DECLARE);
     const form = await openForm();
-    expect(text(await within(form).findByTestId('renewal-amount'))).toBe(money('10000.00'));
+    expect(text(await within(form).findByTestId('renewal-amount'))).toBe(money('13000.00'));
     expect(within(form).queryByLabelText(/^Montant/)).toBeNull();
     fireEvent.click(within(form).getByLabelText('Demander un autre nombre de postes'));
     const input = within(form).getByLabelText(/Nombre de postes souhaité/);
     fireEvent.change(input, { target: { value: '5' } });
     fireEvent.blur(input);
     await waitFor(() =>
-      expect(text(within(form).getByTestId('renewal-amount'))).toBe(money('19000.00')),
+      expect(text(within(form).getByTestId('renewal-amount'))).toBe(money('22000.00')),
     );
     expect(within(form).getByTestId('renewal-postes').textContent).toContain('5 postes');
     expect(within(form).getByTestId('renewal-postes').textContent).toContain('à confirmer');

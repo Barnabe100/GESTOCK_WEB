@@ -45,7 +45,7 @@ def _reset_plans(owner_db: Session) -> None:
             "UPDATE plans SET listed = false, price_display_enabled = false, monthly_price = NULL, "
             "monthly_price_enabled = false, annual_price = NULL, annual_price_enabled = false, "
             "currency = NULL, contact_required = false, commercial_description = NULL, "
-            "display_order = 0, trial_days = 0, included_activations = 1, "
+            "display_order = 0, trial_days = 0, "
             "monthly_activation_price = NULL, annual_activation_price = NULL"
         )
     )

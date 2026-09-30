@@ -73,11 +73,7 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             name="price_snapshot_complete",
         ),
         CheckConstraint("requested_activations >= 1", name="requested_activations_positive"),
-        # Tarif par poste figé avec le prix de base (3.3-B4).
-        CheckConstraint(
-            "(included_activations_at_subscription IS NULL) = (price_at_subscription IS NULL)",
-            name="included_activations_snapshot_complete",
-        ),
+        # Tarif du poste supplémentaire figé avec le prix du premier poste (3.3-B4).
         CheckConstraint(
             "activation_price_at_subscription IS NULL OR price_at_subscription IS NOT NULL",
             name="activation_price_snapshot_complete",
@@ -103,9 +99,8 @@ class Subscription(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # tarif du plan ne change pas rétroactivement l'abonnement (nul : aucun prix affiché).
     price_at_subscription: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     currency_at_subscription: Mapped[str | None] = mapped_column(String(3))
-    # Tarif par poste figé en même temps (3.3-B4) : postes compris dans le prix de base et prix
-    # de chaque poste supplémentaire (nul : sur devis).
-    included_activations_at_subscription: Mapped[int | None] = mapped_column(Integer)
+    # Prix de chaque poste supplémentaire, figé en même temps (3.3-B4 ; nul : sur devis) ;
+    # ``price_at_subscription`` est le prix du premier poste.
     activation_price_at_subscription: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     # Nombre de postes demandé par le client à la souscription (défaut : 1) ; TechNova le
     # confirme ou l'ajuste à la génération de la licence, qui le fige (3.3-B).

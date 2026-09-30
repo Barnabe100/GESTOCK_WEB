@@ -48,9 +48,8 @@ class PlanOut(BaseModel):
     commercial_description: str | None
     display_order: int
     trial_days: int
-    # Tarification par poste (3.3-B4) : postes compris dans le prix de base, prix de chaque
-    # poste supplémentaire par période (nul : sur devis).
-    included_activations: int
+    # Tarification par poste (3.3-B4) : le prix de la période est celui du premier poste ;
+    # prix de chaque poste supplémentaire par période (nul : sur devis).
     monthly_activation_price: Money | None
     annual_activation_price: Money | None
     # Souscriptible depuis l'inscription publique (règle unique, celle de l'inscription).
@@ -103,7 +102,6 @@ class PlanCommercialUpdate(BaseModel):
     commercial_description: str | None = Field(default=None, max_length=2000)
     display_order: int | None = Field(default=None, ge=0, le=9999)
     trial_days: int | None = Field(default=None, ge=0, le=365)
-    included_activations: int | None = Field(default=None, ge=1, le=10_000)
     monthly_activation_price: Money | None = None
     annual_activation_price: Money | None = None
     reason: str = Field(min_length=1, max_length=500)

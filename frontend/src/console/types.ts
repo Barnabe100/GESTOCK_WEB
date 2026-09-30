@@ -22,8 +22,7 @@ export interface PlanCommercial {
   commercial_description: string | null;
   display_order: number;
   trial_days: number;
-  /** Postes compris dans le prix de base ; au-delà, prix par poste (3.3-B4). */
-  included_activations: number;
+  /** Prix d'un poste supplémentaire (3.3-B4) ; le prix de la période est celui du premier poste. */
   monthly_activation_price: string | null;
   annual_activation_price: string | null;
 }

@@ -167,8 +167,10 @@ Job quotidien ── stockmanager notifications run ── rappels J-30 … J+7 
   `amount_required`) ; le client ne fournit jamais la période.
 - **R4** page Abonnement : « Offre en vigueur » (licence en vigueur) et « Au prochain
   renouvellement » ; les droits restent ceux de la licence en vigueur, sans job de bascule.
-- **Tarif** : prix de base + postes au-delà de `included_activations` × prix par poste (mensuel
-  / annuel), paramètres commerciaux de TechNova figés sur l'abonnement du site.
+- **Tarif** : prix du premier poste + (postes − 1) × prix d'un poste supplémentaire (mensuel /
+  annuel) ; formule fixe, paramètres commerciaux de TechNova figés sur l'abonnement du site.
+- **Fichier `.lic`** : jamais téléchargé par l'entreprise dans le Web (la plateforme applique
+  la licence) ; destiné au Desktop, traité séparément ; seule la console le télécharge.
 - **Rappels** : étapes `SM_RENEWAL_NOTICE_DAYS` (défaut `30,15,10,5,1,0,-1,-7`), essais J-5 /
   J-1 / J0 ; `active`, `past_due`, `expired`, `trial` ; jamais `pending_activation`,
   `suspended`, `cancelled` ni entreprise suspendue ; unicité (abonnement, étape, échéance) ;

@@ -45,13 +45,21 @@ changement de plan n'était pas encore couvert par une licence ; aucun tarif par
    sinon de l'abonnement) et `next_plan` (plan de l'abonnement s'il diffère) ; les capacités
    affichent le plan en vigueur. Aucun job ne bascule les droits : la licence suivante est en
    vigueur dès son premier jour, par simple calcul de dates.
-5. **Tarif plan + postes** — paramètres commerciaux du plan (console, raison, audit) :
-   `included_activations` (défaut 1), `monthly_activation_price`, `annual_activation_price`.
-   Montant d'une période = prix de base + max(0, postes − compris) × prix par poste. Le tarif
-   est **figé** sur l'abonnement du site à la souscription, à la création d'un site et au
-   changement de plan (`included_activations_at_subscription`,
-   `activation_price_at_subscription`, avec `price_at_subscription`) ; une modification du
-   catalogue ne change jamais un abonnement existant. Aucun prix dans le frontend.
+5. **Tarif plan + postes (décision finale TechNova)** — formule **fixe** :
+   montant d'une période = prix du premier poste + (postes − 1) × prix d'un poste
+   supplémentaire. Seuls ses paramètres sont configurables par TechNova dans la console
+   (raison, confirmation, audit) : prix du premier poste par période (`monthly_price`,
+   `annual_price`), prix d'un poste supplémentaire par période (`monthly_activation_price`,
+   `annual_activation_price` ; nul : postes supplémentaires sur devis), périodes proposées,
+   devise, publication. Aucun montant dans le code ni dans le frontend. La forme de la formule
+   n'est pas paramétrable : le paramètre « postes compris dans le prix de base » d'abord
+   introduit (migration 0023, toujours 1) a été retiré par la migration 0024, qui refuse de
+   s'appliquer si une autre valeur existait. Le tarif est **figé** sur l'abonnement du site à
+   la souscription, à la création d'un site et au changement de plan
+   (`price_at_subscription`, `activation_price_at_subscription`,
+   `currency_at_subscription`) ; une révision du catalogue ne modifie jamais les abonnements
+   existants, les paiements déjà déclarés ou confirmés (montant enregistré), ni les licences
+   déjà générées.
 6. **Rappels d'échéance** — table `notifications` (tenant, site, abonnement, type
    `subscription.expiry`, étape, échéance = dernier jour couvert dans le fuseau de l'entreprise,
    statut `SENT` / `SKIPPED`, données) et `notification_reads` (lu / non lu **par membre**).
@@ -85,8 +93,14 @@ changement de plan n'était pas encore couvert par une licence ; aucun tarif par
 - Migration 0023 : tables `notifications`, `notification_reads` ; colonnes de tarif par poste
   (plans, abonnements) ; `subscription_payments.requested_activations` (déclencheur de
   finalité mis à jour).
+- Migration 0024 : retrait de `plans.included_activations` et de
+  `subscriptions.included_activations_at_subscription` (formule verrouillée).
 - Clients de l'API : la déclaration n'envoie plus de période ; le montant seulement pour une
   offre sans tarif.
+- **Fichier `.lic` et Web** : l'entreprise ne télécharge aucun fichier `.lic` dans le Web
+  (décision finale). Paiement confirmé → licence générée par TechNova → gérée par la plateforme
+  → droits appliqués au site. Le fichier `.lic` sert au Desktop, traité séparément (aucune
+  duplication de son mécanisme dans le Web) ; seule la console TechNova le télécharge.
 - Moyens de paiement : liste fixe inchangée dans cette phase (déclaration manuelle ; aucune
   intégration Orange / Moov / cartes) ; leur configuration par TechNova reste à faire.
 

@@ -176,6 +176,5 @@
   "activation_already_released": "Ce poste est déjà libéré.",
   "amount_computed_by_server": "Le montant est calculé par le serveur à partir du tarif de votre offre : ne le saisissez pas.",
   "amount_required": "Aucun tarif n'est défini pour cette offre : indiquez le montant convenu avec TechNova.",
-  "notification_not_found": "Notification introuvable.",
-  "included_activations_required": "Indiquez le nombre de postes compris dans le prix de base."
+  "notification_not_found": "Notification introuvable."
 }
