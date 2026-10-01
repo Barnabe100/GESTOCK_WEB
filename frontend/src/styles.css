@@ -2021,3 +2021,32 @@ a {
 .sm-dialog .p-confirm-dialog-message {
   white-space: pre-line;
 }
+
+/* Lot 3-D : codes-barres (fiche article) et champ de scan des écrans opérationnels */
+.sm-barcode-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-2);
+  padding: var(--sm-space-3) 0;
+  border-top: 1px solid var(--sm-border);
+}
+
+.sm-barcode-group h3,
+.sm-barcode-group h4 {
+  margin: 0;
+  font-size: var(--sm-text-sm);
+}
+
+.sm-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sm-space-2);
+  align-items: center;
+}
+
+.sm-scan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-1);
+  max-width: 28rem;
+}

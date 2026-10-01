@@ -94,10 +94,34 @@ export interface PriceChange {
   purchase_price_after?: string | null;
 }
 
+/**
+ * Code-barres d'une présentation (Lot 3-D) : `PRIMARY` (code principal = champ `barcode` de
+ * l'article, modifié sur l'article), `ADDITIONAL` (code supplémentaire, unité de base) ou
+ * `PACKAGING` (code d'un conditionnement). `is_active` : porté par un élément actif — un élément
+ * désactivé libère ses codes, qui restent affichés.
+ */
+export interface Barcode {
+  id: string;
+  article_id: string;
+  packaging_id: string | null;
+  packaging_name: string | null;
+  code: string;
+  kind: 'PRIMARY' | 'ADDITIONAL' | 'PACKAGING';
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Présentation identifiée par un scan exact : l'article, et le conditionnement s'il y a lieu. */
+export interface ScanResult {
+  article: Article;
+  packaging: Packaging | null;
+}
+
 export const catalogKeys = {
   categories: ['catalog', 'categories'] as const,
   articles: ['catalog', 'articles'] as const,
   packagings: ['catalog', 'packagings'] as const,
+  barcodes: ['catalog', 'barcodes'] as const,
 };
 
 export function useCategories(query: string, enabled = true) {
@@ -162,7 +186,10 @@ export function useSaveArticle() {
       id
         ? api.patch<Article>(`/catalog/articles/${id}`, input)
         : api.post<Article>('/catalog/articles', input),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.articles }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: catalogKeys.articles });
+      void qc.invalidateQueries({ queryKey: catalogKeys.barcodes });
+    },
   });
 }
 
@@ -171,7 +198,11 @@ export function useSetArticleActive() {
   return useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api.post<Article>(`/catalog/articles/${id}/${active ? 'activate' : 'deactivate'}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.articles }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: catalogKeys.articles });
+      // Lot 3-D : les codes suivent l'état de l'article.
+      void qc.invalidateQueries({ queryKey: catalogKeys.barcodes });
+    },
   });
 }
 
@@ -200,6 +231,55 @@ export function useSetPackagingActive() {
   return useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api.post<Packaging>(`/catalog/packagings/${id}/${active ? 'activate' : 'deactivate'}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.packagings }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: catalogKeys.packagings });
+      void qc.invalidateQueries({ queryKey: catalogKeys.barcodes });
+    },
+  });
+}
+
+/**
+ * Scan des écrans opérationnels (Lot 3-D) : égalité EXACTE côté serveur parmi les présentations
+ * actives — toujours la valeur saisie à l'instant de la validation, jamais un résultat affiché.
+ * `404 barcode_unknown` si aucune présentation ne porte exactement ce code.
+ */
+export function resolveBarcode(code: string) {
+  return api.get<ScanResult>(
+    `/catalog/barcodes/resolve?${new URLSearchParams({ code }).toString()}`,
+  );
+}
+
+export function useBarcodes(articleId: string) {
+  return useQuery({
+    queryKey: [...catalogKeys.barcodes, articleId],
+    queryFn: ({ signal }) =>
+      api.get<Page<Barcode>>(`/catalog/articles/${articleId}/barcodes?limit=200`, signal),
+  });
+}
+
+export function useAddBarcode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      articleId,
+      packagingId,
+      code,
+    }: {
+      articleId: string;
+      packagingId: string | null;
+      code: string;
+    }) =>
+      packagingId
+        ? api.post<Barcode>(`/catalog/packagings/${packagingId}/barcodes`, { code })
+        : api.post<Barcode>(`/catalog/articles/${articleId}/barcodes`, { code }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.barcodes }),
+  });
+}
+
+export function useRemoveBarcode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/catalog/barcodes/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.barcodes }),
   });
 }

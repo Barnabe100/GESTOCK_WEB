@@ -1,7 +1,7 @@
 import { Column } from 'primereact/column';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
@@ -13,7 +13,7 @@ import {
   useDebouncedValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { ListEmpty } from '@/shared/ui/EmptyState';
+import { EmptyState, ListEmpty } from '@/shared/ui/EmptyState';
 import { FilterBar } from '@/shared/ui/FilterBar';
 import { FormField } from '@/shared/ui/FormField';
 import { RowActions } from '@/shared/ui/RowActions';
@@ -21,7 +21,8 @@ import { SearchInput } from '@/shared/ui/SearchInput';
 import { ServerTable } from '@/shared/ui/ServerTable';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
-import { COST_VIEW } from '@/modules/catalog/api';
+import { COST_VIEW, type ScanResult } from '@/modules/catalog/api';
+import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 
 import { QuantityEquivalence } from '@/modules/catalog/PresentationField';
 import { toBase } from '@/shared/lib/presentation';
@@ -67,14 +68,22 @@ export function countedQuantity(line: InventoryLine, locale = 'fr'): string {
  * conditionnements, le comptage peut se faire dans un conditionnement + unités en vrac
  * (8 cartons + 5 bouteilles) ; le serveur calcule la quantité en unité de base.
  */
+/** Lot 3-D : présentation identifiée par un scan, à présélectionner (jamais la quantité). */
+interface ScanPreset {
+  packagingId: string | null;
+  nonce: number;
+}
+
 function CountCell({
   line,
   inventoryId,
   index,
+  preset = null,
 }: {
   line: InventoryLine;
   inventoryId: string;
   index: number;
+  preset?: ScanPreset | null;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -98,6 +107,18 @@ function CountCell({
     setPrevious(savedKey);
     setValue(saved);
   }
+  // Lot 3-D : scan → présentation présélectionnée ; si elle change, la saisie repart à vide
+  // (la quantité comptée n'est jamais devinée), puis le champ de quantité prend le focus.
+  const [appliedScan, setAppliedScan] = useState<number | null>(null);
+  if (preset && preset.nonce !== appliedScan) {
+    setAppliedScan(preset.nonce);
+    const target = preset.packagingId ?? BASE_UNIT;
+    if (target !== value.packaging) setValue({ packaging: target, quantity: '', loose: '' });
+  }
+  const quantityRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (preset) quantityRef.current?.focus();
+  }, [preset]);
   const errorId = `count-error-${line.id}`;
   const packaging =
     value.packaging === BASE_UNIT
@@ -162,6 +183,7 @@ function CountCell({
         />
       )}
       <InputText
+        ref={quantityRef}
         id={`count-${line.id}`}
         data-count-index={index}
         inputMode="decimal"
@@ -241,10 +263,20 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
   });
   const [search, setSearch] = useState('');
   const [state, setState] = useState<LineState>('all');
+  // Lot 3-D : article identifié par un scan (ligne exacte) et présentation à présélectionner.
+  const [scanned, setScanned] = useState<{
+    articleId: string;
+    label: string;
+    preset: ScanPreset;
+  } | null>(null);
   const debounced = useDebouncedValue(search);
   const lines = useInventoryLines(
     inventory.id,
-    toQueryString(table, { search: debounced, state: state === 'all' ? null : state }),
+    toQueryString(table, {
+      search: debounced,
+      state: state === 'all' ? null : state,
+      article_id: scanned?.articleId ?? null,
+    }),
   );
   const { currency, locale } = capabilities.tenant;
   // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
@@ -257,7 +289,15 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
   const editArticles = draft && inventory.inventory_type === 'TARGETED' && can(`${P}.update`);
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
-  const filtered = search !== '' || state !== 'all';
+  const filtered = search !== '' || state !== 'all' || scanned !== null;
+  const onScan = (scan: ScanResult) => {
+    setScanned({
+      articleId: scan.article.id,
+      label: `${scan.article.reference} — ${scan.packaging?.name ?? scan.article.unit}`,
+      preset: { packagingId: scan.packaging?.id ?? null, nonce: Date.now() },
+    });
+    resetPage();
+  };
   const changeArticles = (input: { add_article_ids?: string[]; remove_article_ids?: string[] }) =>
     update.mutate(
       { id: inventory.id, input: { comment: inventory.comment, ...input } },
@@ -279,14 +319,22 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
           />
         </FormField>
       )}
+      {counting && <BarcodeScanField id="inventory-scan" onScan={onScan} />}
       <FilterBar
         onReset={() => {
           setSearch('');
           setState('all');
+          setScanned(null);
           resetPage();
         }}
         active={filtered}
       >
+        {scanned && (
+          <StatusBadge
+            tone="info"
+            label={t('inventories.scannedFilter', { label: scanned.label })}
+          />
+        )}
         <SearchInput
           value={search}
           placeholder={t('inventories.lineSearch')}
@@ -315,7 +363,14 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
           // Comptage : saisie visible sans défilement horizontal, même sur mobile.
           minWidth={final ? '60rem' : counting ? '0' : '36rem'}
           empty={
-            <ListEmpty filtered={filtered} icon="pi pi-box" title={t('inventories.noLines')} />
+            scanned ? (
+              <EmptyState
+                icon="pi pi-barcode"
+                title={t('inventories.scannedAbsent', { label: scanned.label })}
+              />
+            ) : (
+              <ListEmpty filtered={filtered} icon="pi pi-box" title={t('inventories.noLines')} />
+            )
           }
         >
           <Column
@@ -362,7 +417,14 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
               body={(l: InventoryLine) => {
                 if (!counting) return countedQuantity(l, locale);
                 const index = (lines.data?.items ?? []).findIndex((x) => x.id === l.id);
-                return <CountCell line={l} inventoryId={inventory.id} index={index} />;
+                return (
+                  <CountCell
+                    line={l}
+                    inventoryId={inventory.id}
+                    index={index}
+                    preset={scanned?.articleId === l.article_id ? scanned.preset : null}
+                  />
+                );
               }}
             />
           )}

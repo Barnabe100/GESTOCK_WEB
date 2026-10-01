@@ -32,7 +32,8 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
 import { confirmAction } from '@/shared/ui/confirm';
-import { COST_VIEW } from '@/modules/catalog/api';
+import { COST_VIEW, type ScanResult } from '@/modules/catalog/api';
+import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 
 import type { DocumentLine } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
@@ -172,6 +173,25 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
   );
   const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
 
+  /** Lot 3-D : le scan présélectionne article + présentation ; la quantité reste à saisir. */
+  const onScan = (scan: ScanResult) => {
+    const article = toArticleOption(scan.article);
+    const packaging = scan.packaging
+      ? { id: scan.packaging.id, name: scan.packaging.name, conversion: scan.packaging.conversion }
+      : null;
+    const existing = (form.getValues('lines') ?? []).findIndex(
+      (l) => l.article?.id === article.id && (l.packaging?.id ?? null) === (packaging?.id ?? null),
+    );
+    if (existing >= 0) {
+      form.setFocus(`lines.${existing}.quantity`);
+      return;
+    }
+    lines.append(
+      { article, packaging, quantity: '' },
+      { focusName: `lines.${lines.fields.length}.quantity` },
+    );
+  };
+
   const persist = async (values: FormValues): Promise<StockTransfer> => {
     const saved = await save.mutateAsync({ id: transfer?.id, input: toInput(values, isNew) });
     form.reset(defaults(saved, defaultSource));
@@ -260,6 +280,15 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
 
       <fieldset className="sm-fieldset">
         <legend>{t('transfers.lines')}</legend>
+        <BarcodeScanField
+          id="transfer-scan"
+          onScan={onScan}
+          reject={(scan) =>
+            scan.article.stock_managed
+              ? null
+              : t('scan.notStockManaged', { article: scan.article.reference })
+          }
+        />
         {lines.fields.length === 0 && (
           <p className={errors.lines ? 'p-error' : 'sm-muted'}>{t('transfers.noLines')}</p>
         )}

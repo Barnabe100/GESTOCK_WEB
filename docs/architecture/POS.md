@@ -105,3 +105,18 @@ recherche textuelle (différée de 250 ms) : la valeur saisie est envoyée telle
   au POS).
 - **Reçu (80 mm)** : désignation puis présentation vendue et prix unitaire figé
   (« 2 Carton 24 × 10 500 F … 21 000 F » ; unité de base : « 3 pièce × 500 F … 1 500 F »).
+
+## Lot 3-D — codes-barres multiples et codes des conditionnements (ADR-0042)
+
+- **Scan** : la valeur saisie (lecteur clavier : code puis Entrée) est résolue EXACTEMENT par le
+  serveur parmi tous les codes des présentations actives — code principal ou supplémentaire de
+  l'article (unité de base), code d'un conditionnement. Jamais de recherche partielle ni de
+  résultat affiché auparavant ; inconnu : « Code-barres inconnu ».
+- **Code d'un conditionnement** : `scanned_packaging_id` ; le panier ajoute **1 conditionnement**
+  (« Quantité de Coca (Carton 24) » = 1, un second scan passe à 2) — jamais N unités de base ; la
+  conversion reste celle du Lot 3-B à l'encaissement.
+- **Prix non configuré** : `422 packaging_price_not_set` (règle existante), message explicite,
+  rien n'est ajouté.
+- **Recherche** : la recherche « contient » des tuiles trouve aussi les codes supplémentaires et
+  ceux des conditionnements.
+

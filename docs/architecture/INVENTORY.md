@@ -151,8 +151,16 @@ partagé : désactivé → `422 packaging_inactive` (recompter la ligne), conver
 (`packaging_in_use`). L'interface propose la présentation par ligne et affiche l'équivalence
 (« = 197 bouteille ») ; l'ajustement (`ADJUSTMENT`) est en unité de base, sans présentation.
 
-## 11. Hors périmètre (V1)
+## 11. Scan (Lot 3-D, [ADR-0042](../adr/0042-codes-barres-multiples.md))
 
-Scan de code-barres, application mobile native, import / export Excel, comptage multi-équipe,
+Pendant le comptage, le champ « Scanner un code-barres » résout le code EXACT (article en unité
+de base ou conditionnement) ; la liste se restreint à la ligne de l'article (`article_id`), la
+présentation est présélectionnée et le champ de quantité prend le focus. **La quantité comptée
+n'est jamais devinée** : si la présentation change, la saisie repart à vide. Article absent de
+l'inventaire : signalé, rien n'est compté.
+
+## 12. Hors périmètre (V1)
+
+Application mobile native (scan : §11), import / export Excel, comptage multi-équipe,
 double comptage, circuit d'approbation, sessions de comptage simultanées sur un même article,
 analyses avancées.

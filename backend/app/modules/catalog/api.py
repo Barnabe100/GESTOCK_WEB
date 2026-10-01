@@ -7,38 +7,47 @@ opérations de stock (entrées, sorties, transferts, inventaires) : le serveur r
 le conditionnement (du tenant, de CET article, actif) sous verrou partagé, applique la règle des
 quantités entières et calcule la quantité en unité de base = quantité × conversion, SANS arrondi
 (au-delà de 3 décimales, précision du stock : refus). Aucune quantité de base n'est reçue du
-client."""
+client.
+
+Codes-barres (Lot 3-D — ADR-0042) : ``resolve_barcode`` est l'UNIQUE résolution d'un scan —
+égalité EXACTE sur le registre des codes du tenant (code principal, codes supplémentaires,
+codes des conditionnements) parmi les présentations ACTIVES : l'article en unité de base ou
+l'article + le conditionnement. ``barcode_search`` étend les recherches « contient » à tous les
+codes ; elle ne remplace jamais le scan exact."""
 
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import Subquery, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, Subquery, or_, select
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.core.errors import BusinessRuleError, ConflictError
-from app.modules.catalog.models import Article, Category, Packaging
+from app.modules.catalog.models import Article, Barcode, Category, Packaging
 from app.modules.catalog.stock_port import register_stocked_sites
 from app.modules.catalog.usage_port import register_packaging_usage
+from app.shared.pagination import escape_like
 
 __all__ = [
     "QUANTITY_STEP",
     "ArticleRef",
+    "BarcodeMatch",
     "PackagingRef",
     "active_packagings",
     "articles_view",
+    "barcode_search",
     "base_quantity",
     "check_packagings",
     "ensure_conversion_unchanged",
     "ensure_whole",
-    "find_active_article_by_barcode",
     "get_article_refs",
     "is_whole",
     "lock_packagings",
     "lock_stock_managed",
     "register_packaging_usage",
     "register_stocked_sites",
+    "resolve_barcode",
 ]
 
 
@@ -160,15 +169,47 @@ def lock_stock_managed(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, bool
     return {row[0]: row[1] for row in rows}
 
 
-def find_active_article_by_barcode(db: Session, barcode: str) -> uuid.UUID | None:
-    """Scan (Lot 3-A) : égalité EXACTE sur le code-barres, article ACTIF du tenant (RLS) ;
-    jamais de recherche partielle, ni sur la référence ou la désignation."""
+@dataclass(frozen=True)
+class BarcodeMatch:
+    """Présentation identifiée par un scan : l'article en unité de base (``packaging_id`` nul)
+    ou l'article + un conditionnement."""
+
+    article_id: uuid.UUID
+    packaging_id: uuid.UUID | None
+
+
+def resolve_barcode(db: Session, barcode: str) -> BarcodeMatch | None:
+    """Scan (Lot 3-A, Lot 3-D) : égalité EXACTE sur un code du registre du tenant (RLS), porté
+    par une présentation ACTIVE (article actif ; conditionnement actif le cas échéant). Jamais
+    de recherche partielle, ni sur la référence ou la désignation ; aucun premier résultat."""
     code = barcode.strip()
     if not code:
         return None
-    return db.scalars(
-        select(Article.id).where(Article.barcode == code, Article.is_active.is_(True))
+    row = db.execute(
+        select(Barcode.article_id, Barcode.packaging_id)
+        .join(
+            Article,
+            (Article.tenant_id == Barcode.tenant_id) & (Article.id == Barcode.article_id),
+        )
+        .where(Barcode.code == code, Barcode.is_active.is_(True), Article.is_active.is_(True))
     ).one_or_none()
+    return BarcodeMatch(row.article_id, row.packaging_id) if row else None
+
+
+def barcode_search(
+    term: str | None,
+    condition: ColumnElement[bool] | None,
+    article_id: ColumnElement[uuid.UUID] | InstrumentedAttribute[uuid.UUID],
+) -> ColumnElement[bool] | None:
+    """Étend une recherche « contient » existante (``condition``) à TOUS les codes-barres de
+    l'article : principal, supplémentaires, conditionnements (Lot 3-D)."""
+    cleaned = (term or "").strip()
+    if condition is None or not cleaned:
+        return condition
+    codes = select(Barcode.article_id).where(
+        Barcode.code.ilike(f"%{escape_like(cleaned)}%", escape="\\")
+    )
+    return or_(condition, article_id.in_(codes))
 
 
 def articles_view() -> Subquery:

@@ -16,11 +16,13 @@ from app.core.errors import (
     ForbiddenError,
     NotFoundError,
 )
-from app.modules.catalog.models import Article, Category, Packaging
+from app.modules.catalog.api import barcode_search, resolve_barcode
+from app.modules.catalog.models import Article, Barcode, BarcodeKind, Category, Packaging
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
     ArticleUpdate,
+    BarcodeOut,
     CategoryInput,
     PackagingCreate,
     PackagingOut,
@@ -63,6 +65,11 @@ _CONSTRAINT_ERRORS = {
     "uq_catalog_articles_tenant_barcode_active": (
         "article_barcode_taken",
         "Ce code-barres est déjà utilisé par un article actif",
+    ),
+    # Lot 3-D : registre commun (code principal compris, réactivations, concurrence).
+    "uq_catalog_barcodes_tenant_code_active": (
+        "barcode_taken",
+        "Ce code-barres est déjà utilisé par un élément actif",
     ),
     "uq_catalog_packagings_article_name_active": (
         "packaging_name_taken",
@@ -195,8 +202,13 @@ class ArticleService:
             (Category.id == Article.category_id) & (Category.tenant_id == Article.tenant_id),
         )
         conditions = [
-            search_filter(
-                search, Article.reference, Article.designation, Article.barcode, Category.name
+            # Lot 3-D : aussi les codes supplémentaires et ceux des conditionnements.
+            barcode_search(
+                search,
+                search_filter(
+                    search, Article.reference, Article.designation, Article.barcode, Category.name
+                ),
+                Article.id,
             ),
             _status_condition(Article.is_active, status),
             Article.category_id == category_id if category_id else None,
@@ -226,13 +238,12 @@ class ArticleService:
         return article
 
     def find_active_by_barcode(self, barcode: str) -> Article:
-        """ART-15 : un scan ne retombe jamais sur un article désactivé."""
-        article = self.db.scalars(
-            select(Article).where(Article.barcode == barcode.strip(), Article.is_active.is_(True))
-        ).one_or_none()
-        if article is None:
+        """ART-15 : un scan ne retombe jamais sur un article désactivé. Lot 3-D : tout code du
+        registre (principal, supplémentaire, conditionnement) désigne son article."""
+        match = resolve_barcode(self.db, barcode)
+        if match is None:
             raise NotFoundError("Aucun article actif pour ce code-barres", code="article_not_found")
-        return article
+        return self.get(match.article_id)
 
     def to_out(self, articles: list[Article]) -> list[ArticleOut]:
         names = supplier_names(
@@ -322,13 +333,13 @@ class ArticleService:
             )
 
     def _ensure_barcode_free(self, barcode: str, exclude_id: uuid.UUID | None = None) -> None:
-        stmt = select(Article.id).where(Article.barcode == barcode, Article.is_active.is_(True))
-        if exclude_id is not None:
-            stmt = stmt.where(Article.id != exclude_id)
-        if self.db.scalars(stmt).first() is not None:
+        """Code principal : libre parmi TOUS les codes actifs du tenant (Lot 3-D : principaux,
+        supplémentaires, conditionnements), hormis le code principal actuel de l'article."""
+        if taken_codes(self.db, [barcode], exclude_primary_of=exclude_id):
             raise ConflictError(
-                "Ce code-barres est déjà utilisé par un article actif",
+                "Ce code-barres est déjà utilisé par un élément actif",
                 code="article_barcode_taken",
+                extra={"codes": [barcode]},
             )
 
     @staticmethod
@@ -482,8 +493,10 @@ class ArticleService:
         article = self.get(article_id)
         if article.is_active == active:
             return article
-        if active and article.barcode:
-            self._ensure_barcode_free(article.barcode, exclude_id=article.id)  # ART-16
+        if active:  # ART-16, Lot 3-D : ses codes (principal, supplémentaires) encore libres
+            ensure_codes_free(
+                self.db, article_codes(self.db, article.id, None), "article_barcode_taken"
+            )
         article.is_active = active
         _flush(self.db)
         audit_action(
@@ -652,10 +665,196 @@ class PackagingService:
         article = self._article(packaging.article_id)
         if active:
             self._ensure_whole(article, packaging.conversion)
+            ensure_codes_free(self.db, article_codes(self.db, article.id, packaging.id))
         packaging.is_active = active
         _flush(self.db)
         self._audit("activated" if active else "deactivated", packaging, article, {})
         return packaging
+
+
+# --- Codes-barres (Lot 3-D, ADR-0042) ------------------------------------------------------------
+
+
+def taken_codes(
+    db: Session,
+    codes: list[str],
+    *,
+    exclude_primary_of: uuid.UUID | None = None,
+    exclude_owner: tuple[uuid.UUID, uuid.UUID | None] | None = None,
+) -> list[str]:
+    """Codes déjà portés par une présentation ACTIVE du tenant (registre commun). Exclusions :
+    le code principal actuel d'un article (modification de ce code), ou les codes d'un même
+    porteur (article en unité de base / conditionnement) lors de sa réactivation."""
+    if not codes:
+        return []
+    stmt = select(Barcode.code).where(Barcode.code.in_(codes), Barcode.is_active.is_(True))
+    if exclude_primary_of is not None:
+        stmt = stmt.where(
+            ~((Barcode.article_id == exclude_primary_of) & (Barcode.kind == BarcodeKind.PRIMARY))
+        )
+    if exclude_owner is not None:
+        article_id, packaging_id = exclude_owner
+        owner = Barcode.article_id == article_id
+        owner &= (
+            Barcode.packaging_id.is_(None)
+            if packaging_id is None
+            else Barcode.packaging_id == packaging_id
+        )
+        stmt = stmt.where(~owner)
+    return sorted(set(db.scalars(stmt)))
+
+
+def article_codes(
+    db: Session, article_id: uuid.UUID, packaging_id: uuid.UUID | None
+) -> tuple[tuple[uuid.UUID, uuid.UUID | None], list[str]]:
+    """Codes d'un porteur : l'article en unité de base (principal + supplémentaires) ou un
+    conditionnement."""
+    stmt = select(Barcode.code).where(Barcode.article_id == article_id)
+    stmt = stmt.where(
+        Barcode.packaging_id.is_(None)
+        if packaging_id is None
+        else Barcode.packaging_id == packaging_id
+    )
+    return (article_id, packaging_id), list(db.scalars(stmt))
+
+
+def ensure_codes_free(
+    db: Session,
+    owner_codes: tuple[tuple[uuid.UUID, uuid.UUID | None], list[str]],
+    error_code: str = "barcode_taken",
+) -> None:
+    """Réactivation : chaque code du porteur doit être resté libre (un autre élément actif a pu
+    le reprendre pendant la désactivation). L'index unique protège aussi la concurrence."""
+    owner, codes = owner_codes
+    taken = taken_codes(db, codes, exclude_owner=owner)
+    if taken:
+        raise ConflictError(
+            "Un code-barres de cet élément est désormais utilisé par un autre élément actif : "
+            "retirez-le avant de réactiver",
+            code=error_code,
+            extra={"codes": taken},
+        )
+
+
+class BarcodeService:
+    """Codes-barres du catalogue (Lot 3-D, ADR-0042) : un code identifie UNE présentation
+    (article en unité de base, ou conditionnement). Code principal : champ ``barcode`` de
+    l'article (inchangé) ; codes supplémentaires et codes des conditionnements : ajoutés et
+    retirés ici. Mêmes droits que l'article : consultation ``catalog.article.view``, gestion
+    ``catalog.article.update`` (aucune permission nouvelle). Unicité commune au tenant parmi les
+    présentations actives (registre + index unique) ; chaque ajout / retrait est audité."""
+
+    def __init__(self, db: Session, ctx: RequestContext) -> None:
+        self.db = db
+        self.ctx = ctx
+
+    def _require_update(self) -> None:
+        if not self.ctx.has_permission(ARTICLE_UPDATE):
+            raise ForbiddenError("Permission insuffisante", code="permission_denied")
+
+    def search(self, article_id: uuid.UUID, params: PageParams) -> tuple[list[Barcode], int]:
+        ArticleService(self.db, self.ctx).get(article_id)
+        stmt = select(Barcode).where(Barcode.article_id == article_id)
+        sortable = {"code": Barcode.code, "created_at": Barcode.created_at}
+        stmt = apply_sort(stmt, params.sort, sortable, "created_at", Barcode.id)
+        return paginate(self.db, stmt, params)
+
+    def to_out(self, barcodes: list[Barcode]) -> list[BarcodeOut]:
+        ids = {b.packaging_id for b in barcodes if b.packaging_id}
+        names: dict[uuid.UUID, str] = {}
+        if ids:
+            rows = self.db.execute(
+                select(Packaging.id, Packaging.name).where(Packaging.id.in_(ids))
+            )
+            names = {row.id: row.name for row in rows}
+        return [
+            BarcodeOut(
+                id=b.id,
+                article_id=b.article_id,
+                packaging_id=b.packaging_id,
+                packaging_name=names.get(b.packaging_id) if b.packaging_id else None,
+                code=b.code,
+                kind=b.kind,
+                is_active=b.is_active,
+                created_at=b.created_at,
+            )
+            for b in barcodes
+        ]
+
+    def _audit(self, action: str, barcode: Barcode, article: Article, name: str | None) -> None:
+        added = action == "barcode_added"
+        packaging = barcode.packaging_id is not None
+        audit_action(
+            self.db,
+            self.ctx,
+            f"{'packaging' if packaging else 'article'}.{action}",
+            entity_type="packaging" if packaging else "article",
+            entity_id=barcode.packaging_id if packaging else article.id,
+            data={
+                "reference": article.reference,
+                **({"article_id": str(article.id), "name": name} if packaging else {}),
+                "kind": barcode.kind,
+                "barcode": {
+                    "before": None if added else barcode.code,
+                    "after": barcode.code if added else None,
+                },
+            },
+        )
+
+    def add(
+        self, article_id: uuid.UUID, code: str, packaging_id: uuid.UUID | None = None
+    ) -> Barcode:
+        """Code supplémentaire de l'article (``packaging_id`` nul) ou code d'un conditionnement
+        de cet article. Refusé s'il désigne déjà une présentation active du tenant."""
+        self._require_update()
+        article = ArticleService(self.db, self.ctx).get(article_id)
+        packaging = None
+        if packaging_id is not None:
+            packaging = PackagingService(self.db, self.ctx).get(packaging_id)
+            if packaging.article_id != article.id:
+                raise NotFoundError("Conditionnement introuvable", code="packaging_not_found")
+        active = packaging.is_active if packaging is not None else article.is_active
+        if active and taken_codes(self.db, [code]):
+            raise ConflictError(
+                "Ce code-barres est déjà utilisé par un élément actif",
+                code="barcode_taken",
+                extra={"codes": [code]},
+            )
+        barcode = Barcode(
+            tenant_id=self.ctx.tenant_id,
+            article_id=article.id,
+            packaging_id=packaging_id,
+            code=code,
+            kind=BarcodeKind.PACKAGING if packaging is not None else BarcodeKind.ADDITIONAL,
+            is_active=active,
+        )
+        self.db.add(barcode)
+        _flush(self.db)
+        self.db.refresh(barcode)
+        self._audit("barcode_added", barcode, article, packaging.name if packaging else None)
+        return barcode
+
+    def remove(self, barcode_id: uuid.UUID) -> None:
+        """Retire un code supplémentaire ou de conditionnement (le code principal se modifie sur
+        l'article). Suppression de la ligne : l'ancienne valeur reste dans l'audit."""
+        self._require_update()
+        barcode = self.db.get(Barcode, barcode_id)
+        if barcode is None:
+            raise NotFoundError("Code-barres introuvable", code="barcode_not_found")
+        if barcode.kind == BarcodeKind.PRIMARY:
+            raise BusinessRuleError(
+                "Le code-barres principal se modifie sur la fiche de l'article",
+                code="barcode_primary",
+            )
+        article = ArticleService(self.db, self.ctx).get(barcode.article_id)
+        name = (
+            PackagingService(self.db, self.ctx).get(barcode.packaging_id).name
+            if barcode.packaging_id
+            else None
+        )
+        self._audit("barcode_removed", barcode, article, name)
+        self.db.delete(barcode)
+        _flush(self.db)
 
 
 def _price_change(action: str, value: Any) -> tuple[Any, Any]:

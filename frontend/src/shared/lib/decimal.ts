@@ -109,3 +109,8 @@ export function compareQuantity(a: string, b: string): number {
   const diff = toScaled(a, 3) - toScaled(b, 3);
   return diff === 0n ? 0 : diff < 0n ? -1 : 1;
 }
+
+/** Somme de deux quantités décimales (3 décimales), sans float. */
+export function addQuantity(a: string, b: string): string {
+  return fromScaled(toScaled(a, 3) + toScaled(b, 3), 3);
+}

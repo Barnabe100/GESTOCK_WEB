@@ -3,19 +3,28 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.core.errors import ForbiddenError
+from app.core.errors import ForbiddenError, NotFoundError
+from app.modules.catalog.api import resolve_barcode
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
     ArticleUpdate,
+    BarcodeCreate,
+    BarcodeOut,
     CategoryInput,
     CategoryOut,
     PackagingCreate,
     PackagingOut,
     PackagingUpdate,
     PriceChangeOut,
+    ScanOut,
 )
-from app.modules.catalog.service import ArticleService, CategoryService, PackagingService
+from app.modules.catalog.service import (
+    ArticleService,
+    BarcodeService,
+    CategoryService,
+    PackagingService,
+)
 from app.platform.context import (
     DbSession,
     RequestContext,
@@ -42,6 +51,8 @@ ArticleUpdateCtx = Annotated[
     Depends(require_any_permission("catalog.article.update", "catalog.article.price_update")),
 ]
 ArticleStatus = Annotated[RequestContext, Depends(require_permission("catalog.article.status"))]
+# Lot 3-D : codes-barres = donnée générale de l'article (aucune permission nouvelle).
+BarcodeManage = Annotated[RequestContext, Depends(require_permission("catalog.article.update"))]
 Paging = Annotated[PageParams, Depends(page_params)]
 StatusParam = Annotated[StatusFilter, Query(alias="status")]
 
@@ -289,3 +300,78 @@ def deactivate_packaging(
     packaging = service.set_active(packaging_id, False)
     db.commit()
     return service.to_out([packaging])[0]
+
+
+# --- Codes-barres (Lot 3-D, ADR-0042) ---------------------------------------------------------
+# Un code identifie UNE présentation : l'article en unité de base ou un conditionnement. Code
+# principal : champ ``barcode`` de l'article ; ici, codes supplémentaires et de conditionnement.
+
+
+@router.get("/barcodes/resolve", response_model=ScanOut, tags=["catalog"])
+def resolve_barcode_route(
+    ctx: ArticleView,
+    db: DbSession,
+    code: Annotated[str, Query(min_length=1, max_length=50)],
+) -> ScanOut:
+    """Scan des écrans opérationnels : égalité EXACTE parmi les présentations actives, sinon
+    ``404 barcode_unknown`` — jamais de recherche partielle ni de premier résultat."""
+    match = resolve_barcode(db, code)
+    if match is None:
+        raise NotFoundError("Code-barres inconnu", code="barcode_unknown")
+    articles = ArticleService(db, ctx)
+    packagings = PackagingService(db, ctx)
+    return ScanOut(
+        article=articles.to_out([articles.get(match.article_id)])[0],
+        packaging=(
+            packagings.to_out([packagings.get(match.packaging_id)])[0]
+            if match.packaging_id
+            else None
+        ),
+    )
+
+
+@router.get("/articles/{article_id}/barcodes", response_model=Page[BarcodeOut], tags=["catalog"])
+def list_barcodes(
+    article_id: uuid.UUID, ctx: ArticleView, db: DbSession, paging: Paging
+) -> Page[BarcodeOut]:
+    """Tous les codes de l'article : principal, supplémentaires, conditionnements."""
+    service = BarcodeService(db, ctx)
+    items, total = service.search(article_id, paging)
+    return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
+
+
+@router.post(
+    "/articles/{article_id}/barcodes",
+    response_model=BarcodeOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["catalog"],
+)
+def add_article_barcode(
+    article_id: uuid.UUID, body: BarcodeCreate, ctx: BarcodeManage, db: DbSession
+) -> BarcodeOut:
+    service = BarcodeService(db, ctx)
+    barcode = service.add(article_id, body.code)
+    db.commit()
+    return service.to_out([barcode])[0]
+
+
+@router.post(
+    "/packagings/{packaging_id}/barcodes",
+    response_model=BarcodeOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["catalog"],
+)
+def add_packaging_barcode(
+    packaging_id: uuid.UUID, body: BarcodeCreate, ctx: BarcodeManage, db: DbSession
+) -> BarcodeOut:
+    service = BarcodeService(db, ctx)
+    article_id = PackagingService(db, ctx).get(packaging_id).article_id
+    barcode = service.add(article_id, body.code, packaging_id)
+    db.commit()
+    return service.to_out([barcode])[0]
+
+
+@router.delete("/barcodes/{barcode_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["catalog"])
+def remove_barcode(barcode_id: uuid.UUID, ctx: BarcodeManage, db: DbSession) -> None:
+    BarcodeService(db, ctx).remove(barcode_id)
+    db.commit()

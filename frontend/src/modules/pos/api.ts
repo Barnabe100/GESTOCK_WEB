@@ -28,6 +28,8 @@ export interface PosArticle {
   decimal_quantity_allowed: boolean;
   /** Unité de base toujours vendable ; conditionnements actifs en plus. */
   packagings: PosPackaging[];
+  /** Lot 3-D : présentation identifiée par un scan (code d'un conditionnement), sinon nul. */
+  scanned_packaging_id?: string | null;
 }
 
 /**
@@ -62,9 +64,11 @@ export interface CheckoutResult {
 export const posKeys = { all: ['pos'] as const };
 
 /**
- * Scan (Lot 3-A) : correspondance EXACTE du code-barres, article actif, côté serveur.
- * Toujours la valeur saisie à l'instant de la validation, jamais un résultat affiché.
- * `404 barcode_unknown` si aucun article ne porte exactement ce code.
+ * Scan (Lot 3-A, Lot 3-D) : correspondance EXACTE d'un code (principal, supplémentaire ou de
+ * conditionnement) d'une présentation active, côté serveur. Toujours la valeur saisie à
+ * l'instant de la validation, jamais un résultat affiché. `404 barcode_unknown` si aucune
+ * présentation ne porte exactement ce code ; `422 packaging_price_not_set` pour un
+ * conditionnement au prix non configuré.
  */
 export function findByBarcode(siteId: string, barcode: string) {
   return api.get<PosArticle>(

@@ -49,6 +49,7 @@ from app.modules.catalog.api import (
     PackagingRef,
     active_packagings,
     articles_view,
+    barcode_search,
     check_packagings,
     ensure_conversion_unchanged,
     ensure_whole,
@@ -275,12 +276,20 @@ class InventoryService:
         search: str | None = None,
         state: LineState = LineState.ALL,
         line_ids: Iterable[uuid.UUID] | None = None,
+        article_id: uuid.UUID | None = None,
     ) -> tuple[list[InventoryLineOut], int]:
         stmt, cols = self._base_lines(inventory)
         articles, variance, line = cols["articles"], cols["variance"], cols["line"]
         conditions: list[ColumnElement[bool] | None] = [
-            search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
+            barcode_search(
+                search,
+                search_filter(
+                    search, articles.c.reference, articles.c.designation, articles.c.barcode
+                ),
+                articles.c.id,
+            ),
             line.id.in_(list(line_ids)) if line_ids is not None else None,
+            line.article_id == article_id if article_id is not None else None,
             _state_condition(state, line.quantity_physical, variance),
         ]
         for condition in conditions:
@@ -412,8 +421,10 @@ class InventoryService:
                 articles.c.stock_managed.is_(True),
             )
         )
-        by_text = search_filter(
-            search, articles.c.reference, articles.c.designation, articles.c.barcode
+        by_text = barcode_search(
+            search,
+            search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
+            articles.c.id,
         )
         if by_text is not None:
             stmt = stmt.where(by_text)

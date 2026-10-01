@@ -136,3 +136,34 @@ class PackagingUpdate(BaseModel):
     name: Required50 | None = None
     conversion: PositiveQuantity | None = None
     sale_price: Money | None = None
+
+
+class BarcodeOut(BaseModel):
+    """Code-barres d'une présentation (Lot 3-D, ADR-0042) : ``PRIMARY`` (code principal de
+    l'article, modifié sur l'article), ``ADDITIONAL`` (code supplémentaire de l'article, unité
+    de base) ou ``PACKAGING`` (code d'un conditionnement). ``is_active`` : porté par un élément
+    actif — un élément désactivé libère ses codes, qui restent affichés."""
+
+    id: uuid.UUID
+    article_id: uuid.UUID
+    packaging_id: uuid.UUID | None
+    packaging_name: str | None
+    code: str
+    kind: str
+    is_active: bool
+    created_at: datetime
+
+
+class BarcodeCreate(BaseModel):
+    """Texte libre (EAN, code fournisseur, code interne…), 50 caractères au plus ; aucune
+    validation EAN imposée."""
+
+    code: Required50
+
+
+class ScanOut(BaseModel):
+    """Présentation identifiée par un scan exact (Lot 3-D) : l'article, et le conditionnement
+    lorsque le code est celui d'un conditionnement (sinon unité de base)."""
+
+    article: ArticleOut
+    packaging: PackagingOut | None

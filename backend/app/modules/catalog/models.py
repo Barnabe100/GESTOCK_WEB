@@ -116,6 +116,8 @@ class Packaging(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "catalog_packagings"
     __table_args__ = (
         UniqueConstraint("tenant_id", "id"),
+        # Lot 3-D : cible des codes-barres d'un conditionnement (même article garanti).
+        UniqueConstraint("tenant_id", "article_id", "id"),
         ForeignKeyConstraint(
             ["tenant_id", "article_id"],
             ["catalog_articles.tenant_id", "catalog_articles.id"],
@@ -142,3 +144,66 @@ class Packaging(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # ``0`` = prix réellement configuré à zéro.
     sale_price: Mapped[Decimal | None] = mapped_column(MONEY)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class BarcodeKind:
+    """Nature d'un code-barres (Lot 3-D, ADR-0042)."""
+
+    PRIMARY = "PRIMARY"  # miroir de ``catalog_articles.barcode`` (tenu par déclencheur)
+    ADDITIONAL = "ADDITIONAL"  # code supplémentaire de l'article (unité de base)
+    PACKAGING = "PACKAGING"  # code d'un conditionnement (article + conditionnement)
+
+
+class Barcode(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Code-barres identifiant UNE présentation d'un article (Lot 3-D, ADR-0042) : l'article en
+    unité de base (code principal ou supplémentaire) ou un conditionnement de cet article.
+
+    Registre unique des codes du tenant : un code ne désigne qu'une présentation parmi les
+    éléments ACTIFS (index unique partiel) ; un élément désactivé libère ses codes, qui restent
+    enregistrés. ``is_active`` reflète l'état de l'élément porteur (article ou conditionnement),
+    tenu par déclencheurs ; le code principal reste ``catalog_articles.barcode`` (miroir)."""
+
+    __tablename__ = "catalog_barcodes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "article_id"],
+            ["catalog_articles.tenant_id", "catalog_articles.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "article_id", "packaging_id"],
+            [
+                "catalog_packagings.tenant_id",
+                "catalog_packagings.article_id",
+                "catalog_packagings.id",
+            ],
+            ondelete="RESTRICT",
+        ),
+        # Unicité commune au tenant parmi les présentations actives.
+        Index(
+            "uq_catalog_barcodes_tenant_code_active",
+            "tenant_id",
+            "code",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+        # Un seul code principal par article.
+        Index(
+            "uq_catalog_barcodes_article_primary",
+            "tenant_id",
+            "article_id",
+            unique=True,
+            postgresql_where=text("kind = 'PRIMARY'"),
+        ),
+        CheckConstraint("kind IN ('PRIMARY', 'ADDITIONAL', 'PACKAGING')", name="kind_valid"),
+        CheckConstraint(
+            "(kind = 'PACKAGING') = (packaging_id IS NOT NULL)", name="packaging_consistent"
+        ),
+        CheckConstraint("code = btrim(code) AND code <> ''", name="code_not_blank"),
+    )
+
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)

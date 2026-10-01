@@ -208,5 +208,8 @@
   "packaging_conversion_not_whole": "Cet article se vend en quantités entières : la conversion doit être un nombre entier.",
   "article_has_fractional_packagings": "Des conditionnements actifs ont une conversion décimale ({{packagings}}) : désactivez-les avant d'interdire les quantités décimales.",
   "packaging_price_not_set": "Le prix de ce conditionnement n'est pas encore configuré ({{packagings}}) : il ne peut pas être vendu.",
-  "packaging_conversion_changed": "La conversion du conditionnement a changé ({{articles}}) : enregistrez à nouveau l'opération."
+  "packaging_conversion_changed": "La conversion du conditionnement a changé ({{articles}}) : enregistrez à nouveau l'opération.",
+  "barcode_taken": "Ce code-barres est déjà utilisé par un élément actif ({{codes}}).",
+  "barcode_not_found": "Code-barres introuvable.",
+  "barcode_primary": "Le code-barres principal se modifie sur la fiche de l'article."
 }

@@ -157,8 +157,18 @@ instantané sur les lignes (`packaging_*`, `base_quantity`) et les mouvements (`
 (port `catalog.usage_port` : ventes, stock, inventaires) ; coût d'entrée saisi par présentation
 (**validé** : coût par unité de base calculé automatiquement, seul utilisé pour CMUP et
 valorisation ; prix de vente indépendant) ; aucune permission nouvelle ; interface : sélecteur de présentation et
-équivalences indicatives (« 48 bouteille = 8 Pack 6 = 2 Carton 24 »). Ne pas
-passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+équivalences indicatives (« 48 bouteille = 8 Pack 6 = 2 Carton 24 »). **Lot 3-D livré —
+codes-barres** ([ADR-0042](docs/adr/0042-codes-barres-multiples.md), migration 0030) : un code
+identifie UNE présentation (article en unité de base ou conditionnement) ; registre
+`catalog_barcodes` (code principal = champ `barcode` conservé, miroir par déclencheur ; codes
+supplémentaires ; codes des conditionnements), unicité commune au tenant parmi les présentations
+ACTIVES (index unique partiel), élément désactivé = codes libérés et revérifiés à la
+réactivation ; texte libre 50 caractères, sans validation EAN ; scan EXACT
+(`catalog.api.resolve_barcode`, `/catalog/barcodes/resolve`) : POS et vente = 1 conditionnement
+ajouté (prix non configuré refusé), entrées / sorties / transferts / inventaires = présélection
+sans quantité devinée ; recherche « contient » étendue à tous les codes
+(`catalog.api.barcode_search`) ; aucune permission nouvelle (`catalog.article.update`) ; ajouts
+et retraits audités. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

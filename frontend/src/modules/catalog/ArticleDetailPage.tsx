@@ -26,6 +26,7 @@ import {
   type PriceChange,
 } from './api';
 import { ArticleDialog } from './ArticleDialog';
+import { BarcodesSection } from './BarcodesSection';
 import { PackagingsSection } from './PackagingsSection';
 
 /**
@@ -166,6 +167,7 @@ export default function ArticleDetailPage() {
         </Card>
       </div>
       <PackagingsSection article={a} />
+      <BarcodesSection article={a} />
       {(can(PRICE_UPDATE) || can('audit.log.view')) && <PriceHistory article={a} />}
       {editing && <ArticleDialog article={a} onClose={() => setEditing(false)} />}
     </>

@@ -16,6 +16,7 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { useCashSessions, useCashSites } from '@/modules/cash_register/api';
 import type { Customer } from '@/modules/customers/api';
 import { paymentError } from '@/modules/sales/ui';
+import { translateError } from '@/shared/lib/errors';
 import { formatMoney, formatQuantity, subtractMoney, sumMoney } from '@/shared/lib/decimal';
 import { useDebouncedValue } from '@/shared/lib/serverTable';
 import { EmptyState } from '@/shared/ui/EmptyState';
@@ -30,6 +31,7 @@ import {
   usePosArticles,
   type CheckoutResult,
   type PosArticle,
+  type PosPackaging,
 } from './api';
 import {
   baseQuantity,
@@ -128,9 +130,9 @@ export default function PosPage() {
     document.getElementById('pos-search')?.focus();
   }, []);
 
-  const add = (article: PosArticle) => {
+  const add = (article: PosArticle, packaging: PosPackaging | null = null) => {
     if (!article.is_active) return;
-    dispatch({ type: 'add', article });
+    dispatch({ type: 'add', article, packaging });
     // Le panier a changé : les paiements saisis sont à revoir.
     setPayments([]);
   };
@@ -142,12 +144,14 @@ export default function PosPage() {
     setScanning(true);
     setScanError(null);
     try {
-      add(await findByBarcode(siteId, barcode));
+      // Lot 3-D : le code d'un conditionnement ajoute 1 conditionnement (présentation gardée).
+      const found = await findByBarcode(siteId, barcode);
+      add(found, found.packagings.find((p) => p.id === found.scanned_packaging_id) ?? null);
       setSearch('');
     } catch (failure) {
       setScanError(
         failure instanceof ApiError && failure.code !== 'barcode_unknown'
-          ? t(`errors:${failure.code}`, { defaultValue: t('errors:unknown') })
+          ? translateError(t, failure)
           : t('pos.barcodeUnknown'),
       );
     } finally {

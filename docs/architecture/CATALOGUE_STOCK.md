@@ -364,3 +364,18 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Interface | Sélecteur de présentation par ligne et équivalences indicatives : « 2 Carton 24 = 48 bouteille », « 48 bouteille = 8 Pack 6 = 2 Carton 24 » (au plus 3 conditionnements, reste en unités de base). |
 | Permissions | Aucune nouvelle : celles de chaque opération (`stock.entry.*`, `stock.exit.*`, `stock.transfer.*`, `inventory_count.inventory.*`). |
 | Hors périmètre | Référentiel d'unités, lots / péremption, FIFO / FEFO, règles de prix, achats. |
+
+## 12. Lot 3-D — codes-barres multiples et codes des conditionnements (ADR-0042)
+
+| Règle | Web |
+|---|---|
+| Principe | Un code-barres identifie **une présentation** : l'article en unité de base, ou l'article + un conditionnement. |
+| Codes | Code **principal** = champ `barcode` de l'article (inchangé, miroir dans le registre) ; codes **supplémentaires** de l'article ; codes de chaque **conditionnement** (plusieurs). Registre relationnel `catalog_barcodes`. |
+| Unicité | Commune au tenant parmi les présentations **actives** (articles et conditionnements), contrôlée par le serveur et garantie en base ; deux tenants peuvent partager un code. |
+| Inactifs | Élément désactivé : codes libérés (conservés) ; réactivation refusée si l'un d'eux a été repris (règle ART-16 étendue). |
+| Format | Texte libre, 50 caractères ; aucune validation EAN imposée, aucune génération, pas de poids variable. |
+| Scan | Égalité exacte, présentation active ; POS et vente : ajout direct (1 carton) ; entrées, sorties, transferts : article + présentation présélectionnés ; inventaire : ligne et présentation présélectionnées, quantité jamais devinée ; prix non configuré : refus à la vente seulement. |
+| Recherche | « Contient » étendue à tous les codes (catalogue, stock, POS, inventaires, ventes) ; ne remplace jamais le scan. |
+| Droits | Aucune permission nouvelle : `catalog.article.view` (consultation, scan), `catalog.article.update` (ajout, retrait). Audit `article.barcode_added/removed`, `packaging.barcode_added/removed`. |
+| Hors périmètre | Images, lots, péremption, étiquettes, balances, génération d'EAN. |
+

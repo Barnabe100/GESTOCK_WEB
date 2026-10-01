@@ -16,8 +16,11 @@ import { z } from 'zod';
 
 import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { type ScanResult } from '@/modules/catalog/api';
+import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 import { ArticlePicker, toArticleOption, type ArticleOption } from '@/modules/stock/ArticlePicker';
 import {
+  addQuantity,
   formatMoney,
   formatQuantity,
   multiplyMoney,
@@ -170,6 +173,35 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
   const totals = watched.map((line) => lineTotal(line));
   const displayTotal = sumMoney(totals.filter((v): v is string => v !== null));
 
+  /**
+   * Lot 3-D : le scan ajoute directement 1 présentation (article en unité de base ou
+   * conditionnement) ; une ligne déjà présente pour cette présentation est incrémentée.
+   */
+  const onScan = (scan: ScanResult) => {
+    const packaging =
+      scan.packaging && scan.packaging.sale_price !== null
+        ? {
+            id: scan.packaging.id,
+            name: scan.packaging.name,
+            conversion: scan.packaging.conversion,
+            sale_price: scan.packaging.sale_price,
+          }
+        : null;
+    const current = form.getValues('lines') ?? [];
+    const existing = current.findIndex(
+      (l) =>
+        l.article?.id === scan.article.id && (l.packaging?.id ?? null) === (packaging?.id ?? null),
+    );
+    if (existing >= 0) {
+      const quantity = normalizeDecimal(current[existing]?.quantity ?? '', 3) ?? '0';
+      form.setValue(`lines.${existing}.quantity`, addQuantity(quantity, '1'), {
+        shouldDirty: true,
+      });
+      return;
+    }
+    lines.append({ article: toArticleOption(scan.article), packaging, quantity: '1' });
+  };
+
   const persist = async (values: FormValues): Promise<Sale> => {
     const saved = await save.mutateAsync({ id: sale?.id, input: toInput(values, isNew) });
     form.reset(defaults(saved, defaultSite));
@@ -268,6 +300,15 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
 
       <fieldset className="sm-fieldset">
         <legend>{t('sales.lines')}</legend>
+        <BarcodeScanField
+          id="sale-scan"
+          onScan={onScan}
+          reject={(scan) =>
+            scan.packaging && scan.packaging.sale_price === null
+              ? t('errors:packaging_price_not_set', { packagings: scan.packaging.name })
+              : null
+          }
+        />
         {lines.fields.length === 0 && (
           <p className={errors.lines ? 'p-error' : 'sm-muted'}>{t('sales.noLines')}</p>
         )}

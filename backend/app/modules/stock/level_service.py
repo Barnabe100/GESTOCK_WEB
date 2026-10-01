@@ -19,7 +19,7 @@ from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, NotFoundError
-from app.modules.catalog.api import articles_view, get_article_refs
+from app.modules.catalog.api import articles_view, barcode_search, get_article_refs
 from app.modules.stock.models import StockLevel
 from app.modules.stock.stock_service import StockService, round_money
 from app.platform.audit.service import audit_action, changes
@@ -182,7 +182,12 @@ def list_levels(
     stmt, cols = _levels_query(site_ids, tenant_id, include_unmanaged=include_unmanaged)
     articles = cols["articles"]
     conditions = [
-        search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
+        # Lot 3-D : aussi les codes supplémentaires et ceux des conditionnements.
+        barcode_search(
+            search,
+            search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
+            articles.c.id,
+        ),
         # Articles précis (ex. stock disponible des lignes d'un transfert en saisie).
         articles.c.id.in_(article_ids) if article_ids else None,
         articles.c.category_id == category_id if category_id else None,

@@ -1062,7 +1062,9 @@
     "summaryFinal": "Ajustement net appliqué au stock (valorisé au CMUP) : {{value}}.",
     "presentationFor": "Présentation du comptage de {{reference}}",
     "packagingsFor": "Nombre de {{name}} comptés pour {{reference}}",
-    "looseFor": "{{unit}} en vrac pour {{reference}}"
+    "looseFor": "{{unit}} en vrac pour {{reference}}",
+    "scannedFilter": "Scan : {{label}}",
+    "scannedAbsent": "Article scanné absent de cet inventaire ({{label}})."
   },
   "payment": {
     "title": "Paiements",
@@ -1701,5 +1703,33 @@
   "presentation": {
     "label": "Présentation",
     "baseUnit": "Unité de base ({{unit}})"
+  },
+  "barcodes": {
+    "title": "Codes-barres",
+    "help": "Un code-barres identifie une présentation précise : l'article dans son unité de base, ou l'un de ses conditionnements. Texte libre (EAN, code fournisseur, code interne…), 50 caractères au plus ; un code ne peut désigner qu'une seule présentation active de l'entreprise.",
+    "article": "Article (unité de base : {{unit}})",
+    "baseUnit": "l'unité de base ({{unit}})",
+    "primary": "Code-barres principal",
+    "noPrimary": "Aucun",
+    "primaryHelp": "Modifiable avec « Modifier » en haut de la fiche.",
+    "additional": "Codes-barres supplémentaires",
+    "none": "Aucun code-barres.",
+    "released": "Libéré (élément inactif)",
+    "placeholder": "Nouveau code-barres",
+    "newFor": "Nouveau code-barres pour {{target}}",
+    "add": "Ajouter",
+    "addFor": "Ajouter le code-barres à {{target}}",
+    "added": "Code-barres {{code}} ajouté",
+    "remove": "Retirer le code-barres {{code}}",
+    "removeTitle": "Retirer le code-barres",
+    "confirmRemove": "Retirer le code-barres {{code}} ? Il ne sera plus reconnu au scan (l'opération reste tracée dans le journal d'audit).",
+    "removed": "Code-barres {{code}} retiré"
+  },
+  "scan": {
+    "label": "Scanner un code-barres",
+    "placeholder": "Scanner ou saisir un code-barres puis Entrée",
+    "found": "Identifié : {{article}} ({{presentation}})",
+    "unknown": "Code-barres inconnu : {{code}}",
+    "notStockManaged": "{{article}} n'est pas géré en stock : il ne peut pas figurer dans cette opération."
   }
 }

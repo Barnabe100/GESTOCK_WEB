@@ -32,6 +32,7 @@ from app.modules.catalog.api import (
     ArticleRef,
     PackagingRef,
     articles_view,
+    barcode_search,
     base_quantity,
     check_packagings,
     get_article_refs,
@@ -160,8 +161,10 @@ class SaleService:
             else None,
         ]
         articles = articles_view()
-        by_article_reference = search_filter(
-            filters.article_reference, articles.c.reference, articles.c.barcode
+        by_article_reference = barcode_search(
+            filters.article_reference,
+            search_filter(filters.article_reference, articles.c.reference, articles.c.barcode),
+            articles.c.id,
         )
         if by_article_reference is not None:
             conditions.append(

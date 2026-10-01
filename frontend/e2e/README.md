@@ -189,6 +189,13 @@ la suite peut être rejouée sur la même base.
   bouteille »), transfert de 2 cartons (48 arrivent au dépôt), inventaire 8 cartons + 5 = 197,
   Pack 6 désactivé (brouillon refusé `packaging_inactive`, plus proposé), quantités décimales
   refusées (`quantity_not_whole`), conditionnement d'une autre entreprise introuvable.
+- `barcodes-3d.e2e.ts` (Lot 3-D, ADR-0042) : entreprise créée pour l'exécution (dépôt, seconde
+  entreprise pour l'isolation) ; codes supplémentaires et codes du carton ajoutés sur la fiche
+  article, code déjà utilisé refusé, recherche par code de conditionnement ; POS : code de
+  l'article → unité de base, code du carton → 1 puis 2 Carton 24, code inconnu et conditionnement
+  sans prix refusés ; inventaire : scan du carton → présentation présélectionnée, quantité saisie
+  (4 cartons + 4 = 100) ; entrée et transfert par scan (stock en unité de base) ; codes inconnus
+  d'une autre entreprise, qui peut réutiliser le même code.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

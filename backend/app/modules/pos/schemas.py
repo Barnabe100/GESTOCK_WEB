@@ -32,3 +32,6 @@ class PosArticleOut(BaseModel):
     # Lot 3-B : unité de base toujours vendable ; conditionnements actifs en plus.
     decimal_quantity_allowed: bool
     packagings: list[PosPackagingOut] = Field(default_factory=list)
+    # Lot 3-D : présentation identifiée par un scan (code d'un conditionnement) ; nul : unité de
+    # base. Renseigné seulement par ``/pos/articles/by-barcode``.
+    scanned_packaging_id: uuid.UUID | None = None

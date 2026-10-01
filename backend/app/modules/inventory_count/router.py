@@ -122,9 +122,13 @@ def list_lines(
     paging: Paging,
     search: str | None = None,
     state: LineState = LineState.ALL,
+    article_id: uuid.UUID | None = None,
 ) -> Page[InventoryLineOut]:
+    """``article_id`` (Lot 3-D) : ligne EXACTE d'un article identifié par un scan."""
     service = InventoryService(db, ctx, now)
-    items, total = service.lines(service.get(inventory_id), paging, search=search, state=state)
+    items, total = service.lines(
+        service.get(inventory_id), paging, search=search, state=state, article_id=article_id
+    )
     return Page(items=items, total=total, limit=paging.limit, offset=paging.offset)
 
 
