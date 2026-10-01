@@ -1,6 +1,8 @@
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
 import { Dropdown } from 'primereact/dropdown';
+import { InputText } from 'primereact/inputtext';
+import { ToggleButton } from 'primereact/togglebutton';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -21,54 +23,97 @@ import { ServerTable } from '@/shared/ui/ServerTable';
 import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
+import { ExportMenu } from '@/shared/ui/ExportMenu';
+import { ArticlePicker, type ArticleOption } from '@/modules/stock/ArticlePicker';
 
 import {
+  SALE_CHANNELS,
   SALE_PAYMENT_STATUSES,
   SALE_STATUSES,
+  SALES_EXPORT_FORMATS,
   useSales,
+  useSellers,
   type Sale,
+  type SaleChannel,
   type SalePaymentStatus,
   type SaleStatus,
 } from './api';
+import { CustomerPicker, type CustomerOption } from './CustomerPicker';
 import { SalePaymentBadge } from './ui';
+
+/** Tri par défaut : la plus récente d'abord (date de création), jamais l'ordre du numéro. */
+export const DEFAULT_SALES_SORT = { sortField: 'created_at', sortOrder: -1 as const };
 
 export default function SalesPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { can, capabilities } = useCapabilities();
-  const [table, setTable] = useState<TableState>({
-    ...INITIAL_TABLE,
-    sortField: 'number',
-    sortOrder: -1,
-  });
+  const [table, setTable] = useState<TableState>({ ...INITIAL_TABLE, ...DEFAULT_SALES_SORT });
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<SaleStatus | null>(null);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<SalePaymentStatus | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [channel, setChannel] = useState<SaleChannel | null>(null);
+  const [sellerId, setSellerId] = useState<string | null>(null);
+  const [mine, setMine] = useState(false);
+  const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  const [article, setArticle] = useState<ArticleOption | null>(null);
+  const [articleReference, setArticleReference] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [more, setMore] = useState(false);
   const debounced = useDebouncedValue(search);
-  const sales = useSales(
-    toQueryString(table, {
-      search: debounced,
-      status,
-      site_id: siteId,
-      payment_status: paymentStatus,
-      date_from: dateFrom,
-      date_to: dateTo,
-    }),
-  );
+  const debouncedArticleReference = useDebouncedValue(articleReference);
+  const debouncedPaymentReference = useDebouncedValue(paymentReference);
+  const sellers = useSellers();
+  // Filtres de la liste : l'export reçoit EXACTEMENT les mêmes (même périmètre côté serveur).
+  const filters = {
+    search: debounced,
+    status,
+    site_id: siteId,
+    payment_status: paymentStatus,
+    date_from: dateFrom,
+    date_to: dateTo,
+    channel,
+    seller_id: sellerId,
+    mine: mine ? 'true' : null,
+    customer_id: customer?.id ?? null,
+    article_id: article?.id ?? null,
+    article_reference: debouncedArticleReference.trim(),
+    payment_reference: debouncedPaymentReference.trim(),
+  };
+  const sales = useSales(toQueryString(table, filters));
+  const exportPath = (format: string) => {
+    const params = new URLSearchParams({ format });
+    if (table.sortField && table.sortOrder) {
+      params.set('sort', `${table.sortOrder === -1 ? '-' : ''}${table.sortField}`);
+    }
+    for (const [key, value] of Object.entries(filters)) {
+      if (value) params.set(key, value);
+    }
+    return `/sales/export?${params.toString()}`;
+  };
   const { currency, locale } = capabilities.tenant;
   const multiSite = capabilities.site === null && capabilities.sites.length > 1;
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
+  const advanced =
+    channel !== null ||
+    customer !== null ||
+    article !== null ||
+    articleReference !== '' ||
+    paymentReference !== '';
   const filtered =
     search !== '' ||
     status !== null ||
     siteId !== null ||
     paymentStatus !== null ||
     dateFrom !== '' ||
-    dateTo !== '';
+    dateTo !== '' ||
+    sellerId !== null ||
+    mine ||
+    advanced;
   const resetFilters = () => {
     setSearch('');
     setStatus(null);
@@ -76,6 +121,13 @@ export default function SalesPage() {
     setPaymentStatus(null);
     setDateFrom('');
     setDateTo('');
+    setChannel(null);
+    setSellerId(null);
+    setMine(false);
+    setCustomer(null);
+    setArticle(null);
+    setArticleReference('');
+    setPaymentReference('');
     resetPage();
   };
 
@@ -85,13 +137,18 @@ export default function SalesPage() {
         title={t('sales.title')}
         description={t('sales.subtitle')}
         actions={
-          can('sales.sale.create') && (
-            <Button
-              icon="pi pi-plus"
-              label={t('sales.new')}
-              onClick={() => void navigate('/sales/new')}
-            />
-          )
+          <>
+            {can('sales.sale.export') && (
+              <ExportMenu formats={SALES_EXPORT_FORMATS} path={exportPath} fallbackName="ventes" />
+            )}
+            {can('sales.sale.create') && (
+              <Button
+                icon="pi pi-plus"
+                label={t('sales.new')}
+                onClick={() => void navigate('/sales/new')}
+              />
+            )}
+          </>
         }
       />
       <FilterBar onReset={resetFilters} active={filtered}>
@@ -150,7 +207,99 @@ export default function SalesPage() {
             resetPage();
           }}
         />
+        <Dropdown
+          value={sellerId}
+          onChange={(e) => {
+            setSellerId((e.value as string | undefined) ?? null);
+            resetPage();
+          }}
+          options={(sellers.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+          placeholder={t('sales.allSellers')}
+          showClear
+          filter
+          aria-label={t('sales.seller')}
+        />
+        <ToggleButton
+          checked={mine}
+          onChange={(e) => {
+            setMine(e.value);
+            resetPage();
+          }}
+          onLabel={t('sales.mine')}
+          offLabel={t('sales.mine')}
+          onIcon="pi pi-check"
+          offIcon="pi pi-user"
+          aria-label={t('sales.mine')}
+        />
+        <Button
+          type="button"
+          text
+          icon={more || advanced ? 'pi pi-chevron-up' : 'pi pi-sliders-h'}
+          label={t(more || advanced ? 'sales.lessFilters' : 'sales.moreFilters')}
+          aria-expanded={more || advanced}
+          onClick={() => setMore((v) => !v)}
+          disabled={advanced}
+        />
       </FilterBar>
+      {(more || advanced) && (
+        <FilterBar>
+          <Dropdown
+            value={channel}
+            onChange={(e) => {
+              setChannel((e.value as SaleChannel | undefined) ?? null);
+              resetPage();
+            }}
+            options={SALE_CHANNELS.map((v) => ({ value: v, label: t(`sales.channels.${v}`) }))}
+            placeholder={t('sales.allChannels')}
+            showClear
+            aria-label={t('sales.channel')}
+          />
+          {can('customers.customer.view') && (
+            <CustomerPicker
+              id="sales-filter-customer"
+              value={customer}
+              includeInactive
+              placeholder={t('sales.allCustomers')}
+              ariaLabel={t('sales.customer')}
+              onChange={(value) => {
+                setCustomer(value);
+                resetPage();
+              }}
+            />
+          )}
+          {can('catalog.article.view') && (
+            <ArticlePicker
+              id="sales-filter-article"
+              value={article}
+              ariaLabel={t('sales.article')}
+              onChange={(value) => {
+                setArticle(value);
+                resetPage();
+              }}
+            />
+          )}
+          <InputText
+            value={articleReference}
+            placeholder={t('sales.articleReference')}
+            title={t('sales.articleReferenceHelp')}
+            aria-label={t('sales.articleReference')}
+            onChange={(e) => {
+              setArticleReference(e.target.value);
+              resetPage();
+            }}
+          />
+          <InputText
+            value={paymentReference}
+            placeholder={t('sales.paymentReference')}
+            title={t('sales.paymentReferenceHelp')}
+            aria-label={t('sales.paymentReference')}
+            onChange={(e) => {
+              setPaymentReference(e.target.value);
+              resetPage();
+            }}
+          />
+        </FilterBar>
+      )}
       <ServerTable
         query={sales}
         table={table}
@@ -209,6 +358,7 @@ export default function SalesPage() {
             s.payment_status ? <SalePaymentBadge status={s.payment_status} /> : '—'
           }
         />
+        <Column header={t('sales.channel')} body={(s: Sale) => t(`sales.channels.${s.channel}`)} />
         <Column field="created_by_name" header={t('sales.seller')} />
         <Column
           header={t('common.actions')}

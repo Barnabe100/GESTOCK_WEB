@@ -3,7 +3,7 @@ from app.modules.sales.payment_methods import ensure_default_payment_methods
 from app.modules.sales.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
-R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
+R, W, A, E = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN, AccessKind.EXPORT
 
 MANIFEST = ModuleManifest(
     code="sales",
@@ -14,6 +14,8 @@ MANIFEST = ModuleManifest(
         # Consultation : ses propres ventes ; ``view_all`` : toutes les ventes du site (Lot 1).
         PermissionDef("sales.sale.view", R),
         PermissionDef("sales.sale.view_all", R),
+        # Export de l'historique (Lot 2) : même périmètre que la liste, format au choix.
+        PermissionDef("sales.sale.export", E),
         PermissionDef("sales.sale.create", W),
         PermissionDef("sales.sale.update", W),
         PermissionDef("sales.sale.validate", W),

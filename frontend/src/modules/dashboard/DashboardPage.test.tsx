@@ -8,7 +8,7 @@ import DashboardPage from './DashboardPage';
 
 const SALE = {
   id: 'v1',
-  number: 'VTE-000001',
+  number: 'VENT-BOU-2026-000001',
   site_id: 's1',
   site_name: 'Boutique',
   customer_id: null,
@@ -73,7 +73,7 @@ describe('tableau de bord', () => {
     expect(await within(indicators).findByText('7')).toBeTruthy();
     expect(within(indicators).getByText("Ventes validées aujourd'hui")).toBeTruthy();
     expect(within(indicators).getByText('Transferts en brouillon')).toBeTruthy();
-    expect(await screen.findByText('VTE-000001')).toBeTruthy();
+    expect(await screen.findByText('VENT-BOU-2026-000001')).toBeTruthy();
     const shortcuts = screen.getByRole('navigation', { name: 'Actions rapides' });
     expect(within(shortcuts).getByRole('button', { name: 'Nouvelle vente' })).toBeTruthy();
     expect(within(shortcuts).getByRole('button', { name: 'Nouveau transfert' })).toBeTruthy();

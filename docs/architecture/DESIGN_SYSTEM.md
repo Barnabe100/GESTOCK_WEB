@@ -49,6 +49,7 @@ Règle : **aucune valeur visuelle en dur** dans un composant ; ajouter un jeton 
 | `SearchInput`, `StatusFilter` | Recherche serveur (anti-rebond) ; filtre Actifs / Inactifs / Tous. |
 | `ServerTable` | Tableau paginé côté serveur : tri, pagination (10/25/50/100), survol, rapport « 1–25 sur 120 », défilement horizontal, erreur traduite, état vide. |
 | `RowActions` | Actions de ligne : boutons icône (infobulle + `aria-label`) jusqu'à 3, au-delà menu « Plus d'actions » ; action destructive en rouge. |
+| `ExportMenu` | UNE action « Exporter » par fonctionnalité (bouton contour, icône de téléchargement) ouvrant le menu des formats proposés (`formats` : Excel, CSV, PDF) ; transmet les filtres affichés ; affichée seulement avec la permission d'export (ADR-0038). |
 | `StatusBadge` et dérivés | `DocumentStatusBadge`, `ActiveBadge`, `SubscriptionStatusBadge` — voir §4. |
 | `EmptyState`, `ListEmpty` | État vide avec message et action ; `ListEmpty` distingue « aucune donnée » (action de création) de « aucun résultat » (piste : réinitialiser). |
 | `LoadingState` | Chargement annoncé (`role="status"`). |

@@ -17,7 +17,7 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
 
 | Table | Colonnes | Règles |
 |---|---|---|
-| `sales` | `number` (nul au brouillon ; `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la validation ; historique `VTE-000001` conservé), `site_id`, `customer_id` (nullable), `status`, `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, auteurs et dates de création / validation / annulation, `cancellation_reason` | `UNIQUE (tenant_id, number)` ; `UNIQUE (tenant_id, id)` (cible des futurs paiements / créances) ; FK composites vers `sites` et `customers` du même tenant ; `CHECK` montants ≥ 0, date de validation si validée, motif si annulée, **numéro si validée** (`validated_has_number`), exception de crédit complète ou absente (`credit_override_complete`) ; `is_credit`, `credit_override_by` / `_at` / `_reason` / `_amount` (Lot 1) |
+| `sales` | `number` (nul au brouillon ; `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la validation), `site_id`, `customer_id` (nullable), `status`, `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, auteurs et dates de création / validation / annulation, `cancellation_reason` | `UNIQUE (tenant_id, number)` ; `UNIQUE (tenant_id, id)` (cible des futurs paiements / créances) ; FK composites vers `sites` et `customers` du même tenant ; `CHECK` montants ≥ 0, date de validation si validée, motif si annulée, **numéro si validée** (`validated_has_number`), exception de crédit complète ou absente (`credit_override_complete`) ; `is_credit`, `credit_override_by` / `_at` / `_reason` / `_amount` (Lot 1) |
 | `sale_lines` | `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price`, `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`, lignes de brouillon) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
 
 - **Numéro (Lot 1)** : `VENT-{CODE_SITE}-{ANNÉE}-{SÉQUENCE}` (ex. `VENT-OUA-2026-000154`),
@@ -26,8 +26,9 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
   `BIGINT`, incrément atomique, ligne verrouillée jusqu'à la fin de la transaction : numéros
   distincts et consécutifs sous concurrence, annulé avec la transaction). Six chiffres minimum
   (présentation), sans limite : `…-999999` puis `…-1000000`. Année dans le fuseau du tenant.
-  Numéro **définitif** après validation (déclencheur `sales_number_immutable`). Les anciens
-  numéros `VTE-…` sont conservés, jamais renumérotés (un brouillon historique garde le sien).
+  Numéro **définitif** après validation (déclencheur `sales_number_immutable`). Lot 2
+  (ADR-0038) : un brouillon n'a jamais de numéro et la validation attribue toujours un numéro
+  `VENT-…` (aucune reprise d'un ancien numéro ; les `VTE-…` n'étaient que des données de test).
   Le **code du site** devient non modifiable dès son premier numéro (`409 site_code_locked`).
 - **Calculs (serveur uniquement)** : `line_total = arrondi(quantity × unit_price, 2)` (demi
   supérieur, `Decimal`) ; `subtotal = Σ line_total` ; `total = subtotal` (aucune remise ni
@@ -136,6 +137,11 @@ membre sur ce site), jamais par nom de rôle.
 | `sales.sale.cancel` | write (remise en stock) | ✓ | — | — | — |
 | `sales.sale.credit_create` | write (vente à crédit) | ✓ | ✓ | — | — |
 | `sales.sale.credit_override` | write (dépassement de limite justifié) | ✓ | — | — | — |
+| `sales.sale.export` | export (historique, Lot 2) | ✓ | ✓ | — | — |
+
+`sales.sale.export` (ADR-0038) s'ajoute à `sales.sale.view` (exigée aussi) et ne remplace
+aucun contrôle : tenant, sites visibles, portée `view` / `view_all` ; un site où le membre ne
+détient pas l'export n'est jamais exporté.
 
 L'annulation d'une vente validée modifie le stock après coup : réservée par défaut à
 l'Administrateur ; un rôle personnalisé peut l'accorder. Aucun test sur un nom de rôle ;
@@ -156,14 +162,43 @@ après) · `sale.validated` (statut précédent / nouveau, total, nombre de lign
 et la vente (`entity_type="sale"`, `entity_id`) sont portés par l'entrée d'audit, écrite dans
 la transaction de l'opération.
 
-## 9. Interface
+Exports (Lot 2) : `export.generated` (`entity_type="export"`) — fonctionnalité
+(`sales.history`), format, filtres réellement renseignés, nombre de lignes.
+
+## 9. Historique, filtres et exports (Lot 2, ADR-0038)
+
+- **Tri par défaut** : `-created_at` (la plus récente d'abord) pour la liste, le tableau de
+  bord et le point de vente ; tri par numéro proposé en option (ordre alphabétique).
+- **Filtres** (`SaleFilters`, mêmes paramètres pour `GET /sales` et `GET /sales/export`) :
+  `search` (numéro, code / nom / téléphone du client), `status`, `site_id`, `customer_id`,
+  `date_from` / `date_to`, `payment_status`, `channel` (`BACKOFFICE` / `POS`), `seller_id`
+  (vendeur / opérateur = `created_by`, candidats : `GET /sales/sellers`), `mine` (« Mes
+  ventes »), `article_id`, `article_reference` (référence ou code-barres d'un article vendu),
+  `payment_reference` (n° de transaction d'un paiement) — deux références distinctes.
+- **Export** : `GET /sales/export?format=xlsx|csv|pdf&…filtres…&sort=…` — exactement les
+  ventes de la liste (même requête `SaleService.query`, même tri), sans pagination, au plus
+  `SM_EXPORT_MAX_ROWS` (50 000 ; au-delà `422 export_too_large`). Colonnes : numéro, date de
+  vente, site, client, vendeur, canal, statut, total, payé, reste dû, encaissement, crédit,
+  date de validation. CSV `;` UTF-8 BOM décimales à virgule ; Excel typé ; PDF A4 paysage
+  (titre, entreprise, date de génération, filtres, pagination). Architecture commune :
+  [`app/platform/exports.py`](../../backend/app/platform/exports.py).
+- **Fiche enrichie** : mouvements de stock de la vente (`GET /stock/movements?source_type=sale
+  &source_id=…`, `stock.movement.view`, sites du périmètre) ; chronologie
+  (`GET /sales/{id}/history`, `audit.log.view` + vente visible) : évènements réellement
+  journalisés de la vente et de ses paiements.
+
+## 9 bis. Interface
 
 Menu « Ventes » (permission `sales.sale.view`). Liste : numéro, date, site (si plusieurs),
-client, total, statut, auteur ; recherche (numéro, code / nom / téléphone du client), filtres
-statut, site, période ; tri et pagination serveur. Saisie : site, client facultatif
+client, total, statut, encaissement, canal, vendeur / opérateur ; recherche, filtres statut,
+encaissement, site, période, vendeur, « Mes ventes », puis « Plus de filtres » (canal, client,
+article, référence article, référence de paiement) ; tri et pagination serveur ; **UNE**
+action « Exporter » (menu des formats Excel / CSV / PDF), affichée seulement avec
+`sales.sale.export`, qui transmet les filtres affichés. Saisie : site, client facultatif
 (recherche des clients actifs), lignes article / quantité avec prix catalogue et montants
 **indicatifs** (calcul décimal exact, le serveur fait foi), brouillon, validation confirmée
-(total rappelé), annulation avec motif ; consultation en lecture seule après validation.
+(total rappelé), annulation avec motif ; consultation en lecture seule après validation, avec
+les sections « Mouvements de stock » et « Chronologie » selon les permissions.
 
 ## 10. Hors périmètre et suite
 

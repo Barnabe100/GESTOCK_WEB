@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -97,6 +98,23 @@ class SaleOut(BaseModel):
     credit_override_reason: str | None = None
     credit_override_amount: Money | None = None
     lines: list[SaleLineOut] = Field(default_factory=list)
+
+
+class SellerOut(BaseModel):
+    """Vendeur / opérateur proposé au filtre de l'historique (Lot 2)."""
+
+    id: uuid.UUID
+    name: str
+
+
+class SaleEventOut(BaseModel):
+    """Évènement de la chronologie d'une vente (Lot 2) : entrée réelle du journal d'audit."""
+
+    id: uuid.UUID
+    occurred_at: datetime
+    action: str
+    user_name: str | None
+    data: dict[str, Any]
 
 
 # --- Paiements (Phase 2.7) ---------------------------------------------------------------------

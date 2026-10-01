@@ -30,7 +30,7 @@ export function useDocumentCount(path: string, query: string, enabled: boolean) 
 export function useRecentSales(enabled: boolean) {
   return useQuery({
     queryKey: ['sales', 'list', 'dashboard-recent'],
-    queryFn: ({ signal }) => api.get<Page<Sale>>('/sales?limit=5&sort=-number', signal),
+    queryFn: ({ signal }) => api.get<Page<Sale>>('/sales?limit=5&sort=-created_at', signal),
     enabled,
   });
 }

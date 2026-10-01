@@ -43,6 +43,7 @@ import {
 } from './api';
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
 import { PaymentsPanel } from './PaymentsPanel';
+import { SaleHistoryPanel, SaleMovementsPanel } from './SaleActivity';
 import { SalePaymentBadge, saleError } from './ui';
 import { ValidateSaleDialog } from './ValidateSaleDialog';
 
@@ -551,6 +552,11 @@ export default function SalePage() {
           <SaleSummary sale={sale} />
           {/* Encaissement : ventes validées (et historique d'une vente annulée). */}
           {sale.status !== 'DRAFT' && can('sales.payment.view') && <PaymentsPanel sale={sale} />}
+          {/* Lot 2 : sections visibles seulement avec la permission correspondante. */}
+          {sale.status !== 'DRAFT' && can('stock.movement.view') && (
+            <SaleMovementsPanel sale={sale} />
+          )}
+          {can('audit.log.view') && <SaleHistoryPanel sale={sale} />}
           <div className="sm-dialog-actions">
             <Button label={t('actions.back')} text onClick={() => void navigate('/sales')} />
           </div>

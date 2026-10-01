@@ -1,21 +1,45 @@
 import uuid
-from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.errors import ForbiddenError
-from app.modules.sales.models import SaleChannel, SalePaymentStatus, SaleStatus
+from app.modules.sales.export import (
+    SALES_EXPORT_FEATURE,
+    SALES_EXPORT_FORMATS,
+    sales_history_table,
+)
+from app.modules.sales.filters import SaleFilters, sale_filters
 from app.modules.sales.payment_router import router as payment_router
-from app.modules.sales.schemas import SaleCancel, SaleCreate, SaleInput, SaleOut, SaleValidate
+from app.modules.sales.schemas import (
+    SaleCancel,
+    SaleCreate,
+    SaleEventOut,
+    SaleInput,
+    SaleOut,
+    SaleValidate,
+    SellerOut,
+)
 from app.modules.sales.service import SaleService
-from app.platform.context import DbSession, NowDep, RequestContext, require_permission
+from app.platform.audit.service import entity_history
+from app.platform.context import (
+    DbSession,
+    NowDep,
+    RequestContext,
+    SettingsDep,
+    require_permission,
+)
+from app.platform.exports import ExportFormat, audit_export, check_format, export_response
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
 
 router = APIRouter(tags=["sales"])
 
-View = Annotated[RequestContext, Depends(require_permission("sales.sale.view"))]
+VIEW = "sales.sale.view"
+View = Annotated[RequestContext, Depends(require_permission(VIEW))]
+AuditView = Annotated[RequestContext, Depends(require_permission("audit.log.view"))]
+Export = Annotated[RequestContext, Depends(require_permission("sales.sale.export"))]
+Filters = Annotated[SaleFilters, Depends(sale_filters)]
 Create = Annotated[RequestContext, Depends(require_permission("sales.sale.create"))]
 Update = Annotated[RequestContext, Depends(require_permission("sales.sale.update"))]
 Validate = Annotated[RequestContext, Depends(require_permission("sales.sale.validate"))]
@@ -25,32 +49,46 @@ Paging = Annotated[PageParams, Depends(page_params)]
 
 @router.get("", response_model=Page[SaleOut])
 def list_sales(
-    ctx: View,
-    db: DbSession,
-    now: NowDep,
-    paging: Paging,
-    search: str | None = None,
-    status_filter: Annotated[SaleStatus | None, Query(alias="status")] = None,
-    site_id: uuid.UUID | None = None,
-    customer_id: uuid.UUID | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    payment_status: SalePaymentStatus | None = None,
-    channel: SaleChannel | None = None,
+    ctx: View, db: DbSession, now: NowDep, paging: Paging, filters: Filters
 ) -> Page[SaleOut]:
     service = SaleService(db, ctx, now)
-    items, total = service.search(
-        paging,
-        search=search,
-        status=status_filter,
-        site_id=site_id,
-        customer_id=customer_id,
-        date_from=date_from,
-        date_to=date_to,
-        payment=payment_status,
-        channel=channel,
-    )
+    items, total = service.search(paging, filters)
     return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
+
+
+@router.get("/sellers", response_model=list[SellerOut])
+def list_sellers(ctx: View, db: DbSession, now: NowDep) -> list[SellerOut]:
+    """Vendeurs / opérateurs du filtre : auteurs des ventes visibles par l'utilisateur."""
+    return [SellerOut(id=i, name=n) for i, n in SaleService(db, ctx, now).sellers()]
+
+
+@router.get("/export")
+def export_sales(
+    ctx: Export,
+    db: DbSession,
+    now: NowDep,
+    settings: SettingsDep,
+    filters: Filters,
+    export_format: Annotated[ExportFormat, Query(alias="format")],
+    sort: Annotated[str | None, Query(max_length=50)] = None,
+) -> Response:
+    """Export de l'historique : exactement le périmètre de la liste (mêmes filtres, même
+    portée « ses ventes » / ``view_all``, mêmes sites), au format choisi ; audité."""
+    if not ctx.has_permission(VIEW):
+        raise ForbiddenError("Permission insuffisante", code="permission_denied")
+    check_format(export_format, SALES_EXPORT_FORMATS)
+    table = sales_history_table(db, ctx, now, filters, sort, settings.export_max_rows)
+    audit_export(
+        db,
+        ctx,
+        feature=SALES_EXPORT_FEATURE,
+        fmt=export_format,
+        filters=filters.used(),
+        row_count=len(table.rows),
+        site_id=filters.site_id,
+    )
+    db.commit()
+    return export_response(table, export_format, now)
 
 
 @router.post("", response_model=SaleOut, status_code=status.HTTP_201_CREATED)
@@ -65,6 +103,29 @@ def create_sale(body: SaleCreate, ctx: Create, db: DbSession, now: NowDep) -> Sa
 def get_sale(sale_id: uuid.UUID, ctx: View, db: DbSession, now: NowDep) -> SaleOut:
     service = SaleService(db, ctx, now)
     return service.to_out([service.get(sale_id)], with_lines=True)[0]
+
+
+@router.get("/{sale_id}/history", response_model=list[SaleEventOut])
+def sale_history(
+    sale_id: uuid.UUID, ctx: AuditView, db: DbSession, now: NowDep
+) -> list[SaleEventOut]:
+    """Chronologie de la vente (Lot 2) : évènements réellement journalisés de la vente et de ses
+    paiements. Exige ``audit.log.view`` ET une vente visible (portée de ``sales.sale.view``)."""
+    if not ctx.has_permission(VIEW):
+        raise ForbiddenError("Permission insuffisante", code="permission_denied")
+    sale = SaleService(db, ctx, now).get(sale_id)
+    return [
+        SaleEventOut(
+            id=log.id,
+            occurred_at=log.occurred_at,
+            action=log.action,
+            user_name=user_name,
+            data=log.data,
+        )
+        for log, user_name in entity_history(
+            db, ctx.tenant_id, "sale", sale.id, linked_type="payment", link_key="sale_id"
+        )
+    ]
 
 
 @router.put("/{sale_id}", response_model=SaleOut)

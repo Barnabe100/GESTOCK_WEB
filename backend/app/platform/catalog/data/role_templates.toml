@@ -15,13 +15,13 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue, fournisseurs, clients, ventes (toutes celles du site, à crédit comprises, sans dépassement de limite), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue, fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
   "customers.*",
-  "sales.sale.view", "sales.sale.view_all", "sales.sale.create", "sales.sale.update",
-  "sales.sale.validate", "sales.sale.credit_create",
+  "sales.sale.view", "sales.sale.view_all", "sales.sale.export", "sales.sale.create",
+  "sales.sale.update", "sales.sale.validate", "sales.sale.credit_create",
   "sales.payment.view", "sales.payment.create",
   "receivables.receivable.view",
   "cash_register.*",
@@ -36,6 +36,8 @@ permissions = [
   "inventory_count.*",
   "subscription.activation.check",
 ]
+# Limite de crédit des clients : réservée à l'Administrateur par défaut (Lot 2).
+exclude = ["customers.credit_limit.manage"]
 
 [roles.seller]
 name = "Vendeur"

@@ -1290,6 +1290,22 @@ a {
   font-size: var(--sm-text-lg);
 }
 
+/* Chronologie (fiche vente, Lot 2) : évènements du journal d'audit, du plus ancien au plus récent. */
+.sm-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--sm-space-3);
+  border-left: 2px solid var(--sm-border);
+}
+
+.sm-timeline-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sm-space-2) var(--sm-space-3);
+  padding: var(--sm-space-2) 0;
+}
+
 .sm-section-header .p-button {
   margin-left: auto;
 }

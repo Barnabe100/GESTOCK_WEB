@@ -12,6 +12,11 @@ export const SALE_PAYMENT_STATUSES: readonly SalePaymentStatus[] = [
   'PAID',
 ];
 export const SALE_STATUSES: readonly SaleStatus[] = ['DRAFT', 'VALIDATED', 'CANCELLED'];
+/** Canal d'enregistrement : gestion (back-office) ou point de vente. */
+export type SaleChannel = 'BACKOFFICE' | 'POS';
+export const SALE_CHANNELS: readonly SaleChannel[] = ['BACKOFFICE', 'POS'];
+/** Formats proposés par l'export de l'historique (le serveur refuse tout autre format). */
+export const SALES_EXPORT_FORMATS = ['xlsx', 'csv', 'pdf'] as const;
 
 /** Montants et quantités : chaînes décimales calculées par le serveur (qui fait foi). */
 export interface SaleLine {
@@ -39,6 +44,7 @@ export interface Sale {
   customer_code: string | null;
   customer_name: string | null;
   status: SaleStatus;
+  channel: SaleChannel;
   sale_date: string;
   notes: string | null;
   subtotal: string;
@@ -83,6 +89,36 @@ export function useSales(query: string) {
     queryKey: [...saleKeys.all, 'list', query],
     queryFn: ({ signal }) => api.get<Page<Sale>>(`/sales?${query}`, signal),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Vendeurs / opérateurs du filtre : auteurs des ventes visibles (calculés par le serveur). */
+export interface Seller {
+  id: string;
+  name: string;
+}
+
+export function useSellers() {
+  return useQuery({
+    queryKey: [...saleKeys.all, 'sellers'],
+    queryFn: ({ signal }) => api.get<Seller[]>('/sales/sellers', signal),
+  });
+}
+
+/** Évènement de la chronologie : entrée réelle du journal d'audit (`audit.log.view`). */
+export interface SaleEvent {
+  id: string;
+  occurred_at: string;
+  action: string;
+  user_name: string | null;
+  data: Record<string, unknown>;
+}
+
+export function useSaleHistory(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...saleKeys.all, 'history', id],
+    queryFn: ({ signal }) => api.get<SaleEvent[]>(`/sales/${id}/history`, signal),
+    enabled,
   });
 }
 

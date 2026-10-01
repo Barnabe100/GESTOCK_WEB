@@ -19,7 +19,10 @@ describe('compte client : limite, exposition, crédit disponible, créances', ()
     fetchMock.mockImplementation(async (url) =>
       String(url).includes('/credit-exposure')
         ? jsonResponse(e)
-        : pageOf([receivable(), receivable({ sale_id: 'v3', sale_number: 'VTE-000003' })]),
+        : pageOf([
+            receivable(),
+            receivable({ sale_id: 'v3', sale_number: 'VENT-BOU-2026-000003' }),
+          ]),
     );
 
   beforeEach(() => vi.stubGlobal('fetch', fetchMock));
@@ -38,7 +41,7 @@ describe('compte client : limite, exposition, crédit disponible, créances', ()
     expect(text(credit)).toContain(`${money('320000.00')}Exposition actuelle`);
     expect(text(credit)).toContain(`${money('180000.00')}Crédit disponible`);
     expect(text(credit)).toContain('2 créances ouvertes');
-    expect(await screen.findByText('VTE-000003')).toBeTruthy();
+    expect(await screen.findByText('VENT-BOU-2026-000003')).toBeTruthy();
     // Liste du client : pas de colonne client répétée.
     expect(screen.queryByText('Awa Traoré')).toBeNull();
     expect(
@@ -113,7 +116,7 @@ describe('fiche client et module Créances', () => {
       route: '/customers/c1',
     });
     expect(await screen.findByRole('heading', { name: 'Compte client' })).toBeTruthy();
-    expect(await screen.findByText('VTE-000001')).toBeTruthy();
+    expect(await screen.findByText('VENT-BOU-2026-000001')).toBeTruthy();
   });
 
   it('sans la permission : aucun appel ni affichage des créances', async () => {

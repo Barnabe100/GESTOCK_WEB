@@ -84,7 +84,7 @@ export function movement(over: Partial<CashMovement> = {}): CashMovement {
     reference: 'PAY-000001',
     source_type: 'sale',
     source_id: 'v1',
-    source_number: 'VTE-000001',
+    source_number: 'VENT-BOU-2026-000001',
     payment_id: 'p1',
     occurred_at: '2026-09-25T09:00:00Z',
     created_by_name: 'Aïcha',

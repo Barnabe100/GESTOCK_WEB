@@ -129,7 +129,7 @@ introuvable (`404`) ; d'un autre site que le site sélectionné, refusé (`403 s
 |---|---|---|---|
 | GET | `/stock/levels` | `stock.level.view` | Articles × sites : `quantity`, `average_cost` (CMUP, 4 déc.), `stock_value`, seuils effectifs `min_stock`/`max_stock` (surcharge du site sinon article), `min_override`/`max_override`, `state` = `ok` \| `low` \| `out` \| `not_stocked`. Filtres `site_id`, `category_id`, `search`, `state` (`all`, `alerts`, `out`, `low`, `ok`, `not_stocked`), `include_inactive`, `article_id` (répétable : stock disponible des lignes en saisie) ; tri `reference`, `designation`, `category`, `quantity`, `site` |
 | PUT | `/stock/levels/{site_id}/{article_id}/thresholds` | `stock.threshold.manage` | Surcharges du site `{min_stock, max_stock}` (`null` = seuil de l'article) ; audité ; ne modifie ni quantité ni CMUP |
-| GET | `/stock/movements` | `stock.movement.view` | Journal : filtres `site_id`, `article_id`, `movement_type` (`ENTRY`, `EXIT`, `SALE`, `CANCELLATION`…), `user_id`, `date_from`, `date_to` (jour du fuseau du tenant), `search` (référence, désignation, numéro de document ou de vente — `source_number`) ; tri `occurred_at` (défaut décroissant) |
+| GET | `/stock/movements` | `stock.movement.view` | Journal : filtres `site_id`, `article_id`, `movement_type` (`ENTRY`, `EXIT`, `SALE`, `CANCELLATION`…), `user_id`, `date_from`, `date_to` (jour du fuseau du tenant), `search` (référence, désignation, numéro de document ou de vente — `source_number`) ; tri `occurred_at` (défaut décroissant) ; `source_type` + `source_id` : mouvements d'un document (ex. `sale`, fiche d'une vente, Lot 2) |
 | GET | `/stock/exit-reasons` | `stock.reason.view` ou `stock.exit.create` / `.update` | Motifs (filtre `status`, tri `label`) |
 | POST · PATCH | `/stock/exit-reasons` · `/{id}` | `stock.reason.manage` | Créer · renommer (motif système : `403 system_exit_reason`) |
 | POST | `/stock/exit-reasons/{id}/activate` · `/deactivate` | `stock.reason.manage` | Statut (y compris motifs système) |
@@ -187,9 +187,9 @@ Mêmes conventions de liste. Règles métier : [`CLIENTS.md`](CLIENTS.md).
 | Méthode | Chemin | Permission | Rôle |
 |---|---|---|---|
 | GET | `/customers` | `customers.customer.view` | Liste ; `search` (code, nom, raison sociale, téléphones — séparateurs ignorés —, email), `status` (`all` \| `active` \| `inactive`), `type` (`INDIVIDUAL` \| `BUSINESS`) ; tri `name` (défaut), `code`, `city`, `created_at` |
-| POST | `/customers` | `customers.customer.create` | Créer (code `CLI-000001` attribué par le serveur, client actif) |
+| POST | `/customers` | `customers.customer.create` | Créer (code `CLI-000001` attribué par le serveur, client actif) ; une limite de crédit exige aussi `customers.credit_limit.manage` (`403 credit_limit_not_allowed`, Lot 2) |
 | GET | `/customers/{id}` | `customers.customer.view` | Détail (client inactif compris) |
-| PATCH | `/customers/{id}` | `customers.customer.update` | Modifier (champ absent : inchangé ; chaîne vide : effacé ; code immuable) |
+| PATCH | `/customers/{id}` | `customers.customer.update` | Modifier (champ absent : inchangé ; chaîne vide : effacé ; code immuable) ; changer `credit_limit` exige `customers.credit_limit.manage` (valeur inchangée acceptée), audit `customer.credit_limit_changed` avant / après |
 | POST | `/customers/{id}/activate` · `/deactivate` | `customers.customer.status` | Statut (jamais de suppression) |
 
 Corps : `customer_type`, `name` (obligatoires à la création), `legal_name`, `tax_id`,
@@ -205,7 +205,10 @@ vie : [`SALES.md`](SALES.md) ; décisions : [ADR-0017](../adr/0017-ventes-prix-v
 
 | Méthode | Chemin | Permission | Rôle |
 |---|---|---|---|
-| GET | `/sales` | `sales.sale.view` | Liste des ventes des sites accessibles (ses propres ventes ; toutes celles du site avec `sales.sale.view_all`, Lot 1) ; `search` (numéro, code / nom / téléphone du client), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `site_id`, `customer_id`, `date_from`, `date_to` ; tri `number` (défaut décroissant), `sale_date`, `total`, `created_at` |
+| GET | `/sales` | `sales.sale.view` | Liste des ventes des sites accessibles (ses propres ventes ; toutes celles du site avec `sales.sale.view_all`, Lot 1) ; `search` (numéro, code / nom / téléphone du client), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `site_id`, `customer_id`, `date_from`, `date_to`, `payment_status`, `channel`, `seller_id` (auteur = vendeur / opérateur), `mine` (« Mes ventes »), `article_id`, `article_reference` (référence / code-barres d'un article vendu), `payment_reference` (n° de transaction d'un paiement) ; tri `created_at` (**défaut décroissant**, Lot 2), `number`, `sale_date`, `total`, `validated_at` |
+| GET | `/sales/sellers` | `sales.sale.view` | Vendeurs / opérateurs proposés au filtre : auteurs des ventes visibles (`[{id, name}]`) |
+| GET | `/sales/export` | `sales.sale.export` + `sales.sale.view` | `format` (`xlsx` \| `csv` \| `pdf`) + **mêmes filtres et tri** que `GET /sales` : exactement les ventes de la liste, sans pagination (au plus `SM_EXPORT_MAX_ROWS`, sinon `422 export_too_large`) ; sites où le membre détient l'export ; fichier en pièce jointe ; audité `export.generated` (format, filtres renseignés, nombre de lignes) — ADR-0038 |
+| GET | `/sales/{id}/history` | `audit.log.view` + vente visible | Chronologie : évènements réellement journalisés de la vente et de ses paiements (du plus ancien au plus récent) |
 | POST | `/sales` | `sales.sale.create` | Créer un **brouillon** (sans numéro : `number` nul ; prix copiés du catalogue, totaux calculés) |
 | GET | `/sales/{id}` | `sales.sale.view` | Détail avec lignes |
 | PUT | `/sales/{id}` | `sales.sale.update` | Remplacer date, client, observations et lignes d'un brouillon (prix relus) ; site non modifiable |

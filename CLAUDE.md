@@ -106,10 +106,22 @@ serveur** sur la seule partie espèces ; **crédit** = reste dû à la validatio
 obligatoire, `sales.sale.credit_create`, limite dépassable seulement avec
 `sales.sale.credit_override` + justification (autorisateur, date, montant, audit), statut
 calculé `OPEN`/`PARTIAL`/`PAID`/`CANCELLED` ; numéro **`VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la
-validation** (brouillon non numéroté, compteur par tenant + site + année, `VTE-…` historiques
-conservés, numéro validé figé par déclencheur, code de site figé) ; portée `sales.sale.view` =
-ses ventes, `sales.sale.view_all` = toutes (migration 0025). Ne pas passer au lot suivant sans
-validation. Non implémentés (feuille de route §13) :
+validation** (brouillon non numéroté, compteur par tenant + site + année, numéro validé figé
+par déclencheur, code de site figé) ; portée `sales.sale.view` = ses ventes,
+`sales.sale.view_all` = toutes (migration 0025). **Lot 2 livré — historique des ventes**
+([ADR-0038](docs/adr/0038-historique-ventes-exports.md), aucune migration) : tri par défaut
+`-created_at` (tri par numéro en option) ; filtres serveur (vendeur / opérateur = `created_by`,
+« Mes ventes », article, client, canal, **référence article ≠ référence de paiement**) dans UN
+objet `SaleFilters` partagé par la liste et l'export ; **UNE action « Exporter »** par
+fonctionnalité avec choix du format (`ExportMenu` ; ventes : Excel, CSV `;` UTF-8 BOM, PDF A4)
+sur le périmètre EXACT de la liste (architecture commune `app/platform/exports.py`, garde-fou
+`SM_EXPORT_MAX_ROWS`) ; permission `sales.sale.export` (nature `export` ; Administrateur et
+Gestionnaire) en plus de `sales.sale.view`, sites sans l'export jamais exportés ; chaque export
+audité `export.generated` (format, filtres renseignés, nombre de lignes) ; limite de crédit
+réservée à `customers.credit_limit.manage` (Administrateur), auditée avant / après ; fiche :
+mouvements de stock (`stock.movement.view`, `source_type`/`source_id`) et chronologie
+(`GET /sales/{id}/history`, `audit.log.view`, évènements réellement journalisés). Ne pas
+passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

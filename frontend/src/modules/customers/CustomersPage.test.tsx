@@ -110,7 +110,9 @@ describe('page Clients', () => {
   });
 
   it('valide et crée un client (normalisation laissée au serveur)', async () => {
-    renderWithCapabilities(<CustomersPage />, { permissions: MANAGE });
+    renderWithCapabilities(<CustomersPage />, {
+      permissions: [...MANAGE, 'customers.credit_limit.manage'],
+    });
     fireEvent.click(await screen.findByRole('button', { name: 'Nouveau client' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
@@ -153,6 +155,28 @@ describe('page Clients', () => {
     });
     // Enregistré : le formulaire se ferme.
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('limite de crédit en lecture seule sans la permission dédiée', async () => {
+    renderWithCapabilities(<CustomersPage />, { permissions: MANAGE });
+    fireEvent.click(await screen.findByRole('button', { name: 'Nouveau client' }));
+    const dialog = await screen.findByRole('dialog');
+    const limit = within(dialog).getByLabelText('Limite de crédit') as HTMLInputElement;
+    expect(limit.readOnly).toBe(true);
+    expect(within(dialog).getByText(/Lecture seule/)).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText(/^Nom et prénom/), {
+      target: { value: 'Moussa' },
+    });
+    // Même forcée, la saisie n'est jamais envoyée : la valeur actuelle (aucune) est conservée.
+    fireEvent.change(limit, { target: { value: '5000' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+      expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+        name: 'Moussa',
+        credit_limit: null,
+      });
+    });
   });
 
   it('affiche la raison sociale pour une entreprise et désactive un client', async () => {

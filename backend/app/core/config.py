@@ -101,6 +101,9 @@ class Settings(BaseSettings):
         """Étapes triées de la plus lointaine à la plus tardive (ex. 30 … -7)."""
         return parse_notice_days(self.renewal_notice_days)
 
+    # Exports (Lot 2) : nombre maximal de lignes d'un export (au-delà : affiner les filtres).
+    export_max_rows: int = 50_000
+
     password_min_length: int = 8
     login_max_failures: int = 5
     login_lockout_minutes: int = 15

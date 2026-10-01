@@ -31,6 +31,10 @@ la limite ne peut être dépassée qu'avec `sales.sale.credit_override` et une j
 crédit calculé (`credit_status` : `OPEN`, `PARTIAL`, `PAID`, `CANCELLED`). La consultation des
 créances (`receivables.receivable.view`) n'est pas réduite aux ventes de l'utilisateur.
 
+Depuis le Lot 2 ([ADR-0038](../adr/0038-historique-ventes-exports.md)), la limite de crédit
+d'un client ne se définit ou ne se modifie qu'avec `customers.credit_limit.manage`
+(Administrateur par défaut), et chaque changement est audité (avant / après).
+
 Une vente validée **sans client** et non soldée (données antérieures au Lot 1) reste listée
 (« Sans client ») et comptée dans le total dû, pas dans les clients débiteurs ; elle ne crée
 aucune exposition client.

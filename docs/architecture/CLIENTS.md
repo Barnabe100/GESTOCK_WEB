@@ -17,7 +17,7 @@ plans avant cette phase ; identifiants en anglais, libellés « Clients » via i
 | `phone`, `phone2` | Normalisés : séparateurs (espaces, points, tirets, parenthèses, `/`) retirés, `+` initial conservé, 4 à 20 chiffres. `+226 70 11 22 33` → `+22670112233`. |
 | `email` | Validé et normalisé (domaine en minuscules). |
 | `address`, `city`, `country`, `notes` | Facultatifs ; chaîne vide = champ effacé. |
-| `credit_limit` | Limite de crédit facultative (`NUMERIC(18,2)`, ≥ 0) : `NULL` = non configurée (aucune limite), `0` = aucun crédit. Contrôlée à la validation des ventes depuis la Phase 2.8 ([`RECEIVABLES.md`](RECEIVABLES.md)). |
+| `credit_limit` | Limite de crédit facultative (`NUMERIC(18,2)`, ≥ 0) : `NULL` = non configurée (aucune limite), `0` = aucun crédit. Contrôlée à la validation des ventes depuis la Phase 2.8 ([`RECEIVABLES.md`](RECEIVABLES.md)). Lot 2 (ADR-0038) : définie ou modifiée seulement avec `customers.credit_limit.manage` (Administrateur par défaut ; créer / modifier un client ne l'accorde pas), auditée `customer.credit_limit_changed` (avant / après). |
 | `is_active` | Vrai à la création ; désactivation logique. |
 
 **Aucun solde n'est stocké sur le client** : le montant dû sera calculé à partir des créances

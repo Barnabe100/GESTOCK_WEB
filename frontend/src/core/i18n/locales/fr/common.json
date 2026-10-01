@@ -420,8 +420,10 @@
     "customers.customer.create": "Créer un client",
     "customers.customer.update": "Modifier un client",
     "customers.customer.status": "Activer / désactiver un client",
+    "customers.credit_limit.manage": "Définir ou modifier la limite de crédit d'un client (audité)",
     "sales.sale.view": "Consulter les ventes",
     "sales.sale.view_all": "Consulter toutes les ventes du site (sinon : ses propres ventes)",
+    "sales.sale.export": "Exporter l'historique des ventes (Excel, CSV, PDF ; périmètre de la liste)",
     "sales.sale.create": "Créer une vente (brouillon)",
     "sales.sale.update": "Modifier une vente en brouillon",
     "sales.sale.validate": "Valider une vente (sortie de stock)",
@@ -803,6 +805,7 @@
     "notes": "Observations",
     "creditLimit": "Limite de crédit",
     "creditLimitHelp": "Facultatif. Vide : aucune limite configurée ; 0 : aucune vente à crédit. Contrôlée à la validation des ventes.",
+    "creditLimitLocked": "Lecture seule : la limite de crédit est définie par un utilisateur autorisé (droit dédié, audité).",
     "status": "Statut",
     "general": "Informations générales",
     "tracking": "Suivi",
@@ -831,7 +834,7 @@
     "customerHelp": "Facultatif pour une vente entièrement payée (client « Ordinaire ») ; obligatoire pour une vente à crédit.",
     "anonymous": "Client ordinaire (sans client)",
     "anonymousShort": "Ordinaire",
-    "seller": "Saisie par",
+    "seller": "Vendeur / opérateur",
     "status": "Statut",
     "allStatuses": "Tous les statuts",
     "allSites": "Tous les sites",
@@ -881,7 +884,50 @@
     "creditOverrideDetail": "{{amount}} par {{name}} le {{date}} : {{reason}}",
     "overrideReason": "Justification du dépassement",
     "overrideReasonHelp": "Obligatoire (5 caractères au moins) : enregistrée avec votre nom, la date, le montant et dans le journal d'audit.",
-    "overrideAndValidate": "Autoriser le dépassement et valider"
+    "overrideAndValidate": "Autoriser le dépassement et valider",
+    "allSellers": "Tous les vendeurs",
+    "mine": "Mes ventes",
+    "channel": "Canal",
+    "allChannels": "Tous les canaux",
+    "channels": {
+      "BACKOFFICE": "Gestion",
+      "POS": "Point de vente"
+    },
+    "article": "Article",
+    "articleReference": "Référence article",
+    "articleReferenceHelp": "Référence ou code-barres d'un article vendu",
+    "paymentReference": "Référence de paiement",
+    "paymentReferenceHelp": "N° de transaction (ex. Orange Money)",
+    "allCustomers": "Tous les clients",
+    "moreFilters": "Plus de filtres",
+    "lessFilters": "Moins de filtres",
+    "movements": {
+      "title": "Mouvements de stock",
+      "help": "Mouvements générés par cette vente (sortie à la validation, retour en stock à l'annulation).",
+      "empty": "Aucun mouvement de stock pour cette vente.",
+      "date": "Date",
+      "article": "Article",
+      "type": "Type",
+      "quantity": "Quantité",
+      "after": "Stock après",
+      "user": "Utilisateur"
+    },
+    "history": {
+      "title": "Chronologie",
+      "help": "Évènements enregistrés dans le journal d'audit pour cette vente et ses paiements.",
+      "empty": "Aucun évènement enregistré.",
+      "system": "Système",
+      "actions": {
+        "sale.created": "Vente créée (brouillon)",
+        "sale.updated": "Brouillon modifié",
+        "sale.validated": "Vente validée",
+        "sale.cancelled": "Vente annulée",
+        "sale.credit_limit_overridden": "Dépassement de la limite de crédit autorisé",
+        "payment.created": "Paiement enregistré",
+        "payment.completed": "Paiement encaissé",
+        "payment.cancelled": "Paiement annulé"
+      }
+    }
   },
   "filters": {
     "reset": "Réinitialiser",
@@ -1580,5 +1626,13 @@
     "siteToggle": "{{label}} sur {{site}}",
     "siteUpdated": "Disponibilité mise à jour",
     "sitesDialog": "Disponibilité de « {{label}} »"
+  },
+  "exports": {
+    "action": "Exporter",
+    "formats": {
+      "xlsx": "Excel (.xlsx)",
+      "csv": "CSV (.csv)",
+      "pdf": "PDF (.pdf)"
+    }
   }
 }

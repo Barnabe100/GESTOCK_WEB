@@ -606,7 +606,7 @@ def test_isolation_with_app_role_and_rls(
             db.execute(
                 text(
                     "INSERT INTO sales (id, tenant_id, number, site_id, status, sale_date, "
-                    "subtotal, total) VALUES (:id, :tenant, 'VTE-X', :site, 'DRAFT', "
+                    "subtotal, total) VALUES (:id, :tenant, NULL, :site, 'DRAFT', "
                     "current_date, 0, 0)"
                 ),
                 {"id": uuid.uuid4(), "tenant": tenant_a, "site": world.site},
@@ -621,7 +621,7 @@ def test_isolation_with_app_role_and_rls(
         owner_db.execute(
             text(
                 "INSERT INTO sales (id, tenant_id, number, site_id, status, sale_date, "
-                "subtotal, total) VALUES (:id, :tenant, 'VTE-Y', :site, 'DRAFT', "
+                "subtotal, total) VALUES (:id, :tenant, NULL, :site, 'DRAFT', "
                 "current_date, 0, 0)"
             ),
             {"id": uuid.uuid4(), "tenant": tenant_a, "site": b.site_id},

@@ -863,17 +863,21 @@ def test_concurrent_validations_get_distinct_consecutive_numbers(priced: World, 
     ]
 
 
-def test_legacy_numbers_are_kept_and_site_code_is_locked(priced: World, owner_db: Session) -> None:
-    """Un ancien numéro ``VTE-…`` n'est jamais renuméroté ; le code d'un site devient stable
-    dès qu'il a émis un numéro."""
+def test_draft_number_is_never_kept_and_site_code_is_locked(
+    priced: World, owner_db: Session
+) -> None:
+    """Lot 2 : un brouillon n'a jamais de numéro conservé (aucune compatibilité avec un ancien
+    format, application non déployée) : la validation attribue toujours ``VENT-…`` ; le code
+    d'un site devient stable dès qu'il a émis un numéro."""
     cash = _method_id(priced, "Espèces")
-    legacy = _draft(priced, 1)
+    draft = _draft(priced, 1)
     owner_db.execute(
-        text("UPDATE sales SET number = 'VTE-000042' WHERE id = :id"), {"id": legacy["id"]}
+        text("UPDATE sales SET number = 'ANCIEN-000042' WHERE id = :id"), {"id": draft["id"]}
     )
     owner_db.commit()
-    kept = _validated(priced, legacy, [{"amount": "10000", "payment_method_id": cash}])
-    assert kept["number"] == "VTE-000042"
+    kept = _validated(priced, draft, [{"amount": "10000", "payment_method_id": cash}])
+    code = _site_code(priced, priced.site).upper()
+    assert kept["number"] == f"VENT-{code}-{YEAR}-000001"
     renamed = priced.owner.patch(f"/sites/{priced.site2}", json={"code": "DEP2"})
     assert renamed.status_code == 200, renamed.text
     _validated(
@@ -897,7 +901,7 @@ def test_legacy_numbers_are_kept_and_site_code_is_locked(priced: World, owner_db
     # propriétaire du schéma.
     with pytest.raises(IntegrityError, match="définitif"):
         owner_db.execute(
-            text("UPDATE sales SET number = 'VTE-999999' WHERE id = :id"), {"id": kept["id"]}
+            text("UPDATE sales SET number = 'AUTRE-999999' WHERE id = :id"), {"id": kept["id"]}
         )
     owner_db.rollback()
 

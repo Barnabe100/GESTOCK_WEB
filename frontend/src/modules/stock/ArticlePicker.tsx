@@ -32,11 +32,13 @@ export function ArticlePicker({
   value,
   onChange,
   invalid,
+  ariaLabel,
 }: {
   id: string;
   value: ArticleOption | null;
   onChange: (value: ArticleOption | null) => void;
   invalid?: boolean;
+  ariaLabel?: string;
 }) {
   const { t } = useTranslation();
   const [suggestions, setSuggestions] = useState<ArticleOption[]>([]);
@@ -74,6 +76,7 @@ export function ArticlePicker({
         }
       }}
       placeholder={t('stock.articleSearch')}
+      aria-label={ariaLabel}
       forceSelection
       dropdown
       invalid={invalid}

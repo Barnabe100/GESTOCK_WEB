@@ -231,7 +231,9 @@ describe('session de caisse', () => {
     expect(text(summary)).toContain(`${money('155000')}Solde théorique`);
     expect(text(summary)).toContain(`${money('70000')}Sorties`);
     const sale = (await screen.findByText('Encaissement vente')).closest('tr') as HTMLElement;
-    expect(within(sale).getByRole('link', { name: 'VTE-000001 · PAY-000001' })).toBeTruthy();
+    expect(
+      within(sale).getByRole('link', { name: 'VENT-BOU-2026-000001 · PAY-000001' }),
+    ).toBeTruthy();
     expect(text(sale)).toContain(money('150000'));
     const out = screen
       .getByText('Sortie de caisse', { selector: '.sm-badge' })
@@ -337,8 +339,10 @@ describe('journal de caisse', () => {
     const row = (await screen.findByText('Encaissement vente')).closest('tr') as HTMLElement;
     expect(within(row).getByRole('link', { name: 'Caisse principale · SES-000001' })).toBeTruthy();
     expect(calls('/cash/movements?').at(-1)).toContain('sort=-occurred_at');
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'VTE-1' } });
-    await waitFor(() => expect(calls('/cash/movements?').at(-1)).toContain('search=VTE-1'));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'VENT-BOU-2026-1' } });
+    await waitFor(() =>
+      expect(calls('/cash/movements?').at(-1)).toContain('search=VENT-BOU-2026-1'),
+    );
     fireEvent.change(screen.getByLabelText('Montant minimal'), { target: { value: '1 000' } });
     await waitFor(() => expect(calls('/cash/movements?').at(-1)).toContain('min_amount=1000'));
     fireEvent.click(screen.getByRole('button', { name: /next page|suivante/i }));

@@ -28,6 +28,8 @@ def list_movements(
     user_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    source_type: str | None = None,
+    source_id: uuid.UUID | None = None,
 ) -> tuple[list[Any], int]:
     articles = articles_view()
     movement = StockMovement
@@ -77,6 +79,9 @@ def list_movements(
         movement.user_id == user_id if user_id else None,
         local_date >= date_from if date_from else None,
         local_date <= date_to if date_to else None,
+        # Mouvements d'un document (ex. fiche d'une vente, Lot 2).
+        movement.source_type == source_type if source_type else None,
+        movement.source_id == source_id if source_id else None,
     ]
     for condition in conditions:
         if condition is not None:

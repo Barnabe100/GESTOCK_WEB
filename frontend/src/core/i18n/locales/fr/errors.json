@@ -191,5 +191,8 @@
   "cash_received_insufficient": "Le montant reçu est inférieur au montant payé.",
   "cash_disabled_for_site": "La caisse n'est pas activée pour ce site.",
   "cash_sessions_open": "Une session de caisse est encore ouverte sur ce site : clôturez-la avant de désactiver la caisse.",
-  "site_code_locked": "Le code de ce site figure déjà dans des numéros de vente : il ne peut plus être modifié."
+  "site_code_locked": "Le code de ce site figure déjà dans des numéros de vente : il ne peut plus être modifié.",
+  "export_format_unavailable": "Ce format d'export n'est pas disponible pour cette liste.",
+  "export_too_large": "Trop de lignes à exporter ({{count}} pour {{limit}} au maximum) : affinez les filtres.",
+  "credit_limit_not_allowed": "Vous n'êtes pas autorisé à définir ou modifier la limite de crédit d'un client."
 }

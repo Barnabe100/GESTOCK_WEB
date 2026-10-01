@@ -8,6 +8,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
+import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { normalizeDecimal } from '@/shared/lib/decimal';
 import { translateError } from '@/shared/lib/errors';
 import { FormField } from '@/shared/ui/FormField';
@@ -65,6 +66,10 @@ export function CustomerDialog({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { can } = useCapabilities();
+  // Limite de crédit : permission distincte de la création / modification du client (le
+  // serveur la contrôle ; sans elle, la valeur actuelle est renvoyée telle quelle).
+  const canManageLimit = can('customers.credit_limit.manage');
   const save = useSaveCustomer();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -101,7 +106,9 @@ export function CustomerDialog({
           ...values,
           // Raison sociale : entreprises seulement.
           legal_name: values.customer_type === 'BUSINESS' ? values.legal_name : '',
-          credit_limit: normalizeDecimal(values.credit_limit, 2),
+          credit_limit: canManageLimit
+            ? normalizeDecimal(values.credit_limit, 2)
+            : (customer?.credit_limit ?? null),
         },
       },
       {
@@ -177,12 +184,13 @@ export function CustomerDialog({
           <FormField
             id="customer-credit_limit"
             label={t('customers.creditLimit')}
-            help={t('customers.creditLimitHelp')}
+            help={t(canManageLimit ? 'customers.creditLimitHelp' : 'customers.creditLimitLocked')}
             error={errorText('credit_limit')}
           >
             <InputText
               id="customer-credit_limit"
               inputMode="decimal"
+              readOnly={!canManageLimit}
               {...form.register('credit_limit')}
             />
           </FormField>

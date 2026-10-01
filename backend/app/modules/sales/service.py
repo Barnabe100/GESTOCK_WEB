@@ -1,11 +1,14 @@
 """Ventes : brouillon → validée (sortie de stock) → annulée.
 
 Lot 1 (ADR-0037) : numéro ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` attribué à la **validation**
-(compteur par tenant, site et année ; aucun numéro au brouillon ; numéros historiques
-conservés) ; vente à **crédit** (reste dû à la validation) : client obligatoire, permission
-``sales.sale.credit_create``, dépassement de limite seulement avec ``sales.sale.credit_override``
-et justification ; portée : ``sales.sale.view`` = ses propres ventes, ``sales.sale.view_all`` =
-toutes les ventes du site (permission évaluée site par site, jamais le nom d'un rôle).
+(compteur par tenant, site et année ; aucun numéro au brouillon) ; vente à **crédit** (reste
+dû à la validation) : client obligatoire, permission ``sales.sale.credit_create``, dépassement
+de limite seulement avec ``sales.sale.credit_override`` et justification ; portée :
+``sales.sale.view`` = ses propres ventes, ``sales.sale.view_all`` = toutes les ventes du site
+(permission évaluée site par site, jamais le nom d'un rôle).
+
+Lot 2 : une seule requête filtrée et limitée au périmètre (``query``) sert la liste et l'export
+(même périmètre quel que soit le format).
 
 La validation s'exécute dans UNE transaction (celle de la requête) : verrou de la vente,
 contrôles, verrou du client et contrôle de sa limite de crédit (ADR-0021),
@@ -25,7 +28,7 @@ from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
-from app.modules.catalog.api import ArticleRef, get_article_refs
+from app.modules.catalog.api import ArticleRef, articles_view, get_article_refs
 from app.modules.customers.api import (
     CustomerRef,
     customers_view,
@@ -33,6 +36,7 @@ from app.modules.customers.api import (
     get_customer_refs,
 )
 from app.modules.sales.credit import customer_exposure
+from app.modules.sales.filters import SaleFilters
 from app.modules.sales.models import (
     CreditStatus,
     Payment,
@@ -68,6 +72,7 @@ from app.modules.stock.api import (
 )
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
+from app.platform.exports import check_row_limit
 from app.platform.identity.models import User
 from app.platform.sequences.service import next_number, site_sequence_key
 from app.platform.tenancy.models import Site
@@ -77,11 +82,13 @@ SOURCE_TYPE = "sale"
 SEQUENCE_KIND = "sale"
 PREFIX = "VENT"
 VIEW_ALL = "sales.sale.view_all"
+EXPORT = "sales.sale.export"
 CREDIT_CREATE = "sales.sale.credit_create"
 CREDIT_OVERRIDE = "sales.sale.credit_override"
 ZERO = Decimal("0")
 QUANTITY_STEP = Decimal("0.001")  # NUMERIC(18,3) : même valeur en réponse, en audit et en base
 
+DEFAULT_SORT = "-created_at"
 SORTABLE = {
     "number": Sale.number,
     "sale_date": Sale.sale_date,
@@ -110,45 +117,63 @@ class SaleService:
 
     # --- Lecture ------------------------------------------------------------------------------
 
-    def search(
-        self,
-        params: PageParams,
-        *,
-        search: str | None = None,
-        status: SaleStatus | None = None,
-        site_id: uuid.UUID | None = None,
-        customer_id: uuid.UUID | None = None,
-        date_from: date | None = None,
-        date_to: date | None = None,
-        payment: SalePaymentStatus | None = None,
-        channel: SaleChannel | None = None,
-    ) -> tuple[list[Sale], int]:
-        # Périmètre : ventes des sites visibles ; sur un site sans ``view_all``, ses propres
-        # ventes seulement.
-        stmt: Select[tuple[Sale]] = select(Sale).where(self._scope())
-        by_number = search_filter(search, Sale.number)
+    def query(
+        self, filters: SaleFilters, *, site_permission: str | None = None
+    ) -> Select[tuple[Sale]]:
+        """Ventes du périmètre (sites visibles ; sur un site sans ``view_all``, ses propres
+        ventes) répondant aux filtres : base commune de la liste et de l'export (Lot 2).
+        ``site_permission`` : permission exigée en plus sur chaque site (export)."""
+        stmt: Select[tuple[Sale]] = select(Sale).where(self._scope(site_permission))
+        by_number = search_filter(filters.search, Sale.number)
         if by_number is not None:
             # Numéro de vente, ou code / nom / téléphone du client.
             customers = customers_view()
             matching = select(customers.c.id).where(customers.c.tenant_id == self.ctx.tenant_id)
             by_customer = search_filter(
-                search, customers.c.code, customers.c.name, customers.c.phone
+                filters.search, customers.c.code, customers.c.name, customers.c.phone
             )
             if by_customer is not None:
                 matching = matching.where(by_customer)
             stmt = stmt.where(or_(by_number, Sale.customer_id.in_(matching)))
         conditions = [
-            Sale.status == status if status else None,
-            Sale.site_id == site_id if site_id else None,
-            Sale.customer_id == customer_id if customer_id else None,
-            Sale.sale_date >= date_from if date_from else None,
-            Sale.sale_date <= date_to if date_to else None,
-            Sale.channel == channel if channel else None,
+            Sale.status == filters.status if filters.status else None,
+            Sale.site_id == filters.site_id if filters.site_id else None,
+            Sale.customer_id == filters.customer_id if filters.customer_id else None,
+            Sale.sale_date >= filters.date_from if filters.date_from else None,
+            Sale.sale_date <= filters.date_to if filters.date_to else None,
+            Sale.channel == filters.channel if filters.channel else None,
+            # Vendeur / opérateur : utilisateur qui a enregistré la vente.
+            Sale.created_by == filters.seller_id if filters.seller_id else None,
+            Sale.created_by == self.ctx.user.id if filters.mine else None,
+            Sale.id.in_(select(SaleLine.sale_id).where(SaleLine.article_id == filters.article_id))
+            if filters.article_id
+            else None,
         ]
+        articles = articles_view()
+        by_article_reference = search_filter(
+            filters.article_reference, articles.c.reference, articles.c.barcode
+        )
+        if by_article_reference is not None:
+            conditions.append(
+                Sale.id.in_(
+                    select(SaleLine.sale_id)
+                    .join(
+                        articles,
+                        and_(
+                            articles.c.id == SaleLine.article_id,
+                            articles.c.tenant_id == SaleLine.tenant_id,
+                        ),
+                    )
+                    .where(by_article_reference)
+                )
+            )
+        by_payment_reference = search_filter(filters.payment_reference, Payment.reference)
+        if by_payment_reference is not None:
+            conditions.append(Sale.id.in_(select(Payment.sale_id).where(by_payment_reference)))
         for condition in conditions:
             if condition is not None:
                 stmt = stmt.where(condition)
-        if payment is not None:
+        if filters.payment_status is not None:
             # État d'encaissement calculé (ventes validées) : une agrégation jointe, pas de N+1.
             paid_sub = paid_subquery()
             paid = func.coalesce(paid_sub.c.paid, MONEY_ZERO)
@@ -160,15 +185,39 @@ class SaleService:
                     SalePaymentStatus.UNPAID: and_(paid <= 0, Sale.total > 0),
                     SalePaymentStatus.PARTIALLY_PAID: and_(paid > 0, paid < Sale.total),
                     SalePaymentStatus.PAID: paid >= Sale.total,
-                }[payment]
+                }[filters.payment_status]
             )
-        stmt = apply_sort(stmt, params.sort, SORTABLE, "-created_at", Sale.id)
+        return stmt
+
+    def search(self, params: PageParams, filters: SaleFilters) -> tuple[list[Sale], int]:
+        # Tri par défaut chronologique (création), jamais l'ordre alphabétique du numéro.
+        stmt = apply_sort(self.query(filters), params.sort, SORTABLE, DEFAULT_SORT, Sale.id)
         return paginate(self.db, stmt, params)
 
-    def _scope(self) -> Any:
+    def export(self, filters: SaleFilters, sort: str | None, max_rows: int) -> list[Sale]:
+        """Toutes les ventes de la liste filtrée (même requête, même tri), bornées ; un site
+        où le membre ne détient pas ``sales.sale.export`` n'est jamais exporté."""
+        base = self.query(filters, site_permission=EXPORT)
+        total = self.db.scalar(select(func.count()).select_from(base.order_by(None).subquery()))
+        check_row_limit(int(total or 0), max_rows)
+        stmt = apply_sort(base, sort, SORTABLE, DEFAULT_SORT, Sale.id)
+        return list(self.db.scalars(stmt).unique())
+
+    def sellers(self) -> list[tuple[uuid.UUID, str]]:
+        """Vendeurs / opérateurs proposés au filtre : auteurs des ventes du périmètre de
+        l'utilisateur (jamais la liste des membres de l'entreprise)."""
+        authors = select(Sale.created_by).where(self._scope(), Sale.created_by.is_not(None))
+        rows = self.db.execute(
+            select(User.id, User.full_name).where(User.id.in_(authors)).order_by(User.full_name)
+        ).all()
+        return [(row[0], row[1]) for row in rows]
+
+    def _scope(self, site_permission: str | None = None) -> Any:
         full: set[uuid.UUID] = set()
         own: set[uuid.UUID] = set()
         for site_id in visible_site_ids(self.ctx):
+            if site_permission and not site_can(self.ctx, site_id, site_permission):
+                continue
             (full if site_can(self.ctx, site_id, VIEW_ALL) else own).add(site_id)
         return or_(
             Sale.site_id.in_(full),
@@ -372,9 +421,7 @@ class SaleService:
     def _assign_number(self, sale: Sale) -> None:
         """Numéro définitif ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` à la validation : compteur par
         tenant, site et année (BIGINT, ligne verrouillée jusqu'à la fin de la transaction) ; 6
-        chiffres minimum, sans limite. Un numéro historique (``VTE-…``) n'est jamais changé."""
-        if sale.number is not None:
-            return
+        chiffres minimum, sans limite. Un brouillon n'a jamais de numéro."""
         site = self.db.get(Site, sale.site_id)
         assert site is not None
         year = tenant_today(self.ctx, self.now).year

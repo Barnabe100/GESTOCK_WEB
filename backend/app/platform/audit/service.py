@@ -2,9 +2,11 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.platform.audit.models import AuditLog
+from app.platform.identity.models import User
 
 if TYPE_CHECKING:
     from app.platform.context import RequestContext
@@ -81,3 +83,35 @@ def changes(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
 
     diff = {k: {"before": plain(before.get(k)), "after": plain(v)} for k, v in after.items()}
     return {k: v for k, v in diff.items() if v["before"] != v["after"]}
+
+
+def entity_history(
+    session: Session,
+    tenant_id: uuid.UUID,
+    entity_type: str,
+    entity_id: uuid.UUID,
+    *,
+    linked_type: str | None = None,
+    link_key: str | None = None,
+    limit: int = 500,
+) -> list[tuple[AuditLog, str | None]]:
+    """Chronologie d'une entité : ses entrées d'audit et celles des entités liées dont les
+    données portent son identifiant (ex. paiements d'une vente : ``data.sale_id``). Seuls les
+    évènements réellement journalisés, du plus ancien au plus récent."""
+    matches = and_(AuditLog.entity_type == entity_type, AuditLog.entity_id == str(entity_id))
+    if linked_type and link_key:
+        matches = or_(
+            matches,
+            and_(
+                AuditLog.entity_type == linked_type,
+                AuditLog.data[link_key].astext == str(entity_id),
+            ),
+        )
+    rows = session.execute(
+        select(AuditLog, User.full_name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(AuditLog.tenant_id == tenant_id, matches)
+        .order_by(AuditLog.occurred_at, AuditLog.id)
+        .limit(limit)
+    ).all()
+    return [(row[0], row[1]) for row in rows]

@@ -341,6 +341,8 @@ def list_stock_movements(
     user_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    source_type: Annotated[str | None, Query(max_length=50)] = None,
+    source_id: uuid.UUID | None = None,
 ) -> Page[MovementOut]:
     rows, total = list_movements(
         db,
@@ -354,6 +356,8 @@ def list_stock_movements(
         user_id=user_id,
         date_from=date_from,
         date_to=date_to,
+        source_type=source_type,
+        source_id=source_id,
     )
     items = [
         MovementOut.model_validate(

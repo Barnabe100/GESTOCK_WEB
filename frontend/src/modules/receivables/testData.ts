@@ -5,7 +5,7 @@ export const VIEW = ['receivables.receivable.view', 'sales.sale.view'];
 export function receivable(overrides: Partial<Receivable> = {}): Receivable {
   return {
     sale_id: 'v1',
-    sale_number: 'VTE-000001',
+    sale_number: 'VENT-BOU-2026-000001',
     sale_date: '2026-09-20',
     validated_at: '2026-09-20T08:00:00Z',
     site_id: 's1',

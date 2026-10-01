@@ -17,6 +17,8 @@ dependencies = [
     "argon2-cffi>=23.1",
     "email-validator>=2.1",
     "cryptography>=43",
+    "openpyxl>=3.1",
+    "reportlab>=4.2",
 ]
 
 [project.scripts]
@@ -28,6 +30,8 @@ dev = [
     "httpx2>=2.13",
     "ruff>=0.6",
     "mypy>=1.10",
+    "types-openpyxl>=3.1.5.20260827",
+    "types-reportlab>=5.0.0.20260911",
 ]
 
 [build-system]

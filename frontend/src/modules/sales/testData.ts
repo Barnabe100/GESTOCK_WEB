@@ -11,6 +11,7 @@ export function saleFixture(over: Partial<Sale> = {}): Sale {
     customer_code: 'CLI-000001',
     customer_name: 'Awa Ouédraogo',
     status: 'VALIDATED',
+    channel: 'BACKOFFICE',
     sale_date: '2026-09-24',
     notes: null,
     subtotal: '100000.00',

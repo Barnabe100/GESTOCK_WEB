@@ -421,6 +421,83 @@ describe('saisie et consultation d’une vente', () => {
     expect((confirm as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('mouvements de stock et chronologie : seulement avec la permission correspondante', async () => {
+    const movement = {
+      id: 'm1',
+      occurred_at: '2026-09-24T08:05:00Z',
+      site_id: 's1',
+      site_name: 'Boutique',
+      article_id: 'a1',
+      article_reference: 'VIS-001',
+      article_designation: 'Vis à bois',
+      unit: 'boîte',
+      movement_type: 'SALE',
+      quantity: '-2.000',
+      quantity_before: '10.000',
+      quantity_after: '8.000',
+      unit_cost: null,
+      average_cost_before: '1000.0000',
+      average_cost_after: '1000.0000',
+      source_type: 'sale',
+      source_id: 'v1',
+      document_number: 'VENT-BOU-2026-000001',
+      origin_movement_id: null,
+      user_name: 'Moussa',
+      comment: null,
+    };
+    const events = [
+      {
+        id: 'e1',
+        occurred_at: '2026-09-24T08:00:00Z',
+        action: 'sale.created',
+        user_name: 'Moussa',
+        data: {},
+      },
+      {
+        id: 'e2',
+        occurred_at: '2026-09-24T08:05:00Z',
+        action: 'payment.created',
+        user_name: 'Moussa',
+        data: { number: 'PAY-000001', amount: '3000.00', method_label: 'Orange Money' },
+      },
+    ];
+    fetchMock.mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.includes('/stock/movements')) return pageOf([movement]);
+      if (path.includes('/history')) return jsonResponse(events);
+      return jsonResponse(validated);
+    });
+    const view = renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: ['sales.sale.view'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    expect(await screen.findByText('Validée')).toBeTruthy();
+    expect(screen.queryByText('Mouvements de stock')).toBeNull();
+    expect(screen.queryByText('Chronologie')).toBeNull();
+    expect(fetchMock.mock.calls.some(([u]) => /stock\/movements|\/history/.test(String(u)))).toBe(
+      false,
+    );
+    view.unmount();
+
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: ['sales.sale.view', 'stock.movement.view', 'audit.log.view'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    expect(await screen.findByText('Mouvements de stock')).toBeTruthy();
+    expect(await screen.findByText('Vente', { selector: 'td' })).toBeTruthy();
+    const call = fetchMock.mock.calls.map(([u]) => String(u)).find((u) => u.includes('/stock/'));
+    expect(call).toContain('source_type=sale');
+    expect(call).toContain('source_id=v1');
+    expect(await screen.findByText('Chronologie')).toBeTruthy();
+    expect(await screen.findByText('Vente créée (brouillon)')).toBeTruthy();
+    expect(screen.getByText('Paiement enregistré')).toBeTruthy();
+    expect(
+      screen.getByText(new RegExp(`PAY-000001 — ${money('3000.00')} — Orange Money`)),
+    ).toBeTruthy();
+  });
+
   it('brouillon consulté sans droit de modification : résumé en lecture seule', async () => {
     fetchMock.mockImplementation(async () => jsonResponse(draft));
     renderWithCapabilities(withToast(<SalePage />, show), {

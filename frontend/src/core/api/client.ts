@@ -134,6 +134,39 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return (await response.json()) as T;
 }
 
+/** Fichier renvoyé par l'API (export) : contenu et nom proposé par le serveur. */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+}
+
+function filenameFrom(disposition: string | null, fallback: string): string {
+  const match = /filename="?([^";]+)"?/i.exec(disposition ?? '');
+  return match?.[1] ?? fallback;
+}
+
+/** Téléchargement authentifié (même rafraîchissement du jeton que les requêtes JSON). */
+export async function apiDownload(path: string, fallbackName = 'export'): Promise<DownloadedFile> {
+  let response = await send(path, {});
+  if (response.status === 401 && state.accessToken) {
+    const token = await refreshOnce();
+    if (token) {
+      response = await send(path, {});
+    }
+  }
+  if (response.status === 401) {
+    state.onUnauthenticated?.();
+  }
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  const blob = await response.blob();
+  return {
+    blob,
+    filename: filenameFrom(response.headers.get('Content-Disposition'), fallbackName),
+  };
+}
+
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) => apiRequest<T>(path, { signal }),
   post: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'POST', body }),

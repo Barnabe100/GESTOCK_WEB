@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import AppError, NotFoundError
+from app.core.errors import AppError, ForbiddenError, NotFoundError
 from app.modules.customers.models import Customer, CustomerType
 from app.modules.customers.schemas import CustomerCreate, CustomerUpdate
 from app.platform.audit.service import audit_action, changes
@@ -26,6 +26,8 @@ SEQUENCE_KEY = "customer"
 CODE_PREFIX = "CLI"
 
 CENT = Decimal("0.01")
+# Limite de crédit : permission distincte de la création / modification du client (Lot 2).
+CREDIT_LIMIT_MANAGE = "customers.credit_limit.manage"
 
 
 def _normalized(values: dict[str, Any]) -> dict[str, Any]:
@@ -93,7 +95,34 @@ class CustomerService:
             raise NotFoundError("Client introuvable", code="customer_not_found")
         return customer
 
+    def _ensure_credit_limit_allowed(self) -> None:
+        if not self.ctx.has_permission(CREDIT_LIMIT_MANAGE):
+            raise ForbiddenError(
+                "Vous n'êtes pas autorisé à modifier la limite de crédit",
+                code="credit_limit_not_allowed",
+            )
+
+    def _audit_credit_limit(
+        self, customer: Customer, before: Decimal | None, after: Decimal | None
+    ) -> None:
+        """Changement de limite de crédit : avant / après (NULL = pas de limite)."""
+        audit_action(
+            self.db,
+            self.ctx,
+            "customer.credit_limit_changed",
+            entity_type="customer",
+            entity_id=customer.id,
+            data={
+                "code": customer.code,
+                "name": customer.name,
+                "before": None if before is None else format(before, "f"),
+                "after": None if after is None else format(after, "f"),
+            },
+        )
+
     def create(self, data: CustomerCreate) -> Customer:
+        if data.credit_limit is not None:
+            self._ensure_credit_limit_allowed()
         customer = Customer(
             tenant_id=self.ctx.tenant_id,
             code=next_number(self.db, self.ctx.tenant_id, SEQUENCE_KEY, CODE_PREFIX),
@@ -114,6 +143,8 @@ class CustomerService:
                 "customer_type": customer.customer_type.value,
             },
         )
+        if customer.credit_limit is not None:
+            self._audit_credit_limit(customer, None, customer.credit_limit)
         return customer
 
     def update(self, customer_id: uuid.UUID, data: CustomerUpdate) -> Customer:
@@ -126,6 +157,13 @@ class CustomerService:
                     code="validation_error",
                     extra={"fields": [required]},
                 )
+        credit_before = customer.credit_limit
+        credit_changed = "credit_limit" in updates and updates["credit_limit"] != credit_before
+        if credit_changed:
+            self._ensure_credit_limit_allowed()
+        else:
+            # Valeur inchangée renvoyée par le formulaire : aucune écriture, aucun droit requis.
+            updates.pop("credit_limit", None)
         before = {key: getattr(customer, key) for key in updates}
         for key, value in updates.items():
             setattr(customer, key, value)
@@ -140,6 +178,8 @@ class CustomerService:
                 entity_id=customer.id,
                 data={"code": customer.code, **diff},
             )
+        if credit_changed:
+            self._audit_credit_limit(customer, credit_before, customer.credit_limit)
         return customer
 
     def set_active(self, customer_id: uuid.UUID, active: bool) -> Customer:

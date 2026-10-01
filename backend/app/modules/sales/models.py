@@ -83,7 +83,7 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     )
 
     # ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` attribué à la VALIDATION (Lot 1, ADR-0037) ; nul pour un
-    # brouillon ; les numéros historiques (``VTE-000001``) sont conservés tels quels.
+    # brouillon.
     number: Mapped[str | None] = mapped_column(String(64))
     site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
