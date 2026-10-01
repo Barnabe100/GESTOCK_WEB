@@ -89,8 +89,11 @@ describe('liste des créances', () => {
     expect(calls('/receivables/summary?').at(-1)).toContain('min_amount=50000');
     expect(reset.disabled).toBe(false);
     fireEvent.click(reset);
-    await waitFor(() => expect(calls('/receivables?').at(-1)).not.toContain('search='));
-    expect(calls('/receivables?').at(-1)).not.toContain('min_amount=');
+    // Les deux filtres sont réinitialisés : attendre la requête qui n'en porte plus aucun.
+    await waitFor(() => {
+      expect(calls('/receivables?').at(-1)).not.toContain('search=');
+      expect(calls('/receivables?').at(-1)).not.toContain('min_amount=');
+    });
   });
 
   it('pagination et tri côté serveur', async () => {
