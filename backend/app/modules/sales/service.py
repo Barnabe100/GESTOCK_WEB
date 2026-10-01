@@ -318,7 +318,7 @@ class SaleService:
         self, lines: Sequence[SaleLineInput | SaleLine]
     ) -> dict[uuid.UUID, PackagingRef]:
         """Conditionnements des lignes (Lot 3-B), relus sous verrou partagé : du tenant, de
-        l'article de la ligne et actifs."""
+        l'article de la ligne, actifs et au prix configuré."""
         ids = {line.packaging_id for line in lines if line.packaging_id is not None}
         packagings = lock_packagings(self.db, ids)
         for line in lines:
@@ -335,6 +335,14 @@ class SaleService:
                 raise BusinessRuleError(
                     "Ce conditionnement est désactivé",
                     code="packaging_inactive",
+                    extra={"packagings": [packaging.name]},
+                )
+            # Prix non configuré (créé sans ``price_update``) : invendable, à l'enregistrement
+            # comme à la validation — jamais vendu à un prix 0 implicite.
+            if packaging.sale_price is None:
+                raise BusinessRuleError(
+                    "Le prix de ce conditionnement n'est pas encore configuré",
+                    code="packaging_price_not_set",
                     extra={"packagings": [packaging.name]},
                 )
         return packagings
@@ -375,7 +383,7 @@ class SaleService:
             quantity = line.quantity.quantize(QUANTITY_STEP)
             ref = refs[line.article_id]
             packaging = packagings[line.packaging_id] if line.packaging_id else None
-            price = packaging.sale_price if packaging else ref.sale_price
+            price = _packaging_price(packaging) if packaging else ref.sale_price
             lines.append(
                 SaleLine(
                     tenant_id=self.ctx.tenant_id,
@@ -826,7 +834,13 @@ def _current_price(
     line: SaleLine, ref: ArticleRef, packagings: dict[uuid.UUID, PackagingRef]
 ) -> Decimal:
     """Prix catalogue actuel de la présentation de la ligne (article ou conditionnement)."""
-    return packagings[line.packaging_id].sale_price if line.packaging_id else ref.sale_price
+    return _packaging_price(packagings[line.packaging_id]) if line.packaging_id else ref.sale_price
+
+
+def _packaging_price(packaging: PackagingRef) -> Decimal:
+    """Prix d'un conditionnement déjà contrôlé par ``_packagings`` (prix configuré)."""
+    assert packaging.sale_price is not None
+    return packaging.sale_price
 
 
 def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:

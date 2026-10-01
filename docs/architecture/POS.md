@@ -88,8 +88,9 @@ recherche textuelle (différée de 250 ms) : la valeur saisie est envoyée telle
 ## Lot 3-B — unité de base, quantités décimales et conditionnements (ADR-0040)
 
 - **Recherche** : chaque article indique sa règle de quantité (`decimal_quantity_allowed`) et
-  ses conditionnements **actifs** (nom, conversion, prix) ; un conditionnement désactivé n'est
-  plus proposé. La tuile affiche le prix de l'unité de base (« 500 F / pièce ») et le nombre de
+  ses conditionnements **actifs au prix configuré** (nom, conversion, prix) ; un conditionnement
+  désactivé ou au prix non configuré n'est pas proposé (le serveur refuse aussi l'encaissement :
+  `packaging_price_not_set`). La tuile affiche le prix de l'unité de base (« 500 F / pièce ») et le nombre de
   conditionnements.
 - **Panier** : une ligne par présentation (article en unité de base, ou article ×
   conditionnement) ; un clic sur la tuile ou un scan ajoute l'unité de base (toujours

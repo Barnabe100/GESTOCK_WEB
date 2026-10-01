@@ -106,13 +106,14 @@ class PriceChangeOut(BaseModel):
 
 class PackagingOut(BaseModel):
     """Conditionnement de vente (Lot 3-B) : quantité de base = quantité × ``conversion``.
-    ``in_use`` : figure sur au moins une vente — la conversion est alors figée."""
+    ``in_use`` : figure sur au moins une vente — la conversion est alors figée.
+    ``sale_price`` nul : prix NON CONFIGURÉ, conditionnement invendable."""
 
     id: uuid.UUID
     article_id: uuid.UUID
     name: str
     conversion: Quantity
-    sale_price: Money
+    sale_price: Money | None
     is_active: bool
     in_use: bool
     created_at: datetime
@@ -123,8 +124,9 @@ class PackagingCreate(BaseModel):
     name: Required50
     # Unités de base contenues dans UN conditionnement (> 0, décimale possible : 25.5 kg).
     conversion: PositiveQuantity
-    # Défini seulement avec ``catalog.article.price_update`` (sinon 0), comme un article.
-    sale_price: Money = Decimal("0")
+    # Défini seulement avec ``catalog.article.price_update`` ; absent : prix NON CONFIGURÉ
+    # (conditionnement invendable tant qu'un habilité ne l'a pas fixé), jamais 0 implicite.
+    sale_price: Money | None = None
 
 
 class PackagingUpdate(BaseModel):

@@ -138,7 +138,8 @@ base = champ libre `unit`, toujours vendable, **stock toujours en unité de base
 `catalog_articles.decimal_quantity_allowed` (défaut `false` : quantités vendues entières,
 contrôle serveur à l'enregistrement ET à la validation) ; `catalog_packagings` (nom libre,
 conversion `> 0` entière pour un article entier, prix propre, jamais supprimés, droits de
-l'article : `update` / `price_update`) ; conversion **figée** dès qu'une vente l'utilise (port
+l'article : `update` / `price_update` ; prix **non configuré** (`NULL`, création sans
+`price_update`) ≠ prix 0 : invendable, `packaging_price_not_set`, migration 0028) ; conversion **figée** dès qu'une vente l'utilise (port
 `catalog.sales_port`, verrou exclusif / partagé) ; ligne de vente = présentation (unité de base
 ou conditionnement), `base_quantity = quantity × conversion` sans arrondi (plus de 3 décimales
 refusé), instantané (nom, conversion, prix) figé ; prix changé : `sale_prices_changed`

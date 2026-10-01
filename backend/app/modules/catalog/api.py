@@ -51,7 +51,8 @@ class PackagingRef:
     article_id: uuid.UUID
     name: str
     conversion: Decimal
-    sale_price: Decimal
+    # ``None`` : prix non configuré — conditionnement invendable (Lot 3-B, validation).
+    sale_price: Decimal | None
     is_active: bool
 
 
@@ -112,13 +113,19 @@ def lock_packagings(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, Packagi
 def active_packagings(
     db: Session, article_ids: set[uuid.UUID]
 ) -> dict[uuid.UUID, list[PackagingRef]]:
-    """Conditionnements ACTIFS des articles (point de vente), triés par conversion puis nom."""
+    """Conditionnements ACTIFS et VENDABLES (prix configuré) des articles, pour le point de
+    vente, triés par conversion puis nom. Un conditionnement au prix non configuré n'est pas
+    proposé."""
     if not article_ids:
         return {}
     result: dict[uuid.UUID, list[PackagingRef]] = {}
     for p in db.scalars(
         select(Packaging)
-        .where(Packaging.article_id.in_(article_ids), Packaging.is_active.is_(True))
+        .where(
+            Packaging.article_id.in_(article_ids),
+            Packaging.is_active.is_(True),
+            Packaging.sale_price.is_not(None),
+        )
         .order_by(Packaging.conversion, Packaging.name, Packaging.id)
     ):
         result.setdefault(p.article_id, []).append(_packaging_ref(p))

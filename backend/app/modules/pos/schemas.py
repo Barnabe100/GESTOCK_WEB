@@ -6,7 +6,7 @@ from app.shared.schemas import Money, Quantity
 
 
 class PosPackagingOut(BaseModel):
-    """Conditionnement ACTIF proposé au point de vente (Lot 3-B) : prix propre ; quantité de
+    """Conditionnement ACTIF au prix CONFIGURÉ proposé au point de vente (Lot 3-B) ; quantité de
     base = quantité × ``conversion`` (indicatif : le serveur relit tout à l'encaissement)."""
 
     id: uuid.UUID

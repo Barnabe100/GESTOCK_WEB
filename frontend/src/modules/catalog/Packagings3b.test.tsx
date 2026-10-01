@@ -165,6 +165,37 @@ describe('quantités décimales et conditionnements (Lot 3-B)', () => {
     expect(writes('POST')[0]?.[1]).toEqual({ name: 'Pack 6', conversion: '6' });
   });
 
+  it('prix non configuré : signalé, distinct de 0 ; un habilité le fixe', async () => {
+    packagings = [
+      packaging({ id: 'p6', name: 'Pack 6', conversion: '6.000', sale_price: null }),
+      packaging({ id: 'p0', name: 'Offert', conversion: '1.000', sale_price: '0.00' }),
+    ];
+    detail(ADMIN);
+    const unpriced = (await screen.findByText('Pack 6')).closest('tr') as HTMLElement;
+    expect(within(unpriced).getByText('Prix non configuré')).toBeTruthy();
+    // Prix configuré à 0 : affiché comme un prix, pas comme « non configuré ».
+    const zero = screen.getByText('Offert').closest('tr') as HTMLElement;
+    expect(within(zero).queryByText('Prix non configuré')).toBeNull();
+    fireEvent.click(within(unpriced).getByRole('button', { name: 'Modifier' }));
+    const dialog = await screen.findByRole('dialog', { name: /Modifier le conditionnement/ });
+    const price = within(dialog).getByLabelText(/^Prix de vente/) as HTMLInputElement;
+    expect(price.value).toBe('');
+    // Sans prix saisi : rien n'est envoyé pour le prix (il reste non configuré).
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(writes('PATCH')).toHaveLength(1));
+    expect('sale_price' in (writes('PATCH')[0]?.[1] ?? {})).toBe(false);
+  });
+
+  it('sans droit sur les prix : conditionnement créé au prix non configuré', async () => {
+    packagings = [packaging({ sale_price: null })];
+    detail(['catalog.article.view', 'catalog.article.update']);
+    expect(await screen.findByText('Prix non configuré')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Nouveau conditionnement' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/restera invendable/)).toBeTruthy();
+    expect((within(dialog).getByLabelText(/^Prix de vente/) as HTMLInputElement).value).toBe('');
+  });
+
   it('désactivation confirmée ; réactivation directe', async () => {
     packagings = [packaging(), packaging({ id: 'p6', name: 'Pack 6', is_active: false })];
     detail(ADMIN);

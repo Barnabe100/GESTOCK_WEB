@@ -1,13 +1,15 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, loginUi, provisionTenant, SALE_NUMBER, tokenFor } from './support';
+import { bearer, createMember, loginUi, provisionTenant, SALE_NUMBER, tokenFor } from './support';
 
 /**
  * Lot 3-B (ADR-0040), sur une entreprise créée pour l'exécution : article sans conditionnement
  * vendu dans son unité de base, conditionnements créés sur la fiche article, vente au point de
  * vente par présentation (unité de base / carton), stock TOUJOURS en unité de base, quantités
  * entières ou décimales, conditionnement décimal, désactivation (plus proposée, vente
- * historique fidèle), reçu, stock insuffisant après conversion, isolation des entreprises.
+ * historique fidèle), reçu, stock insuffisant après conversion, isolation des entreprises,
+ * prix non configuré (conditionnement créé sans droit sur les prix : invendable tant qu'un
+ * habilité ne l'a pas fixé — validation du lot).
  */
 
 const RUN = Date.now().toString().slice(-7);
@@ -16,6 +18,7 @@ const EMAIL = `conditionnements-${RUN}@example.com`;
 const PASSWORD = 'E2e-Conditionnement-2026';
 const OTHER_TENANT = `Autre entreprise E2E ${RUN}`;
 const OTHER_EMAIL = `autre-cond-${RUN}@example.com`;
+const MEMBER_PASSWORD = 'E2e-Membre-Conditionnement-2026';
 
 interface Site {
   id: string;
@@ -385,5 +388,90 @@ test.describe('Conditionnements — Lot 3-B', () => {
     });
     expect(sale.status()).toBe(422);
     expect(((await sale.json()) as { code: string }).code).toBe('packaging_not_found');
+  });
+
+  test("prix non configuré : invendable tant qu'un habilité ne l'a pas fixé", async ({
+    page,
+    request,
+  }) => {
+    // Gestionnaire (informations générales, sans droit sur les prix) : création par l'interface.
+    const managerEmail = await createMember(request, world.token, 'manager', MEMBER_PASSWORD);
+    await loginUi(page, managerEmail, MEMBER_PASSWORD, TENANT);
+    await page.goto(`/catalog/articles/${world.beer}`);
+    const section = page.locator('section', {
+      has: page.getByRole('heading', { name: 'Conditionnements de vente' }),
+    });
+    await section.getByRole('button', { name: 'Nouveau conditionnement' }).click();
+    const form = page.getByRole('dialog', { name: 'Nouveau conditionnement' });
+    await expect(form.getByLabel(/^Prix de vente/)).toHaveAttribute('readonly', '');
+    await expect(form.getByText(/restera invendable/)).toBeVisible();
+    await form.getByLabel(/^Nom/).fill('Pack 6');
+    await form.getByLabel(/^Contient/).fill('6');
+    await form.getByRole('button', { name: 'Enregistrer' }).click();
+    await expect(form).toBeHidden();
+    const row = section.getByRole('row').filter({ hasText: 'Pack 6' });
+    await expect(row).toContainText('Prix non configuré');
+    const listed = (await (
+      await request.get(`/api/v1/catalog/articles/${world.beer}/packagings?status=active`, {
+        headers: bearer(world.token),
+      })
+    ).json()) as { items: { id: string; name: string; sale_price: string | null }[] };
+    const pack = listed.items.find((p) => p.name === 'Pack 6');
+    expect(pack?.sale_price).toBeNull();
+
+    // Point de vente : non proposé ; le serveur refuse toute vente avec ce conditionnement.
+    await page.context().clearCookies();
+    await openPos(page);
+    const tile = await addTile(page, `Bière ${RUN}`, `BIERE-${RUN}`);
+    await expect(tile).toContainText('+ 1 conditionnement'); // le carton 24 seulement
+    await page
+      .locator('.p-dropdown', { has: page.getByLabel(`Présentation de Bière ${RUN}`) })
+      .click();
+    await expect(
+      page
+        .locator('.p-dropdown-panel')
+        .last()
+        .getByRole('option', { name: /Pack 6/ }),
+    ).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    const refused = await request.post('/api/v1/pos/checkout', {
+      headers: bearer(world.token),
+      data: {
+        site_id: world.main.id,
+        lines: [{ article_id: world.beer, packaging_id: pack?.id, quantity: '1' }],
+        payments: [],
+        customer_id: null,
+        idempotency_key: crypto.randomUUID(),
+      },
+    });
+    expect(refused.status()).toBe(422);
+    expect(((await refused.json()) as { code: string }).code).toBe('packaging_price_not_set');
+
+    // Administrateur : prix fixé sur la fiche → proposé et vendable.
+    await page.goto(`/catalog/articles/${world.beer}`);
+    await page
+      .getByRole('row')
+      .filter({ hasText: 'Pack 6' })
+      .getByRole('button', { name: 'Modifier' })
+      .click();
+    const edit = page.getByRole('dialog', { name: /Modifier le conditionnement/ });
+    await edit.getByLabel(/^Prix de vente/).fill('3800');
+    await edit.getByRole('button', { name: 'Enregistrer' }).click();
+    await expect(edit).toBeHidden();
+    await expect(page.getByRole('row').filter({ hasText: 'Pack 6' })).toContainText(/3\s800/);
+    await page.goto('/pos');
+    const siteChoice = page.locator('.sm-pos-header .p-dropdown');
+    if (await siteChoice.count()) {
+      await siteChoice.click();
+      await page
+        .locator('.p-dropdown-panel')
+        .last()
+        .getByText(world.main.name, { exact: true })
+        .click();
+    }
+    const priced = await addTile(page, `Bière ${RUN}`, `BIERE-${RUN}`);
+    await expect(priced).toContainText('+ 2 conditionnements');
+    await choosePresentation(page, `Bière ${RUN}`, /Pack 6/);
+    await expect(page.getByTestId('pos-total')).toHaveText(/3\s800/);
   });
 });

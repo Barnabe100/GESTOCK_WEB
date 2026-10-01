@@ -574,6 +574,8 @@ describe('vente en conditionnement (Lot 3-B)', () => {
       conversion: '24.000',
       sale_price: '10500.00',
     },
+    // Prix non configuré : proposé mais non sélectionnable.
+    { id: 'p12', article_id: 'a1', name: 'Pack 12', conversion: '12.000', sale_price: null },
   ].map((p) => ({ ...p, is_active: true, in_use: true, created_at: '', updated_at: '' }));
 
   beforeEach(() => vi.stubGlobal('fetch', fetchMock));
@@ -605,6 +607,10 @@ describe('vente en conditionnement (Lot 3-B)', () => {
       selector: 'input, select, span, div',
     });
     fireEvent.click(field.closest('.p-dropdown') ?? field);
+    const unpriced = (
+      await screen.findAllByRole('option', { name: /Pack 12.*Prix non configuré/, hidden: true })
+    ).at(-1) as Element;
+    expect(unpriced.getAttribute('data-p-disabled')).toBe('true');
     fireEvent.click(
       (await screen.findAllByRole('option', { name: /Pack 6/, hidden: true })).at(-1) as Element,
     );

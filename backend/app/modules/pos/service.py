@@ -95,6 +95,7 @@ def _to_out(db: Session, rows: list[LevelRow]) -> list[PosArticleOut]:
                     id=p.id, name=p.name, conversion=p.conversion, sale_price=p.sale_price
                 )
                 for p in packagings.get(r.article_id, [])
+                if p.sale_price is not None
             ],
         )
         for r in rows

@@ -39,8 +39,16 @@ ne se vendait que dans son unité (texte libre `unit`). Un commerce vend pourtan
      état restent modifiables ; le prix d'une vente passée reste celui figé sur sa ligne.
    - **Droits** (aucune permission nouvelle, mêmes règles que l'article, ADR-0039) : consultation
      `catalog.article.view` ; création, nom, conversion, activation / désactivation
-     `catalog.article.update` ; prix `catalog.article.price_update` (création sans elle : prix 0,
-     `403 price_update_not_allowed` sinon). Valeur inchangée renvoyée par le formulaire acceptée.
+     `catalog.article.update` ; prix `catalog.article.price_update`. Valeur inchangée renvoyée
+     par le formulaire acceptée.
+   - **Prix non configuré ≠ prix 0** (décision de validation) : `sale_price` nul = prix NON
+     CONFIGURÉ (création sans `price_update`, ou sans prix saisi) ; `0` = prix réellement
+     configuré à zéro (fixé par un habilité). Fixer un prix, même 0, exige `price_update`
+     (`403 price_update_not_allowed`) ; un prix ne redevient jamais « non configuré ». Un
+     conditionnement au prix non configuré est **invendable** : absent du point de vente,
+     signalé « Prix non configuré » (fiche article, back-office : non sélectionnable), et refusé
+     par le serveur à l'enregistrement comme à la validation (`422 packaging_price_not_set`) —
+     migration 0028.
    - Le catalogue ne dépend pas des ventes : l'usage d'un conditionnement est lu par un **port**
      (`catalog.sales_port`) que le module Ventes implémente (même principe que
      `catalog.stock_port`). Audit : `packaging.created|updated|activated|deactivated`.
@@ -80,6 +88,11 @@ ne se vendait que dans son unité (texte libre `unit`). Un commerce vend pourtan
 
 ## Conséquences
 
+- Validation du lot : règle décimale limitée aux ventes / POS dans le 3-B (étendue aux entrées,
+  sorties, transferts et inventaires au 3-C) ; conversion figée dès qu'un brouillon utilise le
+  conditionnement ; nom unique parmi les conditionnements actifs de l'article ; prix non
+  configuré distinct de 0 et invendable (migration 0028 : `sale_price` nullable, retour arrière
+  refusé s'il existe des prix non configurés).
 - Migration 0027 : aucun conditionnement inventé pour les articles existants (vendus comme
   avant, en unité de base, prix inchangé) ; lignes de vente existantes : `base_quantity =
   quantity`. Retour arrière refusé s'il existe des lignes vendues en conditionnement.

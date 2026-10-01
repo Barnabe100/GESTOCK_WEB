@@ -137,5 +137,8 @@ class Packaging(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     conversion: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
-    sale_price: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
+    # Lot 3-B (validation) : ``NULL`` = prix NON CONFIGURÉ (conditionnement créé sans
+    # ``catalog.article.price_update``) — invendable tant qu'un habilité ne l'a pas fixé ;
+    # ``0`` = prix réellement configuré à zéro.
+    sale_price: Mapped[Decimal | None] = mapped_column(MONEY)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

@@ -179,7 +179,9 @@ la suite peut être rejouée sur la même base.
   poids 2,5 kg + 1,5 sac de 25,5 kg (stock 100 → 59,25), carton désactivé (plus proposé, vente
   historique fidèle, encaissement refusé `packaging_inactive`), 2 cartons de 24 pour 40 en stock
   (refus `insufficient_stock`, stock inchangé), conditionnements invisibles et inutilisables par
-  une autre entreprise.
+  une autre entreprise, conditionnement créé par un Gestionnaire au prix non configuré (signalé,
+  absent du POS, refusé `packaging_price_not_set`) puis proposé une fois son prix fixé par
+  l'Administrateur.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

@@ -206,5 +206,6 @@
   "packaging_in_use": "Ce conditionnement figure déjà sur une vente : sa conversion ne peut plus changer. Désactivez-le et créez un nouveau conditionnement.",
   "packaging_name_taken": "Un conditionnement actif de cet article porte déjà ce nom.",
   "packaging_conversion_not_whole": "Cet article se vend en quantités entières : la conversion doit être un nombre entier.",
-  "article_has_fractional_packagings": "Des conditionnements actifs ont une conversion décimale ({{packagings}}) : désactivez-les avant d'interdire les quantités décimales."
+  "article_has_fractional_packagings": "Des conditionnements actifs ont une conversion décimale ({{packagings}}) : désactivez-les avant d'interdire les quantités décimales.",
+  "packaging_price_not_set": "Le prix de ce conditionnement n'est pas encore configuré ({{packagings}}) : il ne peut pas être vendu."
 }

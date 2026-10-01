@@ -470,8 +470,18 @@ def test_packaging_permissions(shop: World, client: TestClient) -> None:
         json={"name": "Pack 6", "conversion": "6", "sale_price": "900"},
     )
     assert (priced.status_code, _code(priced)) == (403, "price_update_not_allowed")
-    pack = _packaging(shop, article, "Pack 6", "6", "0", api=manager)
-    assert pack["sale_price"] == "0.00"
+    # Même un prix 0 explicite exige le droit sur les prix (0 = prix configuré).
+    zero = manager.post(
+        f"/catalog/articles/{article}/packagings",
+        json={"name": "Pack 6", "conversion": "6", "sale_price": "0"},
+    )
+    assert (zero.status_code, _code(zero)) == (403, "price_update_not_allowed")
+    created = manager.post(
+        f"/catalog/articles/{article}/packagings", json={"name": "Pack 6", "conversion": "6"}
+    )
+    assert created.status_code == 201, created.text
+    pack = created.json()
+    assert pack["sale_price"] is None  # prix NON CONFIGURÉ, jamais 0 implicite
     assert (
         manager.patch(f"/catalog/packagings/{pack['id']}", json={"name": "Pack de 6"}).status_code
         == 200
@@ -493,6 +503,76 @@ def test_packaging_permissions(shop: World, client: TestClient) -> None:
     sale = _draft(shop, [_line(article, "1", carton["id"])], api=seller)
     assert sale.status_code == 201, sale.text
     assert sale.json()["total"] == "10500.00"
+
+
+def test_unpriced_packaging_not_sellable_until_priced(
+    shop: World, client: TestClient, owner_db: Session
+) -> None:
+    """Validation du lot (point 3) : un conditionnement créé sans droit sur les prix a un prix
+    NON CONFIGURÉ (``null``), distinct d'un prix configuré à 0 ; il n'est ni proposé au point de
+    vente ni vendable (enregistrement, validation, encaissement) tant qu'un habilité ne lui a
+    pas fixé un prix."""
+    article = shop.articles[0]
+    manager = sh.member(shop, client, "gestionnaire@example.com", "manager", all_sites=True)
+    created = manager.post(
+        f"/catalog/articles/{article}/packagings", json={"name": "Pack 6", "conversion": "6"}
+    )
+    assert created.status_code == 201, created.text
+    pack = created.json()
+    assert pack["sale_price"] is None
+    owner_db.expire_all()
+    audit = owner_db.execute(
+        text("SELECT data FROM audit_logs WHERE action = 'packaging.created' AND entity_id = :p"),
+        {"p": pack["id"]},
+    ).scalar_one()
+    assert audit["sale_price"] is None
+    # Administrateur (habilité aux prix) sans prix : également non configuré.
+    admin_unpriced = shop.owner.post(
+        f"/catalog/articles/{article}/packagings", json={"name": "Pack 12", "conversion": "12"}
+    )
+    assert admin_unpriced.json()["sale_price"] is None
+    # Point de vente : non proposé.
+    found = shop.owner.get("/pos/articles", params={"site_id": shop.site, "search": "A-0"})
+    assert found.json()[0]["packagings"] == []
+    # Back-office et encaissement : refusés par le serveur.
+    for response in (
+        _draft(shop, [_line(article, "1", pack["id"])]),
+        _checkout(shop, [_line(article, "1", pack["id"])], "1"),
+    ):
+        assert (response.status_code, _code(response)) == (422, "packaging_price_not_set")
+        assert response.json()["packagings"] == ["Pack 6"]
+    # Un prix ne peut pas être « déconfiguré » (null refusé).
+    unset = shop.owner.patch(f"/catalog/packagings/{pack['id']}", json={"sale_price": None})
+    assert (unset.status_code, _code(unset)) == (400, "validation_error")
+    # Prix configuré à 0 par un habilité : vendable (prix 0 réellement choisi).
+    priced = shop.owner.patch(f"/catalog/packagings/{pack['id']}", json={"sale_price": "0"})
+    assert (priced.status_code, priced.json()["sale_price"]) == (200, "0.00")
+    found = shop.owner.get("/pos/articles", params={"site_id": shop.site, "search": "A-0"})
+    assert [p["name"] for p in found.json()[0]["packagings"]] == ["Pack 6"]
+    draft = _draft(shop, [_line(article, "1", pack["id"])])
+    assert draft.status_code == 201, draft.text
+    sale = shop.owner.post(f"/sales/{draft.json()['id']}/validate").json()  # total 0 : rien dû
+    assert (sale["status"], sale["total"], sale["lines"][0]["base_quantity"]) == (
+        "VALIDATED",
+        "0.00",
+        "6.000",
+    )
+
+
+def test_price_unset_after_draft_is_refused_at_validation(shop: World, owner_db: Session) -> None:
+    """Le serveur fait autorité à la validation : un brouillon dont le conditionnement n'a pas
+    (ou plus, donnée modifiée hors API) de prix configuré est refusé."""
+    article = shop.articles[0]
+    carton = _packaging(shop, article, "Carton 24", "24", "10500")
+    draft = _draft(shop, [_line(article, "1", carton["id"])])
+    assert draft.status_code == 201, draft.text
+    owner_db.execute(
+        text("UPDATE catalog_packagings SET sale_price = NULL WHERE id = :p"), {"p": carton["id"]}
+    )
+    owner_db.commit()
+    refused = _validate(shop, draft.json())
+    assert (refused.status_code, _code(refused)) == (422, "packaging_price_not_set")
+    assert _level(owner_db, shop, article) == "50.000"
 
 
 # --- 5. Multi-tenant ----------------------------------------------------------------------------

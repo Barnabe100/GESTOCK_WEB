@@ -500,7 +500,8 @@ class ArticleService:
 class PackagingService:
     """Conditionnements de vente d'un article (Lot 3-B, ADR-0040). Mêmes droits que l'article :
     nom, conversion et état avec ``catalog.article.update`` ; prix avec
-    ``catalog.article.price_update`` (création sans elle : prix 0). Jamais supprimé.
+    ``catalog.article.price_update`` (création sans elle : prix NON CONFIGURÉ, invendable).
+    Jamais supprimé.
     Conversion figée dès qu'une vente (brouillon compris) utilise le conditionnement."""
 
     def __init__(self, db: Session, ctx: RequestContext) -> None:
@@ -577,7 +578,9 @@ class PackagingService:
 
     def create(self, article_id: uuid.UUID, data: PackagingCreate) -> Packaging:
         self._require_general()
-        if data.sale_price != 0:
+        # Prix : fixé seulement avec ``price_update`` ; sinon NON CONFIGURÉ (``NULL``) et le
+        # conditionnement reste invendable — jamais un prix 0 implicite (validation du lot).
+        if data.sale_price is not None:
             _ensure_price_allowed(self.ctx)
         article = self._article(article_id)
         self._ensure_whole(article, data.conversion)
@@ -586,7 +589,7 @@ class PackagingService:
             article_id=article.id,
             name=data.name,
             conversion=data.conversion,
-            sale_price=data.sale_price.quantize(CENT),
+            sale_price=data.sale_price.quantize(CENT) if data.sale_price is not None else None,
             is_active=True,
         )
         self.db.add(packaging)
@@ -598,7 +601,9 @@ class PackagingService:
             article,
             {
                 "conversion": format(packaging.conversion, "f"),
-                SALE_PRICE: format(packaging.sale_price, "f"),
+                SALE_PRICE: (
+                    format(packaging.sale_price, "f") if packaging.sale_price is not None else None
+                ),
             },
         )
         return packaging

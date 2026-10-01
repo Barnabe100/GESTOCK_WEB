@@ -1682,7 +1682,7 @@
     "conversionWholeHelp": "Nombre entier d'unités de base ({{unit}}) dans un conditionnement : l'article se vend en quantités entières.",
     "conversionLocked": "Conversion figée : ce conditionnement figure déjà sur une vente. Désactivez-le et créez-en un nouveau pour une autre conversion.",
     "invalidConversion": "Conversion invalide (strictement positive, 3 décimales au plus)",
-    "priceHelp": "Prix propre du conditionnement, librement fixé ; les ventes passées gardent leur prix.",
+    "priceHelp": "Prix propre du conditionnement, librement fixé ; laissé vide, il reste non configuré et le conditionnement invendable. Les ventes passées gardent leur prix.",
     "inUse": "Utilisé en vente",
     "created": "Conditionnement créé",
     "updated": "Conditionnement modifié",
@@ -1690,6 +1690,8 @@
     "deactivate": "Désactiver",
     "activated": "Conditionnement réactivé",
     "deactivated": "Conditionnement désactivé",
-    "confirmDeactivate": "Désactiver « {{name}} » ? Il ne sera plus proposé à la vente ; les ventes passées restent inchangées."
+    "confirmDeactivate": "Désactiver « {{name}} » ? Il ne sera plus proposé à la vente ; les ventes passées restent inchangées.",
+    "priceNotSet": "Prix non configuré",
+    "priceNotSetHelp": "Prix non configuré : le conditionnement restera invendable tant qu'un utilisateur habilité aux prix ne l'aura pas fixé."
   }
 }

@@ -68,7 +68,8 @@ export interface Packaging {
   article_id: string;
   name: string;
   conversion: string;
-  sale_price: string;
+  /** `null` : prix NON CONFIGURÉ — conditionnement invendable (≠ prix configuré à 0). */
+  sale_price: string | null;
   is_active: boolean;
   in_use: boolean;
   created_at: string;

@@ -37,7 +37,8 @@ const schema = z.object({
     const n = normalizeDecimal(v, 3);
     return n !== null && /[1-9]/.test(n);
   }),
-  sale_price: z.string().refine((v) => normalizeDecimal(v, 2) !== null),
+  // Vide : prix non configuré (conditionnement invendable) ; « 0 » : prix configuré à zéro.
+  sale_price: z.string().refine((v) => v.trim() === '' || normalizeDecimal(v, 2) !== null),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -68,7 +69,7 @@ function PackagingDialog({
     defaultValues: {
       name: packaging?.name ?? '',
       conversion: packaging?.conversion ?? '',
-      sale_price: packaging?.sale_price ?? '0',
+      sale_price: packaging?.sale_price ?? '',
     },
   });
   const errors = form.formState.errors;
@@ -77,7 +78,9 @@ function PackagingDialog({
     const input: PackagingInput = {};
     if (canGeneral) input.name = values.name.trim();
     if (!conversionLocked) input.conversion = normalizeDecimal(values.conversion, 3) ?? '';
-    if (canPrices) input.sale_price = normalizeDecimal(values.sale_price, 2) ?? '0';
+    // Prix : envoyé seulement par un habilité et s'il est saisi ; sinon il reste non configuré.
+    const price = normalizeDecimal(values.sale_price, 2);
+    if (canPrices && price !== null) input.sale_price = price;
     save.mutate(
       { id: packaging?.id, input },
       {
@@ -133,8 +136,13 @@ function PackagingDialog({
         <FormField
           id="packaging-sale_price"
           label={t('articles.salePrice')}
-          required
-          help={canPrices ? t('packagings.priceHelp') : t('articles.priceLocked')}
+          help={
+            canPrices
+              ? t('packagings.priceHelp')
+              : packaging?.sale_price === null || packaging === null
+                ? t('packagings.priceNotSetHelp')
+                : t('articles.priceLocked')
+          }
           error={errors.sale_price && t('articles.invalidMoney')}
         >
           <InputText
@@ -220,7 +228,13 @@ export function PackagingsSection({ article }: { article: Article }) {
         />
         <Column
           header={t('articles.salePrice')}
-          body={(p: Packaging) => formatMoney(p.sale_price, currency, locale)}
+          body={(p: Packaging) =>
+            p.sale_price === null ? (
+              <StatusBadge tone="warning" label={t('packagings.priceNotSet')} />
+            ) : (
+              formatMoney(p.sale_price, currency, locale)
+            )
+          }
         />
         <Column
           header={t('articles.status')}

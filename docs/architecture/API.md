@@ -110,7 +110,7 @@ casse), `status` = `all` | `active` | `inactive`. Réponse : `{items, total, lim
 | GET | `/catalog/articles/{id}/price-history` | `…view` + (`…price_update` ou `audit.log.view`) | Historique des prix lu dans le journal d'audit (création et modifications), paginé, plus récent d'abord ; `sale_price_before/after`, `purchase_price_before/after` (avec `cost_view` seulement) |
 | POST | `/catalog/articles/{id}/activate` · `/deactivate` | `catalog.article.status` | Statut (réactivation refusée si code-barres pris) |
 | GET | `/catalog/articles/{id}/packagings` | `catalog.article.view` | Conditionnements de vente de l'article (Lot 3-B, ADR-0040) : paginés, `status` (`active` \| `inactive` \| `all`), tri `conversion` (défaut), `name`, `sale_price`, `created_at` ; `in_use` : figure sur une vente (conversion figée) |
-| POST | `/catalog/articles/{id}/packagings` | `catalog.article.update` (+ `price_update` si prix ≠ 0) | `{name, conversion, sale_price?}` : conversion `> 0` (3 déc.), **entière** pour un article sans quantités décimales (`422 packaging_conversion_not_whole`) ; nom unique parmi les actifs de l'article (`409 packaging_name_taken`) ; prix sans `price_update` : `403 price_update_not_allowed` |
+| POST | `/catalog/articles/{id}/packagings` | `catalog.article.update` (+ `price_update` si un prix est fourni, même 0) | `{name, conversion, sale_price?}` : `sale_price` absent = prix **non configuré** (`null`, conditionnement invendable, distinct d'un prix 0) ; conversion `> 0` (3 déc.), **entière** pour un article sans quantités décimales (`422 packaging_conversion_not_whole`) ; nom unique parmi les actifs de l'article (`409 packaging_name_taken`) ; prix sans `price_update` : `403 price_update_not_allowed` ; `in_use`, `sale_price` (`null` : non configuré) en réponse |
 | PATCH | `/catalog/packagings/{id}` | `…update` ou `…price_update` | Nom et conversion avec `update`, prix avec `price_update` (valeur inchangée acceptée) ; conversion d'un conditionnement utilisé : `409 packaging_in_use` |
 | POST | `/catalog/packagings/{id}/activate` · `/deactivate` | `catalog.article.update` | Statut (aucune suppression) ; réactivation : nom libre parmi les actifs et conversion entière pour un article entier |
 | GET · POST | `/suppliers` | `suppliers.supplier.view` · `.create` | Liste (recherche nom, contact, ville, email, téléphone) · créer |
@@ -230,7 +230,8 @@ lignes, quantité `> 0` (3 déc.) dans la présentation choisie, une ligne par p
 conversion, celle qui sort du stock). Lot 3-B : `quantity_not_whole` (422, article sans
 quantités décimales), `base_quantity_precision` (422, plus de 3 décimales en unité de base,
 jamais arrondie), `packaging_not_found` (422, conditionnement inconnu ou d'un autre article),
-`packaging_inactive` (422, à l'enregistrement ET à la validation) ; un prix de conditionnement
+`packaging_inactive` et `packaging_price_not_set` (422, prix du conditionnement non configuré —
+à l'enregistrement ET à la validation) ; un prix de conditionnement
 modifié depuis le brouillon : `sale_prices_changed`.
 Codes : `insufficient_stock` (422, détail par article), `sale_not_draft` (409, modification
 ou validation d'une vente non brouillon — double validation comprise),
@@ -367,7 +368,7 @@ logique propre : orchestration de `SaleService` (et, par lui, `StockService`,
 
 | Méthode | Chemin | Permissions | Rôle |
 |---|---|---|---|
-| GET | `/pos/articles` | `pos.terminal.use` | Articles du site (`site_id`, `search`, `limit` ≤ 50) : prix du catalogue, stock du site (unité de base), actif, `stock_managed`, `decimal_quantity_allowed`, `packagings` (conditionnements ACTIFS seulement : `id`, `name`, `conversion`, `sale_price` — Lot 3-B) |
+| GET | `/pos/articles` | `pos.terminal.use` | Articles du site (`site_id`, `search`, `limit` ≤ 50) : prix du catalogue, stock du site (unité de base), actif, `stock_managed`, `decimal_quantity_allowed`, `packagings` (conditionnements ACTIFS au prix CONFIGURÉ seulement : `id`, `name`, `conversion`, `sale_price` — Lot 3-B) |
 | GET | `/pos/articles/by-barcode` | `pos.terminal.use` | Scan (Lot 3-A) : `barcode`, `site_id` ; égalité EXACTE sur le code-barres d'un article ACTIF, jamais partielle ni sur référence / désignation ; inconnu : `404 barcode_unknown` |
 | POST | `/pos/checkout` | `pos.terminal.use` + `sales.sale.create` + `sales.sale.validate` (+ `sales.payment.create`) | Création + validation + paiements en une transaction ; `idempotency_key` obligatoire (201 ; 200 `replayed` pour une clé déjà traitée) |
 
