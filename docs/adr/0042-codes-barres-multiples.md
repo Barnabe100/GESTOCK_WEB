@@ -1,6 +1,6 @@
 # ADR-0042 — Codes-barres multiples et codes-barres des conditionnements
 
-- **Statut** : Acceptée (Lot 3-D — catalogue, scan des écrans opérationnels)
+- **Statut** : Acceptée et validée (Lot 3-D — catalogue, scan des écrans opérationnels)
 - **Date** : 2026-10-01
 - **Prolonge** : [ADR-0039](0039-catalogue-stock-gere-prix-couts.md) (scan exact),
   [ADR-0040](0040-quantites-decimales-conditionnements.md) et
@@ -34,11 +34,16 @@ code par article, sans conditionnement ; le scan y existe dans les ventes et les
    un conditionnement, ni deux conditionnements. Contrôle du service (message explicite, codes
    en cause) **et** garantie en base (concurrence comprise). Deux tenants peuvent partager un
    code (RLS).
-4. **Éléments inactifs** : `is_active` suit l'article (code principal et supplémentaires) ou le
-   conditionnement (ses codes), par déclencheurs. Un élément désactivé **libère** ses codes, qui
-   restent enregistrés (historique) ; sa **réactivation** revérifie qu'ils sont toujours libres
-   (`409 article_barcode_taken` pour un article — contrat existant —, `409 barcode_taken` pour un
-   conditionnement, avec la liste des codes) ; l'index protège la réactivation concurrente.
+4. **Éléments inactifs** (règle validée) : `is_active` est tenu par déclencheurs — codes en
+   unité de base : article actif ; code d'un conditionnement : article **et** conditionnement
+   actifs. Un article désactivé libère donc ses codes **et ceux de ses conditionnements** ; un
+   conditionnement désactivé libère les siens. Les codes restent enregistrés (historique), ne
+   sont plus reconnus au scan et ne bloquent aucun autre élément actif. La **réactivation**
+   revérifie qu'ils sont toujours libres — article : ses codes et ceux de ses conditionnements
+   actifs (`409 article_barcode_taken`, contrat existant) ; conditionnement d'un article actif :
+   ses codes (`409 barcode_taken`) ; conditionnement d'un article inactif : rien n'est réservé —,
+   avec la liste des codes en cause ; l'index protège la réactivation concurrente (migration
+   0031 : déclencheurs et reprise des codes déjà enregistrés).
 5. **Format** : texte libre, 50 caractères au plus, espaces de bord retirés ; aucune validation
    EAN-13 / EAN-8 imposée, aucune génération, pas de codes à poids variable ni de balance. Le
    lecteur est un périphérique qui se comporte comme un clavier (code puis Entrée).
@@ -87,5 +92,9 @@ génération d'EAN, référentiel global d'unités.
   `(tenant_id, article_id, id)` ajoutée à `catalog_packagings` (cible de la FK composite).
 - Le retour arrière de la migration 0030 est refusé dès qu'un code supplémentaire ou de
   conditionnement existe (l'ancien schéma n'a qu'un code par article).
-- Points soumis à validation : voir le rapport du lot (codes d'un conditionnement d'un article
-  inactif, retrait physique, codes ajoutés à un élément inactif, sensibilité à la casse).
+- **Décisions validées** (TechNova, 2026-10-01) : codes d'un conditionnement libérés par un
+  article inactif et revérifiés à sa réactivation (point 4, migration 0031) ; retrait = ligne
+  supprimée, ancienne valeur dans l'audit (point 10) ; code préparé sur un élément inactif :
+  non reconnu au scan, disponibilité contrôlée à la réactivation, refusée si le code a été repris
+  entre-temps ; comparaison **sensible à la casse** (`c-1` ≠ `C-1`), seuls les espaces de bord
+  retirés, aucune normalisation ni validation EAN.

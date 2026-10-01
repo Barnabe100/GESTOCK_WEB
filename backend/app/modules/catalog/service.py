@@ -665,7 +665,9 @@ class PackagingService:
         article = self._article(packaging.article_id)
         if active:
             self._ensure_whole(article, packaging.conversion)
-            ensure_codes_free(self.db, article_codes(self.db, article.id, packaging.id))
+            # Article inactif : les codes du conditionnement restent libérés (rien à vérifier).
+            if article.is_active:
+                ensure_codes_free(self.db, article_codes(self.db, article.id, packaging.id))
         packaging.is_active = active
         _flush(self.db)
         self._audit("activated" if active else "deactivated", packaging, article, {})
@@ -683,8 +685,9 @@ def taken_codes(
     exclude_owner: tuple[uuid.UUID, uuid.UUID | None] | None = None,
 ) -> list[str]:
     """Codes déjà portés par une présentation ACTIVE du tenant (registre commun). Exclusions :
-    le code principal actuel d'un article (modification de ce code), ou les codes d'un même
-    porteur (article en unité de base / conditionnement) lors de sa réactivation."""
+    le code principal actuel d'un article (modification de ce code), ou les codes de l'élément
+    réactivé (article : tous ses codes, conditionnements compris ; conditionnement : les
+    siens)."""
     if not codes:
         return []
     stmt = select(Barcode.code).where(Barcode.code.in_(codes), Barcode.is_active.is_(True))
@@ -694,27 +697,31 @@ def taken_codes(
         )
     if exclude_owner is not None:
         article_id, packaging_id = exclude_owner
-        owner = Barcode.article_id == article_id
-        owner &= (
-            Barcode.packaging_id.is_(None)
+        stmt = stmt.where(
+            Barcode.article_id != article_id
             if packaging_id is None
-            else Barcode.packaging_id == packaging_id
+            else Barcode.packaging_id.is_distinct_from(packaging_id)
         )
-        stmt = stmt.where(~owner)
     return sorted(set(db.scalars(stmt)))
 
 
 def article_codes(
     db: Session, article_id: uuid.UUID, packaging_id: uuid.UUID | None
 ) -> tuple[tuple[uuid.UUID, uuid.UUID | None], list[str]]:
-    """Codes d'un porteur : l'article en unité de base (principal + supplémentaires) ou un
-    conditionnement."""
+    """Codes que la réactivation d'un élément rend à nouveau actifs : un conditionnement (ses
+    codes), ou un article — son unité de base (principal + supplémentaires) ET ses
+    conditionnements actifs, dont les codes sont libérés tant que l'article est inactif
+    (validation du Lot 3-D)."""
     stmt = select(Barcode.code).where(Barcode.article_id == article_id)
-    stmt = stmt.where(
-        Barcode.packaging_id.is_(None)
-        if packaging_id is None
-        else Barcode.packaging_id == packaging_id
-    )
+    if packaging_id is None:
+        active_packagings = select(Packaging.id).where(
+            Packaging.article_id == article_id, Packaging.is_active.is_(True)
+        )
+        stmt = stmt.where(
+            Barcode.packaging_id.is_(None) | Barcode.packaging_id.in_(active_packagings)
+        )
+    else:
+        stmt = stmt.where(Barcode.packaging_id == packaging_id)
     return (article_id, packaging_id), list(db.scalars(stmt))
 
 
@@ -813,7 +820,9 @@ class BarcodeService:
             packaging = PackagingService(self.db, self.ctx).get(packaging_id)
             if packaging.article_id != article.id:
                 raise NotFoundError("Conditionnement introuvable", code="packaging_not_found")
-        active = packaging.is_active if packaging is not None else article.is_active
+        # Code d'un conditionnement : réservé seulement si l'article ET le conditionnement sont
+        # actifs (validation du Lot 3-D).
+        active = article.is_active and (packaging is None or packaging.is_active)
         if active and taken_codes(self.db, [code]):
             raise ConflictError(
                 "Ce code-barres est déjà utilisé par un élément actif",

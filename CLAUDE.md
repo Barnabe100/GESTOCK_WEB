@@ -163,12 +163,15 @@ identifie UNE présentation (article en unité de base ou conditionnement) ; reg
 `catalog_barcodes` (code principal = champ `barcode` conservé, miroir par déclencheur ; codes
 supplémentaires ; codes des conditionnements), unicité commune au tenant parmi les présentations
 ACTIVES (index unique partiel), élément désactivé = codes libérés et revérifiés à la
-réactivation ; texte libre 50 caractères, sans validation EAN ; scan EXACT
+réactivation — **validé** : un article inactif libère aussi les codes de ses conditionnements
+(migration 0031), retrait = ligne supprimée (ancienne valeur dans l'audit), code préparé sur un
+élément inactif contrôlé à sa réactivation ; texte libre 50 caractères, **sensible à la casse**,
+sans validation EAN ; scan EXACT
 (`catalog.api.resolve_barcode`, `/catalog/barcodes/resolve`) : POS et vente = 1 conditionnement
 ajouté (prix non configuré refusé), entrées / sorties / transferts / inventaires = présélection
 sans quantité devinée ; recherche « contient » étendue à tous les codes
 (`catalog.api.barcode_search`) ; aucune permission nouvelle (`catalog.article.update`) ; ajouts
-et retraits audités. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+et retraits audités. **Lot 3-D validé.** Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

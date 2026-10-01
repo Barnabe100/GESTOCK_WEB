@@ -259,6 +259,46 @@ def test_inactive_article_frees_its_codes(world: World, coca: dict[str, str]) ->
     assert _ok(_resolve(world, "111"), 200)["article"]["id"] == world.articles[1]
 
 
+def test_inactive_article_frees_its_packaging_codes(world: World, coca: dict[str, str]) -> None:
+    """Validation du Lot 3-D : un article désactivé libère AUSSI les codes de ses
+    conditionnements (même actifs) ; la réactivation de l'article les revérifie ; un
+    conditionnement réactivé sous un article inactif ne réserve rien."""
+    _ok(_add_packaging_code(world, coca["carton"], "C-1"))
+    _ok(_add_packaging_code(world, coca["pack"], "P-1"))
+    _ok(world.owner.post(f"/catalog/packagings/{coca['pack']}/deactivate"), 200)
+    _ok(world.owner.post(f"/catalog/articles/{world.articles[0]}/deactivate"), 200)
+    assert ("C-1", "PACKAGING", "Carton 24", False) in _codes(world, 0)
+    assert _code(_resolve(world, "C-1")) == "barcode_unknown"
+    assert _code(_pos_scan(world, "C-1")) == "barcode_unknown"
+    # Code libéré : repris par un autre article actif.
+    _ok(_add_article_code(world, 1, "C-1"))
+    # Conditionnement réactivé sous un article inactif : rien n'est vérifié ni réservé.
+    _ok(world.owner.post(f"/catalog/packagings/{coca['pack']}/activate"), 200)
+    assert ("P-1", "PACKAGING", "Pack 6", False) in _codes(world, 0)
+    # Code ajouté à un conditionnement d'un article inactif : préparé, non réservé.
+    assert _add_packaging_code(world, coca["carton"], "222").status_code == 201
+    _ok(_add_article_code(world, 2, "222"))
+    # Réactivation de l'article refusée : les codes de ses conditionnements actifs sont pris.
+    refused = world.owner.post(f"/catalog/articles/{world.articles[0]}/activate")
+    assert (refused.status_code, _code(refused)) == (409, "article_barcode_taken")
+    assert refused.json()["codes"] == ["222", "C-1"]
+    assert world.owner.get(f"/catalog/articles/{world.articles[0]}").json()["is_active"] is False
+    # Codes retirés des autres articles : la réactivation passe, tous les codes reviennent.
+    for index in (1, 2):
+        for b in world.owner.get(f"/catalog/articles/{world.articles[index]}/barcodes").json()[
+            "items"
+        ]:
+            if b["kind"] == "ADDITIONAL":
+                assert world.owner.delete(f"/catalog/barcodes/{b['id']}").status_code == 204
+    _ok(world.owner.post(f"/catalog/articles/{world.articles[0]}/activate"), 200)
+    for code, packaging in (
+        ("C-1", coca["carton"]),
+        ("P-1", coca["pack"]),
+        ("222", coca["carton"]),
+    ):
+        assert _ok(_resolve(world, code), 200)["packaging"]["id"] == packaging
+
+
 def test_inactive_packaging_frees_its_codes(world: World, coca: dict[str, str]) -> None:
     _ok(_add_packaging_code(world, coca["carton"], "C-1"))
     _ok(world.owner.post(f"/catalog/packagings/{coca['carton']}/deactivate"), 200)
@@ -276,18 +316,21 @@ def test_inactive_packaging_frees_its_codes(world: World, coca: dict[str, str]) 
 def test_reactivation_with_conflict(world: World, coca: dict[str, str]) -> None:
     _ok(_add_article_code(world, 0, "222"))
     _ok(_add_packaging_code(world, coca["carton"], "C-1"))
-    _ok(world.owner.post(f"/catalog/articles/{world.articles[0]}/deactivate"), 200)
+    # Conditionnement (article actif) : réactivation refusée tant que son code est pris.
     _ok(world.owner.post(f"/catalog/packagings/{coca['carton']}/deactivate"), 200)
-    _ok(_add_article_code(world, 1, "222"))
     other = _packaging(world, 1, "Carton 12", "12")
-    _ok(_add_packaging_code(world, other, "C-1"))
-    # Réactivation refusée tant que l'un de ses codes est pris (aucun changement d'état).
-    article = world.owner.post(f"/catalog/articles/{world.articles[0]}/activate")
-    assert (article.status_code, _code(article)) == (409, "article_barcode_taken")
-    assert article.json()["codes"] == ["222"]
+    taken = _ok(_add_packaging_code(world, other, "C-1"))
     packaging = world.owner.post(f"/catalog/packagings/{coca['carton']}/activate")
     assert (packaging.status_code, _code(packaging)) == (409, "barcode_taken")
     assert packaging.json()["codes"] == ["C-1"]
+    assert world.owner.delete(f"/catalog/barcodes/{taken['id']}").status_code == 204
+    _ok(world.owner.post(f"/catalog/packagings/{coca['carton']}/activate"), 200)
+    # Article : réactivation refusée tant que l'un de ses codes est pris (état inchangé).
+    _ok(world.owner.post(f"/catalog/articles/{world.articles[0]}/deactivate"), 200)
+    _ok(_add_article_code(world, 1, "222"))
+    article = world.owner.post(f"/catalog/articles/{world.articles[0]}/activate")
+    assert (article.status_code, _code(article)) == (409, "article_barcode_taken")
+    assert article.json()["codes"] == ["222"]
     assert world.owner.get(f"/catalog/articles/{world.articles[0]}").json()["is_active"] is False
     # Le code retiré de l'autre élément, la réactivation passe et ses codes redeviennent actifs.
     taken = [
@@ -298,6 +341,7 @@ def test_reactivation_with_conflict(world: World, coca: dict[str, str]) -> None:
     assert world.owner.delete(f"/catalog/barcodes/{taken['id']}").status_code == 204
     _ok(world.owner.post(f"/catalog/articles/{world.articles[0]}/activate"), 200)
     assert _ok(_resolve(world, "222"), 200)["article"]["id"] == world.articles[0]
+    assert _ok(_resolve(world, "C-1"), 200)["packaging"]["id"] == coca["carton"]
 
 
 def test_concurrent_claims_of_one_code(

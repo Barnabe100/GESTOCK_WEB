@@ -160,8 +160,10 @@ class Barcode(IdMixin, TenantScopedMixin, TimestampMixin, Base):
 
     Registre unique des codes du tenant : un code ne désigne qu'une présentation parmi les
     éléments ACTIFS (index unique partiel) ; un élément désactivé libère ses codes, qui restent
-    enregistrés. ``is_active`` reflète l'état de l'élément porteur (article ou conditionnement),
-    tenu par déclencheurs ; le code principal reste ``catalog_articles.barcode`` (miroir)."""
+    enregistrés. ``is_active`` (tenu par déclencheurs) : article actif pour ses codes en unité de
+    base ; article ET conditionnement actifs pour un code de conditionnement (un article inactif
+    libère aussi les codes de ses conditionnements — validation du Lot 3-D, migration 0031). Le
+    code principal reste ``catalog_articles.barcode`` (miroir)."""
 
     __tablename__ = "catalog_barcodes"
     __table_args__ = (
