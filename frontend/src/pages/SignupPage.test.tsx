@@ -11,6 +11,9 @@ import { jsonResponse } from '@/shared/testing';
 
 import { SignupPage } from './SignupPage';
 
+// Changement d'étape (validation + rendu) : plus lent sur un runner CI chargé.
+const STEP = { timeout: 3000 };
+
 const COUNTRIES = [
   {
     code: 'BF',
@@ -189,13 +192,13 @@ describe('inscription publique', () => {
     next();
 
     // Activité : secteur puis profil du secteur.
-    const sectors = await screen.findByRole('radiogroup', { name: "Secteur d'activité" });
+    const sectors = await screen.findByRole('radiogroup', { name: "Secteur d'activité" }, STEP);
     fireEvent.click(within(sectors).getByRole('radio', { name: 'Commerce de détail' }));
     await choose('business_profile', 'Alimentation / Supérette');
     next();
 
     // Offres : prix publiés, prix masqué, offre sur contact (aucun prix inventé).
-    const offers = await screen.findByRole('radiogroup', { name: 'Offre' });
+    const offers = await screen.findByRole('radiogroup', { name: 'Offre' }, STEP);
     const standard = within(offers).getByRole('region', { name: 'Standard' });
     expect(within(standard).getByText(/5\s000\sF\sCFA \/ mois/)).toBeTruthy();
     expect(within(standard).getByText(/50\s000\sF\sCFA \/ an/)).toBeTruthy();
@@ -248,7 +251,7 @@ describe('inscription publique', () => {
     await choose('country_code', 'Burkina Faso');
     next();
     fireEvent.click(
-      within(await screen.findByRole('radiogroup', { name: "Secteur d'activité" })).getByRole(
+      within(await screen.findByRole('radiogroup', { name: "Secteur d'activité" }, STEP)).getByRole(
         'radio',
         { name: 'Restauration' },
       ),
@@ -288,7 +291,7 @@ describe('inscription publique', () => {
     await choose('country_code', 'Burkina Faso');
     next();
     fireEvent.click(
-      within(await screen.findByRole('radiogroup', { name: "Secteur d'activité" })).getByRole(
+      within(await screen.findByRole('radiogroup', { name: "Secteur d'activité" }, STEP)).getByRole(
         'radio',
         { name: 'Commerce de détail' },
       ),
@@ -296,7 +299,7 @@ describe('inscription publique', () => {
     await choose('business_profile', 'Alimentation / Supérette');
     next();
     expect(
-      await screen.findByText("Aucune offre n'est disponible en ligne pour le moment."),
+      await screen.findByText("Aucune offre n'est disponible en ligne pour le moment.", {}, STEP),
     ).toBeTruthy();
     expect(screen.getByText(/ventes@technova.example/)).toBeTruthy();
     next();
