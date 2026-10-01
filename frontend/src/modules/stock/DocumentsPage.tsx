@@ -22,6 +22,7 @@ import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
 import { COST_VIEW } from '@/modules/catalog/api';
+import { SupplierFilter } from '@/modules/suppliers/SupplierFilter';
 
 import {
   DOCUMENT_CONFIG,
@@ -49,10 +50,18 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const [status, setStatus] = useState<DocumentStatus | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // Lot 3-E : filtre fournisseur (entrées seulement).
+  const [supplierId, setSupplierId] = useState<string | null>(null);
   const debounced = useDebouncedValue(search);
   const documents = useDocuments<StockDocument>(
     kind,
-    toQueryString(table, { search: debounced, status, date_from: dateFrom, date_to: dateTo }),
+    toQueryString(table, {
+      search: debounced,
+      status,
+      date_from: dateFrom,
+      date_to: dateTo,
+      supplier_id: kind === 'entries' ? supplierId : null,
+    }),
   );
   const { currency, locale } = capabilities.tenant;
   // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
@@ -60,10 +69,12 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
-  const filtered = search !== '' || status !== null || dateFrom !== '' || dateTo !== '';
+  const filtered =
+    search !== '' || status !== null || dateFrom !== '' || dateTo !== '' || supplierId !== null;
   const resetFilters = () => {
     setSearch('');
     setStatus(null);
+    setSupplierId(null);
     setDateFrom('');
     setDateTo('');
     resetPage();
@@ -105,6 +116,15 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
           showClear
           aria-label={t('stock.status')}
         />
+        {kind === 'entries' && (
+          <SupplierFilter
+            value={supplierId}
+            onChange={(value) => {
+              setSupplierId(value);
+              resetPage();
+            }}
+          />
+        )}
         <DateRangeFilter
           from={dateFrom}
           to={dateTo}

@@ -31,6 +31,30 @@ export function useSuppliers(query: string, enabled = true) {
   });
 }
 
+export function useSupplier(id: string | undefined) {
+  return useQuery({
+    queryKey: [...supplierKeys.all, 'detail', id],
+    queryFn: ({ signal }) => api.get<Supplier>(`/suppliers/${id}`, signal),
+    enabled: id !== undefined,
+  });
+}
+
+/** Évènement de la chronologie (Lot 3-E) : entrée réelle du journal d'audit. */
+export interface SupplierEvent {
+  id: string;
+  occurred_at: string;
+  action: string;
+  user_name: string | null;
+  data: Record<string, unknown>;
+}
+
+export function useSupplierHistory(id: string) {
+  return useQuery({
+    queryKey: [...supplierKeys.all, 'history', id],
+    queryFn: ({ signal }) => api.get<SupplierEvent[]>(`/suppliers/${id}/history`, signal),
+  });
+}
+
 export function useSaveSupplier() {
   const qc = useQueryClient();
   return useMutation({

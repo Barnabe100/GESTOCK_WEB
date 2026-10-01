@@ -13,7 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
@@ -227,10 +227,16 @@ class _DocumentService(Generic[Doc]):
         date_to: date | None,
         extra: Sequence[Any] = (),
         search_columns: Sequence[Any] = (),
+        search_also: Sequence[Any] = (),
     ) -> tuple[list[Doc], int]:
+        """``search_also`` : conditions supplémentaires de la recherche texte, en OU avec les
+        colonnes (ex. entrées : nom du fournisseur, Lot 3-E)."""
         stmt = self._base_query()
+        text_search = search_filter(search, self.model.number, *search_columns)
+        if text_search is not None and search_also:
+            text_search = or_(text_search, *search_also)
         conditions: list[Any] = [
-            search_filter(search, self.model.number, *search_columns),
+            text_search,
             self.model.status == status if status else None,
             self.model.site_id == site_id if site_id else None,
             self.model.operation_date >= date_from if date_from else None,

@@ -26,6 +26,7 @@ import { FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
 import { confirmAction } from '@/shared/ui/confirm';
+import { SupplierFilter } from '@/modules/suppliers/SupplierFilter';
 
 import {
   ARTICLE_UPDATE,
@@ -50,6 +51,8 @@ export default function ArticlesPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilterValue>('all');
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Lot 3-E : filtre « fournisseur principal ».
+  const [supplierId, setSupplierId] = useState<string | null>(null);
   const [createRequested, clearCreate] = useCreateRequest(can('catalog.article.create'));
   const [editing, setEditing] = useState<Article | null | undefined>(
     createRequested ? null : undefined,
@@ -57,17 +60,23 @@ export default function ArticlesPage() {
   const debounced = useDebouncedValue(search);
   const categories = useCategories(OPTIONS_QUERY);
   const articles = useArticles(
-    toQueryString(table, { search: debounced, status, category_id: categoryId }),
+    toQueryString(table, {
+      search: debounced,
+      status,
+      category_id: categoryId,
+      supplier_id: supplierId,
+    }),
   );
   const setActive = useSetArticleActive();
   const { currency, locale } = capabilities.tenant;
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
-  const filtered = search !== '' || status !== 'all' || categoryId !== null;
+  const filtered = search !== '' || status !== 'all' || categoryId !== null || supplierId !== null;
   const resetFilters = () => {
     setSearch('');
     setStatus('all');
     setCategoryId(null);
+    setSupplierId(null);
     resetPage();
   };
 
@@ -121,6 +130,14 @@ export default function ArticlesPage() {
           showClear
           aria-label={t('articles.category')}
           filter
+        />
+        <SupplierFilter
+          value={supplierId}
+          label={t('articles.supplier')}
+          onChange={(value) => {
+            setSupplierId(value);
+            resetPage();
+          }}
         />
         <StatusFilter
           value={status}

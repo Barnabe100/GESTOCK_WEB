@@ -1,16 +1,10 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
-import { Dialog } from 'primereact/dialog';
-import { InputText } from 'primereact/inputtext';
-import { InputTextarea } from 'primereact/inputtextarea';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import { useNavigate } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { translateError } from '@/shared/lib/errors';
 import {
   INITIAL_TABLE,
   toQueryString,
@@ -18,124 +12,22 @@ import {
   type StatusFilterValue,
   type TableState,
 } from '@/shared/lib/serverTable';
-import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { SearchInput } from '@/shared/ui/SearchInput';
 import { StatusFilter } from '@/shared/ui/StatusFilter';
 import { ActiveBadge } from '@/shared/ui/StatusBadge';
-import { useToast } from '@/shared/ui/toast';
 import { ServerTable } from '@/shared/ui/ServerTable';
 import { FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
-import { confirmAction } from '@/shared/ui/confirm';
 
-import { useSaveSupplier, useSetSupplierActive, useSuppliers, type Supplier } from './api';
-
-const optional = (max: number) => z.string().max(max);
-const schema = z.object({
-  name: z.string().trim().min(1).max(150),
-  contact_name: optional(150),
-  phone: optional(30),
-  email: z.union([z.literal(''), z.string().trim().email().max(150)]),
-  address: optional(255),
-  city: optional(100),
-  country: optional(100),
-  notes: optional(500),
-});
-type FormValues = z.infer<typeof schema>;
-const FIELDS = ['contact_name', 'phone', 'email', 'address', 'city', 'country'] as const;
-const LABELS: Record<(typeof FIELDS)[number], string> = {
-  contact_name: 'suppliers.contact',
-  phone: 'suppliers.phone',
-  email: 'suppliers.email',
-  address: 'suppliers.address',
-  city: 'suppliers.city',
-  country: 'suppliers.country',
-};
-
-function SupplierDialog({ supplier, onClose }: { supplier: Supplier | null; onClose: () => void }) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const save = useSaveSupplier();
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name: supplier?.name ?? '',
-      contact_name: supplier?.contact_name ?? '',
-      phone: supplier?.phone ?? '',
-      email: supplier?.email ?? '',
-      address: supplier?.address ?? '',
-      city: supplier?.city ?? '',
-      country: supplier?.country ?? '',
-      notes: supplier?.notes ?? '',
-    },
-  });
-  const errors = form.formState.errors;
-
-  // Chaîne vide = champ effacé côté serveur.
-  const onSubmit = form.handleSubmit((values) =>
-    save.mutate(
-      { id: supplier?.id, input: values },
-      {
-        onSuccess: () => {
-          toast.success(t(supplier ? 'suppliers.updated' : 'suppliers.created'));
-          onClose();
-        },
-        onError: (error) => toast.error(translateError(t, error)),
-      },
-    ),
-  );
-
-  return (
-    <Dialog
-      header={t(supplier ? 'suppliers.edit' : 'suppliers.new')}
-      visible
-      onHide={onClose}
-      className="sm-dialog sm-dialog-wide"
-    >
-      <form onSubmit={onSubmit} className="sm-form" noValidate>
-        <FormField
-          id="supplier-name"
-          label={t('suppliers.name')}
-          required
-          error={errors.name && t('validation.required')}
-        >
-          <InputText id="supplier-name" {...form.register('name')} autoFocus />
-        </FormField>
-        <div className="sm-form-grid">
-          {FIELDS.map((field) => (
-            <FormField
-              key={field}
-              id={`supplier-${field}`}
-              label={t(LABELS[field])}
-              error={
-                errors[field] && t(field === 'email' ? 'validation.email' : 'validation.invalid')
-              }
-            >
-              <InputText id={`supplier-${field}`} {...form.register(field)} />
-            </FormField>
-          ))}
-        </div>
-        <FormField
-          id="supplier-notes"
-          label={t('suppliers.notes')}
-          error={errors.notes && t('validation.invalid')}
-        >
-          <InputTextarea id="supplier-notes" rows={3} {...form.register('notes')} />
-        </FormField>
-        <div className="sm-dialog-actions">
-          <Button type="button" label={t('actions.cancel')} text onClick={onClose} />
-          <Button type="submit" label={t('actions.save')} loading={save.isPending} />
-        </div>
-      </form>
-    </Dialog>
-  );
-}
+import { useSuppliers, type Supplier } from './api';
+import { SupplierDialog } from './SupplierDialog';
+import { useSupplierStatus } from './useSupplierStatus';
 
 export default function SuppliersPage() {
   const { t } = useTranslation();
-  const toast = useToast();
+  const navigate = useNavigate();
   const { can } = useCapabilities();
   const [table, setTable] = useState<TableState>({
     ...INITIAL_TABLE,
@@ -147,7 +39,7 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null | undefined>(undefined);
   const debounced = useDebouncedValue(search);
   const suppliers = useSuppliers(toQueryString(table, { search: debounced, status }));
-  const setActive = useSetSupplierActive();
+  const { toggle } = useSupplierStatus();
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
   const filtered = search !== '' || status !== 'all';
@@ -156,26 +48,7 @@ export default function SuppliersPage() {
     setStatus('all');
     resetPage();
   };
-
-  // Désactivation : action sensible, confirmée ; réactivation directe.
-  const toggle = (s: Supplier) => {
-    const run = () =>
-      setActive.mutate(
-        { id: s.id, active: !s.is_active },
-        {
-          onSuccess: () => toast.success(t('suppliers.statusChanged')),
-          onError: (error) => toast.error(translateError(t, error)),
-        },
-      );
-    if (!s.is_active) return run();
-    confirmAction(t, {
-      header: t('suppliers.deactivateTitle'),
-      message: t('suppliers.deactivateConfirm', { name: s.name }),
-      acceptLabel: t('actions.deactivate'),
-      danger: true,
-      onAccept: run,
-    });
-  };
+  const open = (s: Supplier) => void navigate(`/suppliers/${s.id}`);
 
   return (
     <>
@@ -208,6 +81,7 @@ export default function SuppliersPage() {
         query={suppliers}
         table={table}
         onTableChange={setTable}
+        onRowClick={open}
         empty={
           <ListEmpty
             filtered={filtered}
@@ -238,6 +112,12 @@ export default function SuppliersPage() {
           body={(s: Supplier) => (
             <RowActions
               actions={[
+                {
+                  key: 'view',
+                  label: t('suppliers.view'),
+                  icon: 'pi pi-eye',
+                  onClick: () => open(s),
+                },
                 {
                   key: 'edit',
                   label: t('actions.edit'),

@@ -32,11 +32,15 @@ from app.modules.stock.schemas import (
     ExitReasonOut,
     LevelOut,
     MovementOut,
+    SupplierArticleOut,
+    SupplierSummaryOut,
     ThresholdInput,
 )
 from app.modules.stock.sites import filter_site_ids, operation_site
 from app.modules.stock.stock_service import StockService
+from app.modules.stock.supplier_view import SupplierReceptions
 from app.modules.stock.transfer_router import router as transfer_router
+from app.modules.suppliers.api import suppliers_named
 from app.platform.context import (
     DbSession,
     NowDep,
@@ -153,6 +157,10 @@ def list_entries(
         date_to,
         extra=[c for c in extra if c is not None],
         search_columns=[StockEntry.document_reference],
+        # Lot 3-E : recherche aussi par nom du fournisseur (API publique de ``suppliers``).
+        search_also=[StockEntry.supplier_id.in_(named)]
+        if (named := suppliers_named(search)) is not None
+        else [],
     )
     return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
 
@@ -397,3 +405,34 @@ _MOVEMENT_FIELDS = (
     "packaging_conversion",
     "packaging_quantity",
 )
+
+
+# --- Fiche fournisseur (Lot 3-E, ADR-0043) : lecture seule -------------------------------------
+
+
+@router.get("/suppliers/{supplier_id}/summary", response_model=SupplierSummaryOut)
+def supplier_summary(
+    supplier_id: uuid.UUID, ctx: EntryView, db: DbSession, site_id: uuid.UUID | None = None
+) -> SupplierSummaryOut:
+    """Réceptions VALIDÉES du fournisseur (sites visibles) : nombre, dernière date, total."""
+    summary = SupplierReceptions(db, ctx, supplier_id).summary(site_id)
+    return SupplierSummaryOut.model_validate(summary, from_attributes=True)
+
+
+@router.get("/suppliers/{supplier_id}/articles", response_model=Page[SupplierArticleOut])
+def supplier_articles(
+    supplier_id: uuid.UUID,
+    ctx: EntryView,
+    db: DbSession,
+    paging: Paging,
+    search: str | None = None,
+    site_id: uuid.UUID | None = None,
+) -> Page[SupplierArticleOut]:
+    """Articles ayant au moins une réception VALIDÉE du fournisseur (sites visibles)."""
+    items, total = SupplierReceptions(db, ctx, supplier_id).articles(paging, search, site_id)
+    return Page(
+        items=[SupplierArticleOut.model_validate(i, from_attributes=True) for i in items],
+        total=total,
+        limit=paging.limit,
+        offset=paging.offset,
+    )

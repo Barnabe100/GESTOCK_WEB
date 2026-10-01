@@ -20,5 +20,10 @@ export const suppliersModule: FrontendModule = {
       component: lazy(() => import('./SuppliersPage')),
       permission: 'suppliers.supplier.view',
     },
+    {
+      path: 'suppliers/:id',
+      component: lazy(() => import('./SupplierDetailPage')),
+      permission: 'suppliers.supplier.view',
+    },
   ],
 };

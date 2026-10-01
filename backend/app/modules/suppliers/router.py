@@ -3,8 +3,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.modules.suppliers.schemas import SupplierCreate, SupplierOut, SupplierUpdate
+from app.core.errors import ForbiddenError
+from app.modules.suppliers.schemas import (
+    SupplierCreate,
+    SupplierEventOut,
+    SupplierOut,
+    SupplierUpdate,
+)
 from app.modules.suppliers.service import SupplierService
+from app.platform.audit.service import entity_history
 from app.platform.context import DbSession, RequestContext, require_permission
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page, StatusFilter
@@ -15,6 +22,7 @@ View = Annotated[RequestContext, Depends(require_permission("suppliers.supplier.
 Create = Annotated[RequestContext, Depends(require_permission("suppliers.supplier.create"))]
 Update = Annotated[RequestContext, Depends(require_permission("suppliers.supplier.update"))]
 Status = Annotated[RequestContext, Depends(require_permission("suppliers.supplier.status"))]
+AuditView = Annotated[RequestContext, Depends(require_permission("audit.log.view"))]
 Paging = Annotated[PageParams, Depends(page_params)]
 
 
@@ -45,6 +53,27 @@ def create_supplier(body: SupplierCreate, ctx: Create, db: DbSession) -> Supplie
 @router.get("/{supplier_id}", response_model=SupplierOut)
 def get_supplier(supplier_id: uuid.UUID, ctx: View, db: DbSession) -> SupplierOut:
     return SupplierOut.model_validate(SupplierService(db, ctx).get(supplier_id))
+
+
+@router.get("/{supplier_id}/history", response_model=list[SupplierEventOut])
+def supplier_history(
+    supplier_id: uuid.UUID, ctx: AuditView, db: DbSession
+) -> list[SupplierEventOut]:
+    """Chronologie du fournisseur (Lot 3-E) : évènements réellement journalisés, du plus ancien
+    au plus récent. Exige ``audit.log.view`` ET ``suppliers.supplier.view``."""
+    if not ctx.has_permission("suppliers.supplier.view"):
+        raise ForbiddenError("Permission insuffisante", code="permission_denied")
+    supplier = SupplierService(db, ctx).get(supplier_id)
+    return [
+        SupplierEventOut(
+            id=log.id,
+            occurred_at=log.occurred_at,
+            action=log.action,
+            user_name=user_name,
+            data=log.data,
+        )
+        for log, user_name in entity_history(db, ctx.tenant_id, "supplier", supplier.id)
+    ]
 
 
 @router.patch("/{supplier_id}", response_model=SupplierOut)

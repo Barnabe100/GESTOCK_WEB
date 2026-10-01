@@ -31,6 +31,9 @@ STOCK_COST_FIELDS = frozenset(
         # Lignes et totaux des documents de stock : quantité × coût.
         "amount",
         "total_amount",
+        # Fiche fournisseur (Lot 3-E) : total reçu, dernier coût de réception par unité de base.
+        "received_total",
+        "last_unit_cost",
     }
 )
 INVENTORY_COST_FIELDS = frozenset(

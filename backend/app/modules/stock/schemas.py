@@ -248,3 +248,33 @@ class ThresholdInput(BaseModel):
 
     min_stock: Quantity | None = None
     max_stock: Quantity | None = None
+
+
+# --- Fiche fournisseur (Lot 3-E, ADR-0043) : lecture des réceptions VALIDÉES -------------------
+
+
+class SupplierSummaryOut(BaseModel):
+    """Synthèse des réceptions validées d'un fournisseur sur les sites visibles. ``received_total``
+    (coût) : absent sans ``catalog.article.cost_view``."""
+
+    supplier_id: uuid.UUID
+    validated_count: int
+    last_received_on: date | None
+    received_total: Money
+
+
+class SupplierArticleOut(BaseModel):
+    """Article reçu d'un fournisseur (au moins une réception validée). ``last_unit_cost`` : coût
+    par unité de base de la dernière réception validée — absent sans ``cost_view``."""
+
+    article_id: uuid.UUID
+    article_reference: str
+    article_designation: str
+    unit: str
+    article_active: bool
+    receipt_count: int
+    received_base_quantity: Quantity
+    last_received_on: date
+    last_entry_id: uuid.UUID
+    last_entry_number: str
+    last_unit_cost: UnitCost

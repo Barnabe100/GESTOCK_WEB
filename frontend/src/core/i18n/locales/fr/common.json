@@ -578,7 +578,62 @@
     "subtitle": "Fournisseurs de l'entreprise, utilisés pour les achats et réceptions.",
     "empty": "Aucun fournisseur pour le moment.",
     "deactivateTitle": "Désactiver le fournisseur",
-    "deactivateConfirm": "Désactiver le fournisseur « {{name}} » ? Il ne sera plus proposé pour les nouvelles réceptions."
+    "deactivateConfirm": "Désactiver le fournisseur « {{name}} » ? Il ne sera plus proposé pour les nouvelles réceptions.",
+    "view": "Voir la fiche",
+    "general": "Coordonnées",
+    "noContact": "Aucune coordonnée renseignée.",
+    "tracking": "Suivi",
+    "createdAt": "Créé le",
+    "updatedAt": "Dernière modification",
+    "inactiveHelp": "Fournisseur désactivé : consultable avec son historique, mais non proposé pour une nouvelle réception.",
+    "activity": "Activité du fournisseur",
+    "all": "Tous les fournisseurs",
+    "summary": {
+      "title": "Réceptions validées",
+      "help": "Calculé sur les réceptions validées des sites accessibles ; brouillons et réceptions annulées exclus.",
+      "count": "Réceptions validées",
+      "last": "Dernière réception validée",
+      "total": "Total reçu"
+    },
+    "tabs": {
+      "receptions": "Réceptions",
+      "received": "Articles reçus",
+      "main": "Fournisseur principal",
+      "history": "Chronologie"
+    },
+    "receptions": {
+      "help": "Toutes les réceptions de ce fournisseur sur les sites accessibles, brouillons et annulées compris.",
+      "empty": "Aucune réception de ce fournisseur.",
+      "reference": "Référence de la pièce"
+    },
+    "articles": {
+      "article": "Article"
+    },
+    "received": {
+      "help": "Articles ayant au moins une réception validée de ce fournisseur. Dernier coût : coût par unité de base de la dernière réception validée (information historique, sans effet sur le prix d'achat du catalogue).",
+      "empty": "Aucun article reçu de ce fournisseur.",
+      "last": "Dernière réception",
+      "count": "Réceptions",
+      "quantity": "Quantité reçue",
+      "lastCost": "Dernier coût",
+      "costPer": "{{cost}} / {{unit}}"
+    },
+    "main": {
+      "help": "Articles du catalogue dont ce fournisseur est le fournisseur principal.",
+      "empty": "Aucun article n'a ce fournisseur comme fournisseur principal."
+    },
+    "history": {
+      "help": "Évènements enregistrés dans le journal d'audit pour ce fournisseur.",
+      "empty": "Aucun évènement enregistré.",
+      "system": "Système",
+      "changed": "Champs modifiés : {{fields}}",
+      "actions": {
+        "supplier.created": "Fournisseur créé",
+        "supplier.updated": "Fournisseur modifié",
+        "supplier.activated": "Fournisseur réactivé",
+        "supplier.deactivated": "Fournisseur désactivé"
+      }
+    }
   },
   "articles": {
     "title": "$t(terminology:catalog.items)",
@@ -722,7 +777,7 @@
     "title": "Entrées de stock",
     "one": "Entrée",
     "new": "Nouvelle entrée",
-    "search": "N° ou référence de pièce…",
+    "search": "N°, référence de pièce ou fournisseur…",
     "kind": "Type d'entrée",
     "kinds": {
       "PURCHASE": "Achat / réception",

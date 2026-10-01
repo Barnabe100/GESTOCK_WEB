@@ -120,6 +120,7 @@ casse), `status` = `all` | `active` | `inactive`. Réponse : `{items, total, lim
 | GET · POST | `/suppliers` | `suppliers.supplier.view` · `.create` | Liste (recherche nom, contact, ville, email, téléphone) · créer |
 | GET · PATCH | `/suppliers/{id}` | `…view` · `…update` | Détail · modifier (chaîne vide = champ effacé) |
 | POST | `/suppliers/{id}/activate` · `/deactivate` | `suppliers.supplier.status` | Statut |
+| GET | `/suppliers/{id}/history` | `audit.log.view` + `suppliers.supplier.view` | Chronologie (Lot 3-E, [ADR-0043](../adr/0043-fiche-fournisseur.md)) : évènements réellement journalisés du fournisseur (`supplier.created`, `updated` avant / après, `activated`, `deactivated`), du plus ancien au plus récent |
 
 Montants (`purchase_price`, `sale_price`) : chaînes décimales à 2 décimales max ; quantités
 (`min_stock`, `max_stock`) : 3 décimales max. Codes d'erreur spécifiques :
@@ -142,11 +143,13 @@ introuvable (`404`) ; d'un autre site que le site sélectionné, refusé (`403 s
 | GET | `/stock/exit-reasons` | `stock.reason.view` ou `stock.exit.create` / `.update` | Motifs (filtre `status`, tri `label`) |
 | POST · PATCH | `/stock/exit-reasons` · `/{id}` | `stock.reason.manage` | Créer · renommer (motif système : `403 system_exit_reason`) |
 | POST | `/stock/exit-reasons/{id}/activate` · `/deactivate` | `stock.reason.manage` | Statut (y compris motifs système) |
-| GET · POST | `/stock/entries` | `stock.entry.view` · `.create` | Liste (filtres `status`, `kind`, `supplier_id`, `site_id`, `date_from`, `date_to`, `search` numéro / référence de pièce ; tri `number`, `operation_date`, `created_at`) · créer un **brouillon** (numéro `ENT-000001` attribué) |
+| GET · POST | `/stock/entries` | `stock.entry.view` · `.create` | Liste (filtres `status`, `kind`, `supplier_id`, `site_id`, `date_from`, `date_to`, `search` numéro / référence de pièce / nom du fournisseur (Lot 3-E) ; tri `number`, `operation_date`, `created_at`) · créer un **brouillon** (numéro `ENT-000001` attribué) |
 | GET · PUT | `/stock/entries/{id}` | `…view` · `…update` | Détail · remplacer en-tête et lignes d'un brouillon |
 | POST | `/stock/entries/{id}/validate` | `stock.entry.validate` | Applique les mouvements `ENTRY` (stock + CMUP du site) |
 | — | lignes d'entrée, de sortie, de transfert | — | Lot 3-C ([ADR-0041](../adr/0041-presentations-operations-de-stock.md)) : `packaging_id` facultatif (conditionnement ACTIF de l'article ; nul = unité de base), `quantity` dans cette présentation, `unit_cost` d'entrée par présentation ; réponse : `packaging_name`, `packaging_conversion`, `base_quantity` (calculée par le serveur, seule à mouvementer le stock) ; `422` `packaging_not_found`, `packaging_inactive` (aussi à la validation), `quantity_not_whole` (article entier), `base_quantity_precision`, `duplicate_article_line` (même présentation deux fois) ; `409 packaging_conversion_changed` à la validation |
 | POST | `/stock/entries/{id}/cancel` | `stock.entry.cancel` | `{reason}` (5–500 car.) : mouvements inverses `CANCELLATION`, CMUP inchangé |
+| GET | `/stock/suppliers/{id}/summary` | `stock.entry.view` | Fiche fournisseur (Lot 3-E, [ADR-0043](../adr/0043-fiche-fournisseur.md)) : réceptions `PURCHASE` **VALIDÉES** des sites visibles (`site_id` facultatif) — `validated_count`, `last_received_on`, `received_total` (absent sans `cost_view`) ; brouillons et annulées exclus ; fournisseur inconnu : `404 supplier_not_found` |
+| GET | `/stock/suppliers/{id}/articles` | `stock.entry.view` | Articles ayant au moins une réception VALIDÉE du fournisseur (paginés, `search` référence / désignation, `site_id`, tri `last_received_on` (défaut décroissant), `designation`, `reference`, `received_base_quantity`, `receipt_count` ; jamais sur un coût) : `receipt_count`, `received_base_quantity` (unité de base), dernière réception (`last_received_on`, `last_entry_id`, `last_entry_number`), `last_unit_cost` = coût par unité de base de la dernière réception validée (absent sans `cost_view`) |
 | GET · POST · GET · PUT | `/stock/exits`, `/stock/exits/{id}` | `stock.exit.*` | Idem (filtre `reason_id`) ; numéro `SOR-000001` |
 | POST | `/stock/exits/{id}/validate` · `/cancel` | `stock.exit.validate` · `.cancel` | Mouvements `EXIT` au CMUP du site (coût et montant figés sur les lignes) · annulation |
 | GET | `/alerts/stock` | `alerts.stock.view` | Articles actifs en rupture (`out` : géré sur le site, stock nul) ou stock faible (`low` : 0 < stock ≤ minimum effectif) ; filtre `state` = `alerts` \| `out` \| `low` |

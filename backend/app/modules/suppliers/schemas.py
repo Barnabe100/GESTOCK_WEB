@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from email_validator import EmailNotValidError, validate_email
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -66,3 +67,14 @@ class SupplierUpdate(BaseModel):
     notes: Optional500 = None
 
     _email = field_validator("email")(_check_email)
+
+
+class SupplierEventOut(BaseModel):
+    """Évènement de la chronologie d'un fournisseur (Lot 3-E) : entrée réelle du journal d'audit
+    (création, modifications, changements de statut)."""
+
+    id: uuid.UUID
+    occurred_at: datetime
+    action: str
+    user_name: str | None
+    data: dict[str, Any]

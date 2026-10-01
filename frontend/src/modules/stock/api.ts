@@ -289,3 +289,50 @@ export function useDocumentMutations<T extends StockDocument>(kind: DocumentKind
     }),
   };
 }
+
+// --- Fiche fournisseur (Lot 3-E) : réceptions VALIDÉES des sites visibles, calculées par le
+// serveur. Coûts (`received_total`, `last_unit_cost`) absents des réponses sans cost_view.
+
+export interface SupplierReceptionSummary {
+  supplier_id: string;
+  validated_count: number;
+  last_received_on: string | null;
+  received_total?: string;
+}
+
+export interface SupplierReceivedArticle {
+  article_id: string;
+  article_reference: string;
+  article_designation: string;
+  unit: string;
+  article_active: boolean;
+  receipt_count: number;
+  /** Quantité reçue en unité de base. */
+  received_base_quantity: string;
+  last_received_on: string;
+  last_entry_id: string;
+  last_entry_number: string;
+  /** Coût par unité de base de la dernière réception validée. */
+  last_unit_cost?: string;
+}
+
+export function useSupplierReceptionSummary(supplierId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...stockKeys.all, 'supplier', supplierId, 'summary'],
+    queryFn: ({ signal }) =>
+      api.get<SupplierReceptionSummary>(`/stock/suppliers/${supplierId}/summary`, signal),
+    enabled,
+  });
+}
+
+export function useSupplierReceivedArticles(supplierId: string, query: string) {
+  return useQuery({
+    queryKey: [...stockKeys.all, 'supplier', supplierId, 'articles', query],
+    queryFn: ({ signal }) =>
+      api.get<Page<SupplierReceivedArticle>>(
+        `/stock/suppliers/${supplierId}/articles?${query}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+  });
+}

@@ -379,3 +379,17 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Droits | Aucune permission nouvelle : `catalog.article.view` (consultation, scan), `catalog.article.update` (ajout, retrait). Audit `article.barcode_added/removed`, `packaging.barcode_added/removed`. |
 | Hors périmètre | Images, lots, péremption, étiquettes, balances, génération d'EAN. |
 
+## 13. Lot 3-E — fiche fournisseur (ADR-0043)
+
+| Règle | Web |
+|---|---|
+| Nature | Lot de **consultation** : aucune écriture, `StockService`, CMUP, ventes, POS, transferts, inventaires et conditionnements inchangés. |
+| Fiche | `/suppliers/:id` : identité, statut, contact unique (modèle inchangé), observations, actions existantes. Aucun champ nouveau. |
+| Réceptions | Toutes les réceptions `PURCHASE` du fournisseur (brouillons et annulées comprises, statut affiché), sites visibles, montants avec `cost_view`. |
+| Agrégats | Seules les réceptions **VALIDÉES** : nombre, dernière date, total reçu ; articles reçus (quantité en unité de base, dernière réception). Brouillons et annulées exclus. |
+| Dernier coût | Coût par unité de base de la dernière réception validée (date d'opération puis validation ; plusieurs présentations : moyenne pondérée). Information historique : le prix d'achat de référence du catalogue n'est jamais modifié par une réception. |
+| Fournisseur principal | Articles dont il est `main_supplier` (filtre catalogue existant) ; un article peut figurer dans les deux vues. |
+| Chronologie | Journal d'audit réel du fournisseur, `audit.log.view`. |
+| Recherche / filtres | Entrées recherchées aussi par nom du fournisseur (comme le Desktop) ; filtre fournisseur dans les écrans Entrées et Articles. |
+| Droits | Aucune permission nouvelle : `suppliers.supplier.view`, `stock.entry.view` (portée des sites), `catalog.article.view`, `catalog.article.cost_view` (coûts absents sinon), `audit.log.view`. |
+| Hors périmètre | Contacts multiples, commandes, factures, paiements, dettes, retours fournisseurs, exports, lots, péremption. |

@@ -288,6 +288,8 @@ class StockEntry(_DocumentMixin, Base):
         CheckConstraint(
             "kind <> 'PURCHASE' OR supplier_id IS NOT NULL", name="purchase_has_supplier"
         ),
+        # Lot 3-E : fiche fournisseur (réceptions, synthèse, articles reçus).
+        Index("ix_stock_entries_tenant_supplier", "tenant_id", "supplier_id"),
         CheckConstraint(
             "status <> 'CANCELLED' OR cancellation_reason IS NOT NULL", name="cancel_has_reason"
         ),

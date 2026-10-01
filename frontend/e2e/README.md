@@ -196,6 +196,13 @@ la suite peut être rejouée sur la même base.
   sans prix refusés ; inventaire : scan du carton → présentation présélectionnée, quantité saisie
   (4 cartons + 4 = 100) ; entrée et transfert par scan (stock en unité de base) ; codes inconnus
   d'une autre entreprise, qui peut réutiliser le même code.
+- `suppliers-3e.e2e.ts` (Lot 3-E, ADR-0043) : entreprise créée pour l'exécution (seconde entreprise
+  pour l'isolation) ; réceptions validées (dont une en cartons), annulée et brouillon ; fiche
+  ouverte depuis la liste (synthèse 2 réceptions validées / 4 300, réceptions avec leurs
+  statuts), articles reçus (34 u, dernier coût 100 / u de la dernière réception VALIDÉE),
+  fournisseur principal, modification puis chronologie, recherche des entrées par nom et filtre
+  fournisseur, membre sans `cost_view` (ni total ni dernier coût, interface et API), fournisseur
+  d'une autre entreprise introuvable, affichage mobile.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,
