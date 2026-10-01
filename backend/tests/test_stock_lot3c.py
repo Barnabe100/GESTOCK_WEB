@@ -155,6 +155,34 @@ def test_entry_in_packaging_moves_base_quantity_and_keeps_presentation(
     assert (duplicate.status_code, _code(duplicate)) == (422, "duplicate_article_line")
 
 
+def test_entry_cost_per_presentation_feeds_cmup_and_valuation(
+    world: World, coca: dict[str, str], owner_db: Session
+) -> None:
+    # Règle validée : le coût saisi est celui de la présentation (le carton) ; le serveur en
+    # déduit seul le coût par unité de base, qui alimente CMUP et valorisation.
+    _ok(
+        world.owner.patch(f"/catalog/packagings/{coca['carton']}", json={"sale_price": "15000"}),
+        200,
+    )
+    first = _ok(_entry(world, [_line(world, 0, "10", coca["carton"], unit_cost="12000")]))
+    _ok(_validate(world, "entries", first), 200)
+    assert sh.level(owner_db, world, 0) == ("240.000", "500.0000")  # 12 000 / 24
+    # Deuxième réception plus chère : 1 carton à 14 400 (600 la bouteille).
+    second = _ok(_entry(world, [_line(world, 0, "1", coca["carton"], unit_cost="14400")]))
+    _ok(_validate(world, "entries", second), 200)
+    assert _movements(world, second["id"])[0]["unit_cost"] == "600.0000"
+    # CMUP pondéré en unité de base : (240 × 500 + 24 × 600) / 264.
+    assert sh.level(owner_db, world, 0) == ("264.000", "509.0909")
+    # Sortie d'un carton : valorisée au CMUP par bouteille × 24.
+    exit_ = _ok(_exit(world, [_line(world, 0, "1", coca["carton"])]))
+    _ok(_validate(world, "exits", exit_), 200)
+    line = world.owner.get(f"/stock/exits/{exit_['id']}").json()["lines"][0]
+    assert (line["unit_cost"], line["amount"]) == ("509.0909", "12218.18")
+    # Le prix de vente du conditionnement reste indépendant du coût d'achat.
+    carton = world.owner.get(f"/catalog/articles/{world.articles[0]}/packagings").json()["items"]
+    assert {p["name"]: p["sale_price"] for p in carton}["Carton 24"] == "15000.00"
+
+
 # --- 3. Sorties ----------------------------------------------------------------------------------
 
 

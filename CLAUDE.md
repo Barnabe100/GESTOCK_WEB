@@ -154,8 +154,9 @@ instantané sur les lignes (`packaging_*`, `base_quantity`) et les mouvements (`
 `packaging_quantity` ; « -3 Carton 24 → -72 bouteille ») ; comptage conditionnements + vrac
 (8 × 24 + 5 = 197, calculé par le serveur) ; revalidation sous verrou partagé à la validation
 (`packaging_inactive`, `409 packaging_conversion_changed`) ; conversion figée par tout usage
-(port `catalog.usage_port` : ventes, stock, inventaires) ; coût d'entrée saisi par présentation,
-CMUP par unité de base ; aucune permission nouvelle ; interface : sélecteur de présentation et
+(port `catalog.usage_port` : ventes, stock, inventaires) ; coût d'entrée saisi par présentation
+(**validé** : coût par unité de base calculé automatiquement, seul utilisé pour CMUP et
+valorisation ; prix de vente indépendant) ; aucune permission nouvelle ; interface : sélecteur de présentation et
 équivalences indicatives (« 48 bouteille = 8 Pack 6 = 2 Carton 24 »). Ne pas
 passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.

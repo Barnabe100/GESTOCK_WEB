@@ -53,10 +53,15 @@ bouteilles comptés ».
    `inventory_count`) : dès qu'un brouillon de stock ou un comptage utilise un conditionnement,
    sa conversion est figée (`409 packaging_in_use`), comme pour une vente. Le catalogue ne
    dépend d'aucun de ces modules.
-8. **Coûts** : en entrée, le coût unitaire est saisi **par présentation** (12 000 le carton) ;
-   le mouvement porte le coût par unité de base (`unit_cost / conversion`, 4 décimales, comme le
-   CMUP) et le montant de ligne = quantité saisie × coût saisi. Sorties et transferts : CMUP du
-   site source (par unité de base) × quantité de base, inchangé.
+8. **Coûts** (règle **validée**, 2026-10-01) : en entrée, l'utilisateur saisit uniquement le
+   coût de la présentation choisie (12 000 F le carton de 24) ; StockManager calcule
+   **automatiquement** le coût par unité de base (`unit_cost / conversion` = 500 F la
+   bouteille, 4 décimales comme le CMUP) et l'utilise seul pour la valorisation du stock, le
+   CMUP et les traitements internes (mouvement, sorties, transferts, ajustements) — jamais de
+   conversion manuelle. Montant de ligne = quantité saisie × coût saisi (10 × 12 000). Le **prix
+   de vente** du conditionnement reste indépendant du coût d'achat (aucune égalité imposée avec
+   coût × conversion, ADR-0040). Sorties et transferts : CMUP du site source (par unité de base)
+   × quantité de base, inchangé.
 9. **Inventaire** : un comptage se saisit soit en unité de base (`quantity_physical`), soit en
    conditionnement + vrac (`packaging_id`, `packaging_quantity`, `unit_quantity` : 8 cartons +
    5 bouteilles) ; le serveur calcule la quantité physique (197) — l'écart reste « physique −
@@ -86,6 +91,6 @@ commandes fournisseurs, codes-barres par conditionnement.
   inchangés : tables existantes).
 - Les tests qui saisissaient des quantités décimales pour des articles entiers déclarent
   désormais `decimal_quantity_allowed`.
-- Points soumis à validation : coût d'entrée saisi par présentation ; blocage de la validation
+- Validé : coût d'entrée saisi par présentation (point 8). Points soumis à validation : blocage de la validation
   d'un document dont le conditionnement a été désactivé ; conversion figée dès un brouillon de
   stock ou un comptage ; présentation des ventes reportée sur leurs mouvements.
