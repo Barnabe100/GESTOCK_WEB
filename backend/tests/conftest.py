@@ -69,6 +69,7 @@ DATA_TABLES = (
     "payment_methods",
     "cash_site_settings",
     "sale_lines",
+    "catalog_packagings",
     "sales",
     "stock_movements",
     "stock_levels",

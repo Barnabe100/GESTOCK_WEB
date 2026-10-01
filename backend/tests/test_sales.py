@@ -61,6 +61,10 @@ def _customer(w: World, name: str = "Awa Traoré") -> dict[str, Any]:
 
 
 def test_create_draft_with_server_side_prices(world: World, owner_db: Session) -> None:
+    # Quantité décimale : article autorisé (Lot 3-B : quantités entières par défaut).
+    world.owner.patch(
+        f"/catalog/articles/{world.articles[0]}", json={"decimal_quantity_allowed": True}
+    )
     sale = _sale(
         world,
         [(0, "2.5"), (1, "1")],
@@ -84,7 +88,10 @@ def test_create_draft_with_server_side_prices(world: World, owner_db: Session) -
 
 
 def test_line_total_rounding_is_decimal(world: World) -> None:
-    world.owner.patch(f"/catalog/articles/{world.articles[0]}", json={"sale_price": "0.35"})
+    world.owner.patch(
+        f"/catalog/articles/{world.articles[0]}",
+        json={"sale_price": "0.35", "decimal_quantity_allowed": True},
+    )
     sale = _sale(world, [(0, "0.333")])
     # 0.333 × 0.35 = 0.11655 → 0.12 (arrondi au centime, demi supérieur), jamais de float.
     assert sale["lines"][0]["line_total"] == "0.12" and sale["total"] == "0.12"

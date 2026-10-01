@@ -1,9 +1,14 @@
+from app.modules.catalog.api import register_packaging_usage
 from app.modules.sales.payment_method_router import router as payment_method_router
 from app.modules.sales.payment_methods import ensure_default_payment_methods
 from app.modules.sales.router import router
+from app.modules.sales.service import packagings_used
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, W, A, E = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN, AccessKind.EXPORT
+
+# Port du catalogue (Lot 3-B) : conditionnements utilisés par une vente (conversion figée).
+register_packaging_usage(packagings_used)
 
 MANIFEST = ModuleManifest(
     code="sales",

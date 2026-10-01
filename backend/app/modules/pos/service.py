@@ -15,8 +15,12 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError
-from app.modules.catalog.api import find_active_article_by_barcode, get_article_refs
-from app.modules.pos.schemas import PosArticleOut
+from app.modules.catalog.api import (
+    active_packagings,
+    find_active_article_by_barcode,
+    get_article_refs,
+)
+from app.modules.pos.schemas import PosArticleOut, PosPackagingOut
 from app.modules.stock.api import LevelRow, list_levels, operation_site
 from app.platform.context import RequestContext
 from app.shared.pagination import PageParams
@@ -71,7 +75,9 @@ def article_by_barcode(
 
 
 def _to_out(db: Session, rows: list[LevelRow]) -> list[PosArticleOut]:
-    refs = get_article_refs(db, {r.article_id for r in rows})
+    ids = {r.article_id for r in rows}
+    refs = get_article_refs(db, ids)
+    packagings = active_packagings(db, ids)
     return [
         PosArticleOut(
             article_id=r.article_id,
@@ -83,6 +89,13 @@ def _to_out(db: Session, rows: list[LevelRow]) -> list[PosArticleOut]:
             quantity=r.quantity,
             is_active=r.article_active,
             stock_managed=refs[r.article_id].stock_managed,
+            decimal_quantity_allowed=refs[r.article_id].decimal_quantity_allowed,
+            packagings=[
+                PosPackagingOut(
+                    id=p.id, name=p.name, conversion=p.conversion, sale_price=p.sale_price
+                )
+                for p in packagings.get(r.article_id, [])
+            ],
         )
         for r in rows
         if r.article_id in refs

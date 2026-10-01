@@ -334,3 +334,16 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Historique des prix | Journal d'audit existant (`article.created` avec prix initiaux, `article.updated` avant / après) ; `GET /catalog/articles/{id}/price-history` ; aucune table dédiée. |
 | Coûts internes | `catalog.article.cost_view` : sans elle, prix d'achat, CMUP, coûts unitaires, valorisations absents des réponses (catalogue, stock, inventaires, alertes, audit). |
 | Code-barres au POS | Scan = égalité exacte, article actif (`GET /pos/articles/by-barcode`) ; inconnu : `barcode_unknown`. |
+
+## 10. Lot 3-B — quantités décimales et conditionnements (ADR-0040)
+
+| Règle | Web |
+|---|---|
+| Unité de base | Champ libre `unit` de l'article (aucun référentiel global) ; toujours vendable ; **le stock est toujours tenu dans cette unité**. |
+| Quantités décimales | `decimal_quantity_allowed`, `false` par défaut (articles existants compris) : quantités vendues entières ; `true` : décimales (3 au plus). Contrôle serveur à l'enregistrement et à la validation d'une vente. Entrées, sorties, transferts et inventaires : règles inchangées. |
+| Conditionnement | Par article : nom libre (unique parmi les actifs), conversion vers l'unité de base `> 0` (décimale possible, entière pour un article entier), prix propre (aucune cohérence imposée avec prix × conversion), actif / inactif ; **jamais supprimé**. |
+| Modification | Jamais utilisé : nom, conversion, prix, état. Utilisé par une vente (brouillon compris) : conversion **figée** (`packaging_in_use`) — désactiver et en créer un nouveau ; prix modifiable (les ventes passées gardent leur prix figé). |
+| Droits | Aucune permission nouvelle : consultation `catalog.article.view` ; création, nom, conversion, état `catalog.article.update` ; prix `catalog.article.price_update`. |
+| Quantité de base | Quantité × conversion, **sans arrondi** ; au-delà de 3 décimales : refus (`base_quantity_precision`). Exemples : 2 × Carton 24 = 48 ; 1,5 × Sac 25,5 kg = 38,25 kg. |
+| Stock | Contrôlé et mouvementé en unité de base (stock 50 : 2 cartons de 24 → reste 2 ; stock 40 : 2 cartons → `insufficient_stock`). Article non géré : ni contrôle ni mouvement, conditionnements utilisables. |
+| Hors périmètre | Codes-barres multiples ou par conditionnement, images, lots / péremption, conditionnements en entrée / sortie / transfert / inventaire, unités globales, tarifs avancés. |

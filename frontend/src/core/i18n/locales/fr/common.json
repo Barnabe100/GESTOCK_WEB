@@ -628,7 +628,10 @@
       "empty": "Aucun changement de prix enregistré.",
       "date": "Date",
       "user": "Utilisateur"
-    }
+    },
+    "decimalQuantity": "Quantités décimales autorisées",
+    "decimalQuantityHelp": "Ex. 2,5 kg, 3,75 m ou 0,5 L. Sinon, seules des quantités entières sont vendues (1, 2, 10…).",
+    "wholeQuantityOnly": "Quantités entières"
   },
   "stock": {
     "levelsTitle": "Stock par site",
@@ -947,7 +950,9 @@
         "payment.completed": "Paiement encaissé",
         "payment.cancelled": "Paiement annulé"
       }
-    }
+    },
+    "presentation": "Présentation",
+    "baseQuantity": "Quantité de base"
   },
   "filters": {
     "reset": "Réinitialiser",
@@ -1326,7 +1331,13 @@
     "changeByServer": "Espèces : saisissez le montant reçu ; la monnaie est calculée par le serveur.",
     "receivedAndChange": "Espèces reçues {{received}} — monnaie rendue",
     "barcodeUnknown": "Code-barres inconnu",
-    "notStockManaged": "Non géré en stock"
+    "notStockManaged": "Non géré en stock",
+    "packagingsAvailable_one": "+ {{count}} conditionnement",
+    "packagingsAvailable_other": "+ {{count}} conditionnements",
+    "presentationOf": "Présentation de {{name}}",
+    "baseQuantity": "Soit {{quantity}} {{unit}}",
+    "wholeQuantityOnly": "Quantité entière uniquement pour cet article",
+    "stockShort": "Stock du site insuffisant (indicatif)"
   },
   "sectors": {
     "retail": "Commerce de détail",
@@ -1656,5 +1667,29 @@
       "csv": "CSV (.csv)",
       "pdf": "PDF (.pdf)"
     }
+  },
+  "packagings": {
+    "title": "Conditionnements de vente",
+    "help": "L'unité de base ({{unit}}, {{price}}) reste toujours vendable. Le stock est toujours suivi dans l'unité de base : vendre un conditionnement sort quantité × conversion.",
+    "empty": "Aucun conditionnement : l'article se vend dans son unité de base.",
+    "new": "Nouveau conditionnement",
+    "edit": "Modifier le conditionnement",
+    "name": "Nom",
+    "nameHelp": "Libre : Carton 24, Pack 6, Sac 25 kg…",
+    "conversion": "Contient ({{unit}})",
+    "contains": "Contient",
+    "conversionHelp": "Nombre d'unités de base ({{unit}}) dans un conditionnement ; décimal possible (ex. 25,5).",
+    "conversionWholeHelp": "Nombre entier d'unités de base ({{unit}}) dans un conditionnement : l'article se vend en quantités entières.",
+    "conversionLocked": "Conversion figée : ce conditionnement figure déjà sur une vente. Désactivez-le et créez-en un nouveau pour une autre conversion.",
+    "invalidConversion": "Conversion invalide (strictement positive, 3 décimales au plus)",
+    "priceHelp": "Prix propre du conditionnement, librement fixé ; les ventes passées gardent leur prix.",
+    "inUse": "Utilisé en vente",
+    "created": "Conditionnement créé",
+    "updated": "Conditionnement modifié",
+    "activate": "Réactiver",
+    "deactivate": "Désactiver",
+    "activated": "Conditionnement réactivé",
+    "deactivated": "Conditionnement désactivé",
+    "confirmDeactivate": "Désactiver « {{name}} » ? Il ne sera plus proposé à la vente ; les ventes passées restent inchangées."
   }
 }

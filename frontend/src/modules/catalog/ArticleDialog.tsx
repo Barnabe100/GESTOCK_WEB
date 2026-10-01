@@ -48,6 +48,7 @@ const schema = z.object({
   barcode: z.string().max(50),
   description: z.string().max(1000),
   stock_managed: z.boolean(),
+  decimal_quantity_allowed: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -90,6 +91,7 @@ export function ArticleDialog({
       barcode: article?.barcode ?? '',
       description: article?.description ?? '',
       stock_managed: article?.stock_managed ?? true,
+      decimal_quantity_allowed: article?.decimal_quantity_allowed ?? false,
     },
   });
   const errors = form.formState.errors;
@@ -133,6 +135,7 @@ export function ArticleDialog({
         barcode: values.barcode,
         description: values.description,
         stock_managed: values.stock_managed,
+        decimal_quantity_allowed: values.decimal_quantity_allowed,
       });
       // Sans accès aux fournisseurs, le lien existant n'est pas modifié.
       if (showSupplier) input.main_supplier_id = values.main_supplier_id;
@@ -269,6 +272,22 @@ export function ArticleDialog({
         <small className="sm-help">
           {t(stockManaged ? 'articles.stockManagedHelp' : 'articles.notStockManagedHelp')}
         </small>
+        <div className="sm-checkbox">
+          <Controller
+            control={form.control}
+            name="decimal_quantity_allowed"
+            render={({ field }) => (
+              <Checkbox
+                inputId="article-decimal_quantity_allowed"
+                checked={field.value}
+                disabled={!canGeneral}
+                onChange={(e) => field.onChange(Boolean(e.checked))}
+              />
+            )}
+          />
+          <label htmlFor="article-decimal_quantity_allowed">{t('articles.decimalQuantity')}</label>
+        </div>
+        <small className="sm-help">{t('articles.decimalQuantityHelp')}</small>
         {stockManaged && (
           <>
             <div className="sm-form-grid">

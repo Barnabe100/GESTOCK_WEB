@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 
 import { ApiError } from '@/core/api/client';
 import { stockError } from '@/modules/stock/ui';
-import { formatMoney } from '@/shared/lib/decimal';
+import { formatMoney, formatQuantity } from '@/shared/lib/decimal';
 import { StatusBadge, type Tone } from '@/shared/ui/StatusBadge';
 
-import type { PaymentStatus, SalePaymentStatus } from './api';
+import type { PaymentStatus, SaleLine, SalePaymentStatus } from './api';
 
 /**
  * Messages d'erreur : stock insuffisant détaillé, prix modifiés listés, limite de crédit
@@ -30,6 +30,14 @@ export function saleError(t: TFunction, error: unknown, locale = 'fr', currency 
       : t('errors:credit_limit_exceeded_available', { ...params, available });
   }
   return stockError(t, error, locale);
+}
+
+/**
+ * Quantité vendue dans sa présentation (Lot 3-B) : « 2 Carton 24 » ou « 3 pièce » — lue dans
+ * l'instantané de la ligne (une vente historique reste fidèle).
+ */
+export function soldQuantity(line: SaleLine, locale = 'fr'): string {
+  return `${formatQuantity(line.quantity, locale)} ${line.packaging_name ?? line.unit}`;
 }
 
 /** Tonalités : payée (succès), partiellement (avertissement), non payée (danger). */

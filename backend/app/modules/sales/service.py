@@ -30,8 +30,11 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
 from app.modules.catalog.api import (
     ArticleRef,
+    PackagingRef,
     articles_view,
     get_article_refs,
+    is_whole,
+    lock_packagings,
     lock_stock_managed,
 )
 from app.modules.customers.api import (
@@ -60,6 +63,7 @@ from app.modules.sales.schemas import (
     SaleCheckout,
     SaleCreate,
     SaleInput,
+    SaleLineInput,
     SaleLineOut,
     SaleOut,
 )
@@ -262,12 +266,17 @@ class SaleService:
             )
         return chosen
 
-    def _articles(self, article_ids: list[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
-        """Articles du tenant (RLS), existants, actifs, chacun sur une seule ligne."""
-        if len(set(article_ids)) != len(article_ids):
+    def _articles(
+        self, lines: Sequence[tuple[uuid.UUID, uuid.UUID | None]]
+    ) -> dict[uuid.UUID, ArticleRef]:
+        """Articles du tenant (RLS), existants, actifs ; chaque présentation (article en unité
+        de base, ou conditionnement) sur une seule ligne (Lot 3-B)."""
+        if len(set(lines)) != len(lines):
             raise BusinessRuleError(
-                "Un article apparaît sur plusieurs lignes", code="duplicate_article_line"
+                "Un article apparaît plusieurs fois dans la même présentation",
+                code="duplicate_article_line",
             )
+        article_ids = [article_id for article_id, _ in lines]
         refs = get_article_refs(self.db, set(article_ids))
         missing = [str(a) for a in article_ids if a not in refs]
         if missing:
@@ -305,9 +314,58 @@ class SaleService:
         if sale.status is not expected:
             raise ConflictError("Opération impossible dans l'état actuel de la vente", code=code)
 
+    def _packagings(
+        self, lines: Sequence[SaleLineInput | SaleLine]
+    ) -> dict[uuid.UUID, PackagingRef]:
+        """Conditionnements des lignes (Lot 3-B), relus sous verrou partagé : du tenant, de
+        l'article de la ligne et actifs."""
+        ids = {line.packaging_id for line in lines if line.packaging_id is not None}
+        packagings = lock_packagings(self.db, ids)
+        for line in lines:
+            if line.packaging_id is None:
+                continue
+            packaging = packagings.get(line.packaging_id)
+            if packaging is None or packaging.article_id != line.article_id:
+                raise BusinessRuleError(
+                    "Conditionnement introuvable pour cet article",
+                    code="packaging_not_found",
+                    extra={"packaging_id": str(line.packaging_id)},
+                )
+            if not packaging.is_active:
+                raise BusinessRuleError(
+                    "Ce conditionnement est désactivé",
+                    code="packaging_inactive",
+                    extra={"packagings": [packaging.name]},
+                )
+        return packagings
+
+    @staticmethod
+    def _base_quantity(
+        ref: ArticleRef, quantity: Decimal, packaging: PackagingRef | None
+    ) -> Decimal:
+        """Quantité en unité de base = quantité × conversion, SANS arrondi (Lot 3-B). Article
+        sans quantités décimales : quantité vendue et quantité de base entières. Une quantité de
+        base de plus de 3 décimales (précision du stock) est refusée, jamais arrondie."""
+        base = quantity * packaging.conversion if packaging is not None else quantity
+        if not ref.decimal_quantity_allowed and not (is_whole(quantity) and is_whole(base)):
+            raise BusinessRuleError(
+                "Cet article se vend en quantités entières",
+                code="quantity_not_whole",
+                extra={"articles": [ref.reference]},
+            )
+        if base != base.quantize(QUANTITY_STEP):
+            raise BusinessRuleError(
+                "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
+                code="base_quantity_precision",
+                extra={"articles": [ref.reference]},
+            )
+        return base.quantize(QUANTITY_STEP)
+
     def _apply_input(self, sale: Sale, data: SaleInput) -> None:
-        """Lignes au prix du catalogue (jamais au prix du client) ; montants recalculés."""
-        refs = self._articles([line.article_id for line in data.lines])
+        """Lignes au prix du catalogue (jamais au prix du client) — prix de l'article ou du
+        conditionnement vendu ; quantité de base et montants recalculés."""
+        refs = self._articles([(line.article_id, line.packaging_id) for line in data.lines])
+        packagings = self._packagings(data.lines)
         self._customer(data.customer_id)
         sale.customer_id = data.customer_id
         sale.sale_date = self._sale_date(data.sale_date)
@@ -315,7 +373,9 @@ class SaleService:
         lines = []
         for index, line in enumerate(data.lines, start=1):
             quantity = line.quantity.quantize(QUANTITY_STEP)
-            price = refs[line.article_id].sale_price
+            ref = refs[line.article_id]
+            packaging = packagings[line.packaging_id] if line.packaging_id else None
+            price = packaging.sale_price if packaging else ref.sale_price
             lines.append(
                 SaleLine(
                     tenant_id=self.ctx.tenant_id,
@@ -324,6 +384,10 @@ class SaleService:
                     quantity=quantity,
                     unit_price=price,
                     line_total=round_money(quantity * price),
+                    packaging_id=packaging.id if packaging else None,
+                    packaging_name=packaging.name if packaging else None,
+                    packaging_conversion=packaging.conversion if packaging else None,
+                    base_quantity=self._base_quantity(ref, quantity, packaging),
                 )
             )
         sale.lines = lines
@@ -341,6 +405,15 @@ class SaleService:
                     "article_id": str(line.article_id),
                     "quantity": format(line.quantity, "f"),
                     "unit_price": format(line.unit_price, "f"),
+                    **(
+                        {
+                            "packaging_id": str(line.packaging_id),
+                            "packaging_name": line.packaging_name,
+                            "base_quantity": format(line.base_quantity, "f"),
+                        }
+                        if line.packaging_id
+                        else {}
+                    ),
                 }
                 for line in sale.lines
             ],
@@ -521,14 +594,25 @@ class SaleService:
         self._require_status(sale, SaleStatus.DRAFT, "sale_not_draft")
         if not sale.lines:
             raise BusinessRuleError("Aucune ligne à valider", code="sale_empty")
-        refs = self._articles([line.article_id for line in sale.lines])
+        refs = self._articles([(line.article_id, line.packaging_id) for line in sale.lines])
         self._customer(sale.customer_id)
-        # Le total annoncé au client doit rester exact : un prix catalogue modifié depuis
-        # l'enregistrement du brouillon impose de le réenregistrer (prix relus).
+        # Lot 3-B : conditionnements relus (existant, de l'article, actif) et règle des
+        # quantités entières revérifiée — la conversion relue doit être celle de la ligne.
+        packagings = self._packagings(sale.lines)
+        for line in sale.lines:
+            line_packaging = packagings.get(line.packaging_id) if line.packaging_id else None
+            self._base_quantity(refs[line.article_id], line.quantity, line_packaging)
+        # Le total annoncé au client doit rester exact : un prix catalogue (article ou
+        # conditionnement) modifié depuis l'enregistrement du brouillon impose de le
+        # réenregistrer (prix relus).
         changed = [
             refs[line.article_id].reference
             for line in sale.lines
-            if refs[line.article_id].sale_price != line.unit_price
+            if _current_price(line, refs[line.article_id], packagings) != line.unit_price
+            or (
+                line.packaging_id is not None
+                and packagings[line.packaging_id].conversion != line.packaging_conversion
+            )
         ]
         if changed:
             raise ConflictError(
@@ -556,7 +640,8 @@ class SaleService:
                     MovementRequest(
                         article_id=line.article_id,
                         movement_type=MovementType.SALE,
-                        quantity=-line.quantity,
+                        # Toujours en unité de base (Lot 3-B) : 2 cartons de 24 → −48.
+                        quantity=-line.base_quantity,
                         source_type=SOURCE_TYPE,
                         source_id=sale.id,
                         source_line_id=line.id,
@@ -631,7 +716,7 @@ class SaleService:
                         MovementRequest(
                             article_id=line.article_id,
                             movement_type=MovementType.CANCELLATION,
-                            quantity=line.quantity,
+                            quantity=line.base_quantity,
                             unit_cost=origins[line.id].unit_cost,
                             source_type=SOURCE_TYPE,
                             source_id=sale.id,
@@ -737,6 +822,22 @@ def _names(db: Session, model: Any, ids: set[Any], column: Any) -> dict[Any, str
     return {row[0]: row[1] for row in db.execute(select(model.id, column).where(model.id.in_(ids)))}
 
 
+def _current_price(
+    line: SaleLine, ref: ArticleRef, packagings: dict[uuid.UUID, PackagingRef]
+) -> Decimal:
+    """Prix catalogue actuel de la présentation de la ligne (article ou conditionnement)."""
+    return packagings[line.packaging_id].sale_price if line.packaging_id else ref.sale_price
+
+
+def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """Port du catalogue (Lot 3-B) : conditionnements figurant sur au moins une ligne de vente
+    du tenant (brouillons compris) — leur conversion est alors figée."""
+    rows = db.scalars(
+        select(SaleLine.packaging_id).where(SaleLine.packaging_id.in_(ids)).distinct()
+    )
+    return {packaging_id for packaging_id in rows if packaging_id is not None}
+
+
 def _line_out(line: SaleLine, refs: dict[uuid.UUID, ArticleRef]) -> SaleLineOut:
     ref = refs.get(line.article_id)
     return SaleLineOut(
@@ -749,4 +850,8 @@ def _line_out(line: SaleLine, refs: dict[uuid.UUID, ArticleRef]) -> SaleLineOut:
         quantity=line.quantity,
         unit_price=line.unit_price,
         line_total=line.line_total,
+        packaging_id=line.packaging_id,
+        packaging_name=line.packaging_name,
+        packaging_conversion=line.packaging_conversion,
+        base_quantity=line.base_quantity,
     )

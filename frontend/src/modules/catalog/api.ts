@@ -36,6 +36,8 @@ export interface Article {
   is_active: boolean;
   /** `false` : article / service vendu sans stock (aucun mouvement, aucun contrôle). */
   stock_managed: boolean;
+  /** Lot 3-B : `false` = quantités vendues entières seulement (contrôle serveur). */
+  decimal_quantity_allowed: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +56,30 @@ export interface ArticleInput {
   description?: string;
   barcode?: string;
   stock_managed?: boolean;
+  decimal_quantity_allowed?: boolean;
+}
+
+/**
+ * Conditionnement de vente (Lot 3-B) : quantité de base = quantité × `conversion`. Jamais
+ * supprimé (désactivé) ; `in_use` : figure sur une vente, sa conversion est alors figée.
+ */
+export interface Packaging {
+  id: string;
+  article_id: string;
+  name: string;
+  conversion: string;
+  sale_price: string;
+  is_active: boolean;
+  in_use: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Champs envoyés : seulement ceux que l'utilisateur peut modifier (le serveur revérifie). */
+export interface PackagingInput {
+  name?: string;
+  conversion?: string;
+  sale_price?: string;
 }
 
 /** Changement de prix lu dans le journal d'audit (prix d'achat : avec `cost_view`). */
@@ -70,6 +96,7 @@ export interface PriceChange {
 export const catalogKeys = {
   categories: ['catalog', 'categories'] as const,
   articles: ['catalog', 'articles'] as const,
+  packagings: ['catalog', 'packagings'] as const,
 };
 
 export function useCategories(query: string, enabled = true) {
@@ -144,5 +171,34 @@ export function useSetArticleActive() {
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api.post<Article>(`/catalog/articles/${id}/${active ? 'activate' : 'deactivate'}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.articles }),
+  });
+}
+
+export function usePackagings(articleId: string | undefined, query: string, enabled = true) {
+  return useQuery({
+    queryKey: [...catalogKeys.packagings, articleId, query],
+    queryFn: ({ signal }) =>
+      api.get<Page<Packaging>>(`/catalog/articles/${articleId}/packagings?${query}`, signal),
+    enabled: enabled && articleId !== undefined,
+  });
+}
+
+export function useSavePackaging(articleId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: PackagingInput }) =>
+      id
+        ? api.patch<Packaging>(`/catalog/packagings/${id}`, input)
+        : api.post<Packaging>(`/catalog/articles/${articleId}/packagings`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.packagings }),
+  });
+}
+
+export function useSetPackagingActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      api.post<Packaging>(`/catalog/packagings/${id}/${active ? 'activate' : 'deactivate'}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.packagings }),
   });
 }

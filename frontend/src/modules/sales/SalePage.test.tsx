@@ -183,7 +183,7 @@ describe('saisie et consultation d’une vente', () => {
       sale_date: '2026-09-24',
       customer_id: null,
       notes: null,
-      lines: [{ article_id: 'a1', quantity: '3' }],
+      lines: [{ article_id: 'a1', packaging_id: null, quantity: '3' }],
     });
     expect(JSON.stringify(body)).not.toContain('price');
     await waitFor(() =>
@@ -551,4 +551,91 @@ describe('saisie et consultation d’une vente', () => {
     ).toBeTruthy();
     expect(methodCalls(fetchMock, 'PUT')).toHaveLength(0);
   }, 20_000);
+});
+
+describe('vente en conditionnement (Lot 3-B)', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const show = vi.fn();
+  const packed = line({
+    quantity: '2.000',
+    unit_price: '10500.00',
+    line_total: '21000.00',
+    packaging_id: 'p24',
+    packaging_name: 'Carton 24',
+    packaging_conversion: '24.000',
+    base_quantity: '48.000',
+  });
+  const PACKAGINGS = [
+    { id: 'p6', article_id: 'a1', name: 'Pack 6', conversion: '6.000', sale_price: '2800.00' },
+    {
+      id: 'p24',
+      article_id: 'a1',
+      name: 'Carton 24',
+      conversion: '24.000',
+      sale_price: '10500.00',
+    },
+  ].map((p) => ({ ...p, is_active: true, in_use: true, created_at: '', updated_at: '' }));
+
+  beforeEach(() => vi.stubGlobal('fetch', fetchMock));
+  afterEach(() => {
+    cleanup();
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it('brouillon : présentation choisie, prix du conditionnement, envoi du conditionnement', async () => {
+    fetchMock.mockImplementation(async (url, init) => {
+      if (String(url).includes('/packagings')) return pageOf(PACKAGINGS);
+      return jsonResponse(
+        init?.method === 'PUT' ? { ...draft, lines: [packed] } : { ...draft, lines: [packed] },
+      );
+    });
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: [...ALL, 'catalog.article.view'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    expect(await screen.findByLabelText(/^Quantité \(Carton 24\)/)).toBeTruthy();
+    expect(screen.getByText(`Prix unitaire : ${money('10500.00')}`)).toBeTruthy();
+    expect(screen.getByTestId('sale-total').textContent?.replace(/\s/g, ' ')).toBe(
+      money('21000.00'),
+    );
+    // Autre conditionnement : prix et total indicatifs recalculés.
+    const field = await screen.findByLabelText('Présentation', {
+      selector: 'input, select, span, div',
+    });
+    fireEvent.click(field.closest('.p-dropdown') ?? field);
+    fireEvent.click(
+      (await screen.findAllByRole('option', { name: /Pack 6/, hidden: true })).at(-1) as Element,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('sale-total').textContent?.replace(/\s/g, ' ')).toBe(
+        money('5600.00'),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
+    await waitFor(() => expect(methodCalls(fetchMock, 'PUT')).toHaveLength(1));
+    const body = JSON.parse(String(methodCalls(fetchMock, 'PUT')[0]?.[1]?.body)) as {
+      lines: unknown[];
+    };
+    expect(body.lines).toEqual([{ article_id: 'a1', packaging_id: 'p6', quantity: '2.000' }]);
+  });
+
+  it('vente validée : présentation vendue et quantité de base (instantané figé)', async () => {
+    fetchMock.mockImplementation(async (url) =>
+      String(url).includes('/payments')
+        ? jsonResponse({ sale_id: 'v1', sale_status: 'VALIDATED', summary: null, items: [] })
+        : jsonResponse({ ...validated, lines: [packed, line({ id: 'l2', line_no: 2 })] }),
+    );
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: ALL,
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    expect(await screen.findByText('2 Carton 24')).toBeTruthy();
+    expect(screen.getByText('48 boîte')).toBeTruthy();
+    // Ligne en unité de base : quantité vendue = quantité de base.
+    expect(screen.getAllByText('2 boîte')).toHaveLength(2);
+    expect(screen.getByRole('columnheader', { name: 'Quantité de base' })).toBeTruthy();
+  });
 });

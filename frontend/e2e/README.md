@@ -172,6 +172,14 @@ la suite peut être rejouée sur la même base.
   (`restaurant.restaurant`) du même propriétaire ; menus et thèmes propres, vente au point de
   vente (alimentation), fonctionnalités restaurant planifiées absentes du menu et sans route,
   quincaillerie (entreprise principale), isolation et changement d'entreprise, mobile.
+- `packaging-3b.e2e.ts` (Lot 3-B, ADR-0040) : entreprise créée pour l'exécution (et une seconde
+  pour l'isolation) ; article créé par l'interface (quantités entières par défaut), carton créé
+  sur la fiche (conversion décimale refusée), vente POS carton + unité de base (reçu « 2 Carton
+  6 × … », stock 50 → 35 en unité de base), quantité 2,5 refusée pour un article entier, riz au
+  poids 2,5 kg + 1,5 sac de 25,5 kg (stock 100 → 59,25), carton désactivé (plus proposé, vente
+  historique fidèle, encaissement refusé `packaging_inactive`), 2 cartons de 24 pour 40 en stock
+  (refus `insufficient_stock`, stock inchangé), conditionnements invisibles et inutilisables par
+  une autre entreprise.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

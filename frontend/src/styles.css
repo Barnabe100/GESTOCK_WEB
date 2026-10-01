@@ -1504,7 +1504,17 @@ a {
   grid-area: info;
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
   min-width: 0;
+}
+
+/* Lot 3-B : choix de la présentation (unité de base ou conditionnement) dans le panier. */
+.sm-pos-line-info .p-dropdown {
+  max-width: 100%;
+}
+
+.sm-text-warning {
+  color: var(--sm-warning-fg);
 }
 
 .sm-pos-line > .sm-num {

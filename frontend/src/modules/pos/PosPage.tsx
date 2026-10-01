@@ -31,13 +31,25 @@ import {
   type CheckoutResult,
   type PosArticle,
 } from './api';
-import { cartReducer, cartTotal, lineTotal, validQuantity } from './cart';
+import {
+  baseQuantity,
+  cartReducer,
+  cartTotal,
+  exceedsStock,
+  lineKey,
+  lineQuantity,
+  lineTotal,
+  unitPrice,
+} from './cart';
 import { PosCustomerDialog } from './PosCustomerDialog';
 import { PosPaymentDialog, toCheckoutPayment, type PosPayment } from './PosPaymentDialog';
 import { PosReceipt } from './PosReceipt';
 import { RecentSalesDialog } from './RecentSalesDialog';
 
 type PosDialog = 'customer' | 'payment' | 'confirm' | 'recent' | null;
+
+/** Présentation « unité de base » dans le choix du conditionnement (Lot 3-B). */
+const BASE_UNIT = 'base';
 
 /**
  * Point de vente : interface de saisie rapide au-dessus des services existants. Recherche
@@ -99,7 +111,7 @@ export default function PosPage() {
   const remaining = subtractMoney(total, paid);
   const canSell = can('sales.sale.create') && can('sales.sale.validate');
   const canPay = can('sales.payment.create');
-  const invalidLines = lines.some((l) => validQuantity(l.quantity) === null);
+  const invalidLines = lines.some((l) => lineQuantity(l) === null);
 
   const reset = useCallback(() => {
     dispatch({ type: 'clear' });
@@ -172,7 +184,8 @@ export default function PosPage() {
         customer_id: customer?.id ?? null,
         lines: lines.map((l) => ({
           article_id: l.article.article_id,
-          quantity: validQuantity(l.quantity) ?? '0',
+          packaging_id: l.packaging?.id ?? null,
+          quantity: lineQuantity(l) ?? '0',
         })),
         payments: payments.map((p) => toCheckoutPayment(p, cashRegisterId)),
         credit_override: withOverride ? { reason: overrideReason.trim() } : null,
@@ -317,7 +330,12 @@ export default function PosPage() {
                         >
                           <span className="sm-pos-tile-name">{a.designation}</span>
                           <span className="sm-muted">{a.reference}</span>
-                          <span className="sm-pos-tile-price">{money(a.sale_price)}</span>
+                          <span className="sm-pos-tile-price">{`${money(a.sale_price)} / ${a.unit}`}</span>
+                          {a.packagings.length > 0 && (
+                            <span className="sm-muted">
+                              {t('pos.packagingsAvailable', { count: a.packagings.length })}
+                            </span>
+                          )}
                           {!a.is_active ? (
                             <StatusBadge tone="neutral" label={t('common.inactive')} />
                           ) : !a.stock_managed ? (
@@ -374,33 +392,78 @@ export default function PosPage() {
                 <ul className="sm-pos-lines" aria-label={t('pos.cart')}>
                   {lines.map((l) => {
                     const lt = lineTotal(l);
-                    const id = l.article.article_id;
+                    const key = lineKey(l);
+                    const name = l.article.designation;
+                    const presentation = l.packaging?.name ?? l.article.unit;
+                    const base = baseQuantity(l);
+                    const quantityOk = lineQuantity(l) !== null;
                     return (
-                      <li key={id} className="sm-pos-line">
+                      <li key={key} className="sm-pos-line">
                         <div className="sm-pos-line-info">
-                          <strong>{l.article.designation}</strong>
+                          <strong>{name}</strong>
+                          {l.article.packagings.length > 0 ? (
+                            <Dropdown
+                              value={l.packaging?.id ?? BASE_UNIT}
+                              options={[
+                                {
+                                  value: BASE_UNIT,
+                                  label: `${l.article.unit} · ${money(l.article.sale_price)}`,
+                                },
+                                ...l.article.packagings.map((p) => ({
+                                  value: p.id,
+                                  label: `${p.name} (${formatQuantity(p.conversion, locale)} ${l.article.unit}) · ${money(p.sale_price)}`,
+                                })),
+                              ]}
+                              aria-label={t('pos.presentationOf', { name })}
+                              onChange={(e) => {
+                                const value = e.value as string;
+                                dispatch({
+                                  type: 'packaging',
+                                  key,
+                                  packagingId: value === BASE_UNIT ? null : value,
+                                });
+                                setPayments([]);
+                              }}
+                            />
+                          ) : null}
                           <span className="sm-muted">
-                            {`${money(l.article.sale_price)} / ${l.article.unit}`}
+                            {`${money(unitPrice(l))} / ${presentation}`}
                           </span>
+                          {l.packaging && base && (
+                            <span className="sm-muted" data-testid="pos-base-quantity">
+                              {t('pos.baseQuantity', {
+                                quantity: formatQuantity(base, locale),
+                                unit: l.article.unit,
+                              })}
+                            </span>
+                          )}
+                          {!quantityOk && !l.article.decimal_quantity_allowed && (
+                            <small className="p-error">{t('pos.wholeQuantityOnly')}</small>
+                          )}
+                          {quantityOk && exceedsStock(lines, l) && (
+                            <small className="sm-text-warning">{t('pos.stockShort')}</small>
+                          )}
                         </div>
                         <div className="sm-pos-qty">
                           <Button
                             icon="pi pi-minus"
                             rounded
                             outlined
-                            aria-label={t('pos.decrease', { name: l.article.designation })}
+                            aria-label={t('pos.decrease', { name })}
                             onClick={() => {
-                              dispatch({ type: 'step', articleId: id, delta: -1 });
+                              dispatch({ type: 'step', key, delta: -1 });
                               setPayments([]);
                             }}
                           />
                           <InputText
                             value={l.quantity}
-                            inputMode="decimal"
-                            aria-label={t('pos.quantityOf', { name: l.article.designation })}
-                            invalid={validQuantity(l.quantity) === null}
+                            inputMode={l.article.decimal_quantity_allowed ? 'decimal' : 'numeric'}
+                            aria-label={t('pos.quantityOf', {
+                              name: l.packaging ? `${name} (${presentation})` : name,
+                            })}
+                            invalid={!quantityOk}
                             onChange={(e) => {
-                              dispatch({ type: 'set', articleId: id, quantity: e.target.value });
+                              dispatch({ type: 'set', key, quantity: e.target.value });
                               setPayments([]);
                             }}
                           />
@@ -408,9 +471,9 @@ export default function PosPage() {
                             icon="pi pi-plus"
                             rounded
                             outlined
-                            aria-label={t('pos.increase', { name: l.article.designation })}
+                            aria-label={t('pos.increase', { name })}
                             onClick={() => {
-                              dispatch({ type: 'step', articleId: id, delta: 1 });
+                              dispatch({ type: 'step', key, delta: 1 });
                               setPayments([]);
                             }}
                           />
@@ -420,9 +483,9 @@ export default function PosPage() {
                           icon="pi pi-times"
                           text
                           severity="danger"
-                          aria-label={t('pos.removeLine', { name: l.article.designation })}
+                          aria-label={t('pos.removeLine', { name })}
                           onClick={() => {
-                            dispatch({ type: 'remove', articleId: id });
+                            dispatch({ type: 'remove', key });
                             setPayments([]);
                           }}
                         />

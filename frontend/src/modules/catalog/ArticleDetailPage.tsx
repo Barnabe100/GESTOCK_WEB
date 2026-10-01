@@ -26,6 +26,7 @@ import {
   type PriceChange,
 } from './api';
 import { ArticleDialog } from './ArticleDialog';
+import { PackagingsSection } from './PackagingsSection';
 
 /**
  * Historique des prix (Lot 3-A) : entrées du journal d'audit existant, servies par le serveur
@@ -94,7 +95,10 @@ export default function ArticleDetailPage() {
   const general: [string, string | null][] = [
     [t('articles.reference'), a.reference],
     [t('articles.category'), a.category_name],
-    [t('articles.unit'), a.unit],
+    [
+      t('articles.unit'),
+      `${a.unit} · ${t(a.decimal_quantity_allowed ? 'articles.decimalQuantity' : 'articles.wholeQuantityOnly')}`,
+    ],
     [t('articles.barcode'), a.barcode],
     [t('articles.supplier'), a.main_supplier_name],
     [t('articles.description'), a.description],
@@ -161,6 +165,7 @@ export default function ArticleDetailPage() {
           </p>
         </Card>
       </div>
+      <PackagingsSection article={a} />
       {(can(PRICE_UPDATE) || can('audit.log.view')) && <PriceHistory article={a} />}
       {editing && <ArticleDialog article={a} onClose={() => setEditing(false)} />}
     </>

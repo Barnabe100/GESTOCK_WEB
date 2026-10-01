@@ -149,7 +149,8 @@ notification.
 |---|---|---|
 | `catalog_categories` | `tenant_id`, `name` (100), `is_active` | unique `(tenant_id, lower(name))` |
 | `suppliers` | `tenant_id`, `name` (150), `contact_name`, `phone`, `email`, `address`, `city`, `country`, `notes`, `is_active` | nom non unique (règle SUP-02) |
-| `catalog_articles` | `tenant_id`, `reference` (50), `designation` (255), `category_id`, `unit` (20), `main_supplier_id`, `purchase_price`, `sale_price` (`NUMERIC(18,2)`), `min_stock`, `max_stock` (`NUMERIC(18,3)`), `description`, `barcode`, `is_active`, `stock_managed` (`BOOLEAN NOT NULL DEFAULT true`, Lot 3-A, migration 0026 : `false` = vendu sans stock) | unique `(tenant_id, lower(reference))` ; unique partiel `(tenant_id, barcode) WHERE is_active` ; `CHECK` prix ≥ 0, `min_stock` ≥ 0, `max_stock` ≥ `min_stock` ; FK composites vers catégorie et fournisseur du même tenant |
+| `catalog_articles` | `tenant_id`, `reference` (50), `designation` (255), `category_id`, `unit` (20), `main_supplier_id`, `purchase_price`, `sale_price` (`NUMERIC(18,2)`), `min_stock`, `max_stock` (`NUMERIC(18,3)`), `description`, `barcode`, `is_active`, `stock_managed` (`BOOLEAN NOT NULL DEFAULT true`, Lot 3-A, migration 0026 : `false` = vendu sans stock), `decimal_quantity_allowed` (`BOOLEAN NOT NULL DEFAULT false`, Lot 3-B, migration 0027 : `false` = quantités vendues entières) | unique `(tenant_id, lower(reference))` ; unique partiel `(tenant_id, barcode) WHERE is_active` ; `CHECK` prix ≥ 0, `min_stock` ≥ 0, `max_stock` ≥ `min_stock` ; FK composites vers catégorie et fournisseur du même tenant |
+| `catalog_packagings` | `tenant_id`, `article_id`, `name` (50, libre), `conversion` (`NUMERIC(18,3)`, unités de base par conditionnement), `sale_price` (`NUMERIC(18,2)`, prix propre), `is_active` — Lot 3-B ([ADR-0040](../adr/0040-quantites-decimales-conditionnements.md)) : jamais supprimé ; conversion figée dès qu'une ligne de vente l'utilise | FK composite `(tenant_id, article_id)` ; unique partiel `(tenant_id, article_id, lower(name)) WHERE is_active` ; `CHECK conversion > 0`, `sale_price ≥ 0` ; RLS `ENABLE` + `FORCE` |
 
 Pas de colonne de stock sur l'article : le stock est tenu par site (Phase 2.2). Droits du rôle
 applicatif : `SELECT, INSERT, UPDATE` (jamais de suppression physique).
@@ -207,7 +208,7 @@ Référence `CLI-000001` : séquence `customer` de `document_sequences`. Détail
 | Table | Colonnes principales | Contraintes notables |
 |---|---|---|
 | `sales` | `tenant_id`, `number` (`String(64)`, **nul au brouillon**, `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la validation, historique `VTE-000001` conservé), `site_id`, `customer_id` (nullable : vente ordinaire, entièrement payée), `status` (`DRAFT` \| `VALIDATED` \| `CANCELLED`), `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, `created_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason`, `is_credit`, `credit_override_by` / `_at` / `_reason` / `_amount` (Lot 1) | `UNIQUE (tenant_id, number)`, `UNIQUE (tenant_id, id)` ; FK composites vers `sites` et `customers` ; `CHECK` montants ≥ 0, validée ⇒ `validated_at`, annulée ⇒ motif, validée ⇒ numéro (`validated_has_number`), exception de crédit complète ou absente ; déclencheur `sales_number_immutable` (numéro d'une vente validée définitif) ; index `(tenant_id, sale_date)` |
-| `sale_lines` | `tenant_id`, `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price` (copié du catalogue), `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
+| `sale_lines` | `tenant_id`, `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`, dans la présentation vendue), `unit_price` (copié du catalogue : article ou conditionnement), `line_total` (`NUMERIC(18,2)`) ; Lot 3-B : `packaging_id`, `packaging_name`, `packaging_conversion` (instantané figé, nuls = unité de base), `base_quantity` (`NUMERIC(18,3)`, quantité en unité de base, celle du stock) | FK composites vers la vente (`ON DELETE CASCADE`), l'article et le conditionnement ; unique `(sale_id, article_id) WHERE packaging_id IS NULL` et `(sale_id, packaging_id) WHERE packaging_id IS NOT NULL` ; `CHECK quantity > 0`, prix et montant ≥ 0, instantané complet ou absent, `base_quantity = quantity × COALESCE(packaging_conversion, 1)` |
 
 Phase 3.0 : `channel` (`BACKOFFICE` par défaut \| `POS`, dimension de reporting) et
 `idempotency_key` (`UNIQUE (tenant_id, idempotency_key)`, encaissement en une étape du POS).
@@ -268,7 +269,7 @@ type PostgreSQL natif).
 
 | Table | Politiques |
 |---|---|
-| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (9 tables, dont transferts), sales, sale_lines | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
+| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (9 tables, dont transferts), sales, sale_lines, catalog_packagings | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
 | tenant_memberships | + `own_memberships_read` : **sans tenant actif**, l'utilisateur lit ses propres appartenances |
 | tenants | `tenant_isolation` sur `id` + `member_tenants_read` (**sans tenant actif**) |
 | audit_logs | lecture : tenant actif ; insertion : tenant actif ou `tenant_id` nul |
@@ -280,7 +281,7 @@ type PostgreSQL natif).
 | `SELECT` | catalogue, licenses (émises et révoquées par TechNova seule) |
 | `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits, stock_transfers, sales |
 | `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines, stock_transfer_lines, sale_lines (lignes de brouillon) |
-| `SELECT, INSERT` | audit_logs, stock_movements (append-only), subscription_payments (décision : TechNova seule) |
+| `SELECT, INSERT` | audit_logs, stock_movements (append-only), subscription_payments (décision : TechNova seule), catalog_packagings (+ `UPDATE (name, conversion, sale_price, is_active, updated_at)` ; jamais supprimés, Lot 3-B) |
 
 Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais de données.
 

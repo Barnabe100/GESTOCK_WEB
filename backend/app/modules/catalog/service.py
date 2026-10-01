@@ -5,7 +5,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,12 +16,16 @@ from app.core.errors import (
     ForbiddenError,
     NotFoundError,
 )
-from app.modules.catalog.models import Article, Category
+from app.modules.catalog.models import Article, Category, Packaging
+from app.modules.catalog.sales_port import packagings_in_use
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
     ArticleUpdate,
     CategoryInput,
+    PackagingCreate,
+    PackagingOut,
+    PackagingUpdate,
     PriceChangeOut,
 )
 from app.modules.catalog.stock_port import sites_with_stock
@@ -60,6 +64,16 @@ _CONSTRAINT_ERRORS = {
         "article_barcode_taken",
         "Ce code-barres est déjà utilisé par un article actif",
     ),
+    "uq_catalog_packagings_article_name_active": (
+        "packaging_name_taken",
+        "Un conditionnement actif de cet article porte déjà ce nom",
+    ),
+}
+PACKAGING_SORT = {
+    "conversion": Packaging.conversion,
+    "name": text_sort(Packaging.name),
+    "sale_price": Packaging.sale_price,
+    "created_at": Packaging.created_at,
 }
 
 
@@ -71,6 +85,15 @@ def _flush(db: Session) -> None:
         constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
         code, message = _CONSTRAINT_ERRORS.get(constraint or "", ("conflict", "Conflit"))
         raise ConflictError(message, code=code) from exc
+
+
+def _ensure_price_allowed(ctx: RequestContext) -> None:
+    """Prix catalogue (article ou conditionnement) : ``catalog.article.price_update``."""
+    if not ctx.has_permission(PRICE_UPDATE):
+        raise ForbiddenError(
+            "Vous n'êtes pas autorisé à modifier les prix catalogue",
+            code="price_update_not_allowed",
+        )
 
 
 def _status_condition(column: Any, status: StatusFilter) -> Any:
@@ -233,6 +256,7 @@ class ArticleService:
                 barcode=a.barcode,
                 is_active=a.is_active,
                 stock_managed=a.stock_managed,
+                decimal_quantity_allowed=a.decimal_quantity_allowed,
                 created_at=a.created_at,
                 updated_at=a.updated_at,
                 # Coût interne : champ ABSENT de la réponse sans ``cost_view`` (les routes
@@ -318,11 +342,7 @@ class ArticleService:
     # --- Écriture ---------------------------------------------------------------------------
 
     def _ensure_price_allowed(self) -> None:
-        if not self.ctx.has_permission(PRICE_UPDATE):
-            raise ForbiddenError(
-                "Vous n'êtes pas autorisé à modifier les prix catalogue",
-                code="price_update_not_allowed",
-            )
+        _ensure_price_allowed(self.ctx)
 
     def create(self, data: ArticleCreate) -> Article:
         # Un prix catalogue (vente ou achat) ne se fixe qu'avec ``price_update`` (Lot 3-A) ;
@@ -352,6 +372,7 @@ class ArticleService:
                 SALE_PRICE: format(article.sale_price, "f"),
                 PURCHASE_PRICE: format(article.purchase_price, "f"),
                 "stock_managed": article.stock_managed,
+                "decimal_quantity_allowed": article.decimal_quantity_allowed,
             },
         )
         return article
@@ -368,6 +389,7 @@ class ArticleService:
             "sale_price",
             "min_stock",
             "stock_managed",
+            "decimal_quantity_allowed",
         )
         missing = [field for field in required if field in updates and updates[field] is None]
         if missing:
@@ -390,6 +412,8 @@ class ArticleService:
             raise ForbiddenError("Permission insuffisante", code="permission_denied")
         if updates.get("stock_managed") is False:
             self._ensure_no_stock(article)
+        if updates.get("decimal_quantity_allowed") is False:
+            self._ensure_whole_packagings(article)
 
         # Une nouvelle association doit être active ; l'association existante est conservée
         # même si la catégorie / le fournisseur est devenu inactif (ART-10).
@@ -434,6 +458,26 @@ class ArticleService:
                 extra={"sites": sites},
             )
 
+    def _ensure_whole_packagings(self, article: Article) -> None:
+        """Quantités entières seulement : aucun conditionnement ACTIF à conversion décimale
+        (il ne pourrait plus être vendu en quantité entière d'unités de base)."""
+        names = self.db.scalars(
+            select(Packaging.name)
+            .where(
+                Packaging.article_id == article.id,
+                Packaging.is_active.is_(True),
+                Packaging.conversion != func.trunc(Packaging.conversion),
+            )
+            .order_by(Packaging.name)
+        ).all()
+        if names:
+            raise ConflictError(
+                "Des conditionnements actifs de cet article ont une conversion décimale : "
+                "désactivez-les avant d'interdire les quantités décimales",
+                code="article_has_fractional_packagings",
+                extra={"packagings": list(names)},
+            )
+
     def set_active(self, article_id: uuid.UUID, active: bool) -> Article:
         article = self.get(article_id)
         if article.is_active == active:
@@ -451,6 +495,162 @@ class ArticleService:
             data={"reference": article.reference},
         )
         return article
+
+
+class PackagingService:
+    """Conditionnements de vente d'un article (Lot 3-B, ADR-0040). Mêmes droits que l'article :
+    nom, conversion et état avec ``catalog.article.update`` ; prix avec
+    ``catalog.article.price_update`` (création sans elle : prix 0). Jamais supprimé.
+    Conversion figée dès qu'une vente (brouillon compris) utilise le conditionnement."""
+
+    def __init__(self, db: Session, ctx: RequestContext) -> None:
+        self.db = db
+        self.ctx = ctx
+
+    def _article(self, article_id: uuid.UUID) -> Article:
+        return ArticleService(self.db, self.ctx).get(article_id)
+
+    def get(self, packaging_id: uuid.UUID, *, lock: bool = False) -> Packaging:
+        stmt = select(Packaging).where(Packaging.id == packaging_id)
+        packaging = self.db.scalars(stmt.with_for_update() if lock else stmt).one_or_none()
+        if packaging is None:
+            raise NotFoundError("Conditionnement introuvable", code="packaging_not_found")
+        return packaging
+
+    def search(
+        self, article_id: uuid.UUID, params: PageParams, status: StatusFilter
+    ) -> tuple[list[Packaging], int]:
+        self._article(article_id)
+        stmt = select(Packaging).where(Packaging.article_id == article_id)
+        condition = _status_condition(Packaging.is_active, status)
+        if condition is not None:
+            stmt = stmt.where(condition)
+        stmt = apply_sort(stmt, params.sort, PACKAGING_SORT, "conversion", Packaging.id)
+        return paginate(self.db, stmt, params)
+
+    def to_out(self, packagings: list[Packaging]) -> list[PackagingOut]:
+        used = packagings_in_use(self.db, {p.id for p in packagings})
+        return [
+            PackagingOut(
+                id=p.id,
+                article_id=p.article_id,
+                name=p.name,
+                conversion=p.conversion,
+                sale_price=p.sale_price,
+                is_active=p.is_active,
+                in_use=p.id in used,
+                created_at=p.created_at,
+                updated_at=p.updated_at,
+            )
+            for p in packagings
+        ]
+
+    def _require_general(self) -> None:
+        if not self.ctx.has_permission(ARTICLE_UPDATE):
+            raise ForbiddenError("Permission insuffisante", code="permission_denied")
+
+    @staticmethod
+    def _ensure_whole(article: Article, conversion: Decimal) -> None:
+        """Article vendu en quantités entières : une conversion décimale donnerait des
+        quantités de base fractionnaires (1 conditionnement = 2,5 pièces)."""
+        if not article.decimal_quantity_allowed and conversion != conversion.to_integral_value():
+            raise BusinessRuleError(
+                "Cet article n'accepte pas les quantités décimales : la conversion doit être "
+                "un nombre entier",
+                code="packaging_conversion_not_whole",
+            )
+
+    def _audit(self, action: str, packaging: Packaging, article: Article, data: Any) -> None:
+        audit_action(
+            self.db,
+            self.ctx,
+            f"packaging.{action}",
+            entity_type="packaging",
+            entity_id=packaging.id,
+            data={
+                "article_id": str(article.id),
+                "reference": article.reference,
+                "name": packaging.name,
+                **data,
+            },
+        )
+
+    def create(self, article_id: uuid.UUID, data: PackagingCreate) -> Packaging:
+        self._require_general()
+        if data.sale_price != 0:
+            _ensure_price_allowed(self.ctx)
+        article = self._article(article_id)
+        self._ensure_whole(article, data.conversion)
+        packaging = Packaging(
+            tenant_id=self.ctx.tenant_id,
+            article_id=article.id,
+            name=data.name,
+            conversion=data.conversion,
+            sale_price=data.sale_price.quantize(CENT),
+            is_active=True,
+        )
+        self.db.add(packaging)
+        _flush(self.db)
+        self.db.refresh(packaging)
+        self._audit(
+            "created",
+            packaging,
+            article,
+            {
+                "conversion": format(packaging.conversion, "f"),
+                SALE_PRICE: format(packaging.sale_price, "f"),
+            },
+        )
+        return packaging
+
+    def update(self, packaging_id: uuid.UUID, data: PackagingUpdate) -> Packaging:
+        # Verrou exclusif d'abord : une vente en cours (verrou partagé du conditionnement) se
+        # termine avant la vérification d'usage ; aucune ne lit une conversion en transition.
+        packaging = self.get(packaging_id, lock=True)
+        updates = data.model_dump(exclude_unset=True)
+        missing = [field for field, value in updates.items() if value is None]
+        if missing:
+            raise AppError(
+                "Champs obligatoires manquants", code="validation_error", extra={"fields": missing}
+            )
+        if SALE_PRICE in updates:
+            updates[SALE_PRICE] = updates[SALE_PRICE].quantize(CENT)
+        updates = {k: v for k, v in updates.items() if getattr(packaging, k) != v}
+        if SALE_PRICE in updates:
+            _ensure_price_allowed(self.ctx)
+        if any(field != SALE_PRICE for field in updates):
+            self._require_general()
+        article = self._article(packaging.article_id)
+        if "conversion" in updates:
+            if packagings_in_use(self.db, {packaging.id}):
+                raise ConflictError(
+                    "Ce conditionnement figure déjà sur une vente : sa conversion ne peut plus "
+                    "changer. Désactivez-le et créez un nouveau conditionnement.",
+                    code="packaging_in_use",
+                )
+            self._ensure_whole(article, updates["conversion"])
+        before = {key: getattr(packaging, key) for key in updates}
+        for key, value in updates.items():
+            setattr(packaging, key, value)
+        _flush(self.db)
+        diff = changes(before, updates)
+        if diff:
+            self._audit("updated", packaging, article, diff)
+        self.db.refresh(packaging)
+        return packaging
+
+    def set_active(self, packaging_id: uuid.UUID, active: bool) -> Packaging:
+        self._require_general()
+        packaging = self.get(packaging_id, lock=True)
+        if packaging.is_active == active:
+            return packaging
+        article = self._article(packaging.article_id)
+        if active:
+            self._ensure_whole(article, packaging.conversion)
+        packaging.is_active = active
+        _flush(self.db)
+        self._audit("activated" if active else "deactivated", packaging, article, {})
+        return packaging
 
 
 def _price_change(action: str, value: Any) -> tuple[Any, Any]:

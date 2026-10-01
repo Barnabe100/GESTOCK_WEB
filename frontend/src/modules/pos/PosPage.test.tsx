@@ -27,6 +27,8 @@ const ARTICLES: PosArticle[] = [
     quantity: '40.000',
     is_active: true,
     stock_managed: true,
+    decimal_quantity_allowed: false,
+    packagings: [],
   },
   {
     article_id: 'a2',
@@ -38,6 +40,8 @@ const ARTICLES: PosArticle[] = [
     quantity: '0.000',
     is_active: true,
     stock_managed: true,
+    decimal_quantity_allowed: false,
+    packagings: [],
   },
   {
     article_id: 'a3',
@@ -49,6 +53,8 @@ const ARTICLES: PosArticle[] = [
     quantity: '5.000',
     is_active: false,
     stock_managed: true,
+    decimal_quantity_allowed: false,
+    packagings: [],
   },
 ];
 

@@ -26,9 +26,16 @@ export interface SaleLine {
   article_reference: string;
   article_designation: string;
   unit: string;
+  /** Quantité et prix unitaire de la présentation vendue (unité de base ou conditionnement). */
   quantity: string;
   unit_price: string;
   line_total: string;
+  /** Lot 3-B : instantané du conditionnement vendu (nul : unité de base), figé. */
+  packaging_id?: string | null;
+  packaging_name?: string | null;
+  packaging_conversion?: string | null;
+  /** Quantité en unité de base (celle du stock). */
+  base_quantity?: string;
 }
 
 /** Situation d'une vente à crédit, calculée par le serveur à partir des paiements. */
@@ -79,7 +86,8 @@ export interface SaleInput {
   sale_date: string | null;
   customer_id: string | null;
   notes: string | null;
-  lines: { article_id: string; quantity: string }[];
+  /** `packaging_id` nul : unité de base ; la quantité est dans la présentation choisie. */
+  lines: { article_id: string; packaging_id: string | null; quantity: string }[];
 }
 
 export const saleKeys = { all: ['sales'] as const };

@@ -18,9 +18,12 @@ from app.shared.text import Optional50, Optional100, Optional500
 
 
 class SaleLineInput(BaseModel):
-    """Ni prix ni montant : le prix vient du catalogue, les montants sont calculés."""
+    """Ni prix ni montant : le prix vient du catalogue, les montants sont calculés.
+    ``packaging_id`` (Lot 3-B) : conditionnement vendu ; absent = unité de base. ``quantity``
+    est exprimée dans cette présentation (2 cartons) ; le serveur calcule la quantité de base."""
 
     article_id: uuid.UUID
+    packaging_id: uuid.UUID | None = None
     quantity: PositiveQuantity
 
 
@@ -57,9 +60,16 @@ class SaleLineOut(BaseModel):
     article_reference: str
     article_designation: str
     unit: str
+    # Quantité et prix unitaire de la présentation vendue (unité de base ou conditionnement).
     quantity: Quantity
     unit_price: Money
     line_total: Money
+    # Lot 3-B : instantané du conditionnement vendu (nul : unité de base) et quantité en unité
+    # de base (celle du stock).
+    packaging_id: uuid.UUID | None = None
+    packaging_name: str | None = None
+    packaging_conversion: Quantity | None = None
+    base_quantity: Quantity
 
 
 class SaleOut(BaseModel):

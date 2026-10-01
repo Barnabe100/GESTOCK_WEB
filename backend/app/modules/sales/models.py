@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -137,18 +138,61 @@ class SaleLine(IdMixin, TenantScopedMixin, Base):
             ["catalog_articles.tenant_id", "catalog_articles.id"],
             ondelete="RESTRICT",
         ),
-        UniqueConstraint("sale_id", "article_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "packaging_id"],
+            ["catalog_packagings.tenant_id", "catalog_packagings.id"],
+            ondelete="RESTRICT",
+        ),
+        # Lot 3-B : un article une fois par présentation (unité de base OU conditionnement).
+        Index(
+            "uq_sale_lines_sale_article_base",
+            "sale_id",
+            "article_id",
+            unique=True,
+            postgresql_where=text("packaging_id IS NULL"),
+        ),
+        Index(
+            "uq_sale_lines_sale_packaging",
+            "sale_id",
+            "packaging_id",
+            unique=True,
+            postgresql_where=text("packaging_id IS NOT NULL"),
+        ),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_price >= 0", name="unit_price_non_negative"),
         CheckConstraint("line_total >= 0", name="line_total_non_negative"),
+        # Instantané du conditionnement complet ou absent ; quantité de base = quantité ×
+        # conversion (unité de base : conversion 1), sans arrondi.
+        CheckConstraint(
+            "(packaging_id IS NULL) = (packaging_name IS NULL) "
+            "AND (packaging_id IS NULL) = (packaging_conversion IS NULL)",
+            name="packaging_snapshot_complete",
+        ),
+        CheckConstraint(
+            "packaging_conversion IS NULL OR packaging_conversion > 0",
+            name="packaging_conversion_positive",
+        ),
+        CheckConstraint(
+            "base_quantity = quantity * COALESCE(packaging_conversion, 1)",
+            name="base_quantity_consistent",
+        ),
     )
 
     sale_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     line_no: Mapped[int] = mapped_column(Integer, nullable=False)
     article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    # Quantité vendue dans la présentation choisie (unité de base ou conditionnement).
     quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
+    # Prix unitaire de la présentation (article ou conditionnement), figé.
     unit_price: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     line_total: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Lot 3-B (ADR-0040) : conditionnement vendu et son instantané (nom, conversion), figés —
+    # une vente historique reste fidèle quoi qu'il advienne du conditionnement.
+    packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    packaging_name: Mapped[str | None] = mapped_column(String(50))
+    packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    # Quantité en unité de base : celle qui sort du stock (et y revient à l'annulation).
+    base_quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
 
 
 # --- Paiements (Phase 2.7, ADR-0020) ------------------------------------------------------------

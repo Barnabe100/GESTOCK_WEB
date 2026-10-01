@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    false,
     func,
     text,
     true,
@@ -92,6 +93,11 @@ class Article(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     stock_managed: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
+    # Lot 3-B (ADR-0040) : ``False`` = quantités vendues entières seulement (pièce, carton…) ;
+    # ``True`` = quantités décimales (kg, m, L). Contrôlé par le serveur à chaque vente.
+    decimal_quantity_allowed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     category: Mapped[Category] = relationship(
         lazy="joined",
@@ -99,3 +105,37 @@ class Article(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         "foreign(Article.category_id) == Category.id)",
         viewonly=True,
     )
+
+
+class Packaging(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Conditionnement de vente d'un article (Lot 3-B, ADR-0040) : nom libre, conversion vers
+    l'unité de base (quantité de base = quantité × conversion), prix de vente propre. Jamais
+    supprimé : désactivé. La conversion d'un conditionnement déjà utilisé par une vente est
+    figée (nouveau conditionnement pour une autre conversion)."""
+
+    __tablename__ = "catalog_packagings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "article_id"],
+            ["catalog_articles.tenant_id", "catalog_articles.id"],
+            ondelete="RESTRICT",
+        ),
+        # Nom unique parmi les conditionnements ACTIFS de l'article (insensible à la casse).
+        Index(
+            "uq_catalog_packagings_article_name_active",
+            "tenant_id",
+            "article_id",
+            func.lower(text("name")),
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+        CheckConstraint("conversion > 0", name="conversion_positive"),
+        CheckConstraint("sale_price >= 0", name="sale_price_positive"),
+    )
+
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    conversion: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
+    sale_price: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

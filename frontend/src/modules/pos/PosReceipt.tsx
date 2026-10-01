@@ -3,8 +3,8 @@ import { Dialog } from 'primereact/dialog';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { SalePaymentBadge } from '@/modules/sales/ui';
-import { formatMoney, formatQuantity } from '@/shared/lib/decimal';
+import { SalePaymentBadge, soldQuantity } from '@/modules/sales/ui';
+import { formatMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 
 import type { CheckoutResult } from './api';
@@ -47,8 +47,15 @@ export function PosReceipt({
         <table className="sm-pos-receipt">
           <tbody>
             {sale.lines.map((line) => (
-              <tr key={line.id}>
-                <td>{`${formatQuantity(line.quantity, locale)} × ${line.article_designation}`}</td>
+              <tr key={line.id} data-testid="receipt-line">
+                {/* Lot 3-B : présentation vendue (« 2 Carton 24 × 10 500 F »), prix figé. */}
+                <td>
+                  <span>{line.article_designation}</span>
+                  <br />
+                  <span className="sm-muted">
+                    {`${soldQuantity(line, locale)} × ${money(line.unit_price)}`}
+                  </span>
+                </td>
                 <td className="sm-num">{money(line.line_total)}</td>
               </tr>
             ))}

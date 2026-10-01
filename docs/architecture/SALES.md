@@ -18,7 +18,7 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
 | Table | Colonnes | Règles |
 |---|---|---|
 | `sales` | `number` (nul au brouillon ; `VENT-{SITE}-{ANNÉE}-{SÉQUENCE}` à la validation), `site_id`, `customer_id` (nullable), `status`, `sale_date`, `subtotal`, `total` (`NUMERIC(18,2)`), `notes`, auteurs et dates de création / validation / annulation, `cancellation_reason` | `UNIQUE (tenant_id, number)` ; `UNIQUE (tenant_id, id)` (cible des futurs paiements / créances) ; FK composites vers `sites` et `customers` du même tenant ; `CHECK` montants ≥ 0, date de validation si validée, motif si annulée, **numéro si validée** (`validated_has_number`), exception de crédit complète ou absente (`credit_override_complete`) ; `is_credit`, `credit_override_by` / `_at` / `_reason` / `_amount` (Lot 1) |
-| `sale_lines` | `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`), `unit_price`, `line_total` (`NUMERIC(18,2)`) | FK composites vers la vente (`ON DELETE CASCADE`, lignes de brouillon) et l'article ; `UNIQUE (sale_id, article_id)` ; `CHECK quantity > 0`, prix et montant ≥ 0 |
+| `sale_lines` | `sale_id`, `line_no`, `article_id`, `quantity` (`NUMERIC(18,3)`, dans la présentation vendue), `unit_price`, `line_total` (`NUMERIC(18,2)`) ; Lot 3-B : `packaging_id`, `packaging_name`, `packaging_conversion` (instantané figé ; nuls = unité de base), `base_quantity` (unité de base) | FK composites vers la vente (`ON DELETE CASCADE`, lignes de brouillon), l'article et le conditionnement ; une ligne par présentation (unique `(sale_id, article_id)` sans conditionnement, `(sale_id, packaging_id)` sinon) ; `CHECK quantity > 0`, prix et montant ≥ 0, `base_quantity = quantity × COALESCE(packaging_conversion, 1)` |
 
 - **Numéro (Lot 1)** : `VENT-{CODE_SITE}-{ANNÉE}-{SÉQUENCE}` (ex. `VENT-OUA-2026-000154`),
   attribué **à la validation** — jamais au brouillon (numéro nul, affiché « non numérotée »).
@@ -33,8 +33,15 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
 - **Calculs (serveur uniquement)** : `line_total = arrondi(quantity × unit_price, 2)` (demi
   supérieur, `Decimal`) ; `subtotal = Σ line_total` ; `total = subtotal` (aucune remise ni
   taxe dans cette phase : la colonne distincte prépare leur arrivée sans migration de sens).
-- **Prix** : `unit_price` est **copié depuis `catalog_articles.sale_price`** à chaque
-  enregistrement du brouillon. Le client (navigateur) n'envoie jamais de prix ni de total.
+- **Prix** : `unit_price` est **copié depuis `catalog_articles.sale_price`** — ou depuis le
+  prix du conditionnement vendu (Lot 3-B) — à chaque enregistrement du brouillon. Le client
+  (navigateur) n'envoie jamais de prix ni de total.
+- **Présentation et quantité de base (Lot 3-B, ADR-0040)** : chaque ligne est vendue dans
+  l'unité de base de l'article ou dans un conditionnement ACTIF de cet article ;
+  `base_quantity = quantity × conversion` (sans arrondi ; plus de 3 décimales : `422
+  base_quantity_precision`). Article sans quantités décimales : quantité vendue et quantité de
+  base entières (`422 quantity_not_whole`). Le conditionnement (nom, conversion) et le prix sont
+  **figés** sur la ligne : une vente historique ne change jamais.
 - `subtotal`/`total` sont stockés (figés) : l'historique ne change pas si le catalogue change.
 
 ## 2. Cycle de vie
@@ -54,7 +61,7 @@ Client (facultatif) ─► Vente (site, brouillon) ─► Lignes (article, quant
 |---|---|---|
 | Création | permission `create` ; site accessible (`operation_site`) ; ≥ 1 ligne ; articles du tenant, actifs, sans doublon ; quantité > 0 ; client du tenant et **actif** ; date non future | Numéro, prix copiés, totaux, audit `sale.created` |
 | Modification | `update` ; statut `DRAFT` (sinon 409 `sale_not_draft`) ; mêmes contrôles | Lignes remplacées, prix relus, audit `sale.updated` (avant / après) si changement ; site non modifiable |
-| Validation | `validate` ; verrou de la vente ; `DRAFT` ; articles et client toujours actifs ; **prix inchangés** (sinon 409 `sale_prices_changed`) ; moyens de paiement disponibles sur le site ; crédit (§ 4 bis) ; stock suffisant | Numéro `VENT-…`, mouvements `SALE`, paiements immédiats, statut `VALIDATED`, audit `sale.validated` (numéro, `is_credit`) |
+| Validation | `validate` ; verrou de la vente ; `DRAFT` ; articles et client toujours actifs ; conditionnements relus sous verrou partagé, toujours actifs (sinon 422 `packaging_inactive`) et règle des quantités entières revérifiée (Lot 3-B) ; **prix inchangés** — article ou conditionnement (sinon 409 `sale_prices_changed`) ; moyens de paiement disponibles sur le site ; crédit (§ 4 bis) ; stock suffisant | Numéro `VENT-…`, mouvements `SALE`, paiements immédiats, statut `VALIDATED`, audit `sale.validated` (numéro, `is_credit`) |
 | Annulation | `cancel` ; verrou ; pas déjà annulée (409 `sale_already_cancelled`) ; motif 5 à 500 caractères | Validée : mouvements inverses `CANCELLATION` ; brouillon : aucun mouvement ; audit `sale.cancelled` |
 
 **Immuabilité** : une vente validée ou annulée n'est plus modifiable (409). Les lignes ne sont
@@ -64,7 +71,8 @@ jamais supprimées hors brouillon ; les mouvements de stock sont append-only.
 
 - La vente **ne touche jamais** `stock_levels` : elle appelle `StockService.apply` (interface
   publique `stock/api.py`) avec une requête `MovementType.SALE` de quantité négative par
-  ligne, `source_type="sale"`, `source_id`, `source_line_id`, `source_number` (numéro lisible
+  ligne — **toujours la quantité de base** (2 cartons de 24 → −48, Lot 3-B ; l'annulation
+  remet la quantité de base), `source_type="sale"`, `source_id`, `source_line_id`, `source_number` (numéro lisible
   affiché par le journal des mouvements, sans dépendance du stock vers les ventes).
 - `StockService` verrouille les niveaux (`FOR UPDATE`, ordre déterministe), vérifie **toutes**
   les lignes avant d'écrire (stock jamais négatif, contrainte en base en plus), valorise la

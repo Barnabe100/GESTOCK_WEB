@@ -86,3 +86,26 @@ export function sumMoney(values: string[]): string {
 export function subtractMoney(a: string, b: string): string {
   return fromScaled(toScaled(a, 2) - toScaled(b, 2), 2);
 }
+
+/**
+ * Quantité de base INDICATIVE (Lot 3-B) : quantité × conversion d'un conditionnement, exacte
+ * (échelle 6, sans arrondi). `null` si le produit dépasse 3 décimales (précision du stock) :
+ * le serveur refuse alors la ligne au lieu d'arrondir.
+ */
+export function multiplyQuantity(quantity: string, conversion: string): string | null {
+  const product = toScaled(quantity, 3) * toScaled(conversion, 3); // échelle 6
+  if (product % 1000n !== 0n) return null;
+  return fromScaled(product / 1000n, 3);
+}
+
+/** Quantité entière (« 2 », « 2.000 ») — règle des articles sans quantités décimales. */
+export function isWholeQuantity(quantity: string): boolean {
+  const [, fraction = ''] = quantity.split('.');
+  return /^0*$/.test(fraction);
+}
+
+/** Comparaison de deux quantités décimales (−1, 0, 1), sans float. */
+export function compareQuantity(a: string, b: string): number {
+  const diff = toScaled(a, 3) - toScaled(b, 3);
+  return diff === 0n ? 0 : diff < 0n ? -1 : 1;
+}

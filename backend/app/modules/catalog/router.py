@@ -10,9 +10,12 @@ from app.modules.catalog.schemas import (
     ArticleUpdate,
     CategoryInput,
     CategoryOut,
+    PackagingCreate,
+    PackagingOut,
+    PackagingUpdate,
     PriceChangeOut,
 )
-from app.modules.catalog.service import ArticleService, CategoryService
+from app.modules.catalog.service import ArticleService, CategoryService, PackagingService
 from app.platform.context import (
     DbSession,
     RequestContext,
@@ -221,3 +224,68 @@ def deactivate_article(article_id: uuid.UUID, ctx: ArticleStatus, db: DbSession)
     article = service.set_active(article_id, False)
     db.commit()
     return service.to_out([article])[0]
+
+
+# --- Conditionnements (Lot 3-B, ADR-0040) ------------------------------------------------------
+# Mêmes droits que l'article : consultation ``view`` ; nom, conversion et état ``update`` ; prix
+# ``price_update`` (le service contrôle chaque champ).
+
+
+@router.get(
+    "/articles/{article_id}/packagings", response_model=Page[PackagingOut], tags=["catalog"]
+)
+def list_packagings(
+    article_id: uuid.UUID,
+    ctx: ArticleView,
+    db: DbSession,
+    paging: Paging,
+    status_filter: StatusParam = StatusFilter.ALL,
+) -> Page[PackagingOut]:
+    service = PackagingService(db, ctx)
+    items, total = service.search(article_id, paging, status_filter)
+    return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
+
+
+@router.post(
+    "/articles/{article_id}/packagings",
+    response_model=PackagingOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["catalog"],
+)
+def create_packaging(
+    article_id: uuid.UUID, body: PackagingCreate, ctx: ArticleUpdateCtx, db: DbSession
+) -> PackagingOut:
+    service = PackagingService(db, ctx)
+    packaging = service.create(article_id, body)
+    db.commit()
+    return service.to_out([packaging])[0]
+
+
+@router.patch("/packagings/{packaging_id}", response_model=PackagingOut, tags=["catalog"])
+def update_packaging(
+    packaging_id: uuid.UUID, body: PackagingUpdate, ctx: ArticleUpdateCtx, db: DbSession
+) -> PackagingOut:
+    service = PackagingService(db, ctx)
+    packaging = service.update(packaging_id, body)
+    db.commit()
+    return service.to_out([packaging])[0]
+
+
+@router.post("/packagings/{packaging_id}/activate", response_model=PackagingOut, tags=["catalog"])
+def activate_packaging(
+    packaging_id: uuid.UUID, ctx: ArticleUpdateCtx, db: DbSession
+) -> PackagingOut:
+    service = PackagingService(db, ctx)
+    packaging = service.set_active(packaging_id, True)
+    db.commit()
+    return service.to_out([packaging])[0]
+
+
+@router.post("/packagings/{packaging_id}/deactivate", response_model=PackagingOut, tags=["catalog"])
+def deactivate_packaging(
+    packaging_id: uuid.UUID, ctx: ArticleUpdateCtx, db: DbSession
+) -> PackagingOut:
+    service = PackagingService(db, ctx)
+    packaging = service.set_active(packaging_id, False)
+    db.commit()
+    return service.to_out([packaging])[0]

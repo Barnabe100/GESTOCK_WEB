@@ -8,15 +8,21 @@ from decimal import Decimal
 from sqlalchemy import Subquery, select
 from sqlalchemy.orm import Session
 
-from app.modules.catalog.models import Article, Category
+from app.modules.catalog.models import Article, Category, Packaging
+from app.modules.catalog.sales_port import register_packaging_usage
 from app.modules.catalog.stock_port import register_stocked_sites
 
 __all__ = [
     "ArticleRef",
+    "PackagingRef",
+    "active_packagings",
     "articles_view",
     "find_active_article_by_barcode",
     "get_article_refs",
+    "is_whole",
+    "lock_packagings",
     "lock_stock_managed",
+    "register_packaging_usage",
     "register_stocked_sites",
 ]
 
@@ -33,6 +39,25 @@ class ArticleRef:
     sale_price: Decimal
     # Lot 3-A : ``False`` = vendu sans stock (aucun mouvement, aucun contrôle).
     stock_managed: bool = True
+    # Lot 3-B : ``False`` = quantités vendues entières seulement.
+    decimal_quantity_allowed: bool = False
+
+
+@dataclass(frozen=True)
+class PackagingRef:
+    """Conditionnement de vente (Lot 3-B) : quantité de base = quantité × ``conversion``."""
+
+    id: uuid.UUID
+    article_id: uuid.UUID
+    name: str
+    conversion: Decimal
+    sale_price: Decimal
+    is_active: bool
+
+
+def is_whole(value: Decimal) -> bool:
+    """Quantité entière (2, 2.000) — jamais de ``float``."""
+    return value == value.to_integral_value()
 
 
 def get_article_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
@@ -50,9 +75,54 @@ def get_article_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, Articl
             max_stock=a.max_stock,
             sale_price=a.sale_price,
             stock_managed=a.stock_managed,
+            decimal_quantity_allowed=a.decimal_quantity_allowed,
         )
         for a in db.scalars(select(Article).where(Article.id.in_(ids)))
     }
+
+
+def _packaging_ref(p: Packaging) -> PackagingRef:
+    return PackagingRef(
+        id=p.id,
+        article_id=p.article_id,
+        name=p.name,
+        conversion=p.conversion,
+        sale_price=p.sale_price,
+        is_active=p.is_active,
+    )
+
+
+def lock_packagings(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, PackagingRef]:
+    """Conditionnements du tenant (RLS), lus sous verrou PARTAGÉ (``FOR SHARE``, ordre des
+    identifiants) jusqu'à la fin de la transaction : la modification de la conversion prend le
+    verrou exclusif puis vérifie qu'aucune vente n'utilise le conditionnement — une vente en
+    cours se termine d'abord (elle est alors vue), aucune ne lit une conversion en cours de
+    modification. Plusieurs ventes simultanées ne s'attendent pas entre elles."""
+    if not ids:
+        return {}
+    rows = db.scalars(
+        select(Packaging)
+        .where(Packaging.id.in_(ids))
+        .order_by(Packaging.id)
+        .with_for_update(read=True)
+    )
+    return {p.id: _packaging_ref(p) for p in rows}
+
+
+def active_packagings(
+    db: Session, article_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, list[PackagingRef]]:
+    """Conditionnements ACTIFS des articles (point de vente), triés par conversion puis nom."""
+    if not article_ids:
+        return {}
+    result: dict[uuid.UUID, list[PackagingRef]] = {}
+    for p in db.scalars(
+        select(Packaging)
+        .where(Packaging.article_id.in_(article_ids), Packaging.is_active.is_(True))
+        .order_by(Packaging.conversion, Packaging.name, Packaging.id)
+    ):
+        result.setdefault(p.article_id, []).append(_packaging_ref(p))
+    return result
 
 
 def lock_stock_managed(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, bool]:

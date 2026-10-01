@@ -84,3 +84,23 @@ Un article `stock_managed = false` (service) apparaît dans la recherche (« Non
 sans quantité) et se vend sans mouvement ni contrôle de stock : `SaleService` relit le drapeau
 sous verrou partagé de l'article à la validation. Le scan n'utilise jamais un résultat de la
 recherche textuelle (différée de 250 ms) : la valeur saisie est envoyée telle quelle au serveur.
+
+## Lot 3-B — unité de base, quantités décimales et conditionnements (ADR-0040)
+
+- **Recherche** : chaque article indique sa règle de quantité (`decimal_quantity_allowed`) et
+  ses conditionnements **actifs** (nom, conversion, prix) ; un conditionnement désactivé n'est
+  plus proposé. La tuile affiche le prix de l'unité de base (« 500 F / pièce ») et le nombre de
+  conditionnements.
+- **Panier** : une ligne par présentation (article en unité de base, ou article ×
+  conditionnement) ; un clic sur la tuile ou un scan ajoute l'unité de base (toujours
+  disponible), le choix « Présentation » de la ligne bascule vers un conditionnement (prix,
+  quantité de base — « Soit 48 pièce » —, total et disponibilité recalculés ; deux lignes de
+  même présentation fusionnent). Quantités entières seulement pour un article sans décimales
+  (saisie signalée, validation désactivée) ; disponibilité indicative en unité de base, toutes
+  présentations de l'article confondues. Le panier ne réserve aucun stock.
+- **Encaissement** : `lines: [{article_id, packaging_id, quantity}]` ; le serveur relit
+  l'article, le conditionnement (actif, de cet article), la conversion, le prix, la règle
+  décimale et le stock, puis sort la **quantité de base** (`SaleService`, aucune logique propre
+  au POS).
+- **Reçu (80 mm)** : désignation puis présentation vendue et prix unitaire figé
+  (« 2 Carton 24 × 10 500 F … 21 000 F » ; unité de base : « 3 pièce × 500 F … 1 500 F »).

@@ -44,7 +44,8 @@ import {
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
 import { PaymentsPanel } from './PaymentsPanel';
 import { SaleHistoryPanel, SaleMovementsPanel } from './SaleActivity';
-import { SalePaymentBadge, saleError } from './ui';
+import { PackagingSelect, type SalePackaging } from './PackagingSelect';
+import { SalePaymentBadge, saleError, soldQuantity } from './ui';
 import { ValidateSaleDialog } from './ValidateSaleDialog';
 
 const quantity = z.string().refine((v) => {
@@ -65,14 +66,18 @@ const schema = z
       .array(
         z.object({
           article: z.custom<ArticleOption | null>().refine((v) => Boolean(v), 'required'),
+          packaging: z.custom<SalePackaging | null>(),
           quantity,
         }),
       )
       .min(1, 'empty'),
   })
   .superRefine((values, ctx) => {
-    // Ergonomie seulement : le serveur refait tous les contrôles.
-    const ids = values.lines.map((l) => l.article?.id);
+    // Ergonomie seulement : le serveur refait tous les contrôles. Une ligne par présentation
+    // (article en unité de base, ou article × conditionnement — Lot 3-B).
+    const ids = values.lines.map((l) =>
+      l.article ? `${l.article.id}:${l.packaging?.id ?? 'base'}` : undefined,
+    );
     ids.forEach((id, index) => {
       if (id && ids.indexOf(id) !== index) {
         ctx.addIssue({ code: 'custom', path: ['lines', index, 'article'], message: 'duplicate' });
@@ -100,8 +105,18 @@ function defaults(sale: Sale | undefined, siteId: string | null): FormValues {
         reference: line.article_reference,
         designation: line.article_designation,
         unit: line.unit,
-        sale_price: line.unit_price,
+        // Prix de l'unité de base connu seulement pour une ligne en unité de base.
+        sale_price: line.packaging_id ? undefined : line.unit_price,
       }),
+      packaging:
+        line.packaging_id && line.packaging_name && line.packaging_conversion
+          ? {
+              id: line.packaging_id,
+              name: line.packaging_name,
+              conversion: line.packaging_conversion,
+              sale_price: line.unit_price,
+            }
+          : null,
       quantity: line.quantity,
     })),
   };
@@ -115,15 +130,22 @@ function toInput(values: FormValues, isNew: boolean): SaleInput {
     notes: values.notes.trim() || null,
     lines: values.lines.map((line) => ({
       article_id: line.article?.id ?? '',
+      packaging_id: line.packaging?.id ?? null,
       quantity: normalizeDecimal(line.quantity, 3) ?? '0',
     })),
   };
 }
 
+/** Prix unitaire de la présentation : conditionnement, sinon article (indicatif). */
+function unitPrice(line: FormValues['lines'][number] | undefined): string | undefined {
+  return line?.packaging?.sale_price ?? line?.article?.sale_price;
+}
+
 /** Montant de ligne affiché en temps réel (indicatif : le serveur recalcule). */
-function lineTotal(article: ArticleOption | null | undefined, qty: string): string | null {
-  const q = normalizeDecimal(qty ?? '', 3);
-  return article?.sale_price && q ? multiplyMoney(q, article.sale_price) : null;
+function lineTotal(line: FormValues['lines'][number] | undefined): string | null {
+  const q = normalizeDecimal(line?.quantity ?? '', 3);
+  const price = unitPrice(line);
+  return price && q ? multiplyMoney(q, price) : null;
 }
 
 // --- Saisie d'un brouillon ----------------------------------------------------------------------
@@ -145,7 +167,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
   const watched = useWatch({ control: form.control, name: 'lines' });
   const errors = form.formState.errors;
   const { currency, locale } = capabilities.tenant;
-  const totals = watched.map((line) => lineTotal(line?.article, line?.quantity));
+  const totals = watched.map((line) => lineTotal(line));
   const displayTotal = sumMoney(totals.filter((v): v is string => v !== null));
 
   const persist = async (values: FormValues): Promise<Sale> => {
@@ -252,6 +274,8 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
         {lines.fields.map((field, index) => {
           const lineErrors = errors.lines?.[index];
           const article = watched[index]?.article;
+          const packaging = watched[index]?.packaging;
+          const price = unitPrice(watched[index]);
           return (
             <div key={field.id} className="sm-line">
               <FormField
@@ -274,15 +298,41 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
                     <ArticlePicker
                       id={`line-${index}-article`}
                       value={f.value}
-                      onChange={f.onChange}
+                      onChange={(value) => {
+                        f.onChange(value);
+                        // Autre article : retour à l'unité de base.
+                        form.setValue(`lines.${index}.packaging`, null);
+                      }}
                       invalid={Boolean(lineErrors?.article)}
                     />
                   )}
                 />
               </FormField>
+              {article && (
+                <FormField id={`line-${index}-packaging`} label={t('sales.presentation')}>
+                  <Controller
+                    control={form.control}
+                    name={`lines.${index}.packaging`}
+                    render={({ field: f }) => (
+                      <PackagingSelect
+                        id={`line-${index}-packaging`}
+                        articleId={article.id}
+                        unit={article.unit}
+                        basePrice={article.sale_price}
+                        value={f.value}
+                        onChange={f.onChange}
+                      />
+                    )}
+                  />
+                </FormField>
+              )}
               <FormField
                 id={`line-${index}-quantity`}
-                label={article ? `${t('stock.quantity')} (${article.unit})` : t('stock.quantity')}
+                label={
+                  article
+                    ? `${t('stock.quantity')} (${packaging?.name ?? article.unit})`
+                    : t('stock.quantity')
+                }
                 required
                 error={lineErrors?.quantity && t('stock.invalidQuantity')}
               >
@@ -294,9 +344,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
               </FormField>
               <div className="sm-line-amounts" aria-live="polite">
                 <small className="sm-muted">
-                  {article?.sale_price
-                    ? `${t('sales.unitPrice')} : ${formatMoney(article.sale_price, currency, locale)}`
-                    : ''}
+                  {price ? `${t('sales.unitPrice')} : ${formatMoney(price, currency, locale)}` : ''}
                 </small>
                 <strong>
                   {totals[index] ? formatMoney(totals[index], currency, locale) : '—'}
@@ -319,7 +367,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
             icon="pi pi-plus"
             outlined
             label={t('stock.addLine')}
-            onClick={() => lines.append({ article: null, quantity: '1' })}
+            onClick={() => lines.append({ article: null, packaging: null, quantity: '1' })}
           />
         </div>
       </fieldset>
@@ -423,10 +471,15 @@ function SaleSummary({ sale }: { sale: Sale }) {
           header={t('stock.article')}
           body={(l: SaleLine) => `${l.article_reference} — ${l.article_designation}`}
         />
-        <Column
-          header={t('stock.quantity')}
-          body={(l: SaleLine) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
-        />
+        <Column header={t('stock.quantity')} body={(l: SaleLine) => soldQuantity(l, locale)} />
+        {sale.lines.some((l) => l.packaging_id) && (
+          <Column
+            header={t('sales.baseQuantity')}
+            body={(l: SaleLine) =>
+              `${formatQuantity(l.base_quantity ?? l.quantity, locale)} ${l.unit}`
+            }
+          />
+        )}
         <Column
           header={t('sales.unitPrice')}
           body={(l: SaleLine) => formatMoney(l.unit_price, currency, locale)}

@@ -4,6 +4,14 @@ import { api } from '@/core/api/client';
 import type { Payment, Sale } from '@/modules/sales/api';
 import type { Page } from '@/shared/lib/serverTable';
 
+/** Conditionnement ACTIF (Lot 3-B) : quantité de base = quantité × `conversion`. */
+export interface PosPackaging {
+  id: string;
+  name: string;
+  conversion: string;
+  sale_price: string;
+}
+
 /** Article du point de vente : prix du catalogue et stock du site (indicatifs). */
 export interface PosArticle {
   article_id: string;
@@ -16,6 +24,10 @@ export interface PosArticle {
   is_active: boolean;
   /** `false` : vendu sans stock (quantité sans objet). */
   stock_managed: boolean;
+  /** `false` : quantités entières seulement (contrôlé par le serveur). */
+  decimal_quantity_allowed: boolean;
+  /** Unité de base toujours vendable ; conditionnements actifs en plus. */
+  packagings: PosPackaging[];
 }
 
 /**
@@ -25,7 +37,8 @@ export interface PosArticle {
 export interface CheckoutInput {
   site_id: string;
   customer_id: string | null;
-  lines: { article_id: string; quantity: string }[];
+  /** `packaging_id` absent / nul : unité de base ; la quantité est dans cette présentation. */
+  lines: { article_id: string; packaging_id: string | null; quantity: string }[];
   /** Espèces : montant reçu (monnaie calculée par le serveur) ; autres moyens : montant payé. */
   payments: {
     payment_method_id: string;

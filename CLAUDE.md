@@ -132,8 +132,18 @@ historique des prix lu dans l'audit (aucune table) ; `catalog.article.price_upda
 **absents** des réponses sans elle (`app.platform.costs.cost_masking_route` sur les routeurs
 catalogue, stock, inventaires, alertes, audit — tout nouveau champ de coût doit y être
 déclaré) ; Gestionnaire : coûts visibles (`cost_view`), prix non modifiables (pas de
-`price_update`). Ne pas passer au lot suivant sans
-validation. Non implémentés (feuille de route §13) :
+`price_update`). **Lot 3-B livré — quantités décimales et conditionnements**
+([ADR-0040](docs/adr/0040-quantites-decimales-conditionnements.md), migration 0027) : unité de
+base = champ libre `unit`, toujours vendable, **stock toujours en unité de base** ;
+`catalog_articles.decimal_quantity_allowed` (défaut `false` : quantités vendues entières,
+contrôle serveur à l'enregistrement ET à la validation) ; `catalog_packagings` (nom libre,
+conversion `> 0` entière pour un article entier, prix propre, jamais supprimés, droits de
+l'article : `update` / `price_update`) ; conversion **figée** dès qu'une vente l'utilise (port
+`catalog.sales_port`, verrou exclusif / partagé) ; ligne de vente = présentation (unité de base
+ou conditionnement), `base_quantity = quantity × conversion` sans arrondi (plus de 3 décimales
+refusé), instantané (nom, conversion, prix) figé ; prix changé : `sale_prices_changed`
+existant ; POS : choix de la présentation dans le panier, reçu « 2 Carton 24 × … ». Ne pas
+passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

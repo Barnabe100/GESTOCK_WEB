@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.shared.schemas import Money, Quantity
+from app.shared.schemas import Money, PositiveQuantity, Quantity
 from app.shared.text import (
     Optional50,
     Optional1000,
@@ -45,6 +45,7 @@ class ArticleOut(BaseModel):
     barcode: str | None
     is_active: bool
     stock_managed: bool
+    decimal_quantity_allowed: bool
     created_at: datetime
     updated_at: datetime
     # Coût interne (Lot 3-A) : présent SEULEMENT avec ``catalog.article.cost_view`` — sinon le
@@ -66,6 +67,8 @@ class ArticleCreate(BaseModel):
     description: Optional1000 = None
     barcode: Optional50 = None
     stock_managed: bool = True
+    # Lot 3-B : quantités vendues décimales (kg, m, L) ; défaut : entières seulement.
+    decimal_quantity_allowed: bool = False
 
 
 class ArticleUpdate(BaseModel):
@@ -83,6 +86,7 @@ class ArticleUpdate(BaseModel):
     description: Optional1000 = None
     barcode: Optional50 = None
     stock_managed: bool | None = None
+    decimal_quantity_allowed: bool | None = None
 
 
 class PriceChangeOut(BaseModel):
@@ -98,3 +102,35 @@ class PriceChangeOut(BaseModel):
     sale_price_after: Money | None
     purchase_price_before: Money | None = None
     purchase_price_after: Money | None = None
+
+
+class PackagingOut(BaseModel):
+    """Conditionnement de vente (Lot 3-B) : quantité de base = quantité × ``conversion``.
+    ``in_use`` : figure sur au moins une vente — la conversion est alors figée."""
+
+    id: uuid.UUID
+    article_id: uuid.UUID
+    name: str
+    conversion: Quantity
+    sale_price: Money
+    is_active: bool
+    in_use: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PackagingCreate(BaseModel):
+    name: Required50
+    # Unités de base contenues dans UN conditionnement (> 0, décimale possible : 25.5 kg).
+    conversion: PositiveQuantity
+    # Défini seulement avec ``catalog.article.price_update`` (sinon 0), comme un article.
+    sale_price: Money = Decimal("0")
+
+
+class PackagingUpdate(BaseModel):
+    """Champs absents : inchangés. Conversion figée dès qu'une vente utilise le
+    conditionnement (désactiver, puis en créer un nouveau)."""
+
+    name: Required50 | None = None
+    conversion: PositiveQuantity | None = None
+    sale_price: Money | None = None
