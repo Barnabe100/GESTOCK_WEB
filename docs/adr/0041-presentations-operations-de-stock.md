@@ -1,6 +1,6 @@
 # ADR-0041 — Conditionnements dans les opérations de stock
 
-- **Statut** : Acceptée (Lot 3-C — entrées, sorties, transferts, inventaires)
+- **Statut** : Acceptée et validée (Lot 3-C clôturé — entrées, sorties, transferts, inventaires)
 - **Date** : 2026-10-01
 - **Prolonge** : [ADR-0040](0040-quantites-decimales-conditionnements.md) (conditionnements de
   vente, quantités décimales)
@@ -91,6 +91,14 @@ commandes fournisseurs, codes-barres par conditionnement.
   inchangés : tables existantes).
 - Les tests qui saisissaient des quantités décimales pour des articles entiers déclarent
   désormais `decimal_quantity_allowed`.
-- Validé : coût d'entrée saisi par présentation (point 8). Points soumis à validation : blocage de la validation
-  d'un document dont le conditionnement a été désactivé ; conversion figée dès un brouillon de
-  stock ou un comptage ; présentation des ventes reportée sur leurs mouvements.
+- **Toutes les décisions sont validées** (TechNova, 2026-10-01 ; Lot 3-C clôturé) :
+  - coût d'entrée saisi par présentation, coût par unité de base calculé automatiquement
+    (point 8) ;
+  - conditionnement désactivé pendant un brouillon ou un comptage : validation bloquée jusqu'à
+    correction de la présentation (point 6) ;
+  - conversion figée dès le brouillon : la conversion d'une opération préparée ne change jamais
+    silencieusement (point 7) ;
+  - mouvements des ventes : présentation réellement vendue conservée (point 5) ;
+  - équivalences : affichage actuel, au plus 3 conditionnements pertinents et l'unité de base
+    (point 10) ;
+  - journal des mouvements : signe ASCII « - », cohérent avec les quantités de base.

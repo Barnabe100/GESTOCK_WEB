@@ -143,7 +143,7 @@ l'article : `update` / `price_update` ; prix **non configuré** (`NULL`, créati
 `catalog.usage_port`, verrou exclusif / partagé) ; ligne de vente = présentation (unité de base
 ou conditionnement), `base_quantity = quantity × conversion` sans arrondi (plus de 3 décimales
 refusé), instantané (nom, conversion, prix) figé ; prix changé : `sale_prices_changed`
-existant ; POS : choix de la présentation dans le panier, reçu « 2 Carton 24 × … ». **Lot 3-C livré —
+existant ; POS : choix de la présentation dans le panier, reçu « 2 Carton 24 × … ». **Lot 3-C livré, validé et clôturé —
 conditionnements dans les opérations de stock**
 ([ADR-0041](docs/adr/0041-presentations-operations-de-stock.md), migration 0029) : entrée,
 sortie, transfert et comptage en unité de base **ou** en conditionnement ACTIF (ceux du 3-B, prix
