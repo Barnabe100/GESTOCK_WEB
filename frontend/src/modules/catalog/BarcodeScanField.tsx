@@ -23,11 +23,14 @@ export function BarcodeScanField({
   onScan,
   reject,
   disabled = false,
+  compact = false,
 }: {
   id: string;
   onScan: (scan: ScanResult) => void;
   reject?: (scan: ScanResult) => string | null;
   disabled?: boolean;
+  /** Barre de filtres (comptage d'inventaire, mobile) : libellé accessible mais non affiché. */
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const [code, setCode] = useState('');
@@ -68,8 +71,10 @@ export function BarcodeScanField({
   };
 
   return (
-    <div className="sm-scan">
-      <label htmlFor={id}>{t('scan.label')}</label>
+    <div className={compact ? 'sm-scan sm-scan-compact' : 'sm-scan'}>
+      <label htmlFor={id} className={compact ? 'sm-sr-only' : undefined}>
+        {t('scan.label')}
+      </label>
       <IconField iconPosition="left">
         <InputIcon className={busy ? 'pi pi-spin pi-spinner' : 'pi pi-barcode'} />
         <InputText

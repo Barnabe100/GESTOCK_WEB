@@ -319,7 +319,6 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
           />
         </FormField>
       )}
-      {counting && <BarcodeScanField id="inventory-scan" onScan={onScan} />}
       <FilterBar
         onReset={() => {
           setSearch('');
@@ -354,6 +353,8 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
             aria-label={t('inventories.lineState')}
           />
         )}
+        {/* Lot 3-D : à côté de « Réinitialiser » — aucune ligne de plus sur mobile. */}
+        {counting && <BarcodeScanField id="inventory-scan" onScan={onScan} compact />}
       </FilterBar>
       <div className={counting ? 'sm-count-table' : undefined}>
         <ServerTable

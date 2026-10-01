@@ -2050,3 +2050,8 @@ a {
   gap: var(--sm-space-1);
   max-width: 28rem;
 }
+
+.sm-scan-compact {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
