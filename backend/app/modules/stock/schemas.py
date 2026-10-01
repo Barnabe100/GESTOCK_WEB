@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.modules.stock.level_service import LevelState
 from app.modules.stock.models import DocumentStatus, EntryKind, MovementType
 from app.shared.schemas import Money, PositiveQuantity, Quantity, SignedQuantity, UnitCost
-from app.shared.text import Optional100, Optional150, Optional500, Required150
+from app.shared.text import Optional100, Optional150, Optional500, Required100, Required150
 
 # --- Motifs de sortie ---------------------------------------------------------------------------
 
@@ -106,6 +106,9 @@ class LineOut(BaseModel):
     packaging_name: str | None = None
     packaging_conversion: Quantity | None = None
     base_quantity: Quantity
+    # Lot 3-F (entrées, sorties) : emplacement COURANT de l'article sur le site du document,
+    # à titre indicatif — jamais figé dans le document.
+    location_name: str | None = None
 
 
 class DocumentOut(BaseModel):
@@ -241,6 +244,10 @@ class LevelOut(BaseModel):
     min_override: Quantity | None
     max_override: Quantity | None
     state: LevelState
+    # Lot 3-F : emplacement COURANT de l'article sur ce site (nul : non rangé).
+    location_id: uuid.UUID | None = None
+    location_name: str | None = None
+    location_active: bool | None = None
 
 
 class ThresholdInput(BaseModel):
@@ -278,3 +285,37 @@ class SupplierArticleOut(BaseModel):
     last_entry_id: uuid.UUID
     last_entry_number: str
     last_unit_cost: UnitCost
+
+
+# --- Emplacements physiques par site (Lot 3-F, ADR-0044) ----------------------------------------
+
+
+class LocationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    site_id: uuid.UUID
+    site_name: str
+    name: str
+    is_active: bool
+    # Articles dont c'est l'emplacement courant sur ce site.
+    article_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class LocationCreate(BaseModel):
+    """``site_id`` facultatif si un site est sélectionné (``X-Site-Id``)."""
+
+    site_id: uuid.UUID | None = None
+    name: Required100
+
+
+class LocationRename(BaseModel):
+    name: Required100
+
+
+class LocationAssign(BaseModel):
+    """Emplacement courant de l'article sur le site ; ``null`` = non rangé."""
+
+    location_id: uuid.UUID | None = None

@@ -44,7 +44,7 @@ ultérieure.
 | ART-05 | Fournisseur principal optionnel. | ✅ (si le module `suppliers` est actif) |
 | ART-06 | Prix d'achat par défaut ≥ 0, prix de vente ≥ 0 (montants `Decimal`). | ✅ `NUMERIC(18,2)` |
 | ART-07 | Stock minimum ≥ 0 ; stock maximum vide ou ≥ 0 **et ≥ stock minimum** (contraintes en base). | ✅ seuils par défaut de l'article (voir Q2) |
-| ART-08 | Emplacement (100), description (1000) optionnels. | 🔄 description ✅ ; emplacement ⏭ **par site** (§2) |
+| ART-08 | Emplacement (100), description (1000) optionnels. | 🔄 description ✅ ; emplacement ✅ **par site** (Lot 3-F, §14) |
 | ART-09 | Code-barres optionnel (50), **unique parmi les articles actifs** (un article désactivé peut conserver un code repris par un article actif). | 🔄 idem, par tenant (index unique partiel) |
 | ART-10 | À la création ou au changement : catégorie et fournisseur doivent être **actifs** ; une association existante devenue inactive est conservée tant qu'elle n'est pas changée. | ✅ |
 | ART-11 | **Stock actuel et CMUP ne sont jamais modifiables via l'article** : seules les opérations de stock tracées les font évoluer. | ✅ (ils ne sont même plus sur l'article : §2) |
@@ -393,3 +393,19 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Recherche / filtres | Entrées recherchées aussi par nom du fournisseur (comme le Desktop) ; filtre fournisseur dans les écrans Entrées et Articles. |
 | Droits | Aucune permission nouvelle : `suppliers.supplier.view`, `stock.entry.view` (portée des sites), `catalog.article.view`, `catalog.article.cost_view` (coûts absents sinon), `audit.log.view`. |
 | Hors périmètre | Contacts multiples, commandes, factures, paiements, dettes, retours fournisseurs, exports, lots, péremption. |
+
+## 14. Lot 3-F — emplacements physiques par site (ADR-0044)
+
+| Règle | Web |
+|---|---|
+| Modèle | Entité « Emplacement » d'UN site (`stock_locations`) ; un emplacement COURANT au plus par article et par site, facultatif (« Non rangé ») ; plusieurs articles par emplacement. Le même nom sur deux sites désigne deux emplacements. |
+| Desktop | Champ texte global `articles.emplacement` (100) : besoin repris, rattachement à l'article NON repris (multi-sites). |
+| Nom | 100 caractères, espaces de bord retirés, unique par site sans distinction de casse ; jamais supprimé (désactivation). |
+| Garanties | FK composite (tenant, site, emplacement) : l'emplacement d'un autre site est inaffectable en base ; article non géré en stock : aucun emplacement. |
+| Stock | Inchangé : aucune quantité par emplacement, aucun mouvement interne ; affecter un emplacement ne crée aucun niveau (état et alertes inchangés) ; rien n'est bloqué par un article non rangé. |
+| Désactivation | Plus affectable ; affectations existantes conservées (affichées « inactif »). |
+| Historique | Information courante seulement (aucun instantané dans les documents) ; changements audités (avant / après). |
+| Transferts | Aucune copie de l'emplacement vers le site de destination. |
+| Affichage | Niveaux de stock (colonne, recherche, filtre, tri), inventaires (tri par emplacement), entrées et sorties (indicatif), fiche article (vue par site). |
+| Droits | `stock.location.manage` (Administrateur, Gestionnaire) ; consultation `stock.level.view` ; portée des sites (lecture : sites visibles ; écriture : `operation_site`). |
+| Hors périmètre | WMS, stock par emplacement, picking, rangement guidé, palettes, zones hiérarchiques, codes-barres et étiquettes d'emplacement, lots, péremption. |

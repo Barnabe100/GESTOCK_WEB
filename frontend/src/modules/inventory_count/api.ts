@@ -87,6 +87,8 @@ export interface InventoryLine {
   count_unit_quantity?: string | null;
   /** Conditionnements actifs de l'article proposés à la saisie. */
   packagings?: { id: string; name: string; conversion: string }[];
+  /** Lot 3-F : emplacement COURANT de l'article sur le site (nul : non rangé). */
+  location_name?: string | null;
 }
 
 /** Comptage : en unité de base, OU conditionnements + unités en vrac (calcul serveur). */

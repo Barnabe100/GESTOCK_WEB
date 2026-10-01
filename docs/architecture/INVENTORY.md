@@ -159,7 +159,13 @@ présentation est présélectionnée et le champ de quantité prend le focus. **
 n'est jamais devinée** : si la présentation change, la saisie repart à vide. Article absent de
 l'inventaire : signalé, rien n'est compté.
 
-## 12. Hors périmètre (V1)
+## 12. Emplacements (Lot 3-F, [ADR-0044](../adr/0044-emplacements-par-site.md))
+
+Chaque ligne affiche l'emplacement COURANT de l'article sur le site de l'inventaire (« Non rangé »
+sinon) ; le tri `location` ordonne le parcours de comptage (non rangés en fin). Aucun instantané :
+l'emplacement n'influence ni le stock théorique, ni l'écart, ni la validation.
+
+## 13. Hors périmètre (V1)
 
 Application mobile native (scan : §11), import / export Excel, comptage multi-équipe,
 double comptage, circuit d'approbation, sessions de comptage simultanées sur un même article,

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, NotFoundError
 from app.modules.catalog.api import articles_view, barcode_search, get_article_refs
+from app.modules.stock.location_service import locations_view
 from app.modules.stock.models import StockLevel
 from app.modules.stock.stock_service import StockService, round_money
 from app.platform.audit.service import audit_action, changes
@@ -64,6 +65,10 @@ class LevelRow:
     min_override: Decimal | None
     max_override: Decimal | None
     state: LevelState
+    # Lot 3-F : emplacement courant de l'article sur le site (nul : non rangé).
+    location_id: uuid.UUID | None = None
+    location_name: str | None = None
+    location_active: bool | None = None
 
 
 def levels_view() -> Any:
@@ -88,6 +93,7 @@ def _levels_query(
     articles = articles_view()
     sites = select(Site.id, Site.name).where(Site.id.in_(site_ids)).subquery("s")
     level = StockLevel.__table__
+    locations = locations_view()
     quantity = func.coalesce(level.c.quantity, literal(Decimal("0")))
     min_eff = func.coalesce(level.c.min_stock, articles.c.min_stock)
     max_eff = func.coalesce(level.c.max_stock, articles.c.max_stock)
@@ -114,6 +120,9 @@ def _levels_query(
             level.c.min_stock.label("min_override"),
             level.c.max_stock.label("max_override"),
             state.label("state"),
+            locations.c.location_id,
+            locations.c.location_name,
+            locations.c.location_active,
         )
         .select_from(articles.join(sites, literal(True)))
         .outerjoin(
@@ -122,6 +131,15 @@ def _levels_query(
                 level.c.tenant_id == articles.c.tenant_id,
                 level.c.article_id == articles.c.id,
                 level.c.site_id == sites.c.id,
+            ),
+        )
+        # Lot 3-F : emplacement COURANT (indépendant de l'existence d'un niveau de stock).
+        .outerjoin(
+            locations,
+            and_(
+                locations.c.tenant_id == articles.c.tenant_id,
+                locations.c.article_id == articles.c.id,
+                locations.c.site_id == sites.c.id,
             ),
         )
         .where(articles.c.tenant_id == tenant_id)
@@ -133,6 +151,7 @@ def _levels_query(
         "quantity": quantity,
         "state": state,
         "category_id": articles.c.category_id,
+        "locations": locations,
     }
     return stmt, columns
 
@@ -163,6 +182,9 @@ def _to_row(row: Any) -> LevelRow:
         min_override=row.min_override,
         max_override=row.max_override,
         state=LevelState(row.state),
+        location_id=row.location_id,
+        location_name=row.location_name,
+        location_active=row.location_active,
     )
 
 
@@ -178,16 +200,29 @@ def list_levels(
     include_inactive: bool = False,
     article_ids: set[uuid.UUID] | None = None,
     include_unmanaged: bool = False,
+    location_id: uuid.UUID | None = None,
+    unlocated: bool = False,
 ) -> tuple[list[LevelRow], int]:
     stmt, cols = _levels_query(site_ids, tenant_id, include_unmanaged=include_unmanaged)
     articles = cols["articles"]
+    locations = cols["locations"]
     conditions = [
-        # Lot 3-D : aussi les codes supplémentaires et ceux des conditionnements.
+        # Lot 3-D : aussi les codes supplémentaires et ceux des conditionnements ; Lot 3-F :
+        # aussi le nom de l'emplacement courant sur le site.
         barcode_search(
             search,
-            search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
+            search_filter(
+                search,
+                articles.c.reference,
+                articles.c.designation,
+                articles.c.barcode,
+                locations.c.location_name,
+            ),
             articles.c.id,
         ),
+        # Lot 3-F : un emplacement précis, ou les articles « non rangés » du site.
+        locations.c.location_id == location_id if location_id else None,
+        locations.c.location_id.is_(None) if unlocated else None,
         # Articles précis (ex. stock disponible des lignes d'un transfert en saisie).
         articles.c.id.in_(article_ids) if article_ids else None,
         articles.c.category_id == category_id if category_id else None,
@@ -203,6 +238,8 @@ def list_levels(
         "category": text_sort(articles.c.category_name),
         "quantity": cols["quantity"],
         "site": text_sort(stmt.selected_columns.site_name),
+        # Lot 3-F : ordre croissant = non rangés en dernier (comportement de PostgreSQL).
+        "location": text_sort(locations.c.location_name),
     }
     stmt = apply_sort(stmt, params.sort, sortable, "reference", articles.c.id)
     rows, total = paginate_rows(db, stmt, params)

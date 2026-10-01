@@ -26,6 +26,10 @@ export interface StockLevel {
   min_override: string | null;
   max_override: string | null;
   state: LevelState;
+  /** Lot 3-F : emplacement COURANT de l'article sur ce site (nul : non rangé). */
+  location_id?: string | null;
+  location_name?: string | null;
+  location_active?: boolean | null;
 }
 
 export type MovementType =
@@ -91,6 +95,8 @@ export interface DocumentLine {
   packaging_name?: string | null;
   packaging_conversion?: string | null;
   base_quantity?: string;
+  /** Lot 3-F (entrées, sorties) : emplacement COURANT sur le site du document, indicatif. */
+  location_name?: string | null;
 }
 
 interface DocumentBase {
@@ -166,11 +172,12 @@ export const stockKeys = {
 
 // --- Niveaux et seuils --------------------------------------------------------------------------
 
-export function useStockLevels(query: string) {
+export function useStockLevels(query: string, enabled = true) {
   return useQuery({
     queryKey: [...stockKeys.levels, query],
     queryFn: ({ signal }) => api.get<Page<StockLevel>>(`/stock/levels?${query}`, signal),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -195,6 +202,82 @@ export function useSetThresholds() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: stockKeys.levels });
       void qc.invalidateQueries({ queryKey: ['alerts'] });
+    },
+  });
+}
+
+// --- Emplacements physiques par site (Lot 3-F) -------------------------------------------------
+
+export const LOCATION_MANAGE = 'stock.location.manage';
+
+export interface StockLocation {
+  id: string;
+  site_id: string;
+  site_name: string;
+  name: string;
+  is_active: boolean;
+  /** Articles dont c'est l'emplacement courant sur ce site. */
+  article_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const locationKeys = { all: ['stock', 'locations'] as const };
+
+export function useStockLocations(query: string, enabled = true) {
+  return useQuery({
+    queryKey: [...locationKeys.all, query],
+    queryFn: ({ signal }) => api.get<Page<StockLocation>>(`/stock/locations?${query}`, signal),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** Création, renommage, activation : rafraîchit emplacements et niveaux (noms affichés). */
+export function useLocationMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: locationKeys.all });
+    void qc.invalidateQueries({ queryKey: stockKeys.levels });
+  };
+  return {
+    create: useMutation({
+      mutationFn: (input: { site_id: string | null; name: string }) =>
+        api.post<StockLocation>('/stock/locations', input),
+      onSuccess,
+    }),
+    rename: useMutation({
+      mutationFn: ({ id, name }: { id: string; name: string }) =>
+        api.patch<StockLocation>(`/stock/locations/${id}`, { name }),
+      onSuccess,
+    }),
+    setActive: useMutation({
+      mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+        api.post<StockLocation>(`/stock/locations/${id}/${active ? 'activate' : 'deactivate'}`),
+      onSuccess,
+    }),
+  };
+}
+
+/** Emplacement courant d'un article sur un site (`null` : non rangé). */
+export function useAssignLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      siteId,
+      articleId,
+      locationId,
+    }: {
+      siteId: string;
+      articleId: string;
+      locationId: string | null;
+    }) =>
+      api.put<StockLevel>(`/stock/levels/${siteId}/${articleId}/location`, {
+        location_id: locationId,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: stockKeys.all });
+      void qc.invalidateQueries({ queryKey: ['inventories'] });
     },
   });
 }

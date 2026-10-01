@@ -78,6 +78,7 @@ from app.modules.stock.api import (
     StockService,
     ensure_document_site,
     levels_view,
+    locations_view,
     operation_site,
     refuse_unmanaged,
     round_money,
@@ -214,6 +215,7 @@ class InventoryService:
         """Lignes + article + niveau courant du site, en une requête (aucun N+1)."""
         articles = articles_view()
         levels = levels_view()
+        locations = locations_view()
         line = InventoryLine.__table__.c
         current = func.coalesce(levels.c.quantity, literal(ZERO_QTY))
         current_cost = func.coalesce(levels.c.average_cost, literal(ZERO_COST))
@@ -247,6 +249,7 @@ class InventoryService:
                 line.count_packaging_conversion,
                 line.count_packaging_quantity,
                 line.count_unit_quantity,
+                locations.c.location_name,
             )
             .select_from(InventoryLine.__table__)
             .join(
@@ -264,9 +267,24 @@ class InventoryService:
                     levels.c.site_id == inventory.site_id,
                 ),
             )
+            # Lot 3-F : emplacement COURANT de l'article sur le site (parcours de comptage).
+            .outerjoin(
+                locations,
+                and_(
+                    locations.c.tenant_id == line.tenant_id,
+                    locations.c.article_id == line.article_id,
+                    locations.c.site_id == inventory.site_id,
+                ),
+            )
             .where(line.inventory_id == inventory.id)
         )
-        return stmt, {"articles": articles, "variance": variance, "value": value, "line": line}
+        return stmt, {
+            "articles": articles,
+            "variance": variance,
+            "value": value,
+            "line": line,
+            "locations": locations,
+        }
 
     def lines(
         self,
@@ -301,6 +319,9 @@ class InventoryService:
             "category": text_sort(articles.c.category_name),
             "variance": variance,
             "counted_at": line.counted_at,
+            # Lot 3-F : parcours de comptage par emplacement (non rangés en dernier en ordre
+            # croissant).
+            "location": text_sort(cols["locations"].c.location_name),
         }
         stmt = apply_sort(stmt, params.sort, sortable, "reference", line.id)
         rows, total = paginate_rows(self.db, stmt, params)
@@ -345,6 +366,7 @@ class InventoryService:
                     count_packaging_conversion=r.count_packaging_conversion,
                     count_packaging_quantity=r.count_packaging_quantity,
                     count_unit_quantity=r.count_unit_quantity,
+                    location_name=r.location_name,
                     packagings=[
                         CountPackagingOut(id=p.id, name=p.name, conversion=p.conversion)
                         for p in packagings.get(r.article_id, [])

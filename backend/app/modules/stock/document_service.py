@@ -26,6 +26,7 @@ from app.modules.catalog.api import (
     ensure_conversion_unchanged,
     get_article_refs,
 )
+from app.modules.stock.location_service import current_locations
 from app.modules.stock.models import (
     DocumentStatus,
     EntryKind,
@@ -340,7 +341,21 @@ class _DocumentService(Generic[Doc]):
 
     # --- Sortie API -----------------------------------------------------------------------------
 
-    def _line_out(self, line: Any, refs: dict[uuid.UUID, ArticleRef]) -> LineOut:
+    def _lines_out(self, document: Doc, refs: dict[uuid.UUID, ArticleRef]) -> list[LineOut]:
+        """Lignes d'un document, avec l'emplacement COURANT de chaque article sur le site du
+        document (Lot 3-F : indicatif, jamais figé ni contrôlé)."""
+        lines = document.lines
+        locations = current_locations(
+            self.db, document.site_id, {line.article_id for line in lines}
+        )
+        return [self._line_out(line, refs, locations.get(line.article_id)) for line in lines]
+
+    def _line_out(
+        self,
+        line: Any,
+        refs: dict[uuid.UUID, ArticleRef],
+        location: tuple[str, bool] | None = None,
+    ) -> LineOut:
         ref = refs.get(line.article_id)
         return LineOut(
             id=line.id,
@@ -356,6 +371,7 @@ class _DocumentService(Generic[Doc]):
             packaging_name=line.packaging_name,
             packaging_conversion=line.packaging_conversion,
             base_quantity=line.base_quantity,
+            location_name=location[0] if location else None,
         )
 
     def _common(self, documents: Sequence[Doc]) -> dict[str, dict[Any, str]]:
@@ -524,7 +540,7 @@ class EntryService(_DocumentService[StockEntry]):
                 supplier_id=entry.supplier_id,
                 supplier_name=suppliers.get(entry.supplier_id) if entry.supplier_id else None,
                 document_reference=entry.document_reference,
-                lines=[self._line_out(line, refs) for line in entry.lines] if with_lines else [],
+                lines=self._lines_out(entry, refs) if with_lines else [],
             )
             for entry in entries
         ]
@@ -651,7 +667,7 @@ class ExitService(_DocumentService[StockExit]):
                 reason_label=reasons.get(document.reason_id, ""),
                 beneficiary=document.beneficiary,
                 reference=document.reference,
-                lines=[self._line_out(line, refs) for line in document.lines] if with_lines else [],
+                lines=self._lines_out(document, refs) if with_lines else [],
             )
             for document in documents
         ]

@@ -165,6 +165,8 @@ class InventoryLineOut(BaseModel):
     count_packaging_conversion: Quantity | None = None
     count_packaging_quantity: Quantity | None = None
     count_unit_quantity: Quantity | None = None
+    # Lot 3-F : emplacement COURANT de l'article sur le site (nul : non rangé), jamais figé.
+    location_name: str | None = None
     packagings: list[CountPackagingOut] = Field(default_factory=list)
 
 

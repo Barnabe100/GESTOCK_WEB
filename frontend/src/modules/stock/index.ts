@@ -14,6 +14,14 @@ export const stockModule: FrontendModule = {
       permission: 'stock.level.view',
     },
     {
+      key: 'stock-locations',
+      labelKey: 'nav.stockLocations',
+      group: 'stock',
+      icon: 'pi pi-map-marker',
+      path: '/stock/locations',
+      permission: 'stock.level.view',
+    },
+    {
       key: 'stock-entries',
       labelKey: 'nav.stockEntries',
       group: 'stock',
@@ -59,6 +67,11 @@ export const stockModule: FrontendModule = {
     {
       path: 'stock/levels',
       component: lazy(() => import('./StockLevelsPage')),
+      permission: 'stock.level.view',
+    },
+    {
+      path: 'stock/locations',
+      component: lazy(() => import('./LocationsPage')),
       permission: 'stock.level.view',
     },
     {

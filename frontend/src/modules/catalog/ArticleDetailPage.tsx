@@ -1,7 +1,7 @@
 import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Column } from 'primereact/column';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 
@@ -28,6 +28,9 @@ import {
 import { ArticleDialog } from './ArticleDialog';
 import { BarcodesSection } from './BarcodesSection';
 import { PackagingsSection } from './PackagingsSection';
+
+// Lot 3-F : stock et emplacement par site (module Stock), chargé seulement si autorisé.
+const ArticleSitesPanel = lazy(() => import('@/modules/stock/ArticleSitesPanel'));
 
 /**
  * Historique des prix (Lot 3-A) : entrées du journal d'audit existant, servies par le serveur
@@ -83,7 +86,7 @@ function PriceHistory({ article }: { article: Article }) {
 export default function ArticleDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams();
-  const { can, capabilities } = useCapabilities();
+  const { can, capabilities, hasModule } = useCapabilities();
   const article = useArticle(id);
   const [editing, setEditing] = useState(false);
   const { currency, locale, timezone } = capabilities.tenant;
@@ -166,6 +169,11 @@ export default function ArticleDetailPage() {
           </p>
         </Card>
       </div>
+      {a.stock_managed && hasModule('stock') && can('stock.level.view') && (
+        <Suspense fallback={<LoadingState />}>
+          <ArticleSitesPanel articleId={a.id} reference={a.reference} />
+        </Suspense>
+      )}
       <PackagingsSection article={a} />
       <BarcodesSection article={a} />
       {(can(PRICE_UPDATE) || can('audit.log.view')) && <PriceHistory article={a} />}

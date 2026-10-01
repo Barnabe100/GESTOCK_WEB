@@ -25,6 +25,7 @@ import { COST_VIEW, type ScanResult } from '@/modules/catalog/api';
 import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 
 import { QuantityEquivalence } from '@/modules/catalog/PresentationField';
+import { LocationLabel } from '@/modules/stock/LocationAssignDialog';
 import { toBase } from '@/shared/lib/presentation';
 
 import {
@@ -385,6 +386,13 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
                 {!l.article_active && <StatusBadge tone="neutral" label={t('common.inactive')} />}
               </div>
             )}
+          />
+          {/* Lot 3-F : emplacement courant ; tri = parcours de comptage (non rangés en fin). */}
+          <Column
+            header={t('locations.location')}
+            sortField="location"
+            sortable
+            body={(l: InventoryLine) => <LocationLabel name={l.location_name} />}
           />
           <Column
             header={t('inventories.stockTheoretical')}

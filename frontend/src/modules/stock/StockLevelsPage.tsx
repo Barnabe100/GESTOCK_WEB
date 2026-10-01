@@ -31,7 +31,15 @@ import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
 import { COST_VIEW } from '@/modules/catalog/api';
 
-import { useSetThresholds, useStockLevels, type LevelStateFilter, type StockLevel } from './api';
+import {
+  LOCATION_MANAGE,
+  useSetThresholds,
+  useStockLevels,
+  useStockLocations,
+  type LevelStateFilter,
+  type StockLevel,
+} from './api';
+import { LocationAssignDialog, LocationLabel } from './LocationAssignDialog';
 import { LevelStateTag, thresholdText } from './ui';
 
 const STATE_FILTERS: LevelStateFilter[] = ['all', 'alerts', 'out', 'low', 'ok', 'not_stocked'];
@@ -43,6 +51,9 @@ const schema = z.object({ min_stock: optionalQuantity, max_stock: optionalQuanti
 type FormValues = z.infer<typeof schema>;
 
 /** Surcharges de seuils du site ; vide = seuil par défaut de l'article (Q2). */
+/** Valeur du filtre d'emplacement : articles sans emplacement sur le site. */
+const UNLOCATED = '__unlocated__';
+
 function ThresholdDialog({ level, onClose }: { level: StockLevel; onClose: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -121,6 +132,9 @@ export default function StockLevelsPage() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [editing, setEditing] = useState<StockLevel | null>(null);
+  // Lot 3-F : emplacement (filtre : un emplacement précis ou « non rangés »).
+  const [locating, setLocating] = useState<StockLevel | null>(null);
+  const [locationFilter, setLocationFilter] = useState<string | null>(null);
   const debounced = useDebouncedValue(search);
   const showCategories = can('catalog.category.view');
   const categories = useCategories('limit=200&status=active&sort=name', showCategories);
@@ -130,6 +144,8 @@ export default function StockLevelsPage() {
       state,
       category_id: categoryId,
       include_inactive: includeInactive ? 'true' : null,
+      location_id: locationFilter && locationFilter !== UNLOCATED ? locationFilter : null,
+      unlocated: locationFilter === UNLOCATED ? 'true' : null,
     }),
   );
   const { currency, locale } = capabilities.tenant;
@@ -137,11 +153,25 @@ export default function StockLevelsPage() {
   const costs = can(COST_VIEW);
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
   const canManage = can('stock.threshold.manage');
-
+  const canLocate = can(LOCATION_MANAGE);
+  const locations = useStockLocations('limit=200&sort=name');
+  const locationOptions = [
+    { value: UNLOCATED, label: t('locations.unlocatedFilter') },
+    ...(locations.data?.items ?? []).map((l) => ({
+      value: l.id,
+      label: showSite ? `${l.name} — ${l.site_name}` : l.name,
+    })),
+  ];
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
-  const filtered = search !== '' || state !== 'all' || categoryId !== null || includeInactive;
+  const filtered =
+    search !== '' ||
+    state !== 'all' ||
+    categoryId !== null ||
+    includeInactive ||
+    locationFilter !== null;
   const resetFilters = () => {
     setSearch('');
+    setLocationFilter(null);
     setState('all');
     setCategoryId(null);
     setIncludeInactive(false);
@@ -181,6 +211,18 @@ export default function StockLevelsPage() {
           }}
           options={STATE_FILTERS.map((v) => ({ value: v, label: t(`stock.stateFilter.${v}`) }))}
           aria-label={t('stock.state')}
+        />
+        <Dropdown
+          value={locationFilter}
+          onChange={(e) => {
+            setLocationFilter((e.value as string | undefined) ?? null);
+            resetPage();
+          }}
+          options={locationOptions}
+          placeholder={t('locations.allLocations')}
+          showClear
+          filter
+          aria-label={t('locations.location')}
         />
         <div className="sm-checkbox">
           <Checkbox
@@ -259,20 +301,36 @@ export default function StockLevelsPage() {
           }
         />
         <Column
+          header={t('locations.location')}
+          sortField="location"
+          sortable
+          body={(l: StockLevel) => (
+            <LocationLabel name={l.location_name} active={l.location_active} />
+          )}
+        />
+        <Column
           header={t('stock.state')}
           body={(l: StockLevel) => <LevelStateTag state={l.state} />}
         />
-        {canManage && (
+        {(canManage || canLocate) && (
           <Column
             header={t('common.actions')}
             body={(l: StockLevel) => (
               <RowActions
                 actions={[
                   {
+                    key: 'location',
+                    label: t('locations.assign'),
+                    icon: 'pi pi-map-marker',
+                    onClick: () => setLocating(l),
+                    hidden: !canLocate,
+                  },
+                  {
                     key: 'thresholds',
                     label: t('stock.editThresholds'),
                     icon: 'pi pi-sliders-h',
                     onClick: () => setEditing(l),
+                    hidden: !canManage,
                   },
                 ]}
               />
@@ -282,6 +340,17 @@ export default function StockLevelsPage() {
       </ServerTable>
       <small className="sm-help">{t('stock.overrideLegend')}</small>
       {editing && <ThresholdDialog level={editing} onClose={() => setEditing(null)} />}
+      {locating && (
+        <LocationAssignDialog
+          siteId={locating.site_id}
+          siteName={locating.site_name}
+          articleId={locating.article_id}
+          articleLabel={locating.reference}
+          currentId={locating.location_id ?? null}
+          currentName={locating.location_name}
+          onClose={() => setLocating(null)}
+        />
+      )}
     </>
   );
 }

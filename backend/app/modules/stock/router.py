@@ -11,6 +11,7 @@ from app.modules.stock.level_service import (
     get_level,
     list_levels,
 )
+from app.modules.stock.location_service import LocationService
 from app.modules.stock.models import (
     DocumentStatus,
     EntryKind,
@@ -31,6 +32,10 @@ from app.modules.stock.schemas import (
     ExitReasonInput,
     ExitReasonOut,
     LevelOut,
+    LocationAssign,
+    LocationCreate,
+    LocationOut,
+    LocationRename,
     MovementOut,
     SupplierArticleOut,
     SupplierSummaryOut,
@@ -283,6 +288,7 @@ def cancel_exit(
 
 LevelView = Annotated[RequestContext, Depends(require_permission("stock.level.view"))]
 ThresholdManage = Annotated[RequestContext, Depends(require_permission("stock.threshold.manage"))]
+LocationManage = Annotated[RequestContext, Depends(require_permission("stock.location.manage"))]
 MovementView = Annotated[RequestContext, Depends(require_permission("stock.movement.view"))]
 
 
@@ -297,6 +303,8 @@ def list_stock_levels(
     state: StateFilter = StateFilter.ALL,
     include_inactive: bool = False,
     article_id: Annotated[list[uuid.UUID] | None, Query()] = None,
+    location_id: uuid.UUID | None = None,
+    unlocated: bool = False,
 ) -> Page[LevelOut]:
     rows, total = list_levels(
         db,
@@ -308,6 +316,8 @@ def list_stock_levels(
         state=state,
         include_inactive=include_inactive,
         article_ids=set(article_id) if article_id else None,
+        location_id=location_id,
+        unlocated=unlocated,
     )
     return Page(
         items=[LevelOut.model_validate(r) for r in rows],
@@ -333,6 +343,77 @@ def set_stock_thresholds(
     )
     db.commit()
     return LevelOut.model_validate(get_level(db, ctx.tenant_id, site, article_id))
+
+
+@router.put("/levels/{site_id}/{article_id}/location", response_model=LevelOut)
+def set_article_location(
+    site_id: uuid.UUID,
+    article_id: uuid.UUID,
+    body: LocationAssign,
+    ctx: LocationManage,
+    db: DbSession,
+) -> LevelOut:
+    """Lot 3-F : emplacement COURANT de l'article sur le site (``null`` : non rangé) ; un
+    emplacement actif du MÊME site ; aucun effet sur le stock ni sur son état."""
+    LocationService(db, ctx).assign(site_id, article_id, body.location_id)
+    db.commit()
+    return LevelOut.model_validate(get_level(db, ctx.tenant_id, site_id, article_id))
+
+
+# --- Emplacements physiques par site (Lot 3-F, ADR-0044) ---------------------------------------
+
+
+@router.get("/locations", response_model=Page[LocationOut])
+def list_locations(
+    ctx: LevelView,
+    db: DbSession,
+    paging: Paging,
+    search: str | None = None,
+    site_id: uuid.UUID | None = None,
+    status_filter: StatusParam = StatusFilter.ALL,
+) -> Page[LocationOut]:
+    """Emplacements des sites visibles du membre (``site_id`` : un seul d'entre eux)."""
+    rows, total = LocationService(db, ctx).search(paging, search, status_filter, site_id)
+    return Page(
+        items=[LocationOut.model_validate(r) for r in rows],
+        total=total,
+        limit=paging.limit,
+        offset=paging.offset,
+    )
+
+
+@router.post("/locations", response_model=LocationOut, status_code=status.HTTP_201_CREATED)
+def create_location(body: LocationCreate, ctx: LocationManage, db: DbSession) -> LocationOut:
+    service = LocationService(db, ctx)
+    location = service.create(body.site_id, body.name)
+    db.commit()
+    return LocationOut.model_validate(service.row(location.id))
+
+
+@router.patch("/locations/{location_id}", response_model=LocationOut)
+def rename_location(
+    location_id: uuid.UUID, body: LocationRename, ctx: LocationManage, db: DbSession
+) -> LocationOut:
+    service = LocationService(db, ctx)
+    service.rename(location_id, body.name)
+    db.commit()
+    return LocationOut.model_validate(service.row(location_id))
+
+
+@router.post("/locations/{location_id}/activate", response_model=LocationOut)
+def activate_location(location_id: uuid.UUID, ctx: LocationManage, db: DbSession) -> LocationOut:
+    service = LocationService(db, ctx)
+    service.set_active(location_id, True)
+    db.commit()
+    return LocationOut.model_validate(service.row(location_id))
+
+
+@router.post("/locations/{location_id}/deactivate", response_model=LocationOut)
+def deactivate_location(location_id: uuid.UUID, ctx: LocationManage, db: DbSession) -> LocationOut:
+    service = LocationService(db, ctx)
+    service.set_active(location_id, False)
+    db.commit()
+    return LocationOut.model_validate(service.row(location_id))
 
 
 # --- Journal des mouvements ------------------------------------------------------------------

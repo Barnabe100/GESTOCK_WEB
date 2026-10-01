@@ -132,6 +132,59 @@ class StockLevel(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     max_stock: Mapped[Decimal | None] = mapped_column(QUANTITY)
 
 
+# --- Emplacements physiques par site (Lot 3-F, ADR-0044) ---------------------------------------
+
+
+class StockLocation(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Emplacement physique d'un site (rayon, étagère, réserve…). Appartient TOUJOURS à un
+    site : un même nom sur deux sites désigne deux emplacements distincts. Jamais supprimé
+    (désactivation) ; un emplacement inactif n'est plus affectable."""
+
+    __tablename__ = "stock_locations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        # Cible de la FK composite des affectations : l'emplacement d'un autre site est
+        # techniquement inaffectable.
+        UniqueConstraint("tenant_id", "site_id", "id"),
+        _site_fk(),
+        # Nom unique par site, insensible à la casse (actifs et inactifs).
+        Index(
+            "uq_stock_locations_site_name",
+            "tenant_id",
+            "site_id",
+            func.lower(text("name")),
+            unique=True,
+        ),
+        CheckConstraint("btrim(name) = name AND name <> ''", name="name_trimmed"),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class StockArticleLocation(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Emplacement COURANT d'un article sur un site (au plus un, facultatif). Information de
+    localisation seulement : le stock reste tenu par (site, article) dans ``stock_levels`` ;
+    aucune quantité par emplacement. Aucun instantané dans les documents (décision D8)."""
+
+    __tablename__ = "stock_article_locations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "site_id", "article_id"),
+        _site_fk(),
+        _article_fk(),
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id", "location_id"],
+            ["stock_locations.tenant_id", "stock_locations.site_id", "stock_locations.id"],
+            ondelete="RESTRICT",
+        ),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+
+
 # --- Journal des mouvements --------------------------------------------------------------------
 
 

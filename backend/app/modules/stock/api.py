@@ -10,6 +10,7 @@ from app.modules.stock.level_service import (
     levels_view,
     list_levels,
 )
+from app.modules.stock.location_service import locations_view
 from app.modules.stock.models import MovementType
 from app.modules.stock.schemas import LevelOut
 from app.modules.stock.sites import (
@@ -50,4 +51,5 @@ __all__ = [
     "count_alerts",
     "levels_view",
     "list_levels",
+    "locations_view",
 ]

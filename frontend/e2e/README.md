@@ -203,6 +203,13 @@ la suite peut être rejouée sur la même base.
   fournisseur principal, modification puis chronologie, recherche des entrées par nom et filtre
   fournisseur, membre sans `cost_view` (ni total ni dernier coût, interface et API), fournisseur
   d'une autre entreprise introuvable, affichage mobile.
+- `locations-3f.e2e.ts` (Lot 3-F, ADR-0044) : entreprise créée pour l'exécution (boutique et
+  dépôt, seconde entreprise pour l'isolation) ; emplacements créés par l'interface (site choisi,
+  nom déjà pris refusé, même nom sur le dépôt accepté) ; affectation depuis les niveaux de stock
+  (deux articles au même emplacement, filtre « Non rangés ») ; inventaire trié par emplacement ;
+  entrée affichant l'emplacement courant ; fiche article par site, transfert sans copie,
+  affectation au dépôt limitée à ses emplacements ; désactivation (affectation conservée, plus
+  affectable) ; membre limité à la boutique ; affichage mobile.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

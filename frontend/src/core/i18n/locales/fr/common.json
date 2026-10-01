@@ -93,7 +93,8 @@
     "cashJournal": "Journal de caisse",
     "pos": "Point de vente",
     "onboarding": "Installation",
-    "paymentMethods": "Moyens de paiement"
+    "paymentMethods": "Moyens de paiement",
+    "stockLocations": "Emplacements"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -1786,5 +1787,34 @@
     "found": "Identifié : {{article}} ({{presentation}})",
     "unknown": "Code-barres inconnu : {{code}}",
     "notStockManaged": "{{article}} n'est pas géré en stock : il ne peut pas figurer dans cette opération."
+  },
+  "locations": {
+    "title": "Emplacements",
+    "subtitle": "Emplacements physiques de chaque site (rayon, étagère, réserve…) : où se trouve un article dans le site.",
+    "new": "Nouvel emplacement",
+    "rename": "Renommer",
+    "name": "Nom de l'emplacement",
+    "nameHelp": "Unique sur le site (sans distinction de majuscules). Un même nom sur un autre site désigne un autre emplacement.",
+    "search": "Nom de l'emplacement…",
+    "empty": "Aucun emplacement pour le moment.",
+    "articleCount": "Articles rangés",
+    "status": "Statut",
+    "created": "Emplacement « {{name}} » créé",
+    "renamed": "Emplacement renommé",
+    "statusChanged": "Statut mis à jour",
+    "deactivateTitle": "Désactiver l'emplacement",
+    "deactivateConfirm": "Désactiver l'emplacement « {{name}} » ? Il ne pourra plus être affecté à un article ; les articles qui y sont rangés le conservent.",
+    "location": "Emplacement",
+    "unlocated": "Non rangé",
+    "unlocatedFilter": "Non rangés",
+    "allLocations": "Tous les emplacements",
+    "assign": "Emplacement",
+    "assignTitle": "Emplacement",
+    "assignHelp": "Emplacement de l'article sur ce site uniquement ; facultatif. Aucun effet sur le stock.",
+    "assigned": "Emplacement enregistré",
+    "noneOnSite": "Aucun emplacement actif sur ce site",
+    "perSite": "Stock et emplacement par site",
+    "perSiteHelp": "Chaque site a son propre emplacement pour cet article (sites accessibles seulement).",
+    "noSite": "Aucun site accessible."
   }
 }

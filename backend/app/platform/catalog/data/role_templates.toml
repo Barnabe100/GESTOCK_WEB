@@ -15,7 +15,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -26,7 +26,7 @@ permissions = [
   "receivables.receivable.view",
   "cash_register.*",
   "pos.*",
-  "stock.level.view", "stock.threshold.manage",
+  "stock.level.view", "stock.threshold.manage", "stock.location.manage",
   "stock.movement.view",
   "stock.entry.view", "stock.entry.create", "stock.entry.update", "stock.entry.validate",
   "stock.exit.view", "stock.exit.create", "stock.exit.update", "stock.exit.validate",

@@ -20,6 +20,8 @@ MANIFEST = ModuleManifest(
     permissions=(
         PermissionDef("stock.level.view", R),
         PermissionDef("stock.threshold.manage", W),
+        # Lot 3-F (ADR-0044) : emplacements d'un site et emplacement des articles.
+        PermissionDef("stock.location.manage", W),
         PermissionDef("stock.movement.view", R),
         PermissionDef("stock.entry.view", R),
         PermissionDef("stock.entry.create", W),

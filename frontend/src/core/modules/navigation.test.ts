@@ -150,8 +150,9 @@ describe('navigation pilotée par le profil UX', () => {
     expect(sections).toEqual([
       ['home', ['dashboard']],
       ['sales', ['sales']],
-      // Historique des transferts consultable sans la fonctionnalité (aucune `feature`).
-      ['stock', ['stock-levels', 'stock-transfers']],
+      // Historique des transferts consultable sans la fonctionnalité (aucune `feature`) ;
+      // emplacements (Lot 3-F) consultables avec `stock.level.view`.
+      ['stock', ['stock-levels', 'stock-locations', 'stock-transfers']],
     ]);
   });
 

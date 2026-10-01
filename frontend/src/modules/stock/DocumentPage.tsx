@@ -46,6 +46,7 @@ import { PresentationField } from '@/modules/catalog/PresentationField';
 import { formatPresented, type PresentationPackaging } from '@/shared/lib/presentation';
 
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
+import { ArticleLocationHint, LocationLabel } from './LocationAssignDialog';
 import { stockError } from './ui';
 
 const OPTIONS_QUERY = 'limit=200&status=active&sort=name';
@@ -227,6 +228,11 @@ function DocumentSummary({ kind, document }: { kind: DocumentKind; document: Sto
           header={t('stock.article')}
           body={(l: DocumentLine) => `${l.article_reference} — ${l.article_designation}`}
         />
+        {/* Lot 3-F : emplacement COURANT sur le site du document (indicatif, jamais figé). */}
+        <Column
+          header={t('locations.location')}
+          body={(l: DocumentLine) => <LocationLabel name={l.location_name} />}
+        />
         <Column
           header={t('stock.quantity')}
           body={(l: DocumentLine) =>
@@ -328,6 +334,9 @@ function DocumentForm({
   const errors = form.formState.errors;
   const entryKind = useWatch({ control: form.control, name: 'entry_kind' });
   const watchedLines = useWatch({ control: form.control, name: 'lines' });
+  // Lot 3-F : emplacement courant des articles sur le site du document (aide à la saisie).
+  const watchedSite = useWatch({ control: form.control, name: 'site_id' });
+  const hintSite = document?.site_id ?? watchedSite ?? null;
   const { locale } = capabilities.tenant;
 
   const showSuppliers =
@@ -556,6 +565,9 @@ function DocumentForm({
                   )}
                 />
               </FormField>
+              {article && hintSite && (
+                <ArticleLocationHint siteId={hintSite} articleId={article.id} />
+              )}
               {article && (
                 <FormField id={`line-${index}-packaging`} label={t('presentation.label')}>
                   <Controller

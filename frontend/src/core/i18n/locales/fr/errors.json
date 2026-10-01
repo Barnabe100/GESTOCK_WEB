@@ -211,5 +211,9 @@
   "packaging_conversion_changed": "La conversion du conditionnement a changé ({{articles}}) : enregistrez à nouveau l'opération.",
   "barcode_taken": "Ce code-barres est déjà utilisé par un élément actif ({{codes}}).",
   "barcode_not_found": "Code-barres introuvable.",
-  "barcode_primary": "Le code-barres principal se modifie sur la fiche de l'article."
+  "barcode_primary": "Le code-barres principal se modifie sur la fiche de l'article.",
+  "stock_location_name_taken": "Un emplacement de ce nom existe déjà sur ce site.",
+  "stock_location_not_found": "Emplacement introuvable.",
+  "stock_location_other_site": "Cet emplacement appartient à un autre site.",
+  "stock_location_inactive": "Cet emplacement est inactif : il ne peut plus être affecté."
 }
