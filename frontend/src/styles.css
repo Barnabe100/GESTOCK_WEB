@@ -1251,9 +1251,18 @@ a {
   height: 0.5rem;
 }
 
+/* Lot 3-F : information déplacée dans une autre cellule sur petit écran (voir .sm-hide-sm). */
+.sm-show-sm {
+  display: none;
+}
+
 @media (max-width: 800px) {
   .p-datatable .sm-hide-sm {
     display: none;
+  }
+
+  .sm-show-sm {
+    display: block;
   }
 
   .sm-count-input.p-inputtext {

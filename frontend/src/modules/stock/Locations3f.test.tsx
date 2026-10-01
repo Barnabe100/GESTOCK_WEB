@@ -200,9 +200,10 @@ describe('emplacements par site (Lot 3-F)', () => {
       route: '/inventories/i1',
     });
     const header = await screen.findByRole('columnheader', { name: /Emplacement/ });
-    expect(await screen.findByText('Rayon A')).toBeTruthy();
+    // Colonne (grand écran) et rappel sous l'article (petit écran, CSS non appliqué ici).
+    expect((await screen.findAllByText('Rayon A')).length).toBe(2);
     const unplaced = screen.getByText('CLOU-1').closest('tr') as HTMLElement;
-    expect(within(unplaced).getByText('Non rangé')).toBeTruthy();
+    expect(within(unplaced).getAllByText('Non rangé')).toHaveLength(2);
     fireEvent.click(header);
     await waitFor(() =>
       expect(

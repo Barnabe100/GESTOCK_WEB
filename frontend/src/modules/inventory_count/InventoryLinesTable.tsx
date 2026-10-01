@@ -383,15 +383,22 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
               <div>
                 <div className="sm-strong">{l.reference}</div>
                 <div className="sm-muted">{l.designation}</div>
+                <div className="sm-show-sm">
+                  <LocationLabel name={l.location_name} />
+                </div>
                 {!l.article_active && <StatusBadge tone="neutral" label={t('common.inactive')} />}
               </div>
             )}
           />
-          {/* Lot 3-F : emplacement courant ; tri = parcours de comptage (non rangés en fin). */}
+          {/* Lot 3-F : emplacement courant ; tri = parcours de comptage (non rangés en fin).
+              Petits écrans : colonne masquée, emplacement affiché sous l'article (la saisie du
+              comptage reste visible sans défilement horizontal). */}
           <Column
             header={t('locations.location')}
             sortField="location"
             sortable
+            headerClassName="sm-hide-sm"
+            bodyClassName="sm-hide-sm"
             body={(l: InventoryLine) => <LocationLabel name={l.location_name} />}
           />
           <Column
