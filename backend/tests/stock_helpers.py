@@ -49,6 +49,16 @@ def make_world(provision: Any, api_for: Any) -> World:
     return World(owner, str(t.site_id), site2.json()["id"], articles, supplier, reasons)
 
 
+def allow_decimals(w: World, *indexes: int) -> None:
+    """Lot 3-B / 3-C : quantités entières par défaut ; un test de quantités décimales autorise
+    explicitement les décimales sur les articles concernés."""
+    for index in indexes:
+        response = w.owner.patch(
+            f"/catalog/articles/{w.articles[index]}", json={"decimal_quantity_allowed": True}
+        )
+        assert response.status_code == 200, response.text
+
+
 def entry(w: World, lines: list[tuple[int, str, str]], **extra: Any) -> dict[str, Any]:
     body = {
         "site_id": w.site,

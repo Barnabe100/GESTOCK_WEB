@@ -176,7 +176,7 @@ describe('saisie et consultation d’un transfert', () => {
       destination_site_id: 's2',
       operation_date: '2026-09-24',
       comment: null,
-      lines: [{ article_id: 'a1', quantity: '10' }],
+      lines: [{ article_id: 'a1', packaging_id: null, quantity: '10' }],
     });
   });
 
@@ -225,6 +225,8 @@ describe('saisie et consultation d’un transfert', () => {
 
   it('ajout d’un article par recherche ; doublon refusé avant envoi', async () => {
     fetchMock.mockImplementation(async (url) => {
+      // Lot 3-C : aucun conditionnement pour ces articles.
+      if (String(url).includes('/packagings')) return pageOf([]);
       if (String(url).includes('/catalog/articles')) {
         return pageOf([
           { id: 'a1', reference: 'RIZ-25', designation: 'Riz 25 kg', unit: 'sac', sale_price: '1' },

@@ -16,7 +16,7 @@ import { z } from 'zod';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { useSuppliers } from '@/modules/suppliers/api';
-import { formatCost, formatMoney, formatQuantity, normalizeDecimal } from '@/shared/lib/decimal';
+import { formatCost, formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
@@ -41,6 +41,9 @@ import {
   type StockEntry,
   type StockExit,
 } from './api';
+import { PresentationField } from '@/modules/catalog/PresentationField';
+import { formatPresented, type PresentationPackaging } from '@/shared/lib/presentation';
+
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
 import { stockError } from './ui';
 
@@ -48,6 +51,8 @@ const OPTIONS_QUERY = 'limit=200&status=active&sort=name';
 
 const lineSchema = z.object({
   article: z.custom<ArticleOption | null>().refine((v) => Boolean(v), 'required'),
+  /** Lot 3-C : présentation saisie (nul = unité de base). */
+  packaging: z.custom<PresentationPackaging | null>(),
   quantity: z.string().refine((v) => {
     const n = normalizeDecimal(v, 3);
     return n !== null && /[1-9]/.test(n);
@@ -108,6 +113,14 @@ function defaults(document: StockDocument | undefined, siteId: string | null): F
         designation: line.article_designation,
         unit: line.unit,
       }),
+      packaging:
+        line.packaging_id && line.packaging_name && line.packaging_conversion
+          ? {
+              id: line.packaging_id,
+              name: line.packaging_name,
+              conversion: line.packaging_conversion,
+            }
+          : null,
       quantity: line.quantity,
       unit_cost: line.unit_cost ?? '',
     })),
@@ -122,6 +135,7 @@ function toInput(kind: DocumentKind, values: FormValues, isNew: boolean): EntryI
   };
   const lines = values.lines.map((line) => ({
     article_id: line.article?.id ?? '',
+    packaging_id: line.packaging?.id ?? null,
     quantity: normalizeDecimal(line.quantity, 3) ?? '0',
   }));
   if (kind === 'entries') {
@@ -214,7 +228,9 @@ function DocumentSummary({ kind, document }: { kind: DocumentKind; document: Sto
         />
         <Column
           header={t('stock.quantity')}
-          body={(l: DocumentLine) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
+          body={(l: DocumentLine) =>
+            formatPresented(l.quantity, l.packaging_name, l.base_quantity, l.unit, locale)
+          }
         />
         {costs && (
           <Column
@@ -501,15 +517,42 @@ function DocumentForm({
                       id={`line-${index}-article`}
                       stockManagedOnly
                       value={f.value}
-                      onChange={f.onChange}
+                      onChange={(value) => {
+                        f.onChange(value);
+                        // Autre article : retour à l'unité de base.
+                        form.setValue(`lines.${index}.packaging`, null);
+                      }}
                       invalid={Boolean(lineErrors?.article)}
                     />
                   )}
                 />
               </FormField>
+              {article && (
+                <FormField id={`line-${index}-packaging`} label={t('presentation.label')}>
+                  <Controller
+                    control={form.control}
+                    name={`lines.${index}.packaging`}
+                    render={({ field: f }) => (
+                      <PresentationField
+                        id={`line-${index}-packaging`}
+                        articleId={article.id}
+                        unit={article.unit}
+                        decimalAllowed={article.decimal_quantity_allowed}
+                        value={f.value}
+                        quantity={watchedLines[index]?.quantity ?? ''}
+                        onChange={f.onChange}
+                      />
+                    )}
+                  />
+                </FormField>
+              )}
               <FormField
                 id={`line-${index}-quantity`}
-                label={article ? `${t('stock.quantity')} (${article.unit})` : t('stock.quantity')}
+                label={
+                  article
+                    ? `${t('stock.quantity')} (${watchedLines[index]?.packaging?.name ?? article.unit})`
+                    : t('stock.quantity')
+                }
                 required
                 error={lineErrors?.quantity && t('stock.invalidQuantity')}
               >
@@ -522,7 +565,11 @@ function DocumentForm({
               {kind === 'entries' && (
                 <FormField
                   id={`line-${index}-cost`}
-                  label={t('entries.unitCost')}
+                  label={
+                    watchedLines[index]?.packaging
+                      ? t('entries.unitCostPer', { name: watchedLines[index]?.packaging?.name })
+                      : t('entries.unitCost')
+                  }
                   required
                   error={lineErrors?.unit_cost && t('articles.invalidMoney')}
                 >
@@ -550,7 +597,9 @@ function DocumentForm({
             icon="pi pi-plus"
             outlined
             label={t('stock.addLine')}
-            onClick={() => lines.append({ article: null, quantity: '', unit_cost: '' })}
+            onClick={() =>
+              lines.append({ article: null, packaging: null, quantity: '', unit_cost: '' })
+            }
           />
         </div>
       </fieldset>

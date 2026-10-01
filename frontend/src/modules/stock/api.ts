@@ -54,6 +54,10 @@ export interface Movement {
   origin_movement_id: string | null;
   user_name: string | null;
   comment: string | null;
+  /** Lot 3-C : présentation saisie (« 3 Carton 24 » pour −72) ; nulle en unité de base. */
+  packaging_name?: string | null;
+  packaging_conversion?: string | null;
+  packaging_quantity?: string | null;
 }
 
 export interface ExitReason {
@@ -76,10 +80,17 @@ export interface DocumentLine {
   article_reference: string;
   article_designation: string;
   unit: string;
+  /** Quantité dans la présentation saisie (Lot 3-C) ; `base_quantity` = unité de base. */
   quantity: string;
-  /** Coûts : absents sans `catalog.article.cost_view` (Lot 3-A). */
+  /** Coûts : absents sans `catalog.article.cost_view` (Lot 3-A). Entrée : coût par
+   *  présentation saisie ; sortie / transfert : CMUP par unité de base. */
   unit_cost?: string | null;
   amount?: string | null;
+  /** Lot 3-C : conditionnement saisi (instantané figé ; nul = unité de base). */
+  packaging_id?: string | null;
+  packaging_name?: string | null;
+  packaging_conversion?: string | null;
+  base_quantity?: string;
 }
 
 interface DocumentBase {
@@ -131,7 +142,8 @@ export interface EntryInput {
   supplier_id: string | null;
   document_reference: string | null;
   comment: string | null;
-  lines: { article_id: string; quantity: string; unit_cost: string }[];
+  /** `packaging_id` nul : unité de base ; quantité et coût dans la présentation saisie. */
+  lines: { article_id: string; packaging_id: string | null; quantity: string; unit_cost: string }[];
 }
 
 export interface ExitInput {
@@ -141,7 +153,7 @@ export interface ExitInput {
   beneficiary: string | null;
   reference: string | null;
   comment: string | null;
-  lines: { article_id: string; quantity: string }[];
+  lines: { article_id: string; packaging_id: string | null; quantity: string }[];
 }
 
 export const stockKeys = {

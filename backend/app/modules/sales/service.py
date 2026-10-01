@@ -32,9 +32,9 @@ from app.modules.catalog.api import (
     ArticleRef,
     PackagingRef,
     articles_view,
+    base_quantity,
+    check_packagings,
     get_article_refs,
-    is_whole,
-    lock_packagings,
     lock_stock_managed,
 )
 from app.modules.customers.api import (
@@ -71,6 +71,7 @@ from app.modules.sales.scope import site_can
 from app.modules.stock.api import (
     MovementRequest,
     MovementType,
+    PackagingSnapshot,
     StockService,
     ensure_document_site,
     operation_site,
@@ -317,26 +318,16 @@ class SaleService:
     def _packagings(
         self, lines: Sequence[SaleLineInput | SaleLine]
     ) -> dict[uuid.UUID, PackagingRef]:
-        """Conditionnements des lignes (Lot 3-B), relus sous verrou partagé : du tenant, de
-        l'article de la ligne, actifs et au prix configuré."""
-        ids = {line.packaging_id for line in lines if line.packaging_id is not None}
-        packagings = lock_packagings(self.db, ids)
+        """Conditionnements des lignes, relus par le mécanisme commun du catalogue (du tenant,
+        de l'article de la ligne, actifs, sous verrou partagé) et, pour une vente, au prix
+        configuré (Lot 3-B)."""
+        packagings = check_packagings(
+            self.db, [(line.article_id, line.packaging_id) for line in lines]
+        )
         for line in lines:
             if line.packaging_id is None:
                 continue
-            packaging = packagings.get(line.packaging_id)
-            if packaging is None or packaging.article_id != line.article_id:
-                raise BusinessRuleError(
-                    "Conditionnement introuvable pour cet article",
-                    code="packaging_not_found",
-                    extra={"packaging_id": str(line.packaging_id)},
-                )
-            if not packaging.is_active:
-                raise BusinessRuleError(
-                    "Ce conditionnement est désactivé",
-                    code="packaging_inactive",
-                    extra={"packagings": [packaging.name]},
-                )
+            packaging = packagings[line.packaging_id]
             # Prix non configuré (créé sans ``price_update``) : invendable, à l'enregistrement
             # comme à la validation — jamais vendu à un prix 0 implicite.
             if packaging.sale_price is None:
@@ -351,23 +342,8 @@ class SaleService:
     def _base_quantity(
         ref: ArticleRef, quantity: Decimal, packaging: PackagingRef | None
     ) -> Decimal:
-        """Quantité en unité de base = quantité × conversion, SANS arrondi (Lot 3-B). Article
-        sans quantités décimales : quantité vendue et quantité de base entières. Une quantité de
-        base de plus de 3 décimales (précision du stock) est refusée, jamais arrondie."""
-        base = quantity * packaging.conversion if packaging is not None else quantity
-        if not ref.decimal_quantity_allowed and not (is_whole(quantity) and is_whole(base)):
-            raise BusinessRuleError(
-                "Cet article se vend en quantités entières",
-                code="quantity_not_whole",
-                extra={"articles": [ref.reference]},
-            )
-        if base != base.quantize(QUANTITY_STEP):
-            raise BusinessRuleError(
-                "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
-                code="base_quantity_precision",
-                extra={"articles": [ref.reference]},
-            )
-        return base.quantize(QUANTITY_STEP)
+        """Quantité en unité de base (mécanisme commun du catalogue, Lot 3-B / 3-C)."""
+        return base_quantity(ref, quantity, packaging)
 
     def _apply_input(self, sale: Sale, data: SaleInput) -> None:
         """Lignes au prix du catalogue (jamais au prix du client) — prix de l'article ou du
@@ -654,6 +630,7 @@ class SaleService:
                         source_id=sale.id,
                         source_line_id=line.id,
                         source_number=sale.number,
+                        packaging=_snapshot_of(line),
                     )
                     for line in stocked
                 ],
@@ -732,6 +709,7 @@ class SaleService:
                             source_number=sale.number,
                             origin_movement_id=origins[line.id].id,
                             comment=f"Annulation {sale.number}",
+                            packaging=_snapshot_of(line),
                         )
                         for line in restored
                     ],
@@ -835,6 +813,19 @@ def _current_price(
 ) -> Decimal:
     """Prix catalogue actuel de la présentation de la ligne (article ou conditionnement)."""
     return _packaging_price(packagings[line.packaging_id]) if line.packaging_id else ref.sale_price
+
+
+def _snapshot_of(line: SaleLine) -> PackagingSnapshot | None:
+    """Présentation vendue, conservée sur le mouvement de stock (Lot 3-C : « 2 Carton 24 »)."""
+    if line.packaging_id is None or line.packaging_name is None:
+        return None
+    assert line.packaging_conversion is not None
+    return PackagingSnapshot(
+        packaging_id=line.packaging_id,
+        name=line.packaging_name,
+        conversion=line.packaging_conversion,
+        quantity=line.quantity,
+    )
 
 
 def _packaging_price(packaging: PackagingRef) -> Decimal:

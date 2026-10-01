@@ -8,7 +8,7 @@ from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 R, W, A, E = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN, AccessKind.EXPORT
 
 # Port du catalogue (Lot 3-B) : conditionnements utilisés par une vente (conversion figée).
-register_packaging_usage(packagings_used)
+register_packaging_usage("sales", packagings_used)
 
 MANIFEST = ModuleManifest(
     code="sales",

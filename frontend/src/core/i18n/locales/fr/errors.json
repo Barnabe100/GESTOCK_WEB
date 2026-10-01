@@ -199,7 +199,7 @@
   "article_not_stock_managed": "Article non géré en stock : aucune opération de stock n'est possible ({{articles}}).",
   "article_has_stock": "Cet article a encore du stock sur au moins un site ({{sites}}) : ramenez-le à zéro avant de le passer en article non géré en stock.",
   "price_update_not_allowed": "Vous n'êtes pas autorisé à modifier les prix catalogue.",
-  "quantity_not_whole": "Cet article se vend en quantités entières ({{articles}}).",
+  "quantity_not_whole": "Cet article se gère en quantités entières ({{articles}}).",
   "base_quantity_precision": "La quantité en unité de base dépasse 3 décimales ({{articles}}) : ajustez la quantité.",
   "packaging_not_found": "Conditionnement introuvable pour cet article.",
   "packaging_inactive": "Ce conditionnement est désactivé ({{packagings}}) : choisissez une autre présentation.",
@@ -207,5 +207,6 @@
   "packaging_name_taken": "Un conditionnement actif de cet article porte déjà ce nom.",
   "packaging_conversion_not_whole": "Cet article se vend en quantités entières : la conversion doit être un nombre entier.",
   "article_has_fractional_packagings": "Des conditionnements actifs ont une conversion décimale ({{packagings}}) : désactivez-les avant d'interdire les quantités décimales.",
-  "packaging_price_not_set": "Le prix de ce conditionnement n'est pas encore configuré ({{packagings}}) : il ne peut pas être vendu."
+  "packaging_price_not_set": "Le prix de ce conditionnement n'est pas encore configuré ({{packagings}}) : il ne peut pas être vendu.",
+  "packaging_conversion_changed": "La conversion du conditionnement a changé ({{articles}}) : enregistrez à nouveau l'opération."
 }

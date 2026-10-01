@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -42,6 +43,62 @@ def _article_fk() -> ForeignKeyConstraint:
         ["catalog_articles.tenant_id", "catalog_articles.id"],
         ondelete="RESTRICT",
     )
+
+
+def _packaging_fk() -> ForeignKeyConstraint:
+    return ForeignKeyConstraint(
+        ["tenant_id", "packaging_id"],
+        ["catalog_packagings.tenant_id", "catalog_packagings.id"],
+        ondelete="RESTRICT",
+    )
+
+
+def _presentation_args(table: str, document_column: str) -> tuple[Any, ...]:
+    """Lot 3-C (ADR-0041) : ligne d'un document de stock saisie dans une PRÉSENTATION (unité
+    de base ou conditionnement de l'article). Une ligne par présentation ; instantané du
+    conditionnement complet ou absent ; quantité de base = quantité × conversion (unité de
+    base : 1), sans arrondi."""
+    return (
+        _packaging_fk(),
+        Index(
+            f"uq_{table}_article_base",
+            document_column,
+            "article_id",
+            unique=True,
+            postgresql_where=text("packaging_id IS NULL"),
+        ),
+        Index(
+            f"uq_{table}_packaging",
+            document_column,
+            "packaging_id",
+            unique=True,
+            postgresql_where=text("packaging_id IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "(packaging_id IS NULL) = (packaging_name IS NULL) "
+            "AND (packaging_id IS NULL) = (packaging_conversion IS NULL)",
+            name="packaging_snapshot_complete",
+        ),
+        CheckConstraint(
+            "packaging_conversion IS NULL OR packaging_conversion > 0",
+            name="packaging_conversion_positive",
+        ),
+        CheckConstraint(
+            "base_quantity = quantity * COALESCE(packaging_conversion, 1)",
+            name="base_quantity_consistent",
+        ),
+    )
+
+
+class _PresentationMixin:
+    """Présentation saisie (Lot 3-C) : ``quantity`` est exprimée dans la présentation choisie
+    (10 cartons) ; ``base_quantity`` (240 bouteilles) est celle qui touche le stock. Instantané
+    du conditionnement figé : l'historique reste fidèle quoi qu'il advienne du conditionnement."""
+
+    packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    packaging_name: Mapped[str | None] = mapped_column(String(50))
+    packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    base_quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
 
 
 # --- Niveaux de stock --------------------------------------------------------------------------
@@ -105,8 +162,22 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
             "site_id",
             name="uq_stock_movements_line_type_site",
         ),
+        _packaging_fk(),
         CheckConstraint("quantity <> 0", name="quantity_not_zero"),
         CheckConstraint("quantity_after = quantity_before + quantity", name="balance"),
+        # Lot 3-C : présentation de l'opération (« 3 cartons → 72 bouteilles ») ; instantané
+        # complet ou absent, cohérent avec la quantité (en unité de base) du mouvement.
+        CheckConstraint(
+            "(packaging_id IS NULL) = (packaging_name IS NULL) "
+            "AND (packaging_id IS NULL) = (packaging_conversion IS NULL) "
+            "AND (packaging_id IS NULL) = (packaging_quantity IS NULL)",
+            name="packaging_snapshot_complete",
+        ),
+        CheckConstraint(
+            "packaging_quantity IS NULL OR (packaging_quantity > 0 "
+            "AND abs(quantity) = packaging_quantity * packaging_conversion)",
+            name="packaging_quantity_consistent",
+        ),
         CheckConstraint("quantity_after >= 0", name="never_negative"),
         Index("ix_stock_movements_tenant_site_occurred", "tenant_id", "site_id", "occurred_at"),
         Index("ix_stock_movements_source", "tenant_id", "source_id"),
@@ -140,6 +211,12 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False
     )
+    # Lot 3-C (ADR-0041) : présentation saisie par l'utilisateur (nulle : unité de base, ou
+    # mouvement antérieur / ajustement d'inventaire) — « 3 Carton 24 » pour −72.
+    packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    packaging_name: Mapped[str | None] = mapped_column(String(50))
+    packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    packaging_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
 
 
 # --- Motifs de sortie --------------------------------------------------------------------------
@@ -225,7 +302,7 @@ class StockEntry(_DocumentMixin, Base):
     )
 
 
-class StockEntryLine(IdMixin, TenantScopedMixin, Base):
+class StockEntryLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
     __tablename__ = "stock_entry_lines"
     __table_args__ = (
         ForeignKeyConstraint(
@@ -234,7 +311,7 @@ class StockEntryLine(IdMixin, TenantScopedMixin, Base):
             ondelete="CASCADE",
         ),
         _article_fk(),
-        UniqueConstraint("entry_id", "article_id"),
+        *_presentation_args("stock_entry_lines", "entry_id"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_cost >= 0", name="unit_cost_non_negative"),
     )
@@ -272,7 +349,7 @@ class StockExit(_DocumentMixin, Base):
     )
 
 
-class StockExitLine(IdMixin, TenantScopedMixin, Base):
+class StockExitLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
     __tablename__ = "stock_exit_lines"
     __table_args__ = (
         ForeignKeyConstraint(
@@ -281,7 +358,7 @@ class StockExitLine(IdMixin, TenantScopedMixin, Base):
             ondelete="CASCADE",
         ),
         _article_fk(),
-        UniqueConstraint("exit_id", "article_id"),
+        *_presentation_args("stock_exit_lines", "exit_id"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="unit_cost_non_negative"),
     )
@@ -347,7 +424,7 @@ class StockTransfer(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     )
 
 
-class StockTransferLine(IdMixin, TenantScopedMixin, Base):
+class StockTransferLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
     __tablename__ = "stock_transfer_lines"
     __table_args__ = (
         ForeignKeyConstraint(
@@ -356,7 +433,7 @@ class StockTransferLine(IdMixin, TenantScopedMixin, Base):
             ondelete="CASCADE",
         ),
         _article_fk(),
-        UniqueConstraint("transfer_id", "article_id"),
+        *_presentation_args("stock_transfer_lines", "transfer_id"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="unit_cost_non_negative"),
     )

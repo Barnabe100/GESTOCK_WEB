@@ -22,7 +22,11 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
 from app.modules.catalog.api import ArticleRef, get_article_refs
-from app.modules.stock.document_service import check_articles
+from app.modules.stock.document_service import (
+    packaging_snapshot,
+    present_lines,
+    revalidate_lines,
+)
 from app.modules.stock.models import (
     DocumentStatus,
     MovementType,
@@ -49,7 +53,6 @@ from app.shared.pagination import PageParams, apply_sort, paginate, search_filte
 SOURCE_TYPE = "stock_transfer"
 AUDIT_PREFIX = "stock_transfer"
 NOT_FOUND = "stock_transfer_not_found"
-QUANTITY_STEP = Decimal("0.001")
 
 
 def _names(db: Session, model: Any, ids: set[uuid.UUID | None], column: Any) -> dict[Any, str]:
@@ -210,6 +213,15 @@ class TransferService:
                     if line.article_id in refs
                     else None,
                     "quantity": format(line.quantity, "f"),
+                    **(
+                        {
+                            "packaging_id": str(line.packaging_id),
+                            "packaging_name": line.packaging_name,
+                            "base_quantity": format(line.base_quantity, "f"),
+                        }
+                        if line.packaging_id
+                        else {}
+                    ),
                 }
                 for line in transfer.lines
             ],
@@ -230,19 +242,19 @@ class TransferService:
         return StockService(self.db, self.ctx.tenant_id, self.ctx.user.id, self.now)
 
     def _apply_input(self, transfer: StockTransfer, data: TransferInput) -> None:
-        check_articles(self.db, [line.article_id for line in data.lines])
+        presented = present_lines(self.db, data.lines)
         transfer.destination_site_id = data.destination_site_id
         transfer.operation_date = self._operation_date(data.operation_date)
         transfer.comment = data.comment
+        # Présentation saisie et quantité de base (mécanisme commun, Lot 3-C) ; NUMERIC(18,3).
         transfer.lines = [
             StockTransferLine(
                 tenant_id=self.ctx.tenant_id,
                 line_no=index,
-                article_id=line.article_id,
-                # NUMERIC(18,3) : même valeur en réponse, en audit et en base.
-                quantity=line.quantity.quantize(QUANTITY_STEP),
+                article_id=shown.article_id,
+                **shown.columns(),
             )
-            for index, line in enumerate(data.lines, start=1)
+            for index, shown in enumerate(presented, start=1)
         ]
 
     # --- Cycle de vie -------------------------------------------------------------------------
@@ -294,12 +306,17 @@ class TransferService:
         self._check_sites(
             transfer.source_site_id, transfer.destination_site_id, "stock.transfer.validate"
         )
-        check_articles(self.db, [line.article_id for line in transfer.lines])
+        revalidate_lines(self.db, transfer.lines)
         pairs = self._stock().transfer(
             transfer.source_site_id,
             transfer.destination_site_id,
             [
-                TransferItem(line_id=line.id, article_id=line.article_id, quantity=line.quantity)
+                TransferItem(
+                    line_id=line.id,
+                    article_id=line.article_id,
+                    quantity=line.base_quantity,
+                    packaging=packaging_snapshot(line),
+                )
                 for line in transfer.lines
             ],
             source_type=SOURCE_TYPE,
@@ -308,7 +325,7 @@ class TransferService:
         )
         for line, (outgoing, _) in zip(transfer.lines, pairs, strict=True):
             line.unit_cost = outgoing.unit_cost
-            line.amount = round_money(line.quantity * (outgoing.unit_cost or Decimal("0")))
+            line.amount = round_money(line.base_quantity * (outgoing.unit_cost or Decimal("0")))
         transfer.status = DocumentStatus.VALIDATED
         transfer.validated_at = self.now
         transfer.validated_by = self.ctx.user.id
@@ -348,7 +365,7 @@ class TransferService:
                 removal = MovementRequest(
                     article_id=line.article_id,
                     movement_type=MovementType.CANCELLATION,
-                    quantity=-line.quantity,
+                    quantity=-line.base_quantity,
                     unit_cost=line.unit_cost,
                     source_type=SOURCE_TYPE,
                     source_id=transfer.id,
@@ -356,9 +373,10 @@ class TransferService:
                     source_number=transfer.number,
                     origin_movement_id=incoming[line.id].id,
                     comment=comment,
+                    packaging=packaging_snapshot(line),
                 )
                 restore = replace(
-                    removal, quantity=line.quantity, origin_movement_id=outgoing[line.id].id
+                    removal, quantity=line.base_quantity, origin_movement_id=outgoing[line.id].id
                 )
                 requests.append((transfer.destination_site_id, removal))
                 requests.append((transfer.source_site_id, restore))
@@ -444,4 +462,8 @@ def _line_out(line: StockTransferLine, refs: dict[uuid.UUID, ArticleRef]) -> Lin
         quantity=line.quantity,
         unit_cost=line.unit_cost,
         amount=line.amount,
+        packaging_id=line.packaging_id,
+        packaging_name=line.packaging_name,
+        packaging_conversion=line.packaging_conversion,
+        base_quantity=line.base_quantity,
     )

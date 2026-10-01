@@ -1,22 +1,37 @@
 """API publique du module Catalogue pour les autres modules (stock, ventes…). Ils n'importent
-jamais ses modèles directement (règle d'architecture 10)."""
+jamais ses modèles directement (règle d'architecture 10).
+
+Présentations (Lot 3-B, Lot 3-C — ADR-0040 / ADR-0041) : ``check_packagings`` et
+``base_quantity`` forment l'UNIQUE mécanisme de conversion, partagé par les ventes et toutes les
+opérations de stock (entrées, sorties, transferts, inventaires) : le serveur relit l'article et
+le conditionnement (du tenant, de CET article, actif) sous verrou partagé, applique la règle des
+quantités entières et calcule la quantité en unité de base = quantité × conversion, SANS arrondi
+(au-delà de 3 décimales, précision du stock : refus). Aucune quantité de base n'est reçue du
+client."""
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import Subquery, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import BusinessRuleError, ConflictError
 from app.modules.catalog.models import Article, Category, Packaging
-from app.modules.catalog.sales_port import register_packaging_usage
 from app.modules.catalog.stock_port import register_stocked_sites
+from app.modules.catalog.usage_port import register_packaging_usage
 
 __all__ = [
+    "QUANTITY_STEP",
     "ArticleRef",
     "PackagingRef",
     "active_packagings",
     "articles_view",
+    "base_quantity",
+    "check_packagings",
+    "ensure_conversion_unchanged",
+    "ensure_whole",
     "find_active_article_by_barcode",
     "get_article_refs",
     "is_whole",
@@ -111,23 +126,20 @@ def lock_packagings(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, Packagi
 
 
 def active_packagings(
-    db: Session, article_ids: set[uuid.UUID]
+    db: Session, article_ids: set[uuid.UUID], *, priced_only: bool = True
 ) -> dict[uuid.UUID, list[PackagingRef]]:
-    """Conditionnements ACTIFS et VENDABLES (prix configuré) des articles, pour le point de
-    vente, triés par conversion puis nom. Un conditionnement au prix non configuré n'est pas
-    proposé."""
+    """Conditionnements ACTIFS des articles, triés par conversion puis nom. Par défaut (point
+    de vente), seulement les VENDABLES (prix configuré) ; ``priced_only=False`` pour le stock
+    (comptage d'inventaire), où le prix n'intervient pas (Lot 3-C)."""
     if not article_ids:
         return {}
+    stmt = select(Packaging).where(
+        Packaging.article_id.in_(article_ids), Packaging.is_active.is_(True)
+    )
+    if priced_only:
+        stmt = stmt.where(Packaging.sale_price.is_not(None))
     result: dict[uuid.UUID, list[PackagingRef]] = {}
-    for p in db.scalars(
-        select(Packaging)
-        .where(
-            Packaging.article_id.in_(article_ids),
-            Packaging.is_active.is_(True),
-            Packaging.sale_price.is_not(None),
-        )
-        .order_by(Packaging.conversion, Packaging.name, Packaging.id)
-    ):
+    for p in db.scalars(stmt.order_by(Packaging.conversion, Packaging.name, Packaging.id)):
         result.setdefault(p.article_id, []).append(_packaging_ref(p))
     return result
 
@@ -183,3 +195,79 @@ def articles_view() -> Subquery:
         )
         .subquery("articles_view")
     )
+
+
+# --- Présentations : unité de base ou conditionnement (Lot 3-B, Lot 3-C) -------------------------
+
+QUANTITY_STEP = Decimal("0.001")  # NUMERIC(18,3)
+
+# (article, conditionnement ou ``None`` = unité de base)
+PresentationKey = tuple[uuid.UUID, uuid.UUID | None]
+
+
+def check_packagings(
+    db: Session, lines: Sequence[PresentationKey]
+) -> dict[uuid.UUID, PackagingRef]:
+    """Conditionnements des lignes, relus sous verrou PARTAGÉ (``FOR SHARE``) : existants dans
+    le tenant (RLS), rattachés à l'article de la ligne et ACTIFS — à l'enregistrement comme à
+    la validation d'une opération. La modification de la conversion prend le verrou exclusif
+    du conditionnement puis vérifie qu'aucune opération ne l'utilise : l'un attend l'autre."""
+    ids = {packaging_id for _, packaging_id in lines if packaging_id is not None}
+    packagings = lock_packagings(db, ids)
+    for article_id, packaging_id in lines:
+        if packaging_id is None:
+            continue
+        packaging = packagings.get(packaging_id)
+        if packaging is None or packaging.article_id != article_id:
+            raise BusinessRuleError(
+                "Conditionnement introuvable pour cet article",
+                code="packaging_not_found",
+                extra={"packaging_id": str(packaging_id)},
+            )
+        if not packaging.is_active:
+            raise BusinessRuleError(
+                "Ce conditionnement est désactivé",
+                code="packaging_inactive",
+                extra={"packagings": [packaging.name]},
+            )
+    return packagings
+
+
+def ensure_whole(ref: ArticleRef, *quantities: Decimal) -> None:
+    """Article sans quantités décimales : chaque quantité saisie (et la quantité de base)
+    doit être entière (Lot 3-B ; étendu au stock en 3-C)."""
+    if not ref.decimal_quantity_allowed and not all(is_whole(q) for q in quantities):
+        raise BusinessRuleError(
+            "Cet article se gère en quantités entières",
+            code="quantity_not_whole",
+            extra={"articles": [ref.reference]},
+        )
+
+
+def base_quantity(ref: ArticleRef, quantity: Decimal, packaging: PackagingRef | None) -> Decimal:
+    """Quantité en unité de base = quantité × conversion, SANS arrondi. Article sans quantités
+    décimales : quantité saisie et quantité de base entières. Plus de 3 décimales (précision
+    du stock) : refus, jamais d'arrondi."""
+    base = quantity * packaging.conversion if packaging is not None else quantity
+    ensure_whole(ref, quantity, base)
+    if base != base.quantize(QUANTITY_STEP):
+        raise BusinessRuleError(
+            "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
+            code="base_quantity_precision",
+            extra={"articles": [ref.reference]},
+        )
+    return base.quantize(QUANTITY_STEP)
+
+
+def ensure_conversion_unchanged(
+    ref: ArticleRef, packaging: PackagingRef | None, snapshot: Decimal | None
+) -> None:
+    """Revalidation à la validation : la conversion relue doit être celle figée sur la ligne
+    (elle est figée dès qu'une opération utilise le conditionnement ; défense en profondeur)."""
+    if packaging is not None and snapshot is not None and packaging.conversion != snapshot:
+        raise ConflictError(
+            "La conversion du conditionnement a changé depuis l'enregistrement : "
+            "enregistrez à nouveau l'opération",
+            code="packaging_conversion_changed",
+            extra={"articles": [ref.reference], "packagings": [packaging.name]},
+        )

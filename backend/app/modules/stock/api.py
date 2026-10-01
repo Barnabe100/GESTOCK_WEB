@@ -23,6 +23,7 @@ from app.modules.stock.sites import (
 from app.modules.stock.stock_service import (
     MovementRef,
     MovementRequest,
+    PackagingSnapshot,
     StockService,
     refuse_unmanaged,
     round_money,
@@ -33,6 +34,7 @@ __all__ = [
     "MovementRef",
     "MovementRequest",
     "MovementType",
+    "PackagingSnapshot",
     "StockService",
     "ensure_document_site",
     "filter_site_ids",

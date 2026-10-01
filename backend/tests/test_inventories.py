@@ -324,6 +324,7 @@ def test_start_refreshes_snapshot_and_full_list(world: World) -> None:
 
 def test_counting_progression_modification_and_rules(world: World) -> None:
     sh.validated_entry(world, [(0, "10", "100"), (1, "4", "100")])
+    sh.allow_decimals(world, 0)  # comptage 9,5 : article autorisé (Lot 3-C)
     inventory = _create(world, "TARGETED", [0, 1, 2])
     # Saisie impossible avant le début du comptage.
     early = _count(world, inventory, {0: "9"})
@@ -505,6 +506,7 @@ def test_surplus_shortage_and_no_variance_with_cmup(world: World, owner_db: Sess
     # CMUP 1000 (5 × 800 + 5 × 1200) sur l'article 0 ; 250 sur l'article 1 ; 40 sur l'article 2.
     sh.validated_entry(world, [(0, "5", "800"), (1, "8", "250"), (2, "4", "40")])
     sh.validated_entry(world, [(0, "5", "1200")])
+    sh.allow_decimals(world, 1)  # comptage 6,5 : article autorisé (Lot 3-C)
     assert sh.level(owner_db, world, 0) == ("10.000", "1000.0000")
     inventory = _ready(world, {0: "13", 1: "6.5", 2: "4"})
     validated = _action(world.owner, inventory, "validate").json()

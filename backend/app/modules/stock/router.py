@@ -393,4 +393,7 @@ _MOVEMENT_FIELDS = (
     "source_id",
     "origin_movement_id",
     "comment",
+    "packaging_name",
+    "packaging_conversion",
+    "packaging_quantity",
 )

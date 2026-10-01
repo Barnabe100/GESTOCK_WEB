@@ -27,7 +27,8 @@ ne se vendait que dans son unité (texte libre `unit`). Un commerce vend pourtan
    - Passage à `false` refusé tant qu'un conditionnement ACTIF de l'article a une conversion
      décimale (`409 article_has_fractional_packagings`).
    - Périmètre : les ventes. Entrées, sorties, transferts et inventaires conservent leurs règles
-     (quantités à 3 décimales) — point soumis à validation.
+     (quantités à 3 décimales) — point soumis à validation ; **étendu au stock par le Lot 3-C**
+     ([ADR-0041](0041-presentations-operations-de-stock.md)).
 3. **Conditionnements** (`catalog_packagings`, par article, aucune liste globale) : nom libre
    (unique parmi les conditionnements ACTIFS de l'article, insensible à la casse), **conversion**
    vers l'unité de base `NUMERIC(18,3) > 0` (décimale possible : 1 sac = 25,5 kg ; **entière**
@@ -50,7 +51,7 @@ ne se vendait que dans son unité (texte libre `unit`). Un commerce vend pourtan
      par le serveur à l'enregistrement comme à la validation (`422 packaging_price_not_set`) —
      migration 0028.
    - Le catalogue ne dépend pas des ventes : l'usage d'un conditionnement est lu par un **port**
-     (`catalog.sales_port`) que le module Ventes implémente (même principe que
+     (`catalog.sales_port`, devenu `catalog.usage_port` au Lot 3-C, ADR-0041) que le module Ventes implémente (même principe que
      `catalog.stock_port`). Audit : `packaging.created|updated|activated|deactivated`.
 4. **Vente** : chaque ligne porte sa **présentation** — unité de base (`packaging_id` nul) ou
    conditionnement — et la quantité dans cette présentation. Le serveur :

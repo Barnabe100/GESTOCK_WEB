@@ -17,7 +17,6 @@ from app.core.errors import (
     NotFoundError,
 )
 from app.modules.catalog.models import Article, Category, Packaging
-from app.modules.catalog.sales_port import packagings_in_use
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
@@ -29,6 +28,7 @@ from app.modules.catalog.schemas import (
     PriceChangeOut,
 )
 from app.modules.catalog.stock_port import sites_with_stock
+from app.modules.catalog.usage_port import packagings_in_use
 from app.modules.suppliers.api import get_supplier_ref, supplier_names
 from app.platform.audit.service import audit_action, changes, entity_field_history
 from app.platform.context import RequestContext

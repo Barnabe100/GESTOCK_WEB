@@ -45,7 +45,12 @@ class CancelInput(BaseModel):
 
 
 class EntryLineInput(BaseModel):
+    """``packaging_id`` (Lot 3-C) : conditionnement saisi ; absent = unité de base.
+    ``quantity`` et ``unit_cost`` sont exprimés dans cette présentation (10 cartons à 12 000) ;
+    le serveur calcule la quantité de base (240) et le coût par unité de base (500)."""
+
     article_id: uuid.UUID
+    packaging_id: uuid.UUID | None = None
     quantity: PositiveQuantity
     unit_cost: Money
 
@@ -65,7 +70,10 @@ class EntryCreate(EntryInput):
 
 
 class ExitLineInput(BaseModel):
+    """``packaging_id`` (Lot 3-C) : conditionnement saisi ; absent = unité de base."""
+
     article_id: uuid.UUID
+    packaging_id: uuid.UUID | None = None
     quantity: PositiveQuantity
 
 
@@ -89,9 +97,15 @@ class LineOut(BaseModel):
     article_reference: str
     article_designation: str
     unit: str
+    # Quantité dans la présentation saisie (Lot 3-C) ; ``base_quantity`` = unité de base.
     quantity: Quantity
+    # Entrée : coût PAR PRÉSENTATION saisi ; sortie / transfert : CMUP par unité de base.
     unit_cost: UnitCost | None
     amount: Money | None
+    packaging_id: uuid.UUID | None = None
+    packaging_name: str | None = None
+    packaging_conversion: Quantity | None = None
+    base_quantity: Quantity
 
 
 class DocumentOut(BaseModel):
@@ -133,7 +147,10 @@ class ExitOut(DocumentOut):
 
 
 class TransferLineInput(BaseModel):
+    """``packaging_id`` (Lot 3-C) : conditionnement saisi ; absent = unité de base."""
+
     article_id: uuid.UUID
+    packaging_id: uuid.UUID | None = None
     quantity: PositiveQuantity
 
 
@@ -196,6 +213,10 @@ class MovementOut(BaseModel):
     origin_movement_id: uuid.UUID | None
     user_name: str | None
     comment: str | None
+    # Lot 3-C : présentation saisie (« 3 Carton 24 » pour −72) ; nulle en unité de base.
+    packaging_name: str | None = None
+    packaging_conversion: Quantity | None = None
+    packaging_quantity: Quantity | None = None
 
 
 # --- Niveaux de stock et seuils ----------------------------------------------------------------

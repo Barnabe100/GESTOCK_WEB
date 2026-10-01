@@ -14,6 +14,8 @@ export interface ArticleOption {
   label: string;
   /** Prix de vente catalogue (affichage indicatif ; le serveur fait foi). */
   sale_price?: string;
+  /** Lot 3-B / 3-C : quantités décimales autorisées (guidage ; le serveur fait foi). */
+  decimal_quantity_allowed?: boolean;
 }
 
 export function toArticleOption(a: {
@@ -22,6 +24,7 @@ export function toArticleOption(a: {
   designation: string;
   unit: string;
   sale_price?: string;
+  decimal_quantity_allowed?: boolean;
 }): ArticleOption {
   return { ...a, label: `${a.reference} — ${a.designation}` };
 }

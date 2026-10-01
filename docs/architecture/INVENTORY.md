@@ -26,7 +26,7 @@ qui laisserait 100 en stock.)
 | Table | Rôle |
 |---|---|
 | `inventories` | En-tête : `number` (`INV-000001`, séquence `inventory`, unique par tenant), `site_id`, `status`, `inventory_type`, `comment`, `created_by`, `started_at`/`_by`, `completed_at`/`_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason`, horodatages |
-| `inventory_lines` | Une ligne par article (`UNIQUE (inventory_id, article_id)`) : `stock_theoretical_initial`, `stock_theoretical_at_validation`, `quantity_physical` (≥ 0), `quantity_variance`, `unit_cost` (CMUP figé), `adjustment_value`, `counted_at`/`counted_by` |
+| `inventory_lines` | Une ligne par article (`UNIQUE (inventory_id, article_id)`) : `stock_theoretical_initial`, `stock_theoretical_at_validation`, `quantity_physical` (≥ 0), `quantity_variance`, `unit_cost` (CMUP figé), `adjustment_value`, `counted_at`/`counted_by` ; comptage en conditionnement (Lot 3-C, §10) : `count_packaging_id`, `count_packaging_name`, `count_packaging_conversion`, `count_packaging_quantity`, `count_unit_quantity` |
 
 Quantités `NUMERIC(18,3)`, CMUP `NUMERIC(18,4)`, montants `NUMERIC(18,2)` — `Decimal` côté
 serveur, chaînes dans l'API. Contraintes en base : FK composites `(tenant_id, …)` vers le site,
@@ -137,7 +137,21 @@ requêtes ensemblistes, lignes paginées côté serveur (`GET /inventories/{id}/
 filtres, tri), résumé calculé par une requête d'agrégation, verrous des niveaux en une requête.
 L'interface ne charge jamais tout le catalogue ni toutes les lignes d'un inventaire complet.
 
-## 10. Hors périmètre (V1)
+## 10. Comptage en conditionnement (Lot 3-C, [ADR-0041](../adr/0041-presentations-operations-de-stock.md))
+
+Une ligne se compte en unité de base (`quantity_physical`) **ou** dans un conditionnement actif
+de l'article : `packaging_id`, `packaging_quantity` (conditionnements comptés) et
+`unit_quantity` (unités de base en vrac, facultatif). Le serveur calcule la quantité physique :
+**8 cartons de 24 + 5 bouteilles = 197** ; l'écart reste « physique − stock courant relu à la
+validation » (§1). Instantané du comptage sur la ligne (`count_packaging_*`,
+`count_unit_quantity`, contrainte de cohérence en base). Article entier : quantités saisies
+entières (`422 quantity_not_whole`). À la validation, le conditionnement est relu sous verrou
+partagé : désactivé → `422 packaging_inactive` (recompter la ligne), conversion modifiée →
+`409 packaging_conversion_changed`. Un comptage fige la conversion du conditionnement
+(`packaging_in_use`). L'interface propose la présentation par ligne et affiche l'équivalence
+(« = 197 bouteille ») ; l'ajustement (`ADJUSTMENT`) est en unité de base, sans présentation.
+
+## 11. Hors périmètre (V1)
 
 Scan de code-barres, application mobile native, import / export Excel, comptage multi-équipe,
 double comptage, circuit d'approbation, sessions de comptage simultanées sur un même article,

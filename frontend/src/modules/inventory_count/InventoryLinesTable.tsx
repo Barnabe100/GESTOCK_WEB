@@ -23,10 +23,14 @@ import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
 import { COST_VIEW } from '@/modules/catalog/api';
 
+import { QuantityEquivalence } from '@/modules/catalog/PresentationField';
+import { toBase } from '@/shared/lib/presentation';
+
 import {
   useInventoryLines,
   useInventoryMutations,
   useSaveCount,
+  type CountValue,
   type Inventory,
   type InventoryLine,
   type LineState,
@@ -43,9 +47,25 @@ function toInput(value: string | null): string {
   return value.includes('.') ? value.replace(/\.?0+$/, '') : value;
 }
 
+const BASE_UNIT = 'base';
+
+/** Comptage affiché : « 8 Carton 24 + 5 u = 197 u » ou « 197 u » (Lot 3-C). */
+export function countedQuantity(line: InventoryLine, locale = 'fr'): string {
+  if (line.quantity_physical === null) return '—';
+  const base = `${formatQuantity(line.quantity_physical, locale)} ${line.unit}`;
+  if (!line.count_packaging_name || line.count_packaging_quantity == null) return base;
+  const loose =
+    line.count_unit_quantity && /[1-9]/.test(line.count_unit_quantity)
+      ? ` + ${formatQuantity(line.count_unit_quantity, locale)} ${line.unit}`
+      : '';
+  return `${formatQuantity(line.count_packaging_quantity, locale)} ${line.count_packaging_name}${loose} = ${base}`;
+}
+
 /**
  * Saisie d'une quantité physique : enregistrée à la sortie du champ ou avec Entrée (qui passe
- * à la ligne suivante). Aucun dialogue : la saisie reste rapide.
+ * à la ligne suivante). Aucun dialogue : la saisie reste rapide. Lot 3-C : si l'article a des
+ * conditionnements, le comptage peut se faire dans un conditionnement + unités en vrac
+ * (8 cartons + 5 bouteilles) ; le serveur calcule la quantité en unité de base.
  */
 function CountCell({
   line,
@@ -58,26 +78,53 @@ function CountCell({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { capabilities } = useCapabilities();
+  const { locale } = capabilities.tenant;
   const save = useSaveCount(inventoryId);
-  const saved = toInput(line.quantity_physical);
+  const packagings = line.packagings ?? [];
+  const saved = {
+    packaging: line.count_packaging_id ?? BASE_UNIT,
+    quantity: line.count_packaging_id
+      ? toInput(line.count_packaging_quantity ?? null)
+      : toInput(line.quantity_physical),
+    loose: line.count_packaging_id ? toInput(line.count_unit_quantity ?? null) : '',
+  };
+  const savedKey = JSON.stringify(saved);
   const [value, setValue] = useState(saved);
   const [invalid, setInvalid] = useState(false);
   // Valeur enregistrée modifiée côté serveur : la saisie affichée la reprend.
-  const [previous, setPrevious] = useState(saved);
-  if (saved !== previous) {
-    setPrevious(saved);
+  const [previous, setPrevious] = useState(savedKey);
+  if (savedKey !== previous) {
+    setPrevious(savedKey);
     setValue(saved);
   }
   const errorId = `count-error-${line.id}`;
+  const packaging =
+    value.packaging === BASE_UNIT
+      ? null
+      : (packagings.find((p) => p.id === value.packaging) ??
+        (line.count_packaging_id === value.packaging && line.count_packaging_name
+          ? {
+              id: line.count_packaging_id,
+              name: line.count_packaging_name,
+              conversion: line.count_packaging_conversion ?? '1',
+            }
+          : null));
 
-  const commit = () => {
-    const raw = value.trim();
-    if (raw === saved) return setInvalid(false);
+  const commit = (next = value) => {
+    if (JSON.stringify(next) === savedKey) return setInvalid(false);
+    const raw = next.quantity.trim();
     const quantity = raw === '' ? null : normalizeDecimal(raw, 3);
     if (raw !== '' && quantity === null) return setInvalid(true);
+    let count: CountValue = { quantity_physical: quantity };
+    if (next.packaging !== BASE_UNIT && quantity !== null) {
+      const loose = next.loose.trim() === '' ? '0' : normalizeDecimal(next.loose, 3);
+      if (loose === null) return setInvalid(true);
+      count = { packaging_id: next.packaging, packaging_quantity: quantity, unit_quantity: loose };
+    }
     setInvalid(false);
     save.mutate(
-      { lineId: line.id, quantity },
+      { lineId: line.id, count },
       { onError: (error) => toast.error(translateError(t, error)) },
     );
   };
@@ -89,25 +136,77 @@ function CountCell({
     next?.focus();
     next?.select();
   };
+  const base = (() => {
+    const q = normalizeDecimal(value.quantity, 3);
+    if (q === null) return null;
+    if (!packaging) return q;
+    const packed = toBase(q, packaging.conversion);
+    const loose = value.loose.trim() === '' ? '0' : normalizeDecimal(value.loose, 3);
+    return packed === null || loose === null ? null : addQuantities(packed, loose);
+  })();
 
   return (
     <div className="sm-count-cell">
+      {packagings.length > 0 && (
+        <Dropdown
+          value={value.packaging}
+          options={[
+            { value: BASE_UNIT, label: t('presentation.baseUnit', { unit: line.unit }) },
+            ...packagings.map((p) => ({
+              value: p.id,
+              label: `${p.name} (${formatQuantity(p.conversion, locale)} ${line.unit})`,
+            })),
+          ]}
+          aria-label={t('inventories.presentationFor', { reference: line.reference })}
+          onChange={(e) => setValue({ ...value, packaging: e.value as string, loose: '' })}
+        />
+      )}
       <InputText
         id={`count-${line.id}`}
         data-count-index={index}
         inputMode="decimal"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={commit}
+        value={value.quantity}
+        onChange={(e) => setValue({ ...value, quantity: e.target.value })}
+        onBlur={() => commit()}
         onKeyDown={onKeyDown}
         invalid={invalid}
         aria-invalid={invalid}
         aria-describedby={invalid ? errorId : undefined}
-        aria-label={t('inventories.physicalFor', { reference: line.reference })}
+        aria-label={
+          packaging
+            ? t('inventories.packagingsFor', { reference: line.reference, name: packaging.name })
+            : t('inventories.physicalFor', { reference: line.reference })
+        }
         className="sm-count-input"
       />
+      {packaging && (
+        <InputText
+          inputMode="decimal"
+          value={value.loose}
+          placeholder={`+ ${line.unit}`}
+          onChange={(e) => setValue({ ...value, loose: e.target.value })}
+          onBlur={() => commit()}
+          aria-label={t('inventories.looseFor', { reference: line.reference, unit: line.unit })}
+          className="sm-count-input"
+        />
+      )}
       {save.isPending && (
         <i className="pi pi-spin pi-spinner" role="status" aria-label={t('inventories.saving')} />
+      )}
+      {packaging && base !== null && /[1-9]/.test(base) ? (
+        <small className="sm-equivalence" data-testid={`count-equivalence-${line.id}`}>
+          {`= ${formatQuantity(base, locale)} ${line.unit}`}
+        </small>
+      ) : (
+        base !== null && (
+          <QuantityEquivalence
+            quantity={base}
+            unit={line.unit}
+            packaging={null}
+            packagings={packagings}
+            testId={`count-equivalence-${line.id}`}
+          />
+        )
       )}
       {invalid && (
         <small className="p-error" id={errorId} role="alert">
@@ -116,6 +215,16 @@ function CountCell({
       )}
     </div>
   );
+}
+
+/** Somme exacte de deux quantités à 3 décimales (affichage indicatif). */
+function addQuantities(a: string, b: string): string {
+  const scale = (v: string) => {
+    const [whole = '0', fraction = ''] = v.split('.');
+    return BigInt(`${whole}${fraction.padEnd(3, '0').slice(0, 3)}`);
+  };
+  const total = (scale(a) + scale(b)).toString().padStart(4, '0');
+  return `${total.slice(0, -3)}.${total.slice(-3)}`;
 }
 
 /** Lignes d'un inventaire (pagination, recherche et filtres serveur) selon son statut. */
@@ -251,7 +360,7 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
               header={t('inventories.physical')}
               {...num}
               body={(l: InventoryLine) => {
-                if (!counting) return qty(l.quantity_physical, l.unit);
+                if (!counting) return countedQuantity(l, locale);
                 const index = (lines.data?.items ?? []).findIndex((x) => x.id === l.id);
                 return <CountCell line={l} inventoryId={inventory.id} index={index} />;
               }}

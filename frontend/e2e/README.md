@@ -182,6 +182,13 @@ la suite peut être rejouée sur la même base.
   une autre entreprise, conditionnement créé par un Gestionnaire au prix non configuré (signalé,
   absent du POS, refusé `packaging_price_not_set`) puis proposé une fois son prix fixé par
   l'Administrateur.
+- `packaging-3c.e2e.ts` (Lot 3-C, ADR-0041) : entreprise créée pour l'exécution (dépôt créé et
+  activé, seconde entreprise pour l'isolation), article à la bouteille avec Pack 6 et Carton 24 ;
+  entrée par l'interface (équivalences « 48 bouteille = 8 Pack 6 = 2 Carton 24 », 10 cartons à
+  12 000 → 240 bouteilles au CMUP 500), sortie de 3 cartons (72 ; journal « -3 Carton 24 → -72
+  bouteille »), transfert de 2 cartons (48 arrivent au dépôt), inventaire 8 cartons + 5 = 197,
+  Pack 6 désactivé (brouillon refusé `packaging_inactive`, plus proposé), quantités décimales
+  refusées (`quantity_not_whole`), conditionnement d'une autre entreprise introuvable.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

@@ -34,7 +34,7 @@ export interface TransferInput {
   destination_site_id: string;
   operation_date: string | null;
   comment: string | null;
-  lines: { article_id: string; quantity: string }[];
+  lines: { article_id: string; packaging_id: string | null; quantity: string }[];
 }
 
 export const transferKeys = { all: ['stock', 'transfers'] as const };

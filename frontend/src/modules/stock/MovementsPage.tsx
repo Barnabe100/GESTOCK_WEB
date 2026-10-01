@@ -127,9 +127,18 @@ export default function MovementsPage() {
         />
         <Column
           header={t('stock.quantity')}
-          body={(m: Movement) =>
-            `${m.quantity.startsWith('-') ? '' : '+'}${formatQuantity(m.quantity, locale)} ${m.unit}`
-          }
+          body={(m: Movement) => {
+            const outgoing = m.quantity.startsWith('-');
+            const base = `${outgoing ? '' : '+'}${formatQuantity(m.quantity, locale)} ${m.unit}`;
+            // Lot 3-C : présentation saisie (« -3 Carton 24 → -72 u »).
+            if (!m.packaging_name || !m.packaging_quantity) return base;
+            return (
+              <span>
+                <span>{`${outgoing ? '-' : '+'}${formatQuantity(m.packaging_quantity, locale)} ${m.packaging_name}`}</span>
+                <span className="sm-muted">{` → ${base}`}</span>
+              </span>
+            );
+          }}
         />
         <Column
           header={t('stock.stockAfter')}

@@ -340,11 +340,27 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Règle | Web |
 |---|---|
 | Unité de base | Champ libre `unit` de l'article (aucun référentiel global) ; toujours vendable ; **le stock est toujours tenu dans cette unité**. |
-| Quantités décimales | `decimal_quantity_allowed`, `false` par défaut (articles existants compris) : quantités vendues entières ; `true` : décimales (3 au plus). Contrôle serveur à l'enregistrement et à la validation d'une vente. Entrées, sorties, transferts et inventaires : règles inchangées. |
+| Quantités décimales | `decimal_quantity_allowed`, `false` par défaut (articles existants compris) : quantités vendues entières ; `true` : décimales (3 au plus). Contrôle serveur à l'enregistrement et à la validation d'une vente. Étendu aux entrées, sorties, transferts et inventaires au Lot 3-C (§11). |
 | Conditionnement | Par article : nom libre (unique parmi les actifs), conversion vers l'unité de base `> 0` (décimale possible, entière pour un article entier), prix propre (aucune cohérence imposée avec prix × conversion), actif / inactif ; **jamais supprimé**. |
 | Modification | Jamais utilisé : nom, conversion, prix, état. Utilisé par une vente (brouillon compris) : conversion **figée** (`packaging_in_use`) — désactiver et en créer un nouveau ; prix modifiable (les ventes passées gardent leur prix figé). |
 | Droits | Aucune permission nouvelle : consultation `catalog.article.view` ; création, nom, conversion, état `catalog.article.update` ; prix `catalog.article.price_update`. |
 | Prix non configuré | Conditionnement créé sans `price_update` (ou sans prix saisi) : prix **non configuré** (`NULL`), distinct d'un prix configuré à 0 ; invendable (absent du POS, non sélectionnable au back-office, `packaging_price_not_set` côté serveur) jusqu'à ce qu'un habilité fixe un prix. |
 | Quantité de base | Quantité × conversion, **sans arrondi** ; au-delà de 3 décimales : refus (`base_quantity_precision`). Exemples : 2 × Carton 24 = 48 ; 1,5 × Sac 25,5 kg = 38,25 kg. |
 | Stock | Contrôlé et mouvementé en unité de base (stock 50 : 2 cartons de 24 → reste 2 ; stock 40 : 2 cartons → `insufficient_stock`). Article non géré : ni contrôle ni mouvement, conditionnements utilisables. |
-| Hors périmètre | Codes-barres multiples ou par conditionnement, images, lots / péremption, conditionnements en entrée / sortie / transfert / inventaire, unités globales, tarifs avancés. |
+| Hors périmètre | Codes-barres multiples ou par conditionnement, images, lots / péremption, unités globales, tarifs avancés (conditionnements en entrée / sortie / transfert / inventaire : Lot 3-C, §11). |
+
+## 11. Lot 3-C — conditionnements dans les opérations de stock (ADR-0041)
+
+| Règle | Web |
+|---|---|
+| Présentation | Entrée, sortie, transfert et comptage d'inventaire : en **unité de base** ou dans un conditionnement **actif** de l'article (les conditionnements du 3-B, aucun second système ; prix sans effet). Une ligne par présentation (le même article peut figurer en cartons et en unités). |
+| Quantité de base | Calculée par le serveur : quantité × conversion, sans arrondi (`base_quantity_precision` au-delà de 3 décimales) ; aucune quantité de base du client n'est reprise. Le **stock reste en unité de base** : `StockService` ne reçoit que des quantités de base. |
+| Quantités entières | `decimal_quantity_allowed = false` : quantités saisies entières en entrée, sortie, transfert et comptage (`quantity_not_whole`), à l'enregistrement et à la validation. |
+| Inventaire | Comptage en unité de base, ou conditionnements + vrac : 8 cartons de 24 + 5 bouteilles = **197** (calculé par le serveur) ; écart = physique − stock courant relu à la validation. |
+| Coûts | Entrée : coût saisi **par présentation** (12 000 le carton → 500 la bouteille au CMUP, 4 décimales). Sortie / transfert : CMUP par unité de base × quantité de base. |
+| Historique | Lignes : présentation, conversion et quantité de base figées. Mouvements : présentation saisie (« -3 Carton 24 → -72 bouteille ») ; anciens mouvements et ajustements d'inventaire : sans présentation, affichés comme avant. |
+| Désactivation | Conditionnement désactivé : plus proposé ; un brouillon ou un comptage qui l'utilise est refusé à la validation (`packaging_inactive`) jusqu'à correction. |
+| Conversion | Figée dès qu'une vente, un document de stock (brouillon compris) ou un comptage l'utilise (`packaging_in_use`, port `catalog.usage_port`) ; revérifiée à la validation (`409 packaging_conversion_changed`). |
+| Interface | Sélecteur de présentation par ligne et équivalences indicatives : « 2 Carton 24 = 48 bouteille », « 48 bouteille = 8 Pack 6 = 2 Carton 24 » (au plus 3 conditionnements, reste en unités de base). |
+| Permissions | Aucune nouvelle : celles de chaque opération (`stock.entry.*`, `stock.exit.*`, `stock.transfer.*`, `inventory_count.inventory.*`). |
+| Hors périmètre | Référentiel d'unités, lots / péremption, FIFO / FEFO, règles de prix, achats. |

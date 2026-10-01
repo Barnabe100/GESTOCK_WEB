@@ -42,6 +42,12 @@ def round_money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_PRECISION, rounding=ROUND_HALF_UP)
 
 
+def cost_per_base(unit_cost: Decimal, conversion: Decimal | None) -> Decimal:
+    """Coût d'une UNITÉ DE BASE à partir d'un coût par présentation (Lot 3-C) : 12 000 le
+    carton de 24 → 500 ; 4 décimales comme le CMUP (Q6). Unité de base : coût inchangé."""
+    return unit_cost if conversion is None else round_cost(unit_cost / conversion)
+
+
 def compute_average_cost(
     quantity_before: Decimal, cost_before: Decimal, quantity_in: Decimal, unit_cost: Decimal
 ) -> Decimal:
@@ -51,6 +57,18 @@ def compute_average_cost(
     if total <= 0:
         raise ValueError("une entrée doit augmenter le stock")
     return round_cost((quantity_before * cost_before + quantity_in * unit_cost) / total)
+
+
+@dataclass(frozen=True)
+class PackagingSnapshot:
+    """Présentation saisie d'une opération (Lot 3-C, ADR-0041) : ``quantity`` conditionnements
+    de ``conversion`` unités de base — conservée sur le mouvement pour l'historique
+    (« 3 Carton 24 » pour −72)."""
+
+    packaging_id: uuid.UUID
+    name: str
+    conversion: Decimal
+    quantity: Decimal
 
 
 @dataclass(frozen=True)
@@ -65,15 +83,19 @@ class MovementRequest:
     origin_movement_id: uuid.UUID | None = None
     comment: str | None = None
     source_number: str | None = None
+    # Lot 3-C : présentation saisie ; ``quantity`` reste TOUJOURS en unité de base.
+    packaging: PackagingSnapshot | None = None
 
 
 @dataclass(frozen=True)
 class TransferItem:
-    """Ligne d'un transfert inter-sites : article, quantité (> 0) et ligne du document source."""
+    """Ligne d'un transfert inter-sites : article, quantité en unité de base (> 0), ligne du
+    document source et présentation saisie (Lot 3-C)."""
 
     line_id: uuid.UUID
     article_id: uuid.UUID
     quantity: Decimal
+    packaging: PackagingSnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +104,17 @@ class MovementRef:
 
     id: uuid.UUID
     unit_cost: Decimal | None
+
+
+def _packaging_columns(packaging: PackagingSnapshot | None) -> dict[str, object]:
+    if packaging is None:
+        return {}
+    return {
+        "packaging_id": packaging.packaging_id,
+        "packaging_name": packaging.name,
+        "packaging_conversion": packaging.conversion,
+        "packaging_quantity": packaging.quantity,
+    }
 
 
 def refuse_unmanaged(db: Session, article_ids: list[uuid.UUID]) -> None:
@@ -203,6 +236,7 @@ class StockService:
                 source_line_id=item.line_id,
                 source_number=source_number,
                 comment=source_number,
+                packaging=item.packaging,
             )
             incoming = replace(
                 outgoing, movement_type=MovementType.TRANSFER_IN, quantity=item.quantity
@@ -252,6 +286,7 @@ class StockService:
                 user_id=self.user_id,
                 comment=request.comment,
                 occurred_at=self.now,
+                **_packaging_columns(request.packaging),
             )
             self.db.add(movement)
             movements.append(movement)

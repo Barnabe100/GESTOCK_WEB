@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.modules.inventory_count.models import InventoryStatus, InventoryType
 from app.shared.schemas import Money, Quantity, SignedMoney, SignedQuantity, UnitCost
@@ -34,9 +34,28 @@ class InventoryUpdate(BaseModel):
 
 
 class CountInput(BaseModel):
+    """Comptage d'une ligne : en unité de base (``quantity_physical`` ; ``None`` efface), OU
+    dans un conditionnement (Lot 3-C) : ``packaging_quantity`` conditionnements +
+    ``unit_quantity`` unités de base en vrac (8 cartons + 5 bouteilles) — le serveur calcule
+    la quantité physique en unité de base (8 × 24 + 5 = 197)."""
+
     line_id: uuid.UUID
-    # Quantité physique constatée (≥ 0) ; ``None`` efface le comptage de la ligne.
-    quantity_physical: Quantity | None
+    quantity_physical: Quantity | None = None
+    packaging_id: uuid.UUID | None = None
+    packaging_quantity: Quantity | None = None
+    unit_quantity: Quantity | None = None
+
+    @model_validator(mode="after")
+    def _one_form(self) -> "CountInput":
+        if self.packaging_id is None:
+            if self.packaging_quantity is not None or self.unit_quantity is not None:
+                raise ValueError("packaging_quantity / unit_quantity exigent packaging_id")
+        elif self.packaging_quantity is None or self.quantity_physical is not None:
+            raise ValueError(
+                "comptage en conditionnement : packaging_quantity obligatoire, "
+                "quantity_physical calculée par le serveur"
+            )
+        return self
 
 
 class CountsInput(BaseModel):
@@ -110,6 +129,14 @@ class InventoryOut(BaseModel):
     summary: InventorySummary | None = None
 
 
+class CountPackagingOut(BaseModel):
+    """Conditionnement actif de l'article, proposé pour le comptage (Lot 3-C)."""
+
+    id: uuid.UUID
+    name: str
+    conversion: Quantity
+
+
 class InventoryLineOut(BaseModel):
     id: uuid.UUID
     article_id: uuid.UUID
@@ -131,6 +158,14 @@ class InventoryLineOut(BaseModel):
     adjustment_value: SignedMoney | None
     counted_at: datetime | None
     counted_by_name: str | None
+    # Lot 3-C : présentation du comptage (nulle : saisi en unité de base) et conditionnements
+    # actifs de l'article proposés à la saisie.
+    count_packaging_id: uuid.UUID | None = None
+    count_packaging_name: str | None = None
+    count_packaging_conversion: Quantity | None = None
+    count_packaging_quantity: Quantity | None = None
+    count_unit_quantity: Quantity | None = None
+    packagings: list[CountPackagingOut] = Field(default_factory=list)
 
 
 class CountsOut(BaseModel):

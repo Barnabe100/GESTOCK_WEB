@@ -41,7 +41,19 @@ from sqlalchemy import (
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
-from app.modules.catalog.api import articles_view, get_article_refs
+from app.modules.catalog.api import (
+    QUANTITY_STEP as BASE_STEP,
+)
+from app.modules.catalog.api import (
+    ArticleRef,
+    PackagingRef,
+    active_packagings,
+    articles_view,
+    check_packagings,
+    ensure_conversion_unchanged,
+    ensure_whole,
+    get_article_refs,
+)
 from app.modules.inventory_count.models import (
     Inventory,
     InventoryLine,
@@ -51,6 +63,7 @@ from app.modules.inventory_count.models import (
 from app.modules.inventory_count.schemas import (
     CandidateOut,
     CountInput,
+    CountPackagingOut,
     InventoryCreate,
     InventoryLineOut,
     InventoryOut,
@@ -228,6 +241,11 @@ class InventoryService:
                 value.label("value"),
                 line.counted_at,
                 line.counted_by,
+                line.count_packaging_id,
+                line.count_packaging_name,
+                line.count_packaging_conversion,
+                line.count_packaging_quantity,
+                line.count_unit_quantity,
             )
             .select_from(InventoryLine.__table__)
             .join(
@@ -283,6 +301,12 @@ class InventoryService:
         final = inventory.status is S.VALIDATED
         open_ = inventory.status in OPEN_STATUSES
         users = _names(self.db, User, {r.counted_by for r in rows if r.counted_by}, User.full_name)
+        # Lot 3-C : conditionnements actifs proposés à la saisie (une requête pour la page).
+        packagings = (
+            active_packagings(self.db, {r.article_id for r in rows}, priced_only=False)
+            if open_
+            else {}
+        )
         result = []
         for r in rows:
             counted = r.quantity_physical is not None
@@ -307,6 +331,15 @@ class InventoryService:
                     adjustment_value=r.value if counted and (final or open_) else None,
                     counted_at=r.counted_at,
                     counted_by_name=users.get(r.counted_by) if r.counted_by else None,
+                    count_packaging_id=r.count_packaging_id,
+                    count_packaging_name=r.count_packaging_name,
+                    count_packaging_conversion=r.count_packaging_conversion,
+                    count_packaging_quantity=r.count_packaging_quantity,
+                    count_unit_quantity=r.count_unit_quantity,
+                    packagings=[
+                        CountPackagingOut(id=p.id, name=p.name, conversion=p.conversion)
+                        for p in packagings.get(r.article_id, [])
+                    ],
                 )
             )
         return result
@@ -727,18 +760,34 @@ class InventoryService:
                 code="inventory_line_not_found",
                 extra={"lines": missing},
             )
+        # Lot 3-C : articles (règle des quantités entières) et conditionnements des comptages
+        # (de l'article de la ligne, actifs, sous verrou partagé) — mécanisme commun.
+        refs = get_article_refs(self.db, {line.article_id for line in lines.values()})
+        packagings = check_packagings(
+            self.db,
+            [
+                (lines[c.line_id].article_id, c.packaging_id)
+                for c in counts
+                if c.packaging_id is not None
+            ],
+        )
         changes: list[tuple[uuid.UUID, Decimal | None, Decimal | None]] = []
         for count in counts:
             line = lines[count.line_id]
-            quantity = (
-                None
-                if count.quantity_physical is None
-                else count.quantity_physical.quantize(QUANTITY_STEP)
-            )
-            if quantity == line.quantity_physical:
+            ref = refs[line.article_id]
+            packaging = packagings[count.packaging_id] if count.packaging_id else None
+            quantity, presentation = _count_quantity(ref, count, packaging)
+            if quantity == line.quantity_physical and presentation == _presentation_of(line):
                 continue
             changes.append((line.article_id, line.quantity_physical, quantity))
             line.quantity_physical = quantity
+            (
+                line.count_packaging_id,
+                line.count_packaging_name,
+                line.count_packaging_conversion,
+                line.count_packaging_quantity,
+                line.count_unit_quantity,
+            ) = presentation
             line.counted_at = self.now if quantity is not None else None
             line.counted_by = self.ctx.user.id if quantity is not None else None
         self.db.flush()
@@ -806,6 +855,35 @@ class InventoryService:
                 extra={"remaining": int(remaining)},
             )
 
+    def _revalidate_counts(self, lines: Sequence[InventoryLine]) -> None:
+        """Lot 3-C : à la validation, tout comptage est relu — règle des quantités entières de
+        l'article, conditionnement (existant, actif, conversion inchangée) et quantité de base
+        recalculée par le serveur."""
+        refs = get_article_refs(self.db, {line.article_id for line in lines})
+        counted = [line for line in lines if line.count_packaging_id is not None]
+        packagings = check_packagings(
+            self.db, [(line.article_id, line.count_packaging_id) for line in counted]
+        )
+        for line in lines:
+            ref = refs[line.article_id]
+            if line.count_packaging_id is None:
+                if line.quantity_physical is not None:
+                    ensure_whole(ref, line.quantity_physical)
+                continue
+            packaging = packagings[line.count_packaging_id]
+            ensure_conversion_unchanged(ref, packaging, line.count_packaging_conversion)
+            assert line.count_packaging_quantity is not None
+            assert line.count_unit_quantity is not None
+            physical = _base_count(
+                ref, packaging, line.count_packaging_quantity, line.count_unit_quantity
+            )
+            if physical != line.quantity_physical:
+                raise ConflictError(
+                    "Le comptage en conditionnement ne correspond plus : saisissez-le à nouveau",
+                    code="packaging_conversion_changed",
+                    extra={"articles": [ref.reference]},
+                )
+
     def validate(self, inventory_id: uuid.UUID) -> Inventory:
         """Applique les écarts au stock, en une transaction (tout ou rien) :
 
@@ -828,6 +906,7 @@ class InventoryService:
         )
         if not lines:
             raise BusinessRuleError("Aucun article à valider", code="inventory_empty")
+        self._revalidate_counts(lines)
         stock = self._stock()
         levels = stock.lock_levels(inventory.site_id, {line.article_id for line in lines})
         requests: list[MovementRequest] = []
@@ -1000,6 +1079,60 @@ def _state_condition(state: LineState, physical: Any, variance: Any) -> ColumnEl
     return and_(physical.is_not(None), variance == 0)
 
 
+# (conditionnement, nom, conversion, quantité de conditionnements, unités en vrac)
+Presentation = tuple[uuid.UUID | None, str | None, Decimal | None, Decimal | None, Decimal | None]
+NO_PRESENTATION: Presentation = (None, None, None, None, None)
+
+
+def _presentation_of(line: InventoryLine) -> Presentation:
+    return (
+        line.count_packaging_id,
+        line.count_packaging_name,
+        line.count_packaging_conversion,
+        line.count_packaging_quantity,
+        line.count_unit_quantity,
+    )
+
+
+def _base_count(
+    ref: ArticleRef, packaging: PackagingRef, packaging_quantity: Decimal, unit_quantity: Decimal
+) -> Decimal:
+    """Quantité physique en unité de base = conditionnements × conversion + unités en vrac,
+    SANS arrondi (plus de 3 décimales : refus) ; article entier : tout entier."""
+    physical = packaging_quantity * packaging.conversion + unit_quantity
+    ensure_whole(ref, packaging_quantity, unit_quantity, physical)
+    if physical != physical.quantize(BASE_STEP):
+        raise BusinessRuleError(
+            "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
+            code="base_quantity_precision",
+            extra={"articles": [ref.reference]},
+        )
+    return physical.quantize(BASE_STEP)
+
+
+def _count_quantity(
+    ref: ArticleRef, count: CountInput, packaging: PackagingRef | None
+) -> tuple[Decimal | None, Presentation]:
+    """Quantité physique (unité de base) et présentation d'un comptage saisi (Lot 3-C)."""
+    if packaging is None:
+        if count.quantity_physical is None:
+            return None, NO_PRESENTATION
+        quantity = count.quantity_physical.quantize(QUANTITY_STEP)
+        ensure_whole(ref, quantity)
+        return quantity, NO_PRESENTATION
+    assert count.packaging_quantity is not None
+    packaging_quantity = count.packaging_quantity.quantize(QUANTITY_STEP)
+    unit_quantity = (count.unit_quantity or Decimal("0")).quantize(QUANTITY_STEP)
+    physical = _base_count(ref, packaging, packaging_quantity, unit_quantity)
+    return physical, (
+        packaging.id,
+        packaging.name,
+        packaging.conversion,
+        packaging_quantity,
+        unit_quantity,
+    )
+
+
 def _fmt(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
 
@@ -1008,3 +1141,16 @@ def _names(db: Session, model: Any, ids: set[Any], column: Any) -> dict[Any, str
     if not ids:
         return {}
     return {row[0]: row[1] for row in db.execute(select(model.id, column).where(model.id.in_(ids)))}
+
+
+def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """Port du catalogue (Lot 3-C) : conditionnements utilisés par un comptage d'inventaire."""
+    return {
+        packaging_id
+        for packaging_id in db.scalars(
+            select(InventoryLine.count_packaging_id)
+            .where(InventoryLine.count_packaging_id.in_(ids))
+            .distinct()
+        )
+        if packaging_id is not None
+    }

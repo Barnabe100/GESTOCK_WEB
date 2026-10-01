@@ -8,6 +8,7 @@ peuvent pas s'appliquer deux fois.
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Generic, TypeVar
@@ -16,7 +17,15 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
-from app.modules.catalog.api import ArticleRef, get_article_refs
+from app.modules.catalog.api import (
+    QUANTITY_STEP,
+    ArticleRef,
+    PackagingRef,
+    base_quantity,
+    check_packagings,
+    ensure_conversion_unchanged,
+    get_article_refs,
+)
 from app.modules.stock.models import (
     DocumentStatus,
     EntryKind,
@@ -27,6 +36,7 @@ from app.modules.stock.models import (
     StockExit,
     StockExitLine,
     StockMovement,
+    StockTransferLine,
 )
 from app.modules.stock.schemas import (
     EntryCreate,
@@ -45,7 +55,9 @@ from app.modules.stock.sites import (
 )
 from app.modules.stock.stock_service import (
     MovementRequest,
+    PackagingSnapshot,
     StockService,
+    cost_per_base,
     refuse_unmanaged,
     round_money,
 )
@@ -69,13 +81,17 @@ def _names(db: Session, model: Any, ids: set[uuid.UUID | None], column: Any) -> 
     }
 
 
-def check_articles(db: Session, article_ids: list[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
+def check_articles(
+    db: Session, lines: Sequence[tuple[uuid.UUID, uuid.UUID | None]]
+) -> dict[uuid.UUID, ArticleRef]:
     """Articles des lignes d'un document : existants, actifs (ART-13), gérés en stock (Lot 3-A),
-    sans doublon."""
-    if len(set(article_ids)) != len(article_ids):
+    une ligne par présentation (article en unité de base, ou conditionnement — Lot 3-C)."""
+    if len(set(lines)) != len(lines):
         raise BusinessRuleError(
-            "Un article apparaît sur plusieurs lignes", code="duplicate_article_line"
+            "Un article apparaît plusieurs fois dans la même présentation",
+            code="duplicate_article_line",
         )
+    article_ids = [article_id for article_id, _ in lines]
     refs = get_article_refs(db, set(article_ids))
     missing = [str(a) for a in article_ids if a not in refs]
     if missing:
@@ -90,6 +106,97 @@ def check_articles(db: Session, article_ids: list[uuid.UUID]) -> dict[uuid.UUID,
     # Lot 3-A : entrées, sorties et transferts refusés pour un article non géré en stock.
     refuse_unmanaged(db, [a for a in article_ids if not refs[a].stock_managed])
     return refs
+
+
+@dataclass(frozen=True)
+class PresentedLine:
+    """Ligne saisie dans une présentation (Lot 3-C, ADR-0041) : quantité dans la présentation,
+    conditionnement relu (``None`` = unité de base) et quantité de base calculée PAR LE
+    SERVEUR (mécanisme commun du catalogue)."""
+
+    article_id: uuid.UUID
+    packaging: PackagingRef | None
+    quantity: Decimal
+    base_quantity: Decimal
+
+    def columns(self) -> dict[str, Any]:
+        """Colonnes de présentation d'une ligne de document (instantané figé)."""
+        return {
+            "quantity": self.quantity,
+            "base_quantity": self.base_quantity,
+            "packaging_id": self.packaging.id if self.packaging else None,
+            "packaging_name": self.packaging.name if self.packaging else None,
+            "packaging_conversion": self.packaging.conversion if self.packaging else None,
+        }
+
+
+def present_lines(db: Session, lines: Sequence[Any]) -> list[PresentedLine]:
+    """Lignes saisies (``article_id``, ``packaging_id``, ``quantity``) : articles et
+    conditionnements relus (du tenant, de l'article, actifs, sous verrou partagé), règle des
+    quantités entières et quantité de base — UN mécanisme pour entrées, sorties, transferts."""
+    keys = [(line.article_id, line.packaging_id) for line in lines]
+    refs = check_articles(db, keys)
+    packagings = check_packagings(db, keys)
+    presented = []
+    for line in lines:
+        quantity = line.quantity.quantize(QUANTITY_STEP)
+        packaging = packagings[line.packaging_id] if line.packaging_id else None
+        presented.append(
+            PresentedLine(
+                article_id=line.article_id,
+                packaging=packaging,
+                quantity=quantity,
+                base_quantity=base_quantity(refs[line.article_id], quantity, packaging),
+            )
+        )
+    return presented
+
+
+def revalidate_lines(db: Session, lines: Sequence[Any]) -> dict[uuid.UUID, ArticleRef]:
+    """Validation d'un document : tout est relu — article (actif, géré), conditionnement
+    (existant, actif, conversion inchangée), règle des quantités entières — et la quantité de
+    base recalculée doit être celle de la ligne (jamais celle du client)."""
+    keys = [(line.article_id, line.packaging_id) for line in lines]
+    refs = check_articles(db, keys)
+    packagings = check_packagings(db, keys)
+    for line in lines:
+        ref = refs[line.article_id]
+        packaging = packagings[line.packaging_id] if line.packaging_id else None
+        ensure_conversion_unchanged(ref, packaging, line.packaging_conversion)
+        if base_quantity(ref, line.quantity, packaging) != line.base_quantity:
+            raise ConflictError(
+                "La quantité en unité de base a changé : enregistrez à nouveau le document",
+                code="packaging_conversion_changed",
+                extra={"articles": [ref.reference]},
+            )
+    return refs
+
+
+def packaging_snapshot(line: Any) -> PackagingSnapshot | None:
+    """Présentation d'une ligne pour son mouvement (historique « 3 Carton 24 → 72 »)."""
+    if line.packaging_id is None:
+        return None
+    return PackagingSnapshot(
+        packaging_id=line.packaging_id,
+        name=line.packaging_name,
+        conversion=line.packaging_conversion,
+        quantity=line.quantity,
+    )
+
+
+def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """Port du catalogue (Lot 3-C) : conditionnements figurant sur une ligne d'entrée, de
+    sortie ou de transfert (brouillons compris) — leur conversion est alors figée."""
+    used: set[uuid.UUID] = set()
+    for model in (StockEntryLine, StockExitLine, StockTransferLine):
+        used |= {
+            packaging_id
+            for packaging_id in db.scalars(
+                select(model.packaging_id).where(model.packaging_id.in_(ids)).distinct()
+            )
+            if packaging_id is not None
+        }
+    return used
 
 
 class _DocumentService(Generic[Doc]):
@@ -163,9 +270,6 @@ class _DocumentService(Generic[Doc]):
             )
         return chosen
 
-    def _articles(self, article_ids: list[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
-        return check_articles(self.db, article_ids)
-
     def _require_status(self, document: Doc, expected: DocumentStatus, code: str) -> None:
         if document.status is not expected:
             raise ConflictError("Opération impossible dans l'état actuel du document", code=code)
@@ -204,14 +308,18 @@ class _DocumentService(Generic[Doc]):
                 MovementRequest(
                     article_id=line.article_id,
                     movement_type=MovementType.CANCELLATION,
-                    quantity=sign * line.quantity,
-                    unit_cost=line.unit_cost,
+                    # Unité de base (Lot 3-C) ; coût du mouvement d'origine (unité de base).
+                    quantity=sign * line.base_quantity,
+                    unit_cost=(
+                        origins[line.id].unit_cost if line.id in origins else line.unit_cost
+                    ),
                     source_type=self.source_type,
                     source_id=document.id,
                     source_line_id=line.id,
                     source_number=document.number,
                     origin_movement_id=origins[line.id].id if line.id in origins else None,
                     comment=f"Annulation {document.number}",
+                    packaging=packaging_snapshot(line),
                 )
                 for line in document.lines
             ],
@@ -238,6 +346,10 @@ class _DocumentService(Generic[Doc]):
             quantity=line.quantity,
             unit_cost=line.unit_cost,
             amount=line.amount,
+            packaging_id=line.packaging_id,
+            packaging_name=line.packaging_name,
+            packaging_conversion=line.packaging_conversion,
+            base_quantity=line.base_quantity,
         )
 
     def _common(self, documents: Sequence[Doc]) -> dict[str, dict[Any, str]]:
@@ -302,22 +414,23 @@ class EntryService(_DocumentService[StockEntry]):
 
     def _apply_input(self, entry: StockEntry, data: EntryInput) -> None:
         self._check_supplier(data.kind, data.supplier_id)
-        self._articles([line.article_id for line in data.lines])
+        presented = present_lines(self.db, data.lines)
         entry.kind = data.kind
         entry.operation_date = self._operation_date(data.operation_date)
         entry.supplier_id = data.supplier_id
         entry.document_reference = data.document_reference
         entry.comment = data.comment
+        # Coût unitaire saisi PAR PRÉSENTATION (12 000 le carton) ; montant = quantité × coût.
         entry.lines = [
             StockEntryLine(
                 tenant_id=self.ctx.tenant_id,
                 line_no=index,
                 article_id=line.article_id,
-                quantity=line.quantity,
                 unit_cost=line.unit_cost,
-                amount=round_money(line.quantity * line.unit_cost),
+                amount=round_money(shown.quantity * line.unit_cost),
+                **shown.columns(),
             )
-            for index, line in enumerate(data.lines, start=1)
+            for index, (line, shown) in enumerate(zip(data.lines, presented, strict=True), start=1)
         ]
 
     def create(self, data: EntryCreate) -> StockEntry:
@@ -352,20 +465,22 @@ class EntryService(_DocumentService[StockEntry]):
         self._require_status(entry, DocumentStatus.DRAFT, "document_not_draft")
         if not entry.lines:
             raise BusinessRuleError("Aucune ligne à valider", code="document_empty")
-        self._articles([line.article_id for line in entry.lines])
+        revalidate_lines(self.db, entry.lines)
         self._stock().apply(
             entry.site_id,
             [
                 MovementRequest(
                     article_id=line.article_id,
                     movement_type=MovementType.ENTRY,
-                    quantity=line.quantity,
-                    unit_cost=line.unit_cost,
+                    # Stock et CMUP en unité de base : coût par unité de base.
+                    quantity=line.base_quantity,
+                    unit_cost=cost_per_base(line.unit_cost, line.packaging_conversion),
                     source_type=self.source_type,
                     source_id=entry.id,
                     source_line_id=line.id,
                     source_number=entry.number,
                     comment=entry.number,
+                    packaging=packaging_snapshot(line),
                 )
                 for line in entry.lines
             ],
@@ -426,7 +541,7 @@ class ExitService(_DocumentService[StockExit]):
 
     def _apply_input(self, document: StockExit, data: ExitInput) -> None:
         self._check_reason(data.reason_id)
-        self._articles([line.article_id for line in data.lines])
+        presented = present_lines(self.db, data.lines)
         document.operation_date = self._operation_date(data.operation_date)
         document.reason_id = data.reason_id
         document.beneficiary = data.beneficiary
@@ -436,10 +551,10 @@ class ExitService(_DocumentService[StockExit]):
             StockExitLine(
                 tenant_id=self.ctx.tenant_id,
                 line_no=index,
-                article_id=line.article_id,
-                quantity=line.quantity,
+                article_id=shown.article_id,
+                **shown.columns(),
             )
-            for index, line in enumerate(data.lines, start=1)
+            for index, shown in enumerate(presented, start=1)
         ]
 
     def create(self, data: ExitCreate) -> StockExit:
@@ -474,26 +589,28 @@ class ExitService(_DocumentService[StockExit]):
         self._require_status(document, DocumentStatus.DRAFT, "document_not_draft")
         if not document.lines:
             raise BusinessRuleError("Aucune ligne à valider", code="document_empty")
-        self._articles([line.article_id for line in document.lines])
+        revalidate_lines(self.db, document.lines)
         movements = self._stock().apply(
             document.site_id,
             [
                 MovementRequest(
                     article_id=line.article_id,
                     movement_type=MovementType.EXIT,
-                    quantity=-line.quantity,
+                    quantity=-line.base_quantity,
                     source_type=self.source_type,
                     source_id=document.id,
                     source_line_id=line.id,
                     source_number=document.number,
                     comment=document.number,
+                    packaging=packaging_snapshot(line),
                 )
                 for line in document.lines
             ],
         )
+        # Coût figé = CMUP du site PAR UNITÉ DE BASE ; montant = quantité de base × CMUP.
         for line, movement in zip(document.lines, movements, strict=True):
             line.unit_cost = movement.unit_cost
-            line.amount = round_money(line.quantity * (movement.unit_cost or Decimal("0")))
+            line.amount = round_money(line.base_quantity * (movement.unit_cost or Decimal("0")))
         document.status = DocumentStatus.VALIDATED
         document.validated_at = self.now
         document.validated_by = self.ctx.user.id

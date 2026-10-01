@@ -15,7 +15,15 @@ import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { formatCost, formatMoney, formatQuantity, normalizeDecimal } from '@/shared/lib/decimal';
+import {
+  compareQuantity,
+  formatCost,
+  formatMoney,
+  formatQuantity,
+  normalizeDecimal,
+} from '@/shared/lib/decimal';
+import { formatPresented, toBase, type PresentationPackaging } from '@/shared/lib/presentation';
+import { PresentationField } from '@/modules/catalog/PresentationField';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
@@ -59,6 +67,7 @@ const schema = z
       .array(
         z.object({
           article: z.custom<ArticleOption | null>().refine((v) => Boolean(v), 'required'),
+          packaging: z.custom<PresentationPackaging | null>(),
           quantity,
         }),
       )
@@ -69,7 +78,10 @@ const schema = z
     if (values.source_site_id === values.destination_site_id) {
       ctx.addIssue({ code: 'custom', path: ['destination_site_id'], message: 'same' });
     }
-    const ids = values.lines.map((l) => l.article?.id);
+    // Une ligne par présentation (Lot 3-C).
+    const ids = values.lines.map((l) =>
+      l.article ? `${l.article.id}:${l.packaging?.id ?? 'base'}` : undefined,
+    );
     ids.forEach((id, index) => {
       if (id && ids.indexOf(id) !== index) {
         ctx.addIssue({ code: 'custom', path: ['lines', index, 'article'], message: 'duplicate' });
@@ -91,6 +103,14 @@ function defaults(transfer: StockTransfer | undefined, source: string | null): F
         designation: line.article_designation,
         unit: line.unit,
       }),
+      packaging:
+        line.packaging_id && line.packaging_name && line.packaging_conversion
+          ? {
+              id: line.packaging_id,
+              name: line.packaging_name,
+              conversion: line.packaging_conversion,
+            }
+          : null,
       quantity: line.quantity,
     })),
   };
@@ -104,15 +124,25 @@ function toInput(values: FormValues, isNew: boolean): TransferInput {
     comment: values.comment.trim() || null,
     lines: values.lines.map((line) => ({
       article_id: line.article?.id ?? '',
+      packaging_id: line.packaging?.id ?? null,
       quantity: normalizeDecimal(line.quantity, 3) ?? '0',
     })),
   };
 }
 
-/** Quantité saisie supérieure au stock affiché (indicatif : le serveur contrôle à la validation). */
-function exceeds(requested: string | undefined, available: string | undefined): boolean {
+/**
+ * Quantité saisie (convertie en unité de base, Lot 3-C) supérieure au stock affiché
+ * (indicatif : le serveur contrôle à la validation).
+ */
+function exceeds(
+  requested: string | undefined,
+  packaging: PresentationPackaging | null | undefined,
+  available: string | undefined,
+): boolean {
   const q = normalizeDecimal(requested ?? '', 3);
-  return q !== null && available !== undefined && Number(q) > Number(available);
+  if (q === null || available === undefined) return false;
+  const base = packaging ? toBase(q, packaging.conversion) : q;
+  return base !== null && compareQuantity(base, available) > 0;
 }
 
 // --- Saisie d'un brouillon ----------------------------------------------------------------------
@@ -261,15 +291,41 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
                       id={`line-${index}-article`}
                       stockManagedOnly
                       value={f.value}
-                      onChange={f.onChange}
+                      onChange={(value) => {
+                        f.onChange(value);
+                        form.setValue(`lines.${index}.packaging`, null);
+                      }}
                       invalid={Boolean(lineErrors?.article)}
                     />
                   )}
                 />
               </FormField>
+              {article && (
+                <FormField id={`line-${index}-packaging`} label={t('presentation.label')}>
+                  <Controller
+                    control={form.control}
+                    name={`lines.${index}.packaging`}
+                    render={({ field: f }) => (
+                      <PresentationField
+                        id={`line-${index}-packaging`}
+                        articleId={article.id}
+                        unit={article.unit}
+                        decimalAllowed={article.decimal_quantity_allowed}
+                        value={f.value}
+                        quantity={line?.quantity ?? ''}
+                        onChange={f.onChange}
+                      />
+                    )}
+                  />
+                </FormField>
+              )}
               <FormField
                 id={`line-${index}-quantity`}
-                label={article ? `${t('stock.quantity')} (${article.unit})` : t('stock.quantity')}
+                label={
+                  article
+                    ? `${t('stock.quantity')} (${line?.packaging?.name ?? article.unit})`
+                    : t('stock.quantity')
+                }
                 required
                 error={lineErrors?.quantity && t('stock.invalidQuantity')}
               >
@@ -282,7 +338,9 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
               <div className="sm-line-amounts" aria-live="polite">
                 {stock !== undefined && (
                   <small
-                    className={exceeds(line?.quantity, stock) ? 'p-error' : 'sm-muted'}
+                    className={
+                      exceeds(line?.quantity, line?.packaging, stock) ? 'p-error' : 'sm-muted'
+                    }
                     data-testid={`available-${index}`}
                   >
                     {t('transfers.available', {
@@ -309,7 +367,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
             icon="pi pi-plus"
             outlined
             label={t('stock.addLine')}
-            onClick={() => lines.append({ article: null, quantity: '1' })}
+            onClick={() => lines.append({ article: null, packaging: null, quantity: '1' })}
           />
         </div>
       </fieldset>
@@ -381,7 +439,9 @@ function TransferSummary({ transfer }: { transfer: StockTransfer }) {
         />
         <Column
           header={t('stock.quantity')}
-          body={(l: DocumentLine) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
+          body={(l: DocumentLine) =>
+            formatPresented(l.quantity, l.packaging_name, l.base_quantity, l.unit, locale)
+          }
         />
         {costs && (
           <Column

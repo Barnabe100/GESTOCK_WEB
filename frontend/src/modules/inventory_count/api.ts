@@ -79,7 +79,20 @@ export interface InventoryLine {
   adjustment_value?: string | null;
   counted_at: string | null;
   counted_by_name: string | null;
+  /** Lot 3-C : comptage saisi dans un conditionnement (8 Carton 24 + 5 unités). */
+  count_packaging_id?: string | null;
+  count_packaging_name?: string | null;
+  count_packaging_conversion?: string | null;
+  count_packaging_quantity?: string | null;
+  count_unit_quantity?: string | null;
+  /** Conditionnements actifs de l'article proposés à la saisie. */
+  packagings?: { id: string; name: string; conversion: string }[];
 }
+
+/** Comptage : en unité de base, OU conditionnements + unités en vrac (calcul serveur). */
+export type CountValue =
+  | { quantity_physical: string | null }
+  | { packaging_id: string; packaging_quantity: string; unit_quantity: string };
 
 export interface Candidate {
   article_id: string;
@@ -200,10 +213,10 @@ export function useInventoryMutations() {
 export function useSaveCount(inventoryId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ lineId, quantity }: { lineId: string; quantity: string | null }) =>
+    mutationFn: ({ lineId, count }: { lineId: string; count: CountValue }) =>
       api.patch<{ lines: InventoryLine[]; summary: InventorySummary }>(
         `/inventories/${inventoryId}/lines`,
-        { counts: [{ line_id: lineId, quantity_physical: quantity }] },
+        { counts: [{ line_id: lineId, ...count }] },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: inventoryKeys.all });

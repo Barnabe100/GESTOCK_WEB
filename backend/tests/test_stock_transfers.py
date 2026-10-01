@@ -90,6 +90,7 @@ def _role_ids(w: World) -> dict[str, str]:
 
 def test_create_draft_without_stock_effect(world: World, owner_db: Session) -> None:
     sh.validated_entry(world, [(0, "10", "100")])
+    sh.allow_decimals(world, 1)  # 2,5 : article autorisé (Lot 3-C)
     transfer = _transfer(world, [(0, "3"), (1, "2.5")], comment="Réassort dépôt")
     assert transfer["number"] == "TRF-000001"
     assert transfer["status"] == "DRAFT"

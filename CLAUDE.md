@@ -140,10 +140,23 @@ contrôle serveur à l'enregistrement ET à la validation) ; `catalog_packagings
 conversion `> 0` entière pour un article entier, prix propre, jamais supprimés, droits de
 l'article : `update` / `price_update` ; prix **non configuré** (`NULL`, création sans
 `price_update`) ≠ prix 0 : invendable, `packaging_price_not_set`, migration 0028) ; conversion **figée** dès qu'une vente l'utilise (port
-`catalog.sales_port`, verrou exclusif / partagé) ; ligne de vente = présentation (unité de base
+`catalog.usage_port`, verrou exclusif / partagé) ; ligne de vente = présentation (unité de base
 ou conditionnement), `base_quantity = quantity × conversion` sans arrondi (plus de 3 décimales
 refusé), instantané (nom, conversion, prix) figé ; prix changé : `sale_prices_changed`
-existant ; POS : choix de la présentation dans le panier, reçu « 2 Carton 24 × … ». Ne pas
+existant ; POS : choix de la présentation dans le panier, reçu « 2 Carton 24 × … ». **Lot 3-C livré —
+conditionnements dans les opérations de stock**
+([ADR-0041](docs/adr/0041-presentations-operations-de-stock.md), migration 0029) : entrée,
+sortie, transfert et comptage en unité de base **ou** en conditionnement ACTIF (ceux du 3-B, prix
+sans effet ; une ligne par présentation) ; `base_quantity` calculée par le serveur (jamais reprise
+du client), **stock toujours en unité de base** (`StockService` ne reçoit que des quantités de
+base) ; règle `decimal_quantity_allowed` étendue au stock (enregistrement ET validation) ;
+instantané sur les lignes (`packaging_*`, `base_quantity`) et les mouvements (`packaging_*`,
+`packaging_quantity` ; « -3 Carton 24 → -72 bouteille ») ; comptage conditionnements + vrac
+(8 × 24 + 5 = 197, calculé par le serveur) ; revalidation sous verrou partagé à la validation
+(`packaging_inactive`, `409 packaging_conversion_changed`) ; conversion figée par tout usage
+(port `catalog.usage_port` : ventes, stock, inventaires) ; coût d'entrée saisi par présentation,
+CMUP par unité de base ; aucune permission nouvelle ; interface : sélecteur de présentation et
+équivalences indicatives (« 48 bouteille = 8 Pack 6 = 2 Carton 24 »). Ne pas
 passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et

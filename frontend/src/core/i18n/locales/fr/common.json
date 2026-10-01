@@ -735,7 +735,8 @@
     "unitCost": "Coût unitaire",
     "confirmValidate": "Valider cette entrée ? Le stock et le CMUP du site seront mis à jour ; le document ne sera plus modifiable.",
     "subtitle": "Réceptions fournisseurs et stocks initiaux : le stock augmente à la validation.",
-    "empty": "Aucune entrée de stock pour le moment."
+    "empty": "Aucune entrée de stock pour le moment.",
+    "unitCostPer": "Coût unitaire (par {{name}})"
   },
   "exits": {
     "title": "Sorties de stock",
@@ -1058,7 +1059,10 @@
     "summaryShortage": "Manquants",
     "summaryNoVariance": "Sans écart",
     "summaryProjected": "Ajustement net si l'inventaire était validé maintenant (stock et CMUP courants) : {{value}}.",
-    "summaryFinal": "Ajustement net appliqué au stock (valorisé au CMUP) : {{value}}."
+    "summaryFinal": "Ajustement net appliqué au stock (valorisé au CMUP) : {{value}}.",
+    "presentationFor": "Présentation du comptage de {{reference}}",
+    "packagingsFor": "Nombre de {{name}} comptés pour {{reference}}",
+    "looseFor": "{{unit}} en vrac pour {{reference}}"
   },
   "payment": {
     "title": "Paiements",
@@ -1693,5 +1697,9 @@
     "confirmDeactivate": "Désactiver « {{name}} » ? Il ne sera plus proposé à la vente ; les ventes passées restent inchangées.",
     "priceNotSet": "Prix non configuré",
     "priceNotSetHelp": "Prix non configuré : le conditionnement restera invendable tant qu'un utilisateur habilité aux prix ne l'aura pas fixé."
+  },
+  "presentation": {
+    "label": "Présentation",
+    "baseUnit": "Unité de base ({{unit}})"
   }
 }

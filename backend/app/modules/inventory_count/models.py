@@ -126,6 +126,28 @@ class InventoryLine(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             name="variance_consistent",
         ),
         CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="unit_cost_non_negative"),
+        # Lot 3-C (ADR-0041) : comptage saisi dans un conditionnement (« 8 cartons + 5
+        # bouteilles ») ; ``quantity_physical`` reste la quantité en unité de base qui sert à
+        # l'écart. Instantané complet ou absent, cohérent avec la quantité physique.
+        ForeignKeyConstraint(
+            ["tenant_id", "count_packaging_id"],
+            ["catalog_packagings.tenant_id", "catalog_packagings.id"],
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "(count_packaging_id IS NULL) = (count_packaging_name IS NULL) "
+            "AND (count_packaging_id IS NULL) = (count_packaging_conversion IS NULL) "
+            "AND (count_packaging_id IS NULL) = (count_packaging_quantity IS NULL) "
+            "AND (count_packaging_id IS NULL) = (count_unit_quantity IS NULL)",
+            name="count_packaging_complete",
+        ),
+        CheckConstraint(
+            "count_packaging_id IS NULL OR (count_packaging_conversion > 0 "
+            "AND count_packaging_quantity >= 0 AND count_unit_quantity >= 0 "
+            "AND quantity_physical = count_packaging_quantity * count_packaging_conversion "
+            "+ count_unit_quantity)",
+            name="count_packaging_consistent",
+        ),
     )
 
     inventory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
@@ -138,3 +160,9 @@ class InventoryLine(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     adjustment_value: Mapped[Decimal | None] = mapped_column(MONEY)
     counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     counted_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    # Lot 3-C : présentation du comptage (nulle : saisi directement en unité de base).
+    count_packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    count_packaging_name: Mapped[str | None] = mapped_column(String(50))
+    count_packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    count_packaging_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    count_unit_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)

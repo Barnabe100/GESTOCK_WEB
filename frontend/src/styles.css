@@ -1517,6 +1517,18 @@ a {
   color: var(--sm-warning-fg);
 }
 
+/* Lot 3-C : présentation saisie et équivalences (« 48 u = 8 Pack 6 = 2 Carton 24 »). */
+.sm-presentation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sm-equivalence {
+  color: var(--sm-text-muted, inherit);
+  font-variant-numeric: tabular-nums;
+}
+
 .sm-pos-line > .sm-num {
   grid-area: total;
 }
