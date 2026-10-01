@@ -476,7 +476,23 @@ def test_costs_absent_without_cost_view(priced: World, client: TestClient) -> No
             "article_ids": [priced.articles[0]],
         },
     ).json()
-    manager = sh.member(priced, client, "gestion@example.com", "manager", all_sites=True)
+    # Rôle personnalisé : mêmes consultations qu'un Gestionnaire, SANS cost_view.
+    manager = _custom_member(
+        priced,
+        client,
+        "sans-couts@example.com",
+        [
+            "catalog.article.view",
+            "catalog.article.update",
+            "stock.level.view",
+            "alerts.stock.view",
+            "stock.movement.view",
+            "stock.entry.view",
+            "stock.exit.view",
+            "inventory_count.inventory.view",
+            "pos.terminal.use",
+        ],
+    )
     entry = priced.owner.get("/stock/entries").json()["items"][0]
     responses = {
         "articles": manager.get("/catalog/articles"),
@@ -512,6 +528,25 @@ def test_costs_absent_without_cost_view(priced: World, client: TestClient) -> No
     assert "average_cost" in costs.get("/stock/levels").json()["items"][0]
 
 
+def test_manager_sees_costs_but_cannot_change_prices(priced: World, client: TestClient) -> None:
+    """Rôle de base Gestionnaire (décision du Lot 3-A) : coûts opérationnels visibles
+    (``cost_view``), prix catalogue non modifiables (pas de ``price_update``)."""
+    manager = sh.member(priced, client, "gestion@example.com", "manager", all_sites=True)
+    article = manager.get(f"/catalog/articles/{priced.articles[0]}").json()
+    assert article["purchase_price"] == "100.00"
+    level = manager.get("/stock/levels", params={"site_id": priced.site, "search": "A-0"})
+    assert level.json()["items"][0]["average_cost"] == "6000.0000"
+    entry = manager.get("/stock/entries").json()["items"][0]
+    detail = manager.get(f"/stock/entries/{entry['id']}").json()
+    assert detail["lines"][0]["unit_cost"] and "total_amount" in detail
+    assert "unit_cost" in manager.get("/stock/movements").json()["items"][0]
+    assert manager.get("/catalog/articles", params={"sort": "purchase_price"}).status_code == 200
+    for body in ({"sale_price": "12000"}, {"purchase_price": "1"}):
+        refused = manager.patch(f"/catalog/articles/{priced.articles[0]}", json=body)
+        assert refused.status_code == 403
+        assert refused.json()["code"] == "price_update_not_allowed"
+
+
 def test_audit_log_costs_require_cost_view(priced: World, client: TestClient) -> None:
     priced.owner.patch(f"/catalog/articles/{priced.articles[0]}", json={"purchase_price": "150"})
     auditor = _custom_member(priced, client, "audit@example.com", ["audit.log.view"])
@@ -531,8 +566,10 @@ def test_default_roles(world: World) -> None:
     roles = {r["template_code"]: r for r in world.owner.get("/roles").json()}
     permissions = {code: set(role["permission_codes"]) for code, role in roles.items() if code}
     assert {PRICE_UPDATE, COST_VIEW, "catalog.article.update"} <= permissions["administrator"]
-    assert "catalog.article.update" in permissions["manager"]
-    for code in ("manager", "seller", "viewer"):
+    # Gestionnaire : informations générales et coûts, jamais les prix.
+    assert {"catalog.article.update", COST_VIEW} <= permissions["manager"]
+    assert PRICE_UPDATE not in permissions["manager"]
+    for code in ("seller", "viewer"):
         assert not ({PRICE_UPDATE, COST_VIEW} & permissions[code]), code
     assert "catalog.article.view" in permissions["seller"]
 

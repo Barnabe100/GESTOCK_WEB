@@ -59,9 +59,10 @@ L'audit du catalogue (Lot 3) a établi :
      modification ET à la création (sans elle, l'article est créé aux prix par défaut 0) ;
      aucune des deux n'accorde l'autre ; valeur inchangée renvoyée par le formulaire acceptée ;
    - `catalog.article.cost_view` (lecture, nouvelle) : coûts internes.
-   - Rôles de base : **Administrateur** les trois ; **Gestionnaire** `update` mais ni
-     `price_update` ni `cost_view` (exclus de son motif `catalog.*`) ; Vendeur et Consultant
-     aucun des deux. Un rôle personnalisé peut les accorder.
+   - Rôles de base : **Administrateur** les trois ; **Gestionnaire** `update` et `cost_view`
+     (coûts opérationnels, coûts de ses entrées) mais PAS `price_update` (exclu de son motif
+     `catalog.*`, décision de validation du lot) ; Vendeur et Consultant ni l'un ni l'autre.
+     Un rôle personnalisé peut les accorder.
 5. **Coûts absents sans `cost_view`, contrôlés par le serveur** : une classe de route
    (`app.platform.costs.cost_masking_route`) retire les champs de coût de TOUTE réponse JSON
    des routeurs concernés (catalogue, stock, transferts, inventaires, alertes, journal
@@ -75,9 +76,13 @@ L'audit du catalogue (Lot 3) a établi :
 
 - Une nouvelle route d'un de ces routeurs est protégée sans code supplémentaire ; un nouveau
   champ de coût doit être ajouté à la liste de son routeur.
-- Le Gestionnaire ne voit plus les coûts (CMUP, valorisations, coûts unitaires des entrées) ni
-  ne modifie les prix par défaut ; il saisit toujours le coût unitaire d'une entrée, sans le
-  revoir ensuite (point à valider : lui accorder `cost_view` ou un rôle personnalisé).
+- Le Gestionnaire voit les coûts (CMUP, valorisations, coûts unitaires de ses entrées) mais ne
+  modifie pas les prix catalogue ; un article qu'il crée l'est aux prix 0, complétés ensuite
+  par un utilisateur habilité aux prix.
+- Validation du lot : historique des prix réservé à `catalog.article.view` + (`price_update`
+  ou `audit.log.view`) ; une vente annulée après passage de l'article en non géré ne restitue
+  aucun stock (`not_restored_unmanaged` audité) ; coûts absents des réponses d'audit sans
+  `cost_view`.
 - Hors périmètre (lots suivants) : conditionnements, codes-barres multiples, images, lots /
   péremption, tarification avancée, promotions, `sales.sale.price_override`, unités globales,
   intégration matérielle.

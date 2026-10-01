@@ -224,10 +224,11 @@ test.describe('Catalogue — Lot 3-A', () => {
     }
   });
 
-  test('6, 7 — Gestionnaire : prix en lecture seule et refusés, coûts non exposés', async ({
+  test('6, 7 — Gestionnaire : prix refusés, coûts visibles ; Consultant : coûts non exposés', async ({
     page,
     request,
   }) => {
+    // Gestionnaire (rôle de base) : cost_view, mais pas price_update.
     const email = await createMember(request, world.token, 'manager', MEMBER_PASSWORD);
     const token = await tokenFor(request, email, MEMBER_PASSWORD, TENANT);
     const refused = await request.patch(`/api/v1/catalog/articles/${world.stocked.id}`, {
@@ -239,21 +240,41 @@ test.describe('Catalogue — Lot 3-A', () => {
     const detail = (await (
       await request.get(`/api/v1/catalog/articles/${world.stocked.id}`, { headers: bearer(token) })
     ).json()) as Record<string, unknown>;
-    expect('purchase_price' in detail).toBe(false);
-    const levels = (await (
-      await request.get('/api/v1/stock/levels', { headers: bearer(token) })
-    ).json()) as { items: Record<string, unknown>[] };
-    expect(levels.items.some((l) => 'average_cost' in l || 'stock_value' in l)).toBe(false);
+    expect(detail.purchase_price).toBe('600.00');
 
     await loginUi(page, email, MEMBER_PASSWORD, TENANT);
     await page.goto(`/catalog/articles/${world.stocked.id}`);
     await expect(page.getByRole('heading', { name: world.stocked.designation })).toBeVisible();
-    await expect(page.getByText("Prix d'achat")).toHaveCount(0);
+    await expect(page.getByText("Prix d'achat").first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Historique des prix' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Modifier' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel(/^Prix de vente/)).toHaveAttribute('readonly', '');
-    await expect(dialog.getByLabel(/^Prix d'achat/)).toHaveCount(0);
+    await expect(dialog.getByLabel(/^Prix d'achat/)).toHaveAttribute('readonly', '');
+    await dialog.getByRole('button', { name: 'Annuler' }).click();
+    await page.goto('/stock/levels');
+    await expect(page.getByText(`SCAN-${RUN}`, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'CMUP' })).toBeVisible();
+
+    // Consultant (sans cost_view) : aucun coût dans les réponses ni à l'écran.
+    const viewerEmail = await createMember(request, world.token, 'viewer', MEMBER_PASSWORD);
+    const viewerToken = await tokenFor(request, viewerEmail, MEMBER_PASSWORD, TENANT);
+    const viewed = (await (
+      await request.get(`/api/v1/catalog/articles/${world.stocked.id}`, {
+        headers: bearer(viewerToken),
+      })
+    ).json()) as Record<string, unknown>;
+    expect('purchase_price' in viewed).toBe(false);
+    const levels = (await (
+      await request.get('/api/v1/stock/levels', { headers: bearer(viewerToken) })
+    ).json()) as { items: Record<string, unknown>[] };
+    expect(levels.items.length).toBeGreaterThan(0);
+    expect(levels.items.some((l) => 'average_cost' in l || 'stock_value' in l)).toBe(false);
+    await page.context().clearCookies();
+    await loginUi(page, viewerEmail, MEMBER_PASSWORD, TENANT);
+    await page.goto(`/catalog/articles/${world.stocked.id}`);
+    await expect(page.getByRole('heading', { name: world.stocked.designation })).toBeVisible();
+    await expect(page.getByText("Prix d'achat")).toHaveCount(0);
     await page.goto('/stock/levels');
     await expect(page.getByText(`SCAN-${RUN}`, { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'CMUP' })).toHaveCount(0);

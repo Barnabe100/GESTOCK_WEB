@@ -131,7 +131,8 @@ historique des prix lu dans l'audit (aucune table) ; `catalog.article.price_upda
 `catalog.article.update` (informations générales) ; `catalog.article.cost_view` : coûts internes
 **absents** des réponses sans elle (`app.platform.costs.cost_masking_route` sur les routeurs
 catalogue, stock, inventaires, alertes, audit — tout nouveau champ de coût doit y être
-déclaré) ; Gestionnaire sans prix ni coûts par défaut. Ne pas passer au lot suivant sans
+déclaré) ; Gestionnaire : coûts visibles (`cost_view`), prix non modifiables (pas de
+`price_update`). Ne pas passer au lot suivant sans
 validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
