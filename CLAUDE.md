@@ -171,7 +171,7 @@ sans validation EAN ; scan EXACT
 ajouté (prix non configuré refusé), entrées / sorties / transferts / inventaires = présélection
 sans quantité devinée ; recherche « contient » étendue à tous les codes
 (`catalog.api.barcode_search`) ; aucune permission nouvelle (`catalog.article.update`) ; ajouts
-et retraits audités. **Lot 3-D validé.** **Lot 3-E livré — fiche fournisseur**
+et retraits audités. **Lot 3-D validé.** **Lot 3-E livré, validé et clôturé — fiche fournisseur**
 ([ADR-0043](docs/adr/0043-fiche-fournisseur.md), migration 0032 : index
 `stock_entries (tenant_id, supplier_id)` seulement) : lot de **consultation** (aucune écriture ;
 `StockService`, CMUP, ventes, POS, transferts, inventaires inchangés) ; fiche `/suppliers/:id`
@@ -184,7 +184,7 @@ réception validée, information historique — le prix d'achat de référence n
 fournisseur principal = filtre catalogue existant ; chronologie `GET /suppliers/{id}/history`
 (`audit.log.view`, évènements réels) ; recherche des entrées par nom du fournisseur
 (`suppliers.api.suppliers_named`) et filtres Entrées / Articles ; aucune permission nouvelle,
-aucun export, aucun indicateur au tableau de bord. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+aucun export, aucun indicateur au tableau de bord. **Lot 3-E validé.** Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

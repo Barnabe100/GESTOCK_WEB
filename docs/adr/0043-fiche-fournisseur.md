@@ -1,6 +1,6 @@
 # ADR-0043 — Fiche fournisseur : réceptions, synthèse, articles et chronologie
 
-- **Statut** : Acceptée (Lot 3-E — consultation et exploitation des fournisseurs)
+- **Statut** : Acceptée et validée (Lot 3-E — consultation et exploitation des fournisseurs)
 - **Date** : 2026-10-01
 - **Prolonge** : [ADR-0038](0038-historique-ventes-exports.md) (chronologie d'audit),
   [ADR-0039](0039-catalogue-stock-gere-prix-couts.md) (coûts réservés à `cost_view`),
@@ -71,3 +71,5 @@ de paiement, exports, lots, péremption, images, mise à jour automatique du pri
   `404 supplier_not_found` sur la synthèse, les articles et la chronologie.
 - Les agrégats suivent la portée des sites : un membre limité à un site ne voit ni les
   réceptions, ni les quantités, ni les coûts des autres sites.
+- **Validation** (TechNova, 2026-10-01) : décisions D1 à D9 appliquées ; lot validé et clôturé
+  sur le commit `77a3b56` (CI #46 verte).

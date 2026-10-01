@@ -379,7 +379,7 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Droits | Aucune permission nouvelle : `catalog.article.view` (consultation, scan), `catalog.article.update` (ajout, retrait). Audit `article.barcode_added/removed`, `packaging.barcode_added/removed`. |
 | Hors périmètre | Images, lots, péremption, étiquettes, balances, génération d'EAN. |
 
-## 13. Lot 3-E — fiche fournisseur (ADR-0043)
+## 13. Lot 3-E — fiche fournisseur (ADR-0043, validé)
 
 | Règle | Web |
 |---|---|
