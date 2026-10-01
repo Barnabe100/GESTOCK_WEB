@@ -194,5 +194,9 @@
   "site_code_locked": "Le code de ce site figure déjà dans des numéros de vente : il ne peut plus être modifié.",
   "export_format_unavailable": "Ce format d'export n'est pas disponible pour cette liste.",
   "export_too_large": "Trop de lignes à exporter ({{count}} pour {{limit}} au maximum) : affinez les filtres.",
-  "credit_limit_not_allowed": "Vous n'êtes pas autorisé à définir ou modifier la limite de crédit d'un client."
+  "credit_limit_not_allowed": "Vous n'êtes pas autorisé à définir ou modifier la limite de crédit d'un client.",
+  "barcode_unknown": "Code-barres inconnu.",
+  "article_not_stock_managed": "Article non géré en stock : aucune opération de stock n'est possible ({{articles}}).",
+  "article_has_stock": "Cet article a encore du stock sur au moins un site ({{sites}}) : ramenez-le à zéro avant de le passer en article non géré en stock.",
+  "price_update_not_allowed": "Vous n'êtes pas autorisé à modifier les prix catalogue."
 }

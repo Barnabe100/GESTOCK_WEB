@@ -44,10 +44,11 @@ from app.platform.context import (
     require_any_permission,
     require_permission,
 )
+from app.platform.costs import STOCK_COST_FIELDS, cost_masking_route
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page, StatusFilter
 
-router = APIRouter(tags=["stock"])
+router = APIRouter(tags=["stock"], route_class=cost_masking_route(STOCK_COST_FIELDS))
 router.include_router(transfer_router)
 
 

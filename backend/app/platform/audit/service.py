@@ -2,7 +2,7 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.platform.audit.models import AuditLog
@@ -115,3 +115,38 @@ def entity_history(
         .limit(limit)
     ).all()
     return [(row[0], row[1]) for row in rows]
+
+
+def entity_field_history(
+    session: Session,
+    tenant_id: uuid.UUID,
+    entity_type: str,
+    entity_id: uuid.UUID,
+    *,
+    actions: tuple[str, ...],
+    fields: tuple[str, ...],
+    limit: int,
+    offset: int,
+) -> tuple[list[tuple[AuditLog, str | None]], int]:
+    """Entrées d'audit d'une entité qui portent au moins un des ``fields`` (ex. historique des
+    prix d'un article), de la plus récente à la plus ancienne, paginées. Aucune autre source :
+    seuls les évènements réellement journalisés."""
+    if not fields:
+        return [], 0
+    conditions = [
+        AuditLog.tenant_id == tenant_id,
+        AuditLog.entity_type == entity_type,
+        AuditLog.entity_id == str(entity_id),
+        AuditLog.action.in_(actions),
+        or_(*(AuditLog.data.has_key(field) for field in fields)),
+    ]
+    total = session.scalar(select(func.count()).select_from(AuditLog).where(*conditions)) or 0
+    rows = session.execute(
+        select(AuditLog, User.full_name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(*conditions)
+        .order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return [(row[0], row[1]) for row in rows], int(total)

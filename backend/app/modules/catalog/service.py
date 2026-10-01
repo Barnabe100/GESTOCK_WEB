@@ -2,20 +2,43 @@
 audité dans la même transaction."""
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import AppError, BusinessRuleError, ConflictError, NotFoundError
+from app.core.errors import (
+    AppError,
+    BusinessRuleError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+)
 from app.modules.catalog.models import Article, Category
-from app.modules.catalog.schemas import ArticleCreate, ArticleOut, ArticleUpdate, CategoryInput
+from app.modules.catalog.schemas import (
+    ArticleCreate,
+    ArticleOut,
+    ArticleUpdate,
+    CategoryInput,
+    PriceChangeOut,
+)
+from app.modules.catalog.stock_port import sites_with_stock
 from app.modules.suppliers.api import get_supplier_ref, supplier_names
-from app.platform.audit.service import audit_action, changes
+from app.platform.audit.service import audit_action, changes, entity_field_history
 from app.platform.context import RequestContext
 from app.shared.pagination import PageParams, apply_sort, paginate, search_filter, text_sort
 from app.shared.schemas import StatusFilter
+
+# Lot 3-A (ADR-0039) : permissions distinctes pour les prix et les coûts internes.
+ARTICLE_UPDATE = "catalog.article.update"
+PRICE_UPDATE = "catalog.article.price_update"
+COST_VIEW = "catalog.article.cost_view"
+SALE_PRICE = "sale_price"
+PURCHASE_PRICE = "purchase_price"
+PRICE_FIELDS = (SALE_PRICE, PURCHASE_PRICE)
+CENT = Decimal("0.01")
 
 CATEGORY_SORT = {"name": text_sort(Category.name), "created_at": Category.created_at}
 ARTICLE_SORT = {
@@ -142,6 +165,7 @@ class ArticleService:
         status: StatusFilter,
         category_id: uuid.UUID | None = None,
         supplier_id: uuid.UUID | None = None,
+        stock_managed: bool | None = None,
     ) -> tuple[list[Article], int]:
         stmt = select(Article).join(
             Category,
@@ -154,12 +178,23 @@ class ArticleService:
             _status_condition(Article.is_active, status),
             Article.category_id == category_id if category_id else None,
             Article.main_supplier_id == supplier_id if supplier_id else None,
+            Article.stock_managed.is_(stock_managed) if stock_managed is not None else None,
         ]
         for condition in conditions:
             if condition is not None:
                 stmt = stmt.where(condition)
-        stmt = apply_sort(stmt, params.sort, ARTICLE_SORT, "reference", Article.id)
+        # Trier par prix d'achat révélerait l'ordre des coûts : réservé à ``cost_view``.
+        sortable = (
+            ARTICLE_SORT
+            if self.can_view_costs
+            else {k: v for k, v in ARTICLE_SORT.items() if k != PURCHASE_PRICE}
+        )
+        stmt = apply_sort(stmt, params.sort, sortable, "reference", Article.id)
         return paginate(self.db, stmt, params)
+
+    @property
+    def can_view_costs(self) -> bool:
+        return self.ctx.has_permission(COST_VIEW)
 
     def get(self, article_id: uuid.UUID) -> Article:
         article = self.db.get(Article, article_id)
@@ -180,6 +215,7 @@ class ArticleService:
         names = supplier_names(
             self.db, {a.main_supplier_id for a in articles if a.main_supplier_id}
         )
+        costs = self.can_view_costs
         return [
             ArticleOut(
                 id=a.id,
@@ -190,18 +226,52 @@ class ArticleService:
                 unit=a.unit,
                 main_supplier_id=a.main_supplier_id,
                 main_supplier_name=names.get(a.main_supplier_id) if a.main_supplier_id else None,
-                purchase_price=a.purchase_price,
                 sale_price=a.sale_price,
                 min_stock=a.min_stock,
                 max_stock=a.max_stock,
                 description=a.description,
                 barcode=a.barcode,
                 is_active=a.is_active,
+                stock_managed=a.stock_managed,
                 created_at=a.created_at,
                 updated_at=a.updated_at,
+                # Coût interne : champ ABSENT de la réponse sans ``cost_view`` (les routes
+                # sérialisent avec ``response_model_exclude_unset``).
+                **({PURCHASE_PRICE: a.purchase_price} if costs else {}),
             )
             for a in articles
         ]
+
+    def price_history(
+        self, article_id: uuid.UUID, params: PageParams
+    ) -> tuple[list[PriceChangeOut], int]:
+        """Historique des prix de l'article, lu dans le journal d'audit existant (création et
+        modifications) ; prix d'achat seulement avec ``cost_view``."""
+        article = self.get(article_id)
+        fields = PRICE_FIELDS if self.can_view_costs else (SALE_PRICE,)
+        rows, total = entity_field_history(
+            self.db,
+            self.ctx.tenant_id,
+            "article",
+            article.id,
+            actions=("article.created", "article.updated"),
+            fields=fields,
+            limit=params.limit,
+            offset=params.offset,
+        )
+        items = []
+        for log, user_name in rows:
+            values: dict[str, Any] = {}
+            for field in fields:
+                before, after = _price_change(log.action, log.data.get(field))
+                values[f"{field}_before"] = before
+                values[f"{field}_after"] = after
+            items.append(
+                PriceChangeOut(
+                    id=log.id, occurred_at=log.occurred_at, user_name=user_name, **values
+                )
+            )
+        return items, total
 
     # --- Règles de sélection (ART-10) --------------------------------------------------------
 
@@ -247,7 +317,18 @@ class ArticleService:
 
     # --- Écriture ---------------------------------------------------------------------------
 
+    def _ensure_price_allowed(self) -> None:
+        if not self.ctx.has_permission(PRICE_UPDATE):
+            raise ForbiddenError(
+                "Vous n'êtes pas autorisé à modifier les prix catalogue",
+                code="price_update_not_allowed",
+            )
+
     def create(self, data: ArticleCreate) -> Article:
+        # Un prix catalogue (vente ou achat) ne se fixe qu'avec ``price_update`` (Lot 3-A) ;
+        # sans elle, l'article est créé aux prix par défaut (0), à compléter par un habilité.
+        if any(getattr(data, field) != 0 for field in PRICE_FIELDS):
+            self._ensure_price_allowed()
         self._ensure_active_category(data.category_id)
         if data.main_supplier_id is not None:
             self._ensure_active_supplier(data.main_supplier_id)
@@ -264,7 +345,14 @@ class ArticleService:
             "article.created",
             entity_type="article",
             entity_id=article.id,
-            data={"reference": article.reference, "designation": article.designation},
+            data={
+                "reference": article.reference,
+                "designation": article.designation,
+                # Prix initiaux : point de départ de l'historique des prix.
+                SALE_PRICE: format(article.sale_price, "f"),
+                PURCHASE_PRICE: format(article.purchase_price, "f"),
+                "stock_managed": article.stock_managed,
+            },
         )
         return article
 
@@ -279,12 +367,29 @@ class ArticleService:
             "purchase_price",
             "sale_price",
             "min_stock",
+            "stock_managed",
         )
         missing = [field for field in required if field in updates and updates[field] is None]
         if missing:
             raise AppError(
                 "Champs obligatoires manquants", code="validation_error", extra={"fields": missing}
             )
+
+        # Lot 3-A : valeurs inchangées ignorées (formulaire complet) ; les prix exigent
+        # ``price_update``, les autres champs ``catalog.article.update`` — aucune des deux
+        # n'accorde l'autre.
+        for field in PRICE_FIELDS:
+            if updates.get(field) is not None:
+                updates[field] = updates[field].quantize(CENT)  # audit : « 130.00 »
+        updates = {k: v for k, v in updates.items() if getattr(article, k) != v}
+        if any(field in updates for field in PRICE_FIELDS):
+            self._ensure_price_allowed()
+        if any(field not in PRICE_FIELDS for field in updates) and not self.ctx.has_permission(
+            ARTICLE_UPDATE
+        ):
+            raise ForbiddenError("Permission insuffisante", code="permission_denied")
+        if updates.get("stock_managed") is False:
+            self._ensure_no_stock(article)
 
         # Une nouvelle association doit être active ; l'association existante est conservée
         # même si la catégorie / le fournisseur est devenu inactif (ART-10).
@@ -314,6 +419,21 @@ class ArticleService:
         self.db.refresh(article)
         return article
 
+    def _ensure_no_stock(self, article: Article) -> None:
+        """« Géré » → « non géré » : stock nul sur TOUS les sites du tenant. Verrou exclusif de
+        l'article d'abord : une opération de stock en cours (verrou partagé de l'article) se
+        termine avant la vérification, et aucune ne peut commencer avant la fin de celle-ci.
+        Aucun ajustement ni mouvement automatique."""
+        self.db.execute(select(Article.id).where(Article.id == article.id).with_for_update()).one()
+        sites = sites_with_stock(self.db, self.ctx.tenant_id, article.id)
+        if sites:
+            raise ConflictError(
+                "Cet article a encore du stock sur au moins un site : ramenez-le à zéro "
+                "avant de le passer en article non géré en stock",
+                code="article_has_stock",
+                extra={"sites": sites},
+            )
+
     def set_active(self, article_id: uuid.UUID, active: bool) -> Article:
         article = self.get(article_id)
         if article.is_active == active:
@@ -331,3 +451,13 @@ class ArticleService:
             data={"reference": article.reference},
         )
         return article
+
+
+def _price_change(action: str, value: Any) -> tuple[Any, Any]:
+    """(avant, après) d'un prix dans une entrée d'audit : à la création, valeur initiale ;
+    à la modification, différence ``{"before", "after"}`` du journal."""
+    if value is None:
+        return None, None
+    if action == "article.created":
+        return None, value
+    return value.get("before"), value.get("after")

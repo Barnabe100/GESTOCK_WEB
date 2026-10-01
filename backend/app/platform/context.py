@@ -198,6 +198,7 @@ def _read_only(requirement: frozenset[str]) -> bool:
 
 
 def get_tenant_context(
+    request: Request,
     auth: ActiveUser,
     db: DbSession,
     registry: RegistryDep,
@@ -243,6 +244,9 @@ def get_tenant_context(
     capabilities = resolve(site.id if site else None)
     if site is not None and site.id not in capabilities.accessible_site_ids:
         raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+    # Permissions effectives de la requête, lues par la sérialisation des réponses (ex. coûts
+    # internes réservés à ``catalog.article.cost_view``, ``app.platform.costs``).
+    request.state.permissions = capabilities.permissions
 
     cache: dict[uuid.UUID, Capabilities] = {}
 

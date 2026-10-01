@@ -38,15 +38,18 @@ class ArticleOut(BaseModel):
     unit: str
     main_supplier_id: uuid.UUID | None
     main_supplier_name: str | None
-    purchase_price: Money
     sale_price: Money
     min_stock: Quantity
     max_stock: Quantity | None
     description: str | None
     barcode: str | None
     is_active: bool
+    stock_managed: bool
     created_at: datetime
     updated_at: datetime
+    # Coût interne (Lot 3-A) : présent SEULEMENT avec ``catalog.article.cost_view`` — sinon le
+    # champ est absent de la réponse (jamais remplacé par une valeur fictive).
+    purchase_price: Money | None = None
 
 
 class ArticleCreate(BaseModel):
@@ -55,12 +58,14 @@ class ArticleCreate(BaseModel):
     category_id: uuid.UUID
     unit: Required20
     main_supplier_id: uuid.UUID | None = None
-    purchase_price: Money
-    sale_price: Money
+    # Prix : définis à la création seulement avec ``catalog.article.price_update`` (sinon 0).
+    purchase_price: Money = Decimal("0")
+    sale_price: Money = Decimal("0")
     min_stock: Quantity = Decimal("0")
     max_stock: Quantity | None = None
     description: Optional1000 = None
     barcode: Optional50 = None
+    stock_managed: bool = True
 
 
 class ArticleUpdate(BaseModel):
@@ -77,3 +82,19 @@ class ArticleUpdate(BaseModel):
     max_stock: Quantity | None = None
     description: Optional1000 = None
     barcode: Optional50 = None
+    stock_managed: bool | None = None
+
+
+class PriceChangeOut(BaseModel):
+    """Changement de prix catalogue d'un article : UNE entrée du journal d'audit existant
+    (création ou modification), aucune table dédiée (Lot 3-A). Prix de vente : ``sale_price_*``
+    (nul si inchangé) ; prix d'achat (coût interne) : ``purchase_price_*``, présents SEULEMENT
+    avec ``catalog.article.cost_view``."""
+
+    id: uuid.UUID
+    occurred_at: datetime
+    user_name: str | None
+    sale_price_before: Money | None
+    sale_price_after: Money | None
+    purchase_price_before: Money | None = None
+    purchase_price_after: Money | None = None

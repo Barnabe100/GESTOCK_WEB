@@ -560,7 +560,13 @@ def test_downgrade_to_standard_keeps_history_read_only(
         detail = api.get(f"/stock/transfers/{validated['id']}")
         assert detail.status_code == 200
         assert detail.json()["status"] == "VALIDATED"
-        assert detail.json()["lines"][0]["unit_cost"] == "100.0000"
+        # Coûts internes : seulement avec catalog.article.cost_view (Lot 3-A) — le
+        # Consultant voit le transfert, jamais son coût.
+        line = detail.json()["lines"][0]
+        if api is world.owner:
+            assert line["unit_cost"] == "100.0000"
+        else:
+            assert "unit_cost" not in line and "total_amount" not in detail.json()
     journal = world.owner.get("/stock/movements", params={"search": validated["number"]})
     assert journal.json()["total"] == 2
 

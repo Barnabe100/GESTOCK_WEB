@@ -33,12 +33,16 @@ export function ArticlePicker({
   onChange,
   invalid,
   ariaLabel,
+  stockManagedOnly = false,
 }: {
   id: string;
   value: ArticleOption | null;
   onChange: (value: ArticleOption | null) => void;
   invalid?: boolean;
   ariaLabel?: string;
+  /** Documents de stock : articles gérés en stock seulement (Lot 3-A ; le serveur refuse
+   *  de toute façon les autres). */
+  stockManagedOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [suggestions, setSuggestions] = useState<ArticleOption[]>([]);
@@ -50,6 +54,7 @@ export function ArticlePicker({
       status: 'active',
       limit: '20',
       sort: 'reference',
+      ...(stockManagedOnly ? { stock_managed: 'true' } : {}),
     });
     try {
       const page = await api.get<Page<Article>>(`/catalog/articles?${params.toString()}`);

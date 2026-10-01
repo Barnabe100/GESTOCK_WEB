@@ -29,6 +29,11 @@ export const catalogModule: FrontendModule = {
       permission: 'catalog.article.view',
     },
     {
+      path: 'catalog/articles/:id',
+      component: lazy(() => import('./ArticleDetailPage')),
+      permission: 'catalog.article.view',
+    },
+    {
       path: 'catalog/categories',
       component: lazy(() => import('./CategoriesPage')),
       permission: 'catalog.category.view',

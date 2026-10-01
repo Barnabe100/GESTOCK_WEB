@@ -11,6 +11,11 @@ export interface Category {
   updated_at: string;
 }
 
+/** Lot 3-A : permissions distinctes (le serveur contrôle chaque champ et chaque réponse). */
+export const ARTICLE_UPDATE = 'catalog.article.update';
+export const PRICE_UPDATE = 'catalog.article.price_update';
+export const COST_VIEW = 'catalog.article.cost_view';
+
 /** Montants et quantités : chaînes décimales (aucun calcul côté client). */
 export interface Article {
   id: string;
@@ -21,29 +26,45 @@ export interface Article {
   unit: string;
   main_supplier_id: string | null;
   main_supplier_name: string | null;
-  purchase_price: string;
+  /** Coût interne : ABSENT de la réponse sans `catalog.article.cost_view`. */
+  purchase_price?: string;
   sale_price: string;
   min_stock: string;
   max_stock: string | null;
   description: string | null;
   barcode: string | null;
   is_active: boolean;
+  /** `false` : article / service vendu sans stock (aucun mouvement, aucun contrôle). */
+  stock_managed: boolean;
   created_at: string;
   updated_at: string;
 }
 
+/** Champs envoyés : seulement ceux que l'utilisateur peut modifier (le serveur revérifie). */
 export interface ArticleInput {
-  reference: string;
-  designation: string;
-  category_id: string;
-  unit: string;
-  main_supplier_id: string | null;
-  purchase_price: string;
-  sale_price: string;
-  min_stock: string;
-  max_stock: string | null;
-  description: string;
-  barcode: string;
+  reference?: string;
+  designation?: string;
+  category_id?: string;
+  unit?: string;
+  main_supplier_id?: string | null;
+  purchase_price?: string;
+  sale_price?: string;
+  min_stock?: string;
+  max_stock?: string | null;
+  description?: string;
+  barcode?: string;
+  stock_managed?: boolean;
+}
+
+/** Changement de prix lu dans le journal d'audit (prix d'achat : avec `cost_view`). */
+export interface PriceChange {
+  id: string;
+  occurred_at: string;
+  user_name: string | null;
+  sale_price_before: string | null;
+  sale_price_after: string | null;
+  purchase_price_before?: string | null;
+  purchase_price_after?: string | null;
 }
 
 export const catalogKeys = {
@@ -85,6 +106,24 @@ export function useArticles(query: string) {
     queryKey: [...catalogKeys.articles, query],
     queryFn: ({ signal }) => api.get<Page<Article>>(`/catalog/articles?${query}`, signal),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useArticle(id: string | undefined) {
+  return useQuery({
+    queryKey: [...catalogKeys.articles, 'detail', id],
+    queryFn: ({ signal }) => api.get<Article>(`/catalog/articles/${id}`, signal),
+    enabled: id !== undefined,
+  });
+}
+
+export function usePriceHistory(id: string, query: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...catalogKeys.articles, 'price-history', id, query],
+    queryFn: ({ signal }) =>
+      api.get<Page<PriceChange>>(`/catalog/articles/${id}/price-history?${query}`, signal),
+    placeholderData: keepPreviousData,
+    enabled,
   });
 }
 

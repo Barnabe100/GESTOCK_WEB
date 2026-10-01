@@ -24,6 +24,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
 import { confirmAction } from '@/shared/ui/confirm';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import type { DocumentLine } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
@@ -258,6 +259,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
                   render={({ field: f }) => (
                     <ArticlePicker
                       id={`line-${index}-article`}
+                      stockManagedOnly
                       value={f.value}
                       onChange={f.onChange}
                       invalid={Boolean(lineErrors?.article)}
@@ -342,8 +344,10 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
 
 function TransferSummary({ transfer }: { transfer: StockTransfer }) {
   const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const { currency, locale, timezone } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   const at = (name: string | null, date: string | null) =>
     date ? `${name ?? ''} · ${formatDateTime(date, locale, timezone)}` : null;
   const rows: [string, string | null][] = [
@@ -379,16 +383,20 @@ function TransferSummary({ transfer }: { transfer: StockTransfer }) {
           header={t('stock.quantity')}
           body={(l: DocumentLine) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
         />
-        <Column
-          header={t('transfers.unitCost')}
-          body={(l: DocumentLine) => formatCost(l.unit_cost, currency, locale)}
-        />
-        <Column
-          header={t('stock.amount')}
-          body={(l: DocumentLine) => formatMoney(l.amount, currency, locale)}
-        />
+        {costs && (
+          <Column
+            header={t('transfers.unitCost')}
+            body={(l: DocumentLine) => formatCost(l.unit_cost, currency, locale)}
+          />
+        )}
+        {costs && (
+          <Column
+            header={t('stock.amount')}
+            body={(l: DocumentLine) => formatMoney(l.amount, currency, locale)}
+          />
+        )}
       </DataTable>
-      {transfer.total_amount !== null && (
+      {costs && transfer.total_amount != null && (
         <p className="sm-total">
           {t('transfers.value')} :{' '}
           <strong>{formatMoney(transfer.total_amount, currency, locale)}</strong>

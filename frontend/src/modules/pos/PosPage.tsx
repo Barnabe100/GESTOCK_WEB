@@ -24,7 +24,13 @@ import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 
-import { useCheckout, usePosArticles, type CheckoutResult, type PosArticle } from './api';
+import {
+  findByBarcode,
+  useCheckout,
+  usePosArticles,
+  type CheckoutResult,
+  type PosArticle,
+} from './api';
 import { cartReducer, cartTotal, lineTotal, validQuantity } from './cart';
 import { PosCustomerDialog } from './PosCustomerDialog';
 import { PosPaymentDialog, toCheckoutPayment, type PosPayment } from './PosPaymentDialog';
@@ -38,7 +44,8 @@ type PosDialog = 'customer' | 'payment' | 'confirm' | 'recent' | null;
  * serveur des articles du site, panier, client facultatif, paiements (aucun, partiel,
  * multiples), encaissement en une étape (`POST /pos/checkout` : le serveur recalcule prix,
  * totaux, stock, crédit et caisse). Raccourcis : F2 recherche, F4 client, F8 paiement,
- * F10 validation, Échap fermeture, Entrée ajout du premier article.
+ * F10 validation, Échap fermeture, Entrée : scan d'un code-barres (correspondance EXACTE
+ * cherchée par le serveur ; code inconnu signalé, rien n'est ajouté — Lot 3-A).
  */
 export default function PosPage() {
   const { t } = useTranslation();
@@ -65,6 +72,8 @@ export default function PosPage() {
   const [overrideAllowed, setOverrideAllowed] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [tab, setTab] = useState<'catalog' | 'cart'>('catalog');
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const checkout = useCheckout();
   const userId = useContext(AuthContext)?.user?.id ?? null;
   const cashVisible =
@@ -112,6 +121,26 @@ export default function PosPage() {
     dispatch({ type: 'add', article });
     // Le panier a changé : les paiements saisis sont à revoir.
     setPayments([]);
+  };
+
+  /** Entrée dans la recherche = scan : seule une correspondance exacte du serveur est ajoutée. */
+  const scan = async (code: string) => {
+    const barcode = code.trim();
+    if (!barcode || siteId === null || scanning) return;
+    setScanning(true);
+    setScanError(null);
+    try {
+      add(await findByBarcode(siteId, barcode));
+      setSearch('');
+    } catch (failure) {
+      setScanError(
+        failure instanceof ApiError && failure.code !== 'barcode_unknown'
+          ? t(`errors:${failure.code}`, { defaultValue: t('errors:unknown') })
+          : t('pos.barcodeUnknown'),
+      );
+    } finally {
+      setScanning(false);
+    }
   };
 
   // Raccourcis clavier (sans effet quand un dialogue est ouvert ; Échap ferme les dialogues).
@@ -248,15 +277,25 @@ export default function PosPage() {
                   aria-label={t('pos.search')}
                   aria-keyshortcuts="F2"
                   autoFocus
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setScanError(null);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key !== 'Enter') return;
                     e.preventDefault();
-                    const first = articles.data?.find((a) => a.is_active);
-                    if (first) add(first);
+                    void scan(e.currentTarget.value);
                   }}
                 />
               </IconField>
+              {scanError && (
+                <Message
+                  severity="warn"
+                  text={scanError}
+                  role="alert"
+                  className="sm-pos-scan-error"
+                />
+              )}
               {articles.isPending ? (
                 <LoadingState />
               ) : articles.isError ? (
@@ -281,6 +320,8 @@ export default function PosPage() {
                           <span className="sm-pos-tile-price">{money(a.sale_price)}</span>
                           {!a.is_active ? (
                             <StatusBadge tone="neutral" label={t('common.inactive')} />
+                          ) : !a.stock_managed ? (
+                            <StatusBadge tone="info" label={t('pos.notStockManaged')} />
                           ) : (
                             <StatusBadge
                               tone={out ? 'danger' : 'success'}

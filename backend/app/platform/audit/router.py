@@ -8,10 +8,11 @@ from sqlalchemy import func, select
 
 from app.platform.audit.models import AuditLog
 from app.platform.context import DbSession, RequestContext, require_permission
+from app.platform.costs import AUDIT_COST_FIELDS, cost_masking_route
 from app.platform.identity.models import User
 from app.shared.schemas import Page
 
-router = APIRouter(tags=["audit"])
+router = APIRouter(tags=["audit"], route_class=cost_masking_route(AUDIT_COST_FIELDS))
 
 AuditView = Annotated[RequestContext, Depends(require_permission("audit.log.view"))]
 

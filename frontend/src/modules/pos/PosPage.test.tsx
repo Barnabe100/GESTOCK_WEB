@@ -26,6 +26,7 @@ const ARTICLES: PosArticle[] = [
     sale_price: '5500.00',
     quantity: '40.000',
     is_active: true,
+    stock_managed: true,
   },
   {
     article_id: 'a2',
@@ -36,6 +37,7 @@ const ARTICLES: PosArticle[] = [
     sale_price: '2500.00',
     quantity: '0.000',
     is_active: true,
+    stock_managed: true,
   },
   {
     article_id: 'a3',
@@ -46,6 +48,7 @@ const ARTICLES: PosArticle[] = [
     sale_price: '100.00',
     quantity: '5.000',
     is_active: false,
+    stock_managed: true,
   },
 ];
 
@@ -127,6 +130,13 @@ beforeEach(() => {
   fetchMock.mockImplementation(async (url, init) => {
     const u = String(url);
     if (init?.method === 'POST') return checkoutResponse();
+    if (u.includes('/pos/articles/by-barcode')) {
+      // Correspondance EXACTE côté serveur : seul 3017620422003 existe (Ciment 50 kg).
+      const code = new URL(u, 'http://x').searchParams.get('barcode');
+      return code === '3017620422003'
+        ? jsonResponse(ARTICLES[0])
+        : jsonResponse({ code: 'barcode_unknown', detail: 'Code-barres inconnu' }, 404);
+    }
     if (u.includes('/pos/articles')) return jsonResponse(ARTICLES);
     if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
     return pageOf([]);
@@ -185,15 +195,16 @@ describe('point de vente', () => {
     expect(screen.getByText('Panier vide : ajoutez des articles.')).toBeTruthy();
   });
 
-  it('raccourcis : F2 recherche, Entrée ajoute le premier article, F8 paiement, F10 validation', async () => {
+  it('raccourcis : F2 recherche, Entrée = scan exact, F8 paiement, F10 validation', async () => {
     render();
     await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' });
     const search = screen.getByLabelText('Rechercher un article (F2)');
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.keyDown(window, { key: 'F2' });
     expect(document.activeElement).toBe(search);
+    fireEvent.change(search, { target: { value: '3017620422003' } });
     fireEvent.keyDown(search, { key: 'Enter' });
-    expect(screen.getByLabelText('Quantité de Ciment 50 kg')).toBeTruthy();
+    expect(await screen.findByLabelText('Quantité de Ciment 50 kg')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'F8' });
     expect(await screen.findByRole('dialog', { name: 'Paiements (F8)' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
@@ -356,5 +367,70 @@ describe('point de vente', () => {
     render(SELLER, SITES);
     expect(await screen.findByText('Choisissez le site de vente pour commencer.')).toBeTruthy();
     expect(calls('/pos/articles')).toHaveLength(0);
+  });
+
+  it('scan : correspondance exacte demandée au serveur avec la valeur saisie', async () => {
+    render();
+    await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' });
+    const search = screen.getByLabelText('Rechercher un article (F2)');
+    // Scan immédiat (douchette) : aucune attente de la recherche différée de 250 ms.
+    fireEvent.change(search, { target: { value: ' 3017620422003 ' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByLabelText('Quantité de Ciment 50 kg')).toBeTruthy();
+    const scanned = calls('/pos/articles/by-barcode');
+    expect(scanned).toHaveLength(1);
+    expect(scanned[0]).toContain('barcode=3017620422003');
+    expect(scanned[0]).toContain('site_id=s1');
+    expect((search as HTMLInputElement).value).toBe('');
+  });
+
+  it('scan inconnu : « Code-barres inconnu », aucun article ajouté (jamais le premier affiché)', async () => {
+    render();
+    // Des résultats sont affichés : Entrée ne doit JAMAIS en ajouter un par défaut.
+    await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' });
+    const search = screen.getByLabelText('Rechercher un article (F2)');
+    fireEvent.change(search, { target: { value: '9999999999999' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Code-barres inconnu');
+    expect(screen.queryByLabelText('Quantité de Ciment 50 kg')).toBeNull();
+    expect(screen.getByText('Panier vide : ajoutez des articles.')).toBeTruthy();
+    // Une saisie partielle d'un code existant n'ajoute rien non plus.
+    fireEvent.change(search, { target: { value: '301762042200' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByLabelText('Quantité de Ciment 50 kg')).toBeNull();
+    // Entrée sans saisie : rien n'est demandé ni ajouté.
+    fireEvent.change(search, { target: { value: '' } });
+    const before = calls('/pos/articles/by-barcode').length;
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(calls('/pos/articles/by-barcode')).toHaveLength(before);
+    expect(screen.queryByLabelText('Quantité de Ciment 50 kg')).toBeNull();
+  });
+
+  it('article non géré en stock : vendable, signalé sans quantité', async () => {
+    fetchMock.mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (init?.method === 'POST') return checkoutResponse();
+      if (u.includes('/pos/articles')) {
+        return jsonResponse([
+          {
+            ...ARTICLES[0],
+            article_id: 's9',
+            reference: 'SRV-1',
+            designation: 'Livraison',
+            quantity: '0',
+            stock_managed: false,
+          },
+        ]);
+      }
+      if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
+      return pageOf([]);
+    });
+    render();
+    const service = await screen.findByRole('button', { name: 'Ajouter Livraison au panier' });
+    expect(text(service)).toContain('Non géré en stock');
+    expect(text(service)).not.toContain('Rupture');
+    fireEvent.click(service);
+    expect(screen.getByLabelText('Quantité de Livraison')).toBeTruthy();
   });
 });

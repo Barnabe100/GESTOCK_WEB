@@ -10,6 +10,7 @@ const article = (over: Partial<PosArticle> = {}): PosArticle => ({
   unit: 'sac',
   category_name: null,
   sale_price: '5500.00',
+  stock_managed: true,
   quantity: '10.000',
   is_active: true,
   ...over,

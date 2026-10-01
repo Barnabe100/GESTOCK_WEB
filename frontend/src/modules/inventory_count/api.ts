@@ -25,9 +25,10 @@ export interface InventorySummary {
   surplus: number;
   shortage: number;
   no_variance: number;
-  surplus_value: string;
-  shortage_value: string;
-  adjustment_value: string;
+  /** Valorisations au coût : absentes sans `catalog.article.cost_view` (Lot 3-A). */
+  surplus_value?: string;
+  shortage_value?: string;
+  adjustment_value?: string;
   final: boolean;
 }
 
@@ -74,8 +75,8 @@ export interface InventoryLine {
   indicative_variance: string | null;
   /** Physique − stock courant (figé à la validation). */
   quantity_variance: string | null;
-  unit_cost: string | null;
-  adjustment_value: string | null;
+  unit_cost?: string | null;
+  adjustment_value?: string | null;
   counted_at: string | null;
   counted_by_name: string | null;
 }

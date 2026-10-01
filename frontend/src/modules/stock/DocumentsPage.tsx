@@ -21,6 +21,7 @@ import { ServerTable } from '@/shared/ui/ServerTable';
 import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import {
   DOCUMENT_CONFIG,
@@ -54,6 +55,8 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
     toQueryString(table, { search: debounced, status, date_from: dateFrom, date_to: dateTo }),
   );
   const { currency, locale } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
@@ -158,12 +161,14 @@ function DocumentsPage({ kind }: { kind: DocumentKind }) {
           headerClassName="sm-num"
           bodyClassName="sm-num"
         />
-        <Column
-          header={t('stock.total')}
-          headerClassName="sm-num"
-          bodyClassName="sm-num"
-          body={(d: StockDocument) => formatMoney(d.total_amount, currency, locale)}
-        />
+        {costs && (
+          <Column
+            header={t('stock.total')}
+            headerClassName="sm-num"
+            bodyClassName="sm-num"
+            body={(d: StockDocument) => formatMoney(d.total_amount, currency, locale)}
+          />
+        )}
         <Column
           header={t('stock.status')}
           body={(d: StockDocument) => <DocumentStatusBadge status={d.status} />}

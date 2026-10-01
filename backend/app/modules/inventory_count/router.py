@@ -24,10 +24,11 @@ from app.platform.context import (
     require_any_permission,
     require_permission,
 )
+from app.platform.costs import INVENTORY_COST_FIELDS, cost_masking_route
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
 
-router = APIRouter(tags=["inventories"])
+router = APIRouter(tags=["inventories"], route_class=cost_masking_route(INVENTORY_COST_FIELDS))
 
 P = "inventory_count.inventory"
 View = Annotated[RequestContext, Depends(require_permission(f"{P}.view"))]

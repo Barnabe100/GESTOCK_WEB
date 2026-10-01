@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.errors import ForbiddenError
 from app.modules.pos.schemas import PosArticleOut
-from app.modules.pos.service import search_articles
+from app.modules.pos.service import article_by_barcode, search_articles
 from app.modules.sales.api import CheckoutOut, PaymentService, SaleCheckout, SaleService
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
 
@@ -37,6 +37,17 @@ def pos_articles(
     limit: Annotated[int, Query(ge=1, le=50)] = 24,
 ) -> list[PosArticleOut]:
     return search_articles(db, ctx, site_id, search, limit)
+
+
+@router.get("/articles/by-barcode", response_model=PosArticleOut)
+def pos_article_by_barcode(
+    ctx: Use,
+    db: DbSession,
+    barcode: Annotated[str, Query(min_length=1, max_length=50)],
+    site_id: uuid.UUID | None = None,
+) -> PosArticleOut:
+    """Scan d'un code-barres : correspondance EXACTE (article actif) ou ``404 barcode_unknown``."""
+    return article_by_barcode(db, ctx, site_id, barcode)
 
 
 @router.post("/checkout", response_model=CheckoutOut, status_code=status.HTTP_201_CREATED)

@@ -65,6 +65,7 @@ from app.modules.stock.api import (
     ensure_document_site,
     levels_view,
     operation_site,
+    refuse_unmanaged,
     round_money,
     visible_site_ids,
 )
@@ -372,7 +373,11 @@ class InventoryService:
                     levels.c.site_id == site,
                 ),
             )
-            .where(articles.c.tenant_id == self.ctx.tenant_id, articles.c.is_active.is_(True))
+            .where(
+                articles.c.tenant_id == self.ctx.tenant_id,
+                articles.c.is_active.is_(True),
+                articles.c.stock_managed.is_(True),
+            )
         )
         by_text = search_filter(
             search, articles.c.reference, articles.c.designation, articles.c.barcode
@@ -468,6 +473,8 @@ class InventoryService:
             raise BusinessRuleError(
                 "Article inactif", code="article_inactive", extra={"articles": inactive}
             )
+        # Lot 3-A : un article non géré en stock ne s'inventorie pas.
+        refuse_unmanaged(self.db, [a for a in article_ids if not refs[a].stock_managed])
         return set(article_ids)
 
     def _stocked_articles(self, site_id: uuid.UUID) -> dict[uuid.UUID, Decimal]:
@@ -488,6 +495,7 @@ class InventoryService:
                 levels.c.tenant_id == self.ctx.tenant_id,
                 levels.c.site_id == site_id,
                 articles.c.is_active.is_(True),
+                articles.c.stock_managed.is_(True),
             )
         ).all()
         return {row[0]: row[1] for row in rows}
@@ -664,6 +672,7 @@ class InventoryService:
                 raise BusinessRuleError(
                     "Article inactif", code="article_inactive", extra={"articles": inactive}
                 )
+            refuse_unmanaged(self.db, sorted(a for a, r in refs.items() if not r.stock_managed))
         if not article_ids:
             raise BusinessRuleError("Aucun article à compter", code="inventory_empty")
         # Instantané du stock théorique au début du comptage (information seulement).

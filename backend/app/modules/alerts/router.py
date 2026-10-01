@@ -12,10 +12,11 @@ from app.modules.stock.api import (
     list_levels,
 )
 from app.platform.context import DbSession, RequestContext, require_permission
+from app.platform.costs import STOCK_COST_FIELDS, cost_masking_route
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
 
-router = APIRouter(tags=["alerts"])
+router = APIRouter(tags=["alerts"], route_class=cost_masking_route(STOCK_COST_FIELDS))
 
 AlertView = Annotated[RequestContext, Depends(require_permission("alerts.stock.view"))]
 Paging = Annotated[PageParams, Depends(page_params)]

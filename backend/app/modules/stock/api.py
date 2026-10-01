@@ -24,6 +24,7 @@ from app.modules.stock.stock_service import (
     MovementRef,
     MovementRequest,
     StockService,
+    refuse_unmanaged,
     round_money,
 )
 
@@ -36,6 +37,7 @@ __all__ = [
     "ensure_document_site",
     "filter_site_ids",
     "operation_site",
+    "refuse_unmanaged",
     "round_money",
     "sees_all_sites",
     "tenant_today",

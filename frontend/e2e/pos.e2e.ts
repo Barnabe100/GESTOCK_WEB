@@ -166,7 +166,8 @@ test.describe('Point de vente', () => {
   test('vente Mobile Money : aucun mouvement de caisse', async ({ page, request }) => {
     const s = await setup(request);
     await openPos(page, s);
-    await page.getByLabel('Rechercher un article (F2)').press('Enter');
+    // Entrée est désormais un scan exact (Lot 3-A) : ajout par la tuile.
+    await tile(page, s).click();
     await pay(page, [['Mobile Money', '10000']]);
     await validate(page);
     await expect(page.getByTestId('pos-receipt')).toContainText('Mobile Money');

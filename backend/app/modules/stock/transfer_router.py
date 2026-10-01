@@ -20,10 +20,11 @@ from app.platform.context import (
     require_feature,
     require_permission,
 )
+from app.platform.costs import STOCK_COST_FIELDS, cost_masking_route
 from app.shared.pagination import PageParams, page_params
 from app.shared.schemas import Page
 
-router = APIRouter(prefix="/transfers")
+router = APIRouter(prefix="/transfers", route_class=cost_masking_route(STOCK_COST_FIELDS))
 
 # Opérations : fonctionnalité du plan vérifiée avant la permission (message explicite).
 FEATURE = [Depends(require_feature("stock.transfers"))]

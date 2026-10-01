@@ -1,9 +1,14 @@
+from app.modules.catalog.api import register_stocked_sites
+from app.modules.stock.level_service import stocked_sites
 from app.modules.stock.reasons import ensure_system_exit_reasons
 from app.modules.stock.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
 TRANSFERS = "stock.transfers"
+
+# Port du catalogue (Lot 3-A) : stock restant d'un article, sur tous les sites du tenant.
+register_stocked_sites(stocked_sites)
 
 MANIFEST = ModuleManifest(
     code="stock",

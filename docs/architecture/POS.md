@@ -59,7 +59,9 @@ la caisse (`insufficient_stock`, `article_inactive`, `customer_inactive`,
   caisse : session de l'utilisateur indiquée, poste à choisir s'il en a plusieurs.
 - **Confirmation** : récapitulatif, avertissement de créance ; après validation, reçu affiché
   à partir de la réponse du serveur (point d'extension du futur ticket).
-- **Raccourcis** : F2 recherche, Entrée ajoute le premier article trouvé, F4 client,
+- **Raccourcis** : F2 recherche, Entrée = **scan** (Lot 3-A, ADR-0039 : correspondance EXACTE du
+  code-barres demandée au serveur avec la valeur saisie, `GET /pos/articles/by-barcode` ; code
+  inconnu → « Code-barres inconnu », rien n'est ajouté ; jamais le premier résultat affiché), F4 client,
   F8 paiement, F10 validation, Échap ferme un dialogue (inactifs quand un dialogue est ouvert).
 - **Mobile** (≤ 800 px) : onglets Articles / Panier, grandes zones tactiles, aucun débordement
   horizontal (vérifié à 1440, 1024, 800, 390 px).
@@ -75,3 +77,10 @@ suspendu (`403`). Le frontend ne fait que masquer ; le serveur décide.
 Restauration (tables, cuisine, QR), garage, fidélité, remboursements, impression / PDF du
 ticket, création rapide de client, remises, mode hors ligne et synchronisation, intégrations
 Mobile Money / TPE / banques, reporting, profils métier spécialisés.
+
+## Lot 3-A — articles non gérés en stock et scan exact (ADR-0039)
+
+Un article `stock_managed = false` (service) apparaît dans la recherche (« Non géré en stock »,
+sans quantité) et se vend sans mouvement ni contrôle de stock : `SaleService` relit le drapeau
+sous verrou partagé de l'article à la validation. Le scan n'utilise jamais un résultat de la
+recherche textuelle (différée de 250 ms) : la valeur saisie est envoyée telle quelle au serveur.

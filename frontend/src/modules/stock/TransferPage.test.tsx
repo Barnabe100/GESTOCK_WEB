@@ -265,7 +265,7 @@ describe('saisie et consultation d’un transfert', () => {
     fetchMock.mockImplementation(async () => jsonResponse(validated));
     const view = renderWithCapabilities(withToast(<TransferPage />, show), {
       features: FEATURES,
-      permissions: MANAGER,
+      permissions: [...MANAGER, 'catalog.article.cost_view'],
       path: '/stock/transfers/:id',
       route: '/stock/transfers/t1',
     });

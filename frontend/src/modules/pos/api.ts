@@ -14,6 +14,8 @@ export interface PosArticle {
   sale_price: string;
   quantity: string;
   is_active: boolean;
+  /** `false` : vendu sans stock (quantité sans objet). */
+  stock_managed: boolean;
 }
 
 /**
@@ -45,6 +47,17 @@ export interface CheckoutResult {
 }
 
 export const posKeys = { all: ['pos'] as const };
+
+/**
+ * Scan (Lot 3-A) : correspondance EXACTE du code-barres, article actif, côté serveur.
+ * Toujours la valeur saisie à l'instant de la validation, jamais un résultat affiché.
+ * `404 barcode_unknown` si aucun article ne porte exactement ce code.
+ */
+export function findByBarcode(siteId: string, barcode: string) {
+  return api.get<PosArticle>(
+    `/pos/articles/by-barcode?${new URLSearchParams({ site_id: siteId, barcode }).toString()}`,
+  );
+}
 
 export function usePosArticles(siteId: string | null, search: string) {
   return useQuery({

@@ -20,6 +20,7 @@ import { MetricCard } from '@/shared/ui/MetricCard';
 import { NotFound } from '@/shared/ui/NotFound';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import { useInventory, useInventoryMutations, type Inventory } from './api';
 import { InventoryLinesTable } from './InventoryLinesTable';
@@ -114,10 +115,12 @@ function InventoryInfo({ inventory }: { inventory: Inventory }) {
 /** Résumé des écarts (avant validation : sur le stock courant ; après : figé). */
 function InventorySummaryCards({ inventory }: { inventory: Inventory }) {
   const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const s = inventory.summary;
   if (!s) return null;
   const { currency, locale } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   return (
     <>
       <section className="sm-metrics sm-block" aria-label={t('inventories.summary')}>
@@ -133,14 +136,14 @@ function InventorySummaryCards({ inventory }: { inventory: Inventory }) {
           tone="info"
           value={s.surplus}
           label={t('inventories.summarySurplus')}
-          hint={formatMoney(s.surplus_value, currency, locale)}
+          hint={costs ? formatMoney(s.surplus_value, currency, locale) : undefined}
         />
         <MetricCard
           icon="pi pi-arrow-down"
           tone="danger"
           value={s.shortage}
           label={t('inventories.summaryShortage')}
-          hint={formatMoney(s.shortage_value, currency, locale)}
+          hint={costs ? formatMoney(s.shortage_value, currency, locale) : undefined}
         />
         <MetricCard
           icon="pi pi-equals"
@@ -149,11 +152,13 @@ function InventorySummaryCards({ inventory }: { inventory: Inventory }) {
           label={t('inventories.summaryNoVariance')}
         />
       </section>
-      <p className="sm-help">
-        {t(s.final ? 'inventories.summaryFinal' : 'inventories.summaryProjected', {
-          value: formatMoney(s.adjustment_value, currency, locale),
-        })}
-      </p>
+      {costs && (
+        <p className="sm-help">
+          {t(s.final ? 'inventories.summaryFinal' : 'inventories.summaryProjected', {
+            value: formatMoney(s.adjustment_value, currency, locale),
+          })}
+        </p>
+      )}
     </>
   );
 }

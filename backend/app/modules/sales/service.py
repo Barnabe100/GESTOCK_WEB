@@ -28,7 +28,12 @@ from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
-from app.modules.catalog.api import ArticleRef, articles_view, get_article_refs
+from app.modules.catalog.api import (
+    ArticleRef,
+    articles_view,
+    get_article_refs,
+    lock_stock_managed,
+)
 from app.modules.customers.api import (
     CustomerRef,
     customers_view,
@@ -275,6 +280,10 @@ class SaleService:
                 "Article inactif", code="article_inactive", extra={"articles": inactive}
             )
         return refs
+
+    def _references(self, article_ids: list[uuid.UUID]) -> list[str]:
+        refs = get_article_refs(self.db, set(article_ids))
+        return sorted(refs[a].reference for a in article_ids if a in refs)
 
     def _customer(self, customer_id: uuid.UUID | None) -> CustomerRef | None:
         """Client facultatif ; s'il est fourni : du tenant et actif (nouvelle opération)."""
@@ -535,22 +544,27 @@ class SaleService:
             sale, sum((amount for _, amount in planned), MONEY_ZERO), credit_override
         )
         self._assign_number(sale)
+        # Lot 3-A (ADR-0039) : « géré en stock » relu par le serveur, sous verrou partagé de
+        # l'article ; un article non géré (service) se vend sans mouvement ni contrôle de stock.
+        managed = lock_stock_managed(self.db, {line.article_id for line in sale.lines})
+        stocked = [line for line in sale.lines if managed.get(line.article_id, True)]
         # Sortie de stock : exclusivement via le moteur central (verrous, tout ou rien).
-        self._stock().apply(
-            sale.site_id,
-            [
-                MovementRequest(
-                    article_id=line.article_id,
-                    movement_type=MovementType.SALE,
-                    quantity=-line.quantity,
-                    source_type=SOURCE_TYPE,
-                    source_id=sale.id,
-                    source_line_id=line.id,
-                    source_number=sale.number,
-                )
-                for line in sale.lines
-            ],
-        )
+        if stocked:
+            self._stock().apply(
+                sale.site_id,
+                [
+                    MovementRequest(
+                        article_id=line.article_id,
+                        movement_type=MovementType.SALE,
+                        quantity=-line.quantity,
+                        source_type=SOURCE_TYPE,
+                        source_id=sale.id,
+                        source_line_id=line.id,
+                        source_number=sale.number,
+                    )
+                    for line in stocked
+                ],
+            )
         sale.status = SaleStatus.VALIDATED
         sale.validated_at = self.now
         sale.validated_by = self.ctx.user.id
@@ -577,6 +591,7 @@ class SaleService:
         aux mouvements ``SALE`` d'origine ; les mouvements historiques ne sont jamais modifiés."""
         sale = self.get(sale_id, lock=True)
         previous = sale.status
+        skipped: list[uuid.UUID] = []
         if previous is SaleStatus.CANCELLED:
             raise ConflictError("Vente déjà annulée", code="sale_already_cancelled")
         if previous is SaleStatus.VALIDATED:
@@ -595,24 +610,39 @@ class SaleService:
                     extra={"payments": int(active)},
                 )
             origins = self._stock().movements_of(sale.id, MovementType.SALE)
-            self._stock().apply(
-                sale.site_id,
-                [
-                    MovementRequest(
-                        article_id=line.article_id,
-                        movement_type=MovementType.CANCELLATION,
-                        quantity=line.quantity,
-                        unit_cost=origins[line.id].unit_cost,
-                        source_type=SOURCE_TYPE,
-                        source_id=sale.id,
-                        source_line_id=line.id,
-                        source_number=sale.number,
-                        origin_movement_id=origins[line.id].id,
-                        comment=f"Annulation {sale.number}",
-                    )
-                    for line in sale.lines
-                ],
-            )
+            # Seules les lignes sorties du stock à la validation (mouvement ``SALE``) y
+            # reviennent ; un article devenu non géré entre-temps (stock nul partout exigé) ne
+            # reçoit aucun stock (Lot 3-A).
+            managed = lock_stock_managed(self.db, {line.article_id for line in sale.lines})
+            restored = [
+                line
+                for line in sale.lines
+                if line.id in origins and managed.get(line.article_id, True)
+            ]
+            skipped = [
+                line.article_id
+                for line in sale.lines
+                if line.id in origins and not managed.get(line.article_id, True)
+            ]
+            if restored:
+                self._stock().apply(
+                    sale.site_id,
+                    [
+                        MovementRequest(
+                            article_id=line.article_id,
+                            movement_type=MovementType.CANCELLATION,
+                            quantity=line.quantity,
+                            unit_cost=origins[line.id].unit_cost,
+                            source_type=SOURCE_TYPE,
+                            source_id=sale.id,
+                            source_line_id=line.id,
+                            source_number=sale.number,
+                            origin_movement_id=origins[line.id].id,
+                            comment=f"Annulation {sale.number}",
+                        )
+                        for line in restored
+                    ],
+                )
         sale.status = SaleStatus.CANCELLED
         sale.cancelled_at = self.now
         sale.cancelled_by = self.ctx.user.id
@@ -627,6 +657,11 @@ class SaleService:
                 "reason": reason,
                 "stock_restored": previous is SaleStatus.VALIDATED,
                 "total": format(sale.total, "f"),
+                **(
+                    {"not_restored_unmanaged": self._references(skipped)}
+                    if previous is SaleStatus.VALIDATED and skipped
+                    else {}
+                ),
             },
         )
         return sale

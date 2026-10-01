@@ -80,7 +80,11 @@ def levels_view() -> Any:
     ).subquery("stock_levels_view")
 
 
-def _levels_query(site_ids: set[uuid.UUID], tenant_id: uuid.UUID) -> tuple[Any, dict[str, Any]]:
+def _levels_query(
+    site_ids: set[uuid.UUID], tenant_id: uuid.UUID, *, include_unmanaged: bool = False
+) -> tuple[Any, dict[str, Any]]:
+    """Niveaux (site × article). Les articles non gérés en stock (Lot 3-A) n'ont ni niveau, ni
+    seuil, ni alerte : exclus, sauf demande explicite (recherche du point de vente)."""
     articles = articles_view()
     sites = select(Site.id, Site.name).where(Site.id.in_(site_ids)).subquery("s")
     level = StockLevel.__table__
@@ -122,6 +126,8 @@ def _levels_query(site_ids: set[uuid.UUID], tenant_id: uuid.UUID) -> tuple[Any, 
         )
         .where(articles.c.tenant_id == tenant_id)
     )
+    if not include_unmanaged:
+        stmt = stmt.where(articles.c.stock_managed.is_(True))
     columns = {
         "articles": articles,
         "quantity": quantity,
@@ -171,8 +177,9 @@ def list_levels(
     state: StateFilter = StateFilter.ALL,
     include_inactive: bool = False,
     article_ids: set[uuid.UUID] | None = None,
+    include_unmanaged: bool = False,
 ) -> tuple[list[LevelRow], int]:
-    stmt, cols = _levels_query(site_ids, tenant_id)
+    stmt, cols = _levels_query(site_ids, tenant_id, include_unmanaged=include_unmanaged)
     articles = cols["articles"]
     conditions = [
         search_filter(search, articles.c.reference, articles.c.designation, articles.c.barcode),
@@ -205,6 +212,23 @@ def get_level(
     if row is None:
         raise NotFoundError("Article introuvable", code="article_not_found")
     return _to_row(row)
+
+
+def stocked_sites(db: Session, tenant_id: uuid.UUID, article_id: uuid.UUID) -> list[str]:
+    """Sites du tenant où le stock de l'article n'est pas nul (port ``catalog.stock_port`` :
+    passage « géré » → « non géré » refusé tant qu'il reste du stock quelque part)."""
+    level = StockLevel.__table__
+    rows = db.execute(
+        select(Site.name)
+        .join(level, and_(level.c.site_id == Site.id, level.c.tenant_id == Site.tenant_id))
+        .where(
+            level.c.tenant_id == tenant_id,
+            level.c.article_id == article_id,
+            level.c.quantity != 0,
+        )
+        .order_by(Site.name)
+    ).all()
+    return [row[0] for row in rows]
 
 
 def count_alerts(db: Session, tenant_id: uuid.UUID, site_ids: set[uuid.UUID]) -> dict[str, int]:

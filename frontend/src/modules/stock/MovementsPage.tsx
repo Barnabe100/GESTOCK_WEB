@@ -18,6 +18,7 @@ import { SearchInput } from '@/shared/ui/SearchInput';
 import { ServerTable } from '@/shared/ui/ServerTable';
 import { DateRangeFilter, FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import { useMovements, type Movement, type MovementType } from './api';
 
@@ -33,7 +34,7 @@ const TYPES: MovementType[] = [
 
 export default function MovementsPage() {
   const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const [table, setTable] = useState<TableState>({
     ...INITIAL_TABLE,
     sortField: 'occurred_at',
@@ -55,6 +56,8 @@ export default function MovementsPage() {
     }),
   );
   const { currency, locale, timezone } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
 
   const resetPage = () => setTable((s) => ({ ...s, first: 0 }));
@@ -132,14 +135,18 @@ export default function MovementsPage() {
           header={t('stock.stockAfter')}
           body={(m: Movement) => formatQuantity(m.quantity_after, locale)}
         />
-        <Column
-          header={t('stock.unitCost')}
-          body={(m: Movement) => formatCost(m.unit_cost, currency, locale)}
-        />
-        <Column
-          header={t('stock.averageCost')}
-          body={(m: Movement) => formatCost(m.average_cost_after, currency, locale)}
-        />
+        {costs && (
+          <Column
+            header={t('stock.unitCost')}
+            body={(m: Movement) => formatCost(m.unit_cost, currency, locale)}
+          />
+        )}
+        {costs && (
+          <Column
+            header={t('stock.averageCost')}
+            body={(m: Movement) => formatCost(m.average_cost_after, currency, locale)}
+          />
+        )}
         <Column field="user_name" header={t('audit.user')} />
       </ServerTable>
     </>

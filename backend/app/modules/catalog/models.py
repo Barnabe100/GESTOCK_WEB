@@ -12,6 +12,7 @@ from sqlalchemy import (
     Uuid,
     func,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -86,6 +87,11 @@ class Article(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(String(1000))
     barcode: Mapped[str | None] = mapped_column(String(50))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Lot 3-A (ADR-0039) : ``False`` = article / service vendu sans stock (aucun mouvement,
+    # aucun contrôle de disponibilité, hors niveaux, seuils, alertes et inventaires).
+    stock_managed: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
 
     category: Mapped[Category] = relationship(
         lazy="joined",

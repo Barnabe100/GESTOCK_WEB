@@ -103,10 +103,11 @@ casse), `status` = `all` | `active` | `inactive`. Réponse : `{items, total, lim
 | POST | `/catalog/categories` | `catalog.category.create` | Créer (nom unique par tenant, casse ignorée) |
 | GET · PATCH | `/catalog/categories/{id}` | `…view` · `…update` | Détail · renommer |
 | POST | `/catalog/categories/{id}/activate` · `/deactivate` | `catalog.category.status` | Statut (jamais de suppression) |
-| GET | `/catalog/articles` | `catalog.article.view` | Liste ; filtres `category_id`, `supplier_id` ; tri `reference`, `designation`, `category`, `sale_price`, `purchase_price`, `created_at` |
+| GET | `/catalog/articles` | `catalog.article.view` | Liste ; filtres `category_id`, `supplier_id`, `stock_managed` ; tri `reference`, `designation`, `category`, `sale_price`, `purchase_price` (avec `cost_view` seulement), `created_at`. `purchase_price` **absent** sans `catalog.article.cost_view` (Lot 3-A) |
 | GET | `/catalog/articles/by-barcode/{code}` | `catalog.article.view` | Article **actif** pour ce code-barres |
-| POST | `/catalog/articles` | `catalog.article.create` | Créer (catégorie / fournisseur actifs) |
-| GET · PATCH | `/catalog/articles/{id}` | `…view` · `…update` | Détail · modifier (aucun champ de stock) |
+| POST | `/catalog/articles` | `catalog.article.create` | Créer (catégorie / fournisseur actifs) ; `stock_managed` (défaut `true`) ; prix (`sale_price`, `purchase_price`, défaut 0) fixés seulement avec `catalog.article.price_update` (`403 price_update_not_allowed`) |
+| GET · PATCH | `/catalog/articles/{id}` | `…view` · `…update` ou `…price_update` | Détail · modifier : champs généraux avec `catalog.article.update`, prix avec `catalog.article.price_update` (valeur inchangée acceptée) ; `stock_managed` : `true → false` seulement à stock nul sur tous les sites (`409 article_has_stock`, `sites`), aucun mouvement créé |
+| GET | `/catalog/articles/{id}/price-history` | `…view` + (`…price_update` ou `audit.log.view`) | Historique des prix lu dans le journal d'audit (création et modifications), paginé, plus récent d'abord ; `sale_price_before/after`, `purchase_price_before/after` (avec `cost_view` seulement) |
 | POST | `/catalog/articles/{id}/activate` · `/deactivate` | `catalog.article.status` | Statut (réactivation refusée si code-barres pris) |
 | GET · POST | `/suppliers` | `suppliers.supplier.view` · `.create` | Liste (recherche nom, contact, ville, email, téléphone) · créer |
 | GET · PATCH | `/suppliers/{id}` | `…view` · `…update` | Détail · modifier (chaîne vide = champ effacé) |
@@ -354,7 +355,8 @@ logique propre : orchestration de `SaleService` (et, par lui, `StockService`,
 
 | Méthode | Chemin | Permissions | Rôle |
 |---|---|---|---|
-| GET | `/pos/articles` | `pos.terminal.use` | Articles du site (`site_id`, `search`, `limit` ≤ 50) : prix du catalogue, stock du site, actif |
+| GET | `/pos/articles` | `pos.terminal.use` | Articles du site (`site_id`, `search`, `limit` ≤ 50) : prix du catalogue, stock du site, actif, `stock_managed` |
+| GET | `/pos/articles/by-barcode` | `pos.terminal.use` | Scan (Lot 3-A) : `barcode`, `site_id` ; égalité EXACTE sur le code-barres d'un article ACTIF, jamais partielle ni sur référence / désignation ; inconnu : `404 barcode_unknown` |
 | POST | `/pos/checkout` | `pos.terminal.use` + `sales.sale.create` + `sales.sale.validate` (+ `sales.payment.create`) | Création + validation + paiements en une transaction ; `idempotency_key` obligatoire (201 ; 200 `replayed` pour une clé déjà traitée) |
 
 Ventes : `SaleOut.channel` (`BACKOFFICE` \| `POS`), filtre `GET /sales?channel=`.
@@ -399,3 +401,13 @@ manifeste (`route_prefix`, ex. `/api/v1/inventories` pour `inventory_count`) —
 par
 `require_module(code)` : un module non effectif pour le tenant répond
 `403 module_unavailable`, quel que soit le client.
+
+### Coûts internes (Lot 3-A, ADR-0039)
+
+Sans `catalog.article.cost_view`, les réponses du catalogue, du stock (niveaux, mouvements,
+entrées, sorties, transferts), des inventaires, des alertes et du journal d'audit ne contiennent
+**pas** les champs `purchase_price`, `average_cost`, `average_cost_before`, `average_cost_after`,
+`stock_value`, `unit_cost`, `amount` / `total_amount` (documents de stock), `adjustment_value`,
+`surplus_value`, `shortage_value` (champ absent, jamais remplacé). Articles non gérés en stock
+(`stock_managed = false`) : exclus des niveaux, seuils, alertes et candidats d'inventaire ;
+entrées, sorties, transferts, inventaires et seuils refusés (`422 article_not_stock_managed`).

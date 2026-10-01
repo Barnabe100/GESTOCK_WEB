@@ -29,6 +29,7 @@ import { ServerTable } from '@/shared/ui/ServerTable';
 import { FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import { useSetThresholds, useStockLevels, type LevelStateFilter, type StockLevel } from './api';
 import { LevelStateTag, thresholdText } from './ui';
@@ -132,6 +133,8 @@ export default function StockLevelsPage() {
     }),
   );
   const { currency, locale } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
   const canManage = can('stock.threshold.manage');
 
@@ -228,18 +231,23 @@ export default function StockLevelsPage() {
           bodyClassName="sm-num"
           body={(l: StockLevel) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
         />
-        <Column
-          header={t('stock.averageCost')}
-          headerClassName="sm-num"
-          bodyClassName="sm-num"
-          body={(l: StockLevel) => formatCost(l.average_cost, currency, locale)}
-        />
-        <Column
-          header={t('stock.value')}
-          headerClassName="sm-num"
-          bodyClassName="sm-num"
-          body={(l: StockLevel) => formatMoney(l.stock_value, currency, locale)}
-        />
+        {/* Coûts internes : seulement avec cost_view (le serveur ne les envoie pas sinon). */}
+        {costs && (
+          <Column
+            header={t('stock.averageCost')}
+            headerClassName="sm-num"
+            bodyClassName="sm-num"
+            body={(l: StockLevel) => formatCost(l.average_cost, currency, locale)}
+          />
+        )}
+        {costs && (
+          <Column
+            header={t('stock.value')}
+            headerClassName="sm-num"
+            bodyClassName="sm-num"
+            body={(l: StockLevel) => formatMoney(l.stock_value, currency, locale)}
+          />
+        )}
         <Column
           header={t('stock.minMax')}
           body={(l: StockLevel) =>

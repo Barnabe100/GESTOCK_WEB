@@ -25,6 +25,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 import { DocumentStatusBadge } from '@/shared/ui/StatusBadge';
 import { confirmAction } from '@/shared/ui/confirm';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import {
   DOCUMENT_CONFIG,
@@ -149,8 +150,10 @@ function toInput(kind: DocumentKind, values: FormValues, isNew: boolean): EntryI
 
 function DocumentSummary({ kind, document }: { kind: DocumentKind; document: StockDocument }) {
   const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const { currency, locale, timezone } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   const entry = kind === 'entries' ? (document as StockEntry) : null;
   const exit = kind === 'exits' ? (document as StockExit) : null;
   const rows: [string, string | null][] = [
@@ -213,16 +216,20 @@ function DocumentSummary({ kind, document }: { kind: DocumentKind; document: Sto
           header={t('stock.quantity')}
           body={(l: DocumentLine) => `${formatQuantity(l.quantity, locale)} ${l.unit}`}
         />
-        <Column
-          header={t('stock.unitCost')}
-          body={(l: DocumentLine) => formatCost(l.unit_cost, currency, locale)}
-        />
-        <Column
-          header={t('stock.amount')}
-          body={(l: DocumentLine) => formatMoney(l.amount, currency, locale)}
-        />
+        {costs && (
+          <Column
+            header={t('stock.unitCost')}
+            body={(l: DocumentLine) => formatCost(l.unit_cost, currency, locale)}
+          />
+        )}
+        {costs && (
+          <Column
+            header={t('stock.amount')}
+            body={(l: DocumentLine) => formatMoney(l.amount, currency, locale)}
+          />
+        )}
       </DataTable>
-      {document.total_amount !== null && (
+      {costs && document.total_amount != null && (
         <p className="sm-total">
           {t('stock.total')} :{' '}
           <strong>{formatMoney(document.total_amount, currency, locale)}</strong>
@@ -492,6 +499,7 @@ function DocumentForm({
                   render={({ field: f }) => (
                     <ArticlePicker
                       id={`line-${index}-article`}
+                      stockManagedOnly
                       value={f.value}
                       onChange={f.onChange}
                       invalid={Boolean(lineErrors?.article)}
@@ -547,7 +555,7 @@ function DocumentForm({
         </div>
       </fieldset>
       {kind === 'exits' && <small className="sm-help">{t('exits.costHelp')}</small>}
-      {document?.total_amount && !form.formState.isDirty && (
+      {can(COST_VIEW) && document?.total_amount && !form.formState.isDirty && (
         <p className="sm-total">
           {t('stock.total')} :{' '}
           <strong>

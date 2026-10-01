@@ -394,8 +394,10 @@
     "catalog.category.status": "Activer / désactiver une catégorie",
     "catalog.article.view": "Consulter le catalogue",
     "catalog.article.create": "Créer un article",
-    "catalog.article.update": "Modifier un article",
+    "catalog.article.update": "Modifier les informations générales d'un article (hors prix)",
     "catalog.article.status": "Activer / désactiver un article",
+    "catalog.article.price_update": "Modifier les prix catalogue (prix de vente, prix d'achat)",
+    "catalog.article.cost_view": "Consulter les coûts internes (prix d'achat, coût moyen, valorisations)",
     "suppliers.supplier.view": "Consulter les fournisseurs",
     "suppliers.supplier.create": "Créer un fournisseur",
     "suppliers.supplier.update": "Modifier un fournisseur",
@@ -608,7 +610,25 @@
     "subtitle": "Référentiel du catalogue : références, prix de vente, seuils et fournisseurs.",
     "empty": "Aucun élément dans le catalogue pour le moment.",
     "deactivateTitle": "Désactiver",
-    "deactivateConfirm": "Désactiver « {{name}} » ? Il ne sera plus proposé dans les nouvelles opérations ; son historique est conservé."
+    "deactivateConfirm": "Désactiver « {{name}} » ? Il ne sera plus proposé dans les nouvelles opérations ; son historique est conservé.",
+    "open": "Ouvrir la fiche",
+    "general": "Informations générales",
+    "prices": "Prix et stock",
+    "stock": "Stock",
+    "stockManaged": "Géré en stock",
+    "stockManagedShort": "Géré",
+    "notStockManaged": "Non géré en stock",
+    "stockManagedHelp": "Article suivi en stock : entrées, sorties, transferts, inventaires et alertes ; la vente exige du stock disponible.",
+    "notStockManagedHelp": "Article ou service non géré en stock : vendu sans mouvement ni contrôle de stock, hors niveaux, seuils, alertes et inventaires.",
+    "priceLocked": "Lecture seule : la modification des prix exige un droit dédié.",
+    "updatedAt": "Dernière modification : {{date}}",
+    "priceHistory": {
+      "title": "Historique des prix",
+      "help": "Changements de prix enregistrés dans le journal d'audit (création et modifications).",
+      "empty": "Aucun changement de prix enregistré.",
+      "date": "Date",
+      "user": "Utilisateur"
+    }
   },
   "stock": {
     "levelsTitle": "Stock par site",
@@ -1304,7 +1324,9 @@
     "receivedAmountN": "Montant reçu du paiement {{n}}",
     "paymentReferenceN": "Référence du paiement {{n}}",
     "changeByServer": "Espèces : saisissez le montant reçu ; la monnaie est calculée par le serveur.",
-    "receivedAndChange": "Espèces reçues {{received}} — monnaie rendue"
+    "receivedAndChange": "Espèces reçues {{received}} — monnaie rendue",
+    "barcodeUnknown": "Code-barres inconnu",
+    "notStockManaged": "Non géré en stock"
   },
   "sectors": {
     "retail": "Commerce de détail",

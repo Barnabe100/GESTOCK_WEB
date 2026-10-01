@@ -18,8 +18,9 @@ export interface StockLevel {
   category_name: string;
   article_active: boolean;
   quantity: string;
-  average_cost: string;
-  stock_value: string;
+  /** Coûts internes : absents sans `catalog.article.cost_view` (Lot 3-A). */
+  average_cost?: string;
+  stock_value?: string;
   min_stock: string;
   max_stock: string | null;
   min_override: string | null;
@@ -43,9 +44,10 @@ export interface Movement {
   quantity: string;
   quantity_before: string;
   quantity_after: string;
-  unit_cost: string | null;
-  average_cost_before: string;
-  average_cost_after: string;
+  /** Coûts internes : absents sans `catalog.article.cost_view` (Lot 3-A). */
+  unit_cost?: string | null;
+  average_cost_before?: string;
+  average_cost_after?: string;
   source_type: string;
   source_id: string;
   document_number: string | null;
@@ -75,8 +77,9 @@ export interface DocumentLine {
   article_designation: string;
   unit: string;
   quantity: string;
-  unit_cost: string | null;
-  amount: string | null;
+  /** Coûts : absents sans `catalog.article.cost_view` (Lot 3-A). */
+  unit_cost?: string | null;
+  amount?: string | null;
 }
 
 interface DocumentBase {
@@ -87,7 +90,7 @@ interface DocumentBase {
   status: DocumentStatus;
   operation_date: string;
   comment: string | null;
-  total_amount: string | null;
+  total_amount?: string | null;
   line_count: number;
   created_at: string;
   created_by_name: string | null;

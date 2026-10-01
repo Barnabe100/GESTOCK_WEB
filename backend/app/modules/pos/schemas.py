@@ -17,3 +17,5 @@ class PosArticleOut(BaseModel):
     sale_price: Money
     quantity: Quantity
     is_active: bool
+    # Lot 3-A : ``False`` = vendu sans stock (``quantity`` sans objet, toujours 0).
+    stock_managed: bool

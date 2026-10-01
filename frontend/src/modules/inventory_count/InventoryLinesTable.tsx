@@ -21,6 +21,7 @@ import { SearchInput } from '@/shared/ui/SearchInput';
 import { ServerTable } from '@/shared/ui/ServerTable';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
+import { COST_VIEW } from '@/modules/catalog/api';
 
 import {
   useInventoryLines,
@@ -137,6 +138,8 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
     toQueryString(table, { search: debounced, state: state === 'all' ? null : state }),
   );
   const { currency, locale } = capabilities.tenant;
+  // Coûts internes : affichés seulement avec cost_view (absents des réponses sinon).
+  const costs = can(COST_VIEW);
   const { status } = inventory;
   const draft = status === 'DRAFT';
   const counting = status === 'COUNTING' && can(`${P}.count`);
@@ -283,14 +286,14 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
               )}
             />
           )}
-          {final && (
+          {final && costs && (
             <Column
               header={t('stock.averageCost')}
               {...num}
               body={(l: InventoryLine) => formatCost(l.unit_cost, currency, locale)}
             />
           )}
-          {final && (
+          {final && costs && (
             <Column
               header={t('inventories.adjustmentValue')}
               {...num}

@@ -21,7 +21,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError
-from app.modules.catalog.api import get_article_refs
+from app.modules.catalog.api import get_article_refs, lock_stock_managed
 from app.modules.stock.models import MovementType, StockLevel, StockMovement
 
 Key = tuple[uuid.UUID, uuid.UUID]  # (site, article)
@@ -84,6 +84,18 @@ class MovementRef:
     unit_cost: Decimal | None
 
 
+def refuse_unmanaged(db: Session, article_ids: list[uuid.UUID]) -> None:
+    """Refus explicite d'une opération de stock sur des articles non gérés en stock."""
+    if not article_ids:
+        return
+    refs = get_article_refs(db, set(article_ids))
+    raise BusinessRuleError(
+        "Article non géré en stock : aucune opération de stock possible",
+        code="article_not_stock_managed",
+        extra={"articles": sorted(refs[a].reference for a in article_ids if a in refs)},
+    )
+
+
 class StockService:
     def __init__(
         self, db: Session, tenant_id: uuid.UUID, user_id: uuid.UUID | None, now: datetime
@@ -107,6 +119,7 @@ class StockService:
         ordered = sorted(keys)
         if not ordered:
             return {}
+        self._ensure_stock_managed({article_id for _, article_id in ordered})
         self.db.execute(
             insert(StockLevel)
             .values(
@@ -132,6 +145,13 @@ class StockService:
             .execution_options(populate_existing=True)
         ).all()
         return {(level.site_id, level.article_id): level for level in levels}
+
+    def _ensure_stock_managed(self, article_ids: set[uuid.UUID]) -> None:
+        """Garde centrale (Lot 3-A, ADR-0039) : aucun niveau ni mouvement pour un article non
+        géré en stock. Lecture sous verrou partagé de l'article (``lock_stock_managed``) : le
+        passage « géré » → « non géré » ne peut pas s'intercaler avant la fin de l'opération."""
+        flags = lock_stock_managed(self.db, article_ids)
+        refuse_unmanaged(self.db, [a for a in sorted(article_ids) if not flags.get(a, True)])
 
     def apply(self, site_id: uuid.UUID, requests: list[MovementRequest]) -> list[StockMovement]:
         """Applique les mouvements d'un site (tout ou rien) et renvoie les mouvements créés, dans

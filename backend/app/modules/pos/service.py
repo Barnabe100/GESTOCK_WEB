@@ -14,9 +14,10 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.modules.catalog.api import get_article_refs
+from app.core.errors import NotFoundError
+from app.modules.catalog.api import find_active_article_by_barcode, get_article_refs
 from app.modules.pos.schemas import PosArticleOut
-from app.modules.stock.api import list_levels, operation_site
+from app.modules.stock.api import LevelRow, list_levels, operation_site
 from app.platform.context import RequestContext
 from app.shared.pagination import PageParams
 
@@ -38,9 +39,39 @@ def search_articles(
         PageParams(limit=limit, offset=0, sort="designation"),
         search=search,
         include_inactive=True,
+        include_unmanaged=True,
     )
-    prices = get_article_refs(db, {r.article_id for r in rows})
-    ordered = sorted(rows, key=lambda r: not r.article_active)
+    return _to_out(db, sorted(rows, key=lambda r: not r.article_active))
+
+
+def article_by_barcode(
+    db: Session, ctx: RequestContext, site_id: uuid.UUID | None, barcode: str
+) -> PosArticleOut:
+    """Scan (Lot 3-A, ADR-0039) : égalité EXACTE sur le code-barres d'un article ACTIF du
+    tenant ; aucune recherche partielle, ni sur la référence ou la désignation. Inconnu :
+    ``404 barcode_unknown`` (rien n'est ajouté au panier)."""
+    site = operation_site(ctx, site_id)
+    article_id = find_active_article_by_barcode(db, barcode)
+    rows = (
+        list_levels(
+            db,
+            ctx.tenant_id,
+            {site},
+            PageParams(limit=1, offset=0, sort="designation"),
+            article_ids={article_id},
+            include_unmanaged=True,
+        )[0]
+        if article_id is not None
+        else []
+    )
+    found = _to_out(db, rows)
+    if not found:
+        raise NotFoundError("Code-barres inconnu", code="barcode_unknown")
+    return found[0]
+
+
+def _to_out(db: Session, rows: list[LevelRow]) -> list[PosArticleOut]:
+    refs = get_article_refs(db, {r.article_id for r in rows})
     return [
         PosArticleOut(
             article_id=r.article_id,
@@ -48,10 +79,11 @@ def search_articles(
             designation=r.designation,
             unit=r.unit,
             category_name=r.category_name,
-            sale_price=prices[r.article_id].sale_price,
+            sale_price=refs[r.article_id].sale_price,
             quantity=r.quantity,
             is_active=r.article_active,
+            stock_managed=refs[r.article_id].stock_managed,
         )
-        for r in ordered
-        if r.article_id in prices
+        for r in rows
+        if r.article_id in refs
     ]

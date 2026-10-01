@@ -320,3 +320,17 @@ A = 7 u (CMUP 100), B = 8 u (CMUP (5 × 200 + 3 × 100) / 8 = 162,5) ; valeur tr
 Annulation → A = 10 u (CMUP 100), B = 5 u (CMUP 162,5, inchangé : pas de reconstruction).
 
 Hors périmètre : état « en transit » (expédition puis réception), inventaires, lots.
+
+## 9. Lot 3-A — articles gérés ou non en stock, prix et coûts (ADR-0039)
+
+| Règle | Web |
+|---|---|
+| `stock_managed` | Booléen de l'article, `true` par défaut (articles existants : `true`). `false` = article / service vendu **sans mouvement ni contrôle de stock**. |
+| Article non géré | Absent des niveaux, seuils, alertes, candidats d'inventaire ; entrées, sorties, transferts, inventaires, seuils refusés (`article_not_stock_managed`). Garde centrale dans `StockService` (aucun niveau ni mouvement), drapeau lu sous verrou partagé de l'article. |
+| Géré → non géré | Stock nul sur **tous** les sites du tenant (`article_has_stock`) ; verrou exclusif de l'article avant la vérification ; aucun mouvement ni ajustement automatique. |
+| Non géré → géré | Autorisé ; aucun mouvement ; stock initial nul, alimenté par les opérations normales. |
+| Actif / inactif | Indépendant de `stock_managed` ; un stock nul ne désactive jamais l'article (rupture). |
+| Prix catalogue | `sale_price` / `purchase_price` modifiés (et fixés à la création) avec `catalog.article.price_update` seulement ; `catalog.article.update` = informations générales. |
+| Historique des prix | Journal d'audit existant (`article.created` avec prix initiaux, `article.updated` avant / après) ; `GET /catalog/articles/{id}/price-history` ; aucune table dédiée. |
+| Coûts internes | `catalog.article.cost_view` : sans elle, prix d'achat, CMUP, coûts unitaires, valorisations absents des réponses (catalogue, stock, inventaires, alertes, audit). |
+| Code-barres au POS | Scan = égalité exacte, article actif (`GET /pos/articles/by-barcode`) ; inconnu : `barcode_unknown`. |

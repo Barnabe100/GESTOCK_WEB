@@ -120,8 +120,19 @@ Gestionnaire) en plus de `sales.sale.view`, sites sans l'export jamais exportés
 audité `export.generated` (format, filtres renseignés, nombre de lignes) ; limite de crédit
 réservée à `customers.credit_limit.manage` (Administrateur), auditée avant / après ; fiche :
 mouvements de stock (`stock.movement.view`, `source_type`/`source_id`) et chronologie
-(`GET /sales/{id}/history`, `audit.log.view`, évènements réellement journalisés). Ne pas
-passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+(`GET /sales/{id}/history`, `audit.log.view`, évènements réellement journalisés). **Lot 3-A
+livré — catalogue** ([ADR-0039](docs/adr/0039-catalogue-stock-gere-prix-couts.md), migration
+0026) : scan POS = égalité **exacte** du code-barres côté serveur (`/pos/articles/by-barcode`,
+`barcode_unknown`), jamais le premier résultat affiché ; `catalog_articles.stock_managed`
+(défaut `true`) : `false` = vendu sans mouvement ni contrôle de stock, refusé dans toute
+opération de stock (garde centrale `StockService`, drapeau sous verrou partagé de l'article),
+géré → non géré seulement à stock nul sur tous les sites (port `catalog.stock_port`) ;
+historique des prix lu dans l'audit (aucune table) ; `catalog.article.price_update` (prix) ≠
+`catalog.article.update` (informations générales) ; `catalog.article.cost_view` : coûts internes
+**absents** des réponses sans elle (`app.platform.costs.cost_masking_route` sur les routeurs
+catalogue, stock, inventaires, alertes, audit — tout nouveau champ de coût doit y être
+déclaré) ; Gestionnaire sans prix ni coûts par défaut. Ne pas passer au lot suivant sans
+validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

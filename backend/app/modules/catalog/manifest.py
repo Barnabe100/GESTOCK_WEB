@@ -13,8 +13,13 @@ MANIFEST = ModuleManifest(
         PermissionDef("catalog.category.status", W),
         PermissionDef("catalog.article.view", R),
         PermissionDef("catalog.article.create", W),
+        # Informations générales de l'article ; ne permet PAS de modifier les prix (Lot 3-A).
         PermissionDef("catalog.article.update", W),
         PermissionDef("catalog.article.status", W),
+        # Lot 3-A (ADR-0039) : prix catalogue (vente, achat) et coûts internes (prix d'achat,
+        # coût moyen pondéré), contrôlés par le serveur dans chaque réponse.
+        PermissionDef("catalog.article.price_update", W),
+        PermissionDef("catalog.article.cost_view", R),
     ),
     router=router,
     onboarding=CATALOG_STEPS,

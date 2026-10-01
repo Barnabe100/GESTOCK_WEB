@@ -43,7 +43,12 @@ from app.modules.stock.sites import (
     tenant_today,
     visible_site_ids,
 )
-from app.modules.stock.stock_service import MovementRequest, StockService, round_money
+from app.modules.stock.stock_service import (
+    MovementRequest,
+    StockService,
+    refuse_unmanaged,
+    round_money,
+)
 from app.modules.suppliers.api import get_supplier_ref, supplier_names
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
@@ -65,7 +70,8 @@ def _names(db: Session, model: Any, ids: set[uuid.UUID | None], column: Any) -> 
 
 
 def check_articles(db: Session, article_ids: list[uuid.UUID]) -> dict[uuid.UUID, ArticleRef]:
-    """Articles des lignes d'un document : existants, actifs (ART-13), sans doublon."""
+    """Articles des lignes d'un document : existants, actifs (ART-13), gérés en stock (Lot 3-A),
+    sans doublon."""
     if len(set(article_ids)) != len(article_ids):
         raise BusinessRuleError(
             "Un article apparaît sur plusieurs lignes", code="duplicate_article_line"
@@ -81,6 +87,8 @@ def check_articles(db: Session, article_ids: list[uuid.UUID]) -> dict[uuid.UUID,
         raise BusinessRuleError(
             "Article inactif", code="article_inactive", extra={"articles": inactive}
         )
+    # Lot 3-A : entrées, sorties et transferts refusés pour un article non géré en stock.
+    refuse_unmanaged(db, [a for a in article_ids if not refs[a].stock_managed])
     return refs
 
 

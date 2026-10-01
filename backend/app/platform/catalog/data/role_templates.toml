@@ -15,7 +15,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue, fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue (sans modification des prix ni consultation des coûts), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -36,8 +36,13 @@ permissions = [
   "inventory_count.*",
   "subscription.activation.check",
 ]
-# Limite de crédit des clients : réservée à l'Administrateur par défaut (Lot 2).
-exclude = ["customers.credit_limit.manage"]
+# Limite de crédit des clients (Lot 2), prix catalogue et coûts internes (Lot 3-A) : réservés
+# à l'Administrateur par défaut ; un rôle personnalisé peut les accorder.
+exclude = [
+  "customers.credit_limit.manage",
+  "catalog.article.price_update",
+  "catalog.article.cost_view",
+]
 
 [roles.seller]
 name = "Vendeur"

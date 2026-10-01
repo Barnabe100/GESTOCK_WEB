@@ -41,7 +41,9 @@ describe('page Stock par site', () => {
   });
 
   it("affiche l'état, le CMUP à 4 décimales et la surcharge du site", async () => {
-    renderWithCapabilities(<StockLevelsPage />, { permissions: ['stock.level.view'] });
+    renderWithCapabilities(<StockLevelsPage />, {
+      permissions: ['stock.level.view', 'catalog.article.cost_view'],
+    });
     expect(await screen.findByText('VIS-001')).toBeTruthy();
     expect(screen.getByText('Stock faible')).toBeTruthy();
     expect(screen.getByText(/1\s500,1234/)).toBeTruthy();
@@ -49,6 +51,13 @@ describe('page Stock par site', () => {
     expect(screen.getByText('Boutique')).toBeTruthy(); // plusieurs sites : colonne Site
     // Sans permission de gestion des seuils : pas d'action.
     expect(screen.queryByRole('button', { name: 'Seuils du site' })).toBeNull();
+  });
+
+  it('sans cost_view : ni CMUP ni valeur du stock (coûts internes)', async () => {
+    renderWithCapabilities(<StockLevelsPage />, { permissions: ['stock.level.view'] });
+    expect(await screen.findByText('VIS-001')).toBeTruthy();
+    expect(screen.queryByText('CMUP')).toBeNull();
+    expect(screen.queryByText(/1\s500,1234/)).toBeNull();
   });
 
   it('masque la colonne Site pour un tenant mono-site et filtre les alertes', async () => {
