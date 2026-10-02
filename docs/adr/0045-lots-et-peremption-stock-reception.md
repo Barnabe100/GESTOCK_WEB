@@ -1,7 +1,8 @@
 # ADR-0045 — Lots et péremption : stock et réception
 
-- **Statut** : Acceptée (Lot 3-G — décisions D1 à D20 et P1 (P1-b) validées par TechNova ;
-  implémentation livrée, validation finale en attente)
+- **Statut** : Acceptée — Lot 3-G (décisions D1 à D20 et P1-b) livré et validé (état de
+  référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18, section « Lot 3-H ») **validé sur
+  le plan des décisions, implémentation non commencée** ; P1-b toujours active
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
   [ADR-0028](0028-fuseau-horaire-du-tenant.md) (dates métier dans le fuseau du tenant),
@@ -156,7 +157,7 @@ sinon **normal**.
 | Lot | Contenu |
 |---|---|
 | **3-G** (cette ADR) | **suivi par lot non activable en exploitation (P1-b)** ; référentiel des lots ; réglages de suivi de l'article ; solde par lot et par site ; réceptions `PURCHASE` et `INITIAL_STOCK` ; annulation de réception ; traçabilité des mouvements d'entrée ; consultation (page des lots, fiche lot, fiche article, réception, mouvements) ; calcul de l'état de péremption |
-| **3-H** | **ouverture de l'activation du suivi par lot, livrée avec** la consommation des lots par les ventes, le POS, les sorties, les transferts et les inventaires (comptage par lot) ; choix automatique ou manuel du lot ; annulations / retours avec le lot ; comportement face à un lot périmé ; lot éventuel sur le reçu |
+| **3-H** | **ouverture de l'activation du suivi par lot, livrée avec** la consommation des lots par les ventes, le POS, les sorties, les transferts et les inventaires (comptage par lot) ; choix automatique ou manuel du lot ; annulations / retours avec le lot ; comportement face à un lot périmé ; lot éventuel sur le reçu — **précisé par la section « Lot 3-H » (H-D1 à H-D18, découpage 3-H-A / 3-H-B ; retours et remboursements finalement hors 3-H, H-D13)** |
 | **3-I** | alertes et tableau de bord de péremption ; notifications ; traitement éventuel des lots périmés ; rapports de péremption |
 
 ### Décision P1 — activation du suivi fermée jusqu'à 3-H (P1-b, validée le 2026-10-02)
@@ -326,12 +327,166 @@ Choix techniques faits pendant l'implémentation, dans le cadre des décisions c
   `stock_settings.updated`.
 - **Migration 0034** : retour arrière refusé si des lots existent (traçabilité).
 
+## Lot 3-H — consommation des lots (décisions validées par TechNova le 2026-10-02)
+
+Les décisions de cette section **complètent** celles du 3-G (D1 à D20, P1-b), qui restent
+inchangées. Pour éviter toute confusion de numérotation, elles sont notées **H-D1 à H-D18**.
+Elles font suite à l'audit préalable du 3-H (2026-10-02, état `4fd303f`, aucun fichier
+modifié). **Aucune implémentation n'est commencée ; P1-b reste active.**
+
+### Décisions
+
+1. **H-D1 — Mode de consommation par flux (variante D)** : ventes et POS = consommation
+   **automatique FEFO** (le vendeur ne choisit pas de lot lors d'une vente normale ; le FEFO est
+   une règle interne de gestion du stock) ; sorties de stock = **choix manuel** du lot ;
+   transferts = **choix manuel** du lot ; inventaires = **comptage par lot**.
+2. **H-D2 — Plusieurs lots par ligne** : oui. La ligne commerciale reste unique (Eau, 30) ; le
+   stock produit un mouvement par lot (`SALE` lot A −20, `SALE` lot B −10) ; l'historique
+   restitue exactement cette répartition.
+3. **H-D3 — Ordre FEFO** (article suivi en péremption) : lots **non périmés** par date de
+   péremption croissante, puis date de création du lot, puis numéro ; lots sans date de
+   péremption après les lots datés ; un lot périmé n'est **jamais** choisi automatiquement.
+   Ordre déterministe et reproductible.
+4. **H-D4 — Article suivi par lot sans suivi de péremption** : FIFO — date de création du lot,
+   puis numéro.
+5. **H-D5 — Lots périmés** : vente / POS **bloqué** (jamais consommé par le FEFO) ; sortie de
+   stock **autorisée** (destruction, mise au rebut) ; transfert **bloqué** par défaut ;
+   inventaire : le lot périmé reste visible et comptable.
+6. **H-D6 — Dérogation à la vente d'un lot périmé** : impossible avec les permissions normales ;
+   **permission spécifique**, **motif obligatoire**, utilisateur et motif audités, aucune
+   dérogation silencieuse. Le nom exact est proposé au plan technique après vérification des
+   conventions RBAC (voir « Vérifications techniques », point 1).
+7. **H-D7 — Modèle de traçabilité M1** : le mouvement de stock porte `lot_id` ; **un mouvement
+   = une allocation de quantité sur un lot** ; une ligne répartie sur plusieurs lots produit
+   plusieurs mouvements ; l'annulation inverse **chaque mouvement d'origine**. Le journal des
+   mouvements est la **source de vérité historique** de la consommation des lots. **Aucune**
+   table générique `stock_lot_allocations`.
+8. **H-D8 — Choix saisis sur les brouillons** : conservés dans le brouillon pour les flux à
+   choix manuel (sorties, transferts, et tout autre flux qui l'exigerait) ; **revalidés
+   intégralement** par le serveur à la validation ; jamais source historique (le journal fait
+   foi). Structures exactes fixées au plan technique.
+9. **H-D9 — POS et reçu** : FEFO automatique au POS, sans sélection imposée au vendeur ; le lot
+   reste consultable dans le détail et l'historique de la vente ; le **reçu commercial affiche
+   le lot et, si elle existe, la date de péremption** (format fixé à l'implémentation — voir
+   point ouvert O-2).
+10. **H-D10 — Annulation de vente** : restauration **exacte** sur les lots consommés (A +20,
+    B +10), jamais sur un autre lot, même si le lot est devenu périmé entre-temps ; protégée
+    contre le double crédit.
+11. **H-D11 — Transferts** : l'identité du lot est conservée (même lot sur le site destination) ;
+    répartition possible sur plusieurs lots (site A : X −20 / Y −20 → site B : X +20 / Y +20) ;
+    lots périmés selon H-D5 ; annulation = restauration sur les lots d'origine, **refusée** si
+    les soldes du site destination ne le permettent plus.
+12. **H-D12 — Inventaires** : comptage **par lot** pour un article suivi ; un lot existant peut
+    être compté à 0 ; un lot **découvert** peut être créé si les règles de création du 3-G sont
+    respectées ; un lot **absent** du comptage doit pouvoir être identifié ; écart et ajustement
+    **par lot** ; jamais d'écart global transformé en consommation FEFO ; UX desktop et mobile.
+13. **H-D13 — Retours et remboursements** : **hors périmètre du 3-H** (aucun workflow de retour
+    ni de remboursement dans le Web actuel).
+14. **H-D14 — Garde-fou serveur** : une fois P1-b levée, **tout mouvement d'un article suivi par
+    lot porte un lot** ; un mouvement sortant sans `lot_id` pour un article suivi est refusé
+    par le serveur (jamais un contrôle du seul frontend) ; articles non suivis inchangés.
+15. **H-D15 — Levée de P1-b** : P1-b reste active pendant 3-H-A **et** 3-H-B ; levée en
+    **dernière étape** du 3-H complet, après ventes, POS, sorties, annulations, transferts,
+    annulations de transferts, inventaires, tests de concurrence, multi-site, multi-tenant,
+    desktop et mobile, et vérification du garde-fou H-D14. Aucun flux incomplet ne doit pouvoir
+    fonctionner sur un article réellement suivi par lot.
+16. **H-D16 — Présentation sur un mouvement réparti** : quantité de stock toujours en unité de
+    base ; présentation cohérente avec le 3-C ; si la quantité en conditionnement d'un
+    mouvement individuel n'est pas représentable proprement, elle n'est pas affichée sur ce
+    mouvement ; **jamais de faux arrondi**.
+17. **H-D17 — CMUP** : C1 inchangé (aucun coût par lot, valorisation au CMUP du site, aucune
+    méthode comptable par lot). Pour un transfert réparti sur plusieurs lots, le CMUP est
+    déterminé **une fois au niveau de la ligne / de l'opération, avant répartition**, sans
+    écart d'arrondi créé par la seule répartition (implémentation exacte proposée au plan
+    technique, voir point 3).
+18. **H-D18 — Lots disponibles pour le POS** : point d'accès **dédié** (pas la page générale
+    `/stock/lots`) : tenant, site de la vente et permissions respectés ; seulement les lots
+    pertinents, avec solde disponible et péremption ; mêmes règles que le moteur FEFO du
+    serveur.
+
+### Découpage validé
+
+| Étape | Contenu | P1-b à la fin |
+|---|---|---|
+| **3-H-A** — moteur, ventes, POS, sorties | modèle M1 ; adaptation de `StockService` ; consommation par lot ; FEFO / FIFO ; choix manuel pour les sorties ; ventes, POS, sorties et leurs annulations ; garde-fou H-D14 ; concurrence ; historique ; affichage des lots ; reçu ; tests desktop / mobile | **active** (aucun article réellement suivi activable en exploitation) |
+| **3-H-B** — transferts, inventaires | transferts multi-lots, conservation du lot entre sites, annulation ; inventaires par lot (lots découverts, lots absents, ajustements) ; concurrence ; tests desktop / mobile ; **puis** suite complète, vérification qu'aucun flux ne produit de mouvement sans lot pour un article suivi, **levée de P1-b** | levée en **dernière étape** |
+
+### Vérifications techniques (lecture du code à `4fd303f`)
+
+1. **RBAC (H-D6)** : convention `module.ressource.action` avec nature déclarée ; précédent
+   direct `sales.sale.credit_override` (nature écriture), accordé à aucun rôle de base hors
+   Administrateur (`*`). Le POS exige `pos.terminal.use` en plus des permissions de vente.
+   **Proposition** (à confirmer au plan technique) : `sales.sale.expired_lot_override`
+   (écriture), Administrateur seulement par défaut, sur le modèle de `credit_override`.
+2. **Brouillons (H-D8)** : les lignes de sortie (`stock_exit_lines`) et de transfert
+   (`stock_transfer_lines`) sont **entièrement remplacées** à chaque enregistrement du
+   brouillon (`document.lines = []` puis reconstruction). Les choix de lots devront donc être
+   des **lignes enfants de la ligne** (suppression en cascade avec elle, reconstruites à partir
+   de la saisie), tenant-scoped, RLS `ENABLE` + `FORCE`, FK composites `(tenant, article, lot)`.
+   Les ventes ne stockent aucun choix (FEFO à la validation).
+3. **CMUP (H-D17)** : `compute_average_cost` est appliqué **mouvement par mouvement** dans
+   `StockService._write`, arrondi à 4 décimales à chaque fois, seulement pour `ENTRY` et
+   `TRANSFER_IN`. Les sorties (`SALE`, `EXIT`, `TRANSFER_OUT`, `ADJUSTMENT`) prennent le CMUP du
+   site sans le modifier : les répartir ne crée aucun écart. Seul le **`TRANSFER_IN` réparti**
+   enchaînerait plusieurs recalculs arrondis. **Proposition** : calculer le CMUP destination une
+   fois sur la quantité totale de la ligne, puis l'appliquer à tous les mouvements de la ligne
+   (premier mouvement : CMUP avant → CMUP final ; suivants : CMUP final inchangé).
+4. **Contraintes de `stock_movements` (H-D7)** : unicité
+   `uq_stock_movements_line_type_site (tenant_id, source_line_id, movement_type, site_id)` —
+   un seul mouvement par ligne, type et site. À étendre à `lot_id` avec `NULLS NOT DISTINCT`
+   (PostgreSQL 16) : comportement identique pour les articles non suivis, un mouvement par lot
+   pour les autres, double application toujours impossible. Contrainte
+   `packaging_snapshot_complete` : l'instantané de présentation d'un mouvement est **tout ou
+   rien** (`packaging_id`, nom, conversion, quantité) ; `packaging_quantity_consistent` exige
+   `|quantité| = quantité en conditionnement × conversion`.
+5. **Hypothèses « un mouvement par ligne »** à reprendre : `StockService.movements_of` et
+   `_origin_movements` (dictionnaires indexés par ligne : annulation des ventes, des sorties,
+   des réceptions, des transferts) ; `ExitService.validate` (`zip(lignes, mouvements)` pour figer
+   le coût de la ligne) ; `TransferService.validate` (`zip(lignes, paires)`) ;
+   `StockService.transfer` (paires sortie / entrée par position) ; audit de l'inventaire
+   (`len(movements)` = nombre de mouvements, plus nombre d'articles).
+6. **Inventaires (H-D12)** : `inventory_lines` unique `(inventory_id, article_id)` ; comptage
+   par ligne en unité de base ou en conditionnement + vrac (3-C) ; théorique initial capturé au
+   démarrage, écart = physique − stock courant relu à la validation ; un article dans un seul
+   inventaire en cours par site (verrou consultatif). Le comptage par lot demande un **détail
+   par lot sous la ligne** (théorique, physique, écart, ajustement par lot), la ligne restant
+   la somme.
+
+### Points ouverts avant le code (aucune décision prise ici)
+
+- **O-1 — Exercice de la dérogation H-D6** : les ventes et le POS consomment en FEFO sans choix
+  du vendeur, et le FEFO exclut les lots périmés. Il faut préciser **comment** une vente
+  dérogatoire désigne un lot périmé (choix explicite du lot sur la ligne, ou option « inclure
+  les lots périmés » avec motif) et ce qui se passe si le stock non périmé est insuffisant
+  alors qu'un stock périmé existe (refus avec un code d'erreur dédié par défaut ?).
+- **O-2 — Reçu (H-D9)** : le Web **n'a pas de reçu imprimé 80 mm** ; le « reçu » du POS est
+  aujourd'hui un **dialogue de confirmation à l'écran** (`PosReceipt`, point d'extension
+  déclaré d'un futur ticket / PDF). Le 3-H affichera le lot et la péremption dans ce reçu à
+  l'écran ; un ticket imprimé 80 mm serait un périmètre nouveau.
+- **O-3 — Présentation d'un mouvement réparti (H-D16)** : avec la contrainte « tout ou rien »,
+  ne pas afficher la quantité en conditionnement d'un mouvement revient à **omettre tout son
+  instantané de présentation** (la ligne du document le conserve) — sauf modification de la
+  contrainte. Proposition : conserver l'instantané quand quantité ÷ conversion est exacte à
+  3 décimales, l'omettre sinon.
+- **O-4 — Choix manuel incomplet (H-D8)** : la somme des allocations doit-elle égaler la
+  quantité de la ligne dès l'enregistrement du brouillon, ou seulement à la validation ?
+- **O-5 — Lot absent de l'inventaire (H-D12)** : un lot ayant un solde sur le site mais non
+  compté bloque-t-il la validation (comptage explicite obligatoire, y compris à 0) ou est-il
+  traité comme compté à 0 ? Et comment le comptage par lot se combine-t-il avec le comptage en
+  conditionnement + vrac du 3-C (par lot) ?
+- **O-6 — Garde-fou H-D14 pendant 3-H-A** : proposition d'activer le garde-fou dès 3-H-A (sans
+  effet en exploitation tant que P1-b est active) ; les transferts et inventaires d'articles
+  suivis seraient alors refusés dans les tests jusqu'au 3-H-B.
+
 ## Références
 
 - Audit préalable du Lot 3-G (2026-10-02, rapport de session, aucun fichier modifié) : état du
   modèle (`stock_levels`, `stock_movements`, `stock_entries`, `stock_entry_lines`, sorties,
   transferts, inventaires, conditionnements), contraintes d'unicité bloquantes, absence de lots
   dans le Web et le Desktop, analyse du CMUP (options C1 / C2), impacts sur 3-H et 3-I.
+- Audit préalable du Lot 3-H (2026-10-02, état `4fd303f`, rapport de session, aucun fichier
+  modifié) : flux sortants (ventes, POS, sorties, transferts, inventaires, annulations), options
+  de consommation A à D, modèles M1 / M2 / M3, concurrence, retours et remboursements absents.
 - [`CATALOGUE_STOCK.md`](../architecture/CATALOGUE_STOCK.md) (STK-*, ENT-*),
   [`DATA_MODEL.md`](../architecture/DATA_MODEL.md),
   [`INVENTORY.md`](../architecture/INVENTORY.md), [`SALES.md`](../architecture/SALES.md),
