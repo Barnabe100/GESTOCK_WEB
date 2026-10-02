@@ -1,8 +1,9 @@
 # ADR-0045 — Lots et péremption : stock et réception
 
 - **Statut** : Acceptée — Lot 3-G (décisions D1 à D20 et P1-b) livré et validé (état de
-  référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18, section « Lot 3-H ») **validé sur
-  le plan des décisions, implémentation non commencée** ; P1-b toujours active
+  référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18 et décisions complémentaires O-1 à
+  O-6, section « Lot 3-H ») : **décisions validées — implémentation non commencée** ; P1-b
+  toujours active
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
   [ADR-0028](0028-fuseau-horaire-du-tenant.md) (dates métier dans le fuseau du tenant),
@@ -367,8 +368,8 @@ modifié). **Aucune implémentation n'est commencée ; P1-b reste active.**
    foi). Structures exactes fixées au plan technique.
 9. **H-D9 — POS et reçu** : FEFO automatique au POS, sans sélection imposée au vendeur ; le lot
    reste consultable dans le détail et l'historique de la vente ; le **reçu commercial affiche
-   le lot et, si elle existe, la date de péremption** (format fixé à l'implémentation — voir
-   point ouvert O-2).
+   le lot et, si elle existe, la date de péremption** — précisé par la décision O-2 : dialogue
+   de confirmation du POS à l'écran, **aucun ticket imprimé 80 mm** dans le 3-H.
 10. **H-D10 — Annulation de vente** : restauration **exacte** sur les lots consommés (A +20,
     B +10), jamais sur un autre lot, même si le lot est devenu périmé entre-temps ; protégée
     contre le double crédit.
@@ -385,6 +386,7 @@ modifié). **Aucune implémentation n'est commencée ; P1-b reste active.**
 14. **H-D14 — Garde-fou serveur** : une fois P1-b levée, **tout mouvement d'un article suivi par
     lot porte un lot** ; un mouvement sortant sans `lot_id` pour un article suivi est refusé
     par le serveur (jamais un contrôle du seul frontend) ; articles non suivis inchangés.
+    Implémenté **dès 3-H-A** (décision O-6), P1-b restant active.
 15. **H-D15 — Levée de P1-b** : P1-b reste active pendant 3-H-A **et** 3-H-B ; levée en
     **dernière étape** du 3-H complet, après ventes, POS, sorties, annulations, transferts,
     annulations de transferts, inventaires, tests de concurrence, multi-site, multi-tenant,
@@ -416,8 +418,13 @@ modifié). **Aucune implémentation n'est commencée ; P1-b reste active.**
 1. **RBAC (H-D6)** : convention `module.ressource.action` avec nature déclarée ; précédent
    direct `sales.sale.credit_override` (nature écriture), accordé à aucun rôle de base hors
    Administrateur (`*`). Le POS exige `pos.terminal.use` en plus des permissions de vente.
-   **Proposition** (à confirmer au plan technique) : `sales.sale.expired_lot_override`
-   (écriture), Administrateur seulement par défaut, sur le modèle de `credit_override`.
+   **Nom retenu (vérifié le 2026-10-02, décision O-1)** : `sales.sale.expired_lot_override`,
+   nature écriture (`W`), déclarée dans le manifeste du module `sales` à côté de
+   `sales.sale.credit_override`. Vérification des rôles de base (`role_templates.toml`) :
+   l'Administrateur l'obtient par `*` ; le Gestionnaire et le Vendeur listent explicitement
+   leurs permissions `sales.*` (aucun motif `sales.*`) et ne l'obtiennent donc pas ; le
+   Consultant (`*.view`) non plus. Un rôle personnalisé peut l'accorder (délégation calculée
+   par le serveur, ADR-0030). **Non créée à cette étape** : elle le sera avec 3-H-A.
 2. **Brouillons (H-D8)** : les lignes de sortie (`stock_exit_lines`) et de transfert
    (`stock_transfer_lines`) sont **entièrement remplacées** à chaque enregistrement du
    brouillon (`document.lines = []` puis reconstruction). Les choix de lots devront donc être
@@ -428,9 +435,12 @@ modifié). **Aucune implémentation n'est commencée ; P1-b reste active.**
    `StockService._write`, arrondi à 4 décimales à chaque fois, seulement pour `ENTRY` et
    `TRANSFER_IN`. Les sorties (`SALE`, `EXIT`, `TRANSFER_OUT`, `ADJUSTMENT`) prennent le CMUP du
    site sans le modifier : les répartir ne crée aucun écart. Seul le **`TRANSFER_IN` réparti**
-   enchaînerait plusieurs recalculs arrondis. **Proposition** : calculer le CMUP destination une
+   enchaînerait plusieurs recalculs arrondis. **Piste** : calculer le CMUP destination une
    fois sur la quantité totale de la ligne, puis l'appliquer à tous les mouvements de la ligne
-   (premier mouvement : CMUP avant → CMUP final ; suivants : CMUP final inchangé).
+   (premier mouvement : CMUP avant → CMUP final ; suivants : CMUP final inchangé). La décision
+   métier H-D17 est **confirmée** (C1, aucun coût par lot, CMUP du site, aucun écart créé par
+   la seule répartition) ; la **solution technique exacte** sera vérifiée pendant 3-H-A / 3-H-B
+   (le transfert relevant de 3-H-B). Le moteur CMUP n'est pas modifié à cette étape.
 4. **Contraintes de `stock_movements` (H-D7)** : unicité
    `uq_stock_movements_line_type_site (tenant_id, source_line_id, movement_type, site_id)` —
    un seul mouvement par ligne, type et site. À étendre à `lot_id` avec `NULLS NOT DISTINCT`
@@ -452,31 +462,89 @@ modifié). **Aucune implémentation n'est commencée ; P1-b reste active.**
    par lot sous la ligne** (théorique, physique, écart, ajustement par lot), la ligne restant
    la somme.
 
-### Points ouverts avant le code (aucune décision prise ici)
+### Décisions complémentaires O-1 à O-6 (validées par TechNova le 2026-10-02)
 
-- **O-1 — Exercice de la dérogation H-D6** : les ventes et le POS consomment en FEFO sans choix
-  du vendeur, et le FEFO exclut les lots périmés. Il faut préciser **comment** une vente
-  dérogatoire désigne un lot périmé (choix explicite du lot sur la ligne, ou option « inclure
-  les lots périmés » avec motif) et ce qui se passe si le stock non périmé est insuffisant
-  alors qu'un stock périmé existe (refus avec un code d'erreur dédié par défaut ?).
-- **O-2 — Reçu (H-D9)** : le Web **n'a pas de reçu imprimé 80 mm** ; le « reçu » du POS est
-  aujourd'hui un **dialogue de confirmation à l'écran** (`PosReceipt`, point d'extension
-  déclaré d'un futur ticket / PDF). Le 3-H affichera le lot et la péremption dans ce reçu à
-  l'écran ; un ticket imprimé 80 mm serait un périmètre nouveau.
-- **O-3 — Présentation d'un mouvement réparti (H-D16)** : avec la contrainte « tout ou rien »,
-  ne pas afficher la quantité en conditionnement d'un mouvement revient à **omettre tout son
-  instantané de présentation** (la ligne du document le conserve) — sauf modification de la
-  contrainte. Proposition : conserver l'instantané quand quantité ÷ conversion est exacte à
-  3 décimales, l'omettre sinon.
-- **O-4 — Choix manuel incomplet (H-D8)** : la somme des allocations doit-elle égaler la
-  quantité de la ligne dès l'enregistrement du brouillon, ou seulement à la validation ?
-- **O-5 — Lot absent de l'inventaire (H-D12)** : un lot ayant un solde sur le site mais non
-  compté bloque-t-il la validation (comptage explicite obligatoire, y compris à 0) ou est-il
-  traité comme compté à 0 ? Et comment le comptage par lot se combine-t-il avec le comptage en
-  conditionnement + vrac du 3-C (par lot) ?
-- **O-6 — Garde-fou H-D14 pendant 3-H-A** : proposition d'activer le garde-fou dès 3-H-A (sans
-  effet en exploitation tant que P1-b est active) ; les transferts et inventaires d'articles
-  suivis seraient alors refusés dans les tests jusqu'au 3-H-B.
+Les six points ouverts relevés lors de la formalisation de H-D1 à H-D18 sont **tranchés** ;
+ils n'existent plus comme points ouverts. Ils complètent H-D1 à H-D18 sans les modifier.
+
+1. **O-1 — Lot périmé à la vente (précise H-D3, H-D5, H-D6)** :
+   - **vente / POS normale** : le FEFO exclut **toujours** les lots périmés ; une vente normale
+     ne sélectionne **jamais** automatiquement un lot périmé ;
+   - stock non périmé insuffisant alors qu'un stock périmé existe : la vente est **refusée**
+     par défaut (exemple : lot A 5 périmé, lot B 3 valide, vente de 5 → A exclu, B
+     insuffisant → refus) ;
+   - **dérogation** : un utilisateur disposant de `sales.sale.expired_lot_override` peut
+     **choisir explicitement** un lot périmé ; jamais automatique, **motif obligatoire**,
+     utilisateur identifié, **audit** ; un simple choix dans le sélecteur normal ne peut pas
+     contourner la règle (contrôle serveur : sans la permission et le motif, un lot périmé est
+     refusé quelle que soit la saisie) ;
+   - nom de la permission vérifié (« Vérifications techniques », point 1), non créée à cette
+     étape.
+2. **O-2 — Reçu (précise H-D9)** : **aucun ticket imprimé 80 mm** dans le 3-H (le Web n'en
+   possède pas ; le système d'impression n'est pas modifié). Le **dialogue de confirmation du
+   POS** affiche les lots consommés et leur péremption lorsqu'elle existe ; le détail et
+   l'historique de la vente conservent cette information (journal des mouvements, H-D7). Le
+   ticket commercial 80 mm relèvera, si nécessaire, d'un **lot dédié futur**.
+3. **O-3 — Présentation d'un mouvement réparti (précise H-D16)** : le mouvement porte
+   **toujours** sa quantité en unité de base ; l'instantané de présentation (conditionnement)
+   n'est enregistré sur le mouvement **que si** la quantité est exactement représentable dans
+   ce conditionnement (quantité ÷ conversion exacte, **3 décimales au plus**, sans arrondi) ;
+   sinon le mouvement ne porte **aucune** présentation (contrainte « tout ou rien »
+   `packaging_snapshot_complete` respectée) et la présentation d'origine reste celle de la
+   **ligne du document**. Aucun arrondi artificiel. Exemple, carton de 24 : 48 bouteilles →
+   « 2 Carton 24 » ; 30 bouteilles → pas de « 1,25 carton » inventé si cela ne correspond pas
+   au modèle de présentation retenu.
+4. **O-4 — Choix manuel incomplet (précise H-D8)** : dans un **brouillon**, les allocations
+   de lots peuvent être **incomplètes** (quantité 100, lot A 60 : enregistrable). À la
+   **validation**, le serveur exige `somme des lots choisis = quantité de la ligne` (60 ≠ 100
+   → validation refusée) et refait tous les contrôles : lot existant, bon article, bon tenant,
+   bon site, lot utilisable selon les règles, solde disponible, péremption (H-D5 / O-1),
+   permissions, conditionnement, conversion, concurrence (verrous). Le brouillon n'est jamais
+   la source historique ; le **journal des mouvements fait foi**.
+5. **O-5 — Lot absent du comptage d'inventaire (précise H-D12)** :
+   - **lot existant non compté** = **quantité physique 0**, produisant l'écart correspondant
+     (lot A théorique 20 / physique 20 ; lot B théorique 15, absent → physique 0, écart −15 ;
+     lot C théorique 10 / physique 10) ;
+   - **lot découvert** : peut être créé sous réserve des règles de création du 3-G (numéro,
+     article, péremption si l'article la suit, date de fabrication selon le 3-G, cohérence
+     tenant / article), puis compté normalement ;
+   - **conditionnements** : comptage compatible avec le 3-C (conditionnements + vrac, converti
+     en unité de base, aucun arrondi artificiel), la quantité physique finale de chaque lot
+     étant exprimée en unité de base ;
+   - structure : **Article → Lots (A, B, C…)** ; la ligne article est une vue / somme du détail
+     par lot.
+6. **O-6 — Garde-fou pendant 3-H-A (précise H-D14, H-D15)** : le garde-fou serveur est
+   implémenté **dès 3-H-A** : pour un article suivi par lot, **tout mouvement de stock porte
+   `lot_id`**, sinon refus serveur ; testé sur des articles suivis (mécanisme de test
+   `lot_tracking_open`). **P1-b reste active** : aucun tenant ne peut activer le suivi par lot
+   dans l'application, les articles non suivis fonctionnent normalement, la levée de P1-b
+   reste la dernière étape du 3-H complet.
+
+### Points techniques à vérifier pendant la préparation de l'implémentation
+
+Aucun ne remet en cause une décision ; ils seront tranchés au plan technique de 3-H-A /
+3-H-B et documentés ici.
+
+- **T-1 — Forme de la dérogation (O-1)** : comment la ligne de vente (et, le cas échéant, le
+  point d'accès du POS H-D18) porte le choix explicite d'un lot périmé, le motif et
+  l'autorisateur (colonnes ou détail de la ligne, sur le modèle des champs
+  `credit_override_*`) ; combinaison FEFO + lot choisi sur une même ligne ; code d'erreur du
+  refus par défaut (lots non périmés insuffisants), distinct de `insufficient_lot_stock`.
+- **T-2 — « Représentable » (O-3)** : en plus de l'exactitude à 3 décimales, la quantité dans
+  le conditionnement doit respecter la règle `decimal_quantity_allowed` de l'article (3-B /
+  3-C : quantités entières dans la présentation pour un article non décimal) ; pour un
+  article décimal, une quantité fractionnaire exacte (par exemple 1,25) reste conforme.
+  Lecture à confirmer au plan technique.
+- **T-3 — CMUP d'un `TRANSFER_IN` réparti (H-D17)** : solution technique exacte (voir
+  « Vérifications techniques », point 3), vérifiée pendant 3-H-B.
+- **T-4 — Lot découvert à l'inventaire (O-5)** : au 3-G, le référentiel des lots n'est
+  alimenté que par les réceptions validées ; création par l'inventaire à fixer (au plus tard à
+  la validation, sous les mêmes contrôles d'unicité et de péremption), ainsi que la règle des
+  lots apparus ou disparus entre le démarrage de l'inventaire et sa validation (théorique
+  capturé au démarrage, stock courant relu à la validation).
+- **T-5 — Garde-fou et 3-H-B (O-6)** : tant que 3-H-B n'est pas livré, les transferts et
+  inventaires d'articles suivis seront refusés par le garde-fou dans les tests (sans effet en
+  exploitation, P1-b active) ; l'ordre des tests doit en tenir compte.
 
 ## Références
 
