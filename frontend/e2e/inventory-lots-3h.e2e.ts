@@ -208,7 +208,7 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     await page.goto(`/inventories/${inv.id}`);
     const panel = page.getByRole('region', { name: `Lots de ${article.reference}` });
     await expect(panel).toBeVisible();
-    await expect(page.getByText('Suivi par lot')).toBeVisible();
+    await expect(page.getByText('Suivi par lot', { exact: true })).toBeVisible();
     await expect(panel.getByText('Théorique au démarrage : 60 brique')).toBeVisible();
     await expect(panel.getByText('Théorique au démarrage : 40 brique')).toBeVisible();
     // Aucune saisie globale pour un article suivi.
@@ -249,7 +249,7 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     await dialog.getByRole('button', { name: 'Ajouter le lot' }).click();
     await expect(page.getByText(`Lot ${d} ajouté au comptage.`)).toBeVisible();
     const panel = page.getByRole('region', { name: `Lots de ${article.reference}` });
-    await expect(panel.getByText('Lot découvert')).toBeVisible();
+    await expect(panel.getByText('Lot découvert', { exact: true })).toBeVisible();
     // Aucun lot créé avant la validation.
     expect(Object.keys(await balances(request, article))).toEqual([p]);
     await completeAndValidate(page);
@@ -276,7 +276,9 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     await loginUi(page, EMAIL, PASSWORD, TENANT);
     await page.goto(`/inventories/${inv.id}`);
     const panel = page.getByRole('region', { name: `Lots de ${article.reference}` });
-    await panel.getByLabel(`Présentation du comptage du lot ${k}`).click();
+    await panel
+      .locator('.p-dropdown', { has: page.getByLabel(`Présentation du comptage du lot ${k}`) })
+      .click();
     await page
       .locator('.p-dropdown-panel')
       .last()
@@ -311,9 +313,8 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     // Réception d'un nouveau lot sur le site pendant le comptage.
     await receive(request, article, ['N', '6', 60]);
     await completeAndValidate(page);
-    const alert = page.getByRole('alert').filter({
-      hasText: 'Des lots sont apparus sur le site depuis le début du comptage',
-    });
+    // Encadré de la page (le message d'erreur s'affiche aussi en notification).
+    const alert = page.locator('.sm-lots-changed[role="alert"]');
     await expect(alert).toBeVisible();
     await expect(alert).toContainText(`${article.reference} — lot ${n} (6)`);
     expect(await level(request, article)).toBe('26.000'); // rien n'est écrit
@@ -321,7 +322,7 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     await expect(page.getByText(/Lots actualisés/)).toBeVisible();
     // Retour au comptage : le nouveau lot est attendu (théorique 6).
     const panel = page.getByRole('region', { name: `Lots de ${article.reference}` });
-    await expect(panel.getByText(`Lot ${n}`, { exact: false })).toBeVisible();
+    await expect(panel.getByLabel(`Quantité physique du lot ${n}`, { exact: true })).toBeVisible();
     await countLot(page, n, '6');
     await completeAndValidate(page);
     await expect(page.getByText(`Inventaire ${inv.number} validé : stock ajusté`)).toBeVisible();
@@ -337,7 +338,7 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     await loginUi(page, EMAIL, PASSWORD, TENANT);
     await page.goto(`/inventories/${inv.id}`);
     const panel = page.getByRole('region', { name: `Lots de ${article.reference}` });
-    await expect(panel.getByText('Périmé')).toBeVisible();
+    await expect(panel.getByText('Périmé', { exact: true })).toBeVisible();
     await countLot(page, old, '4');
     await completeAndValidate(page);
     await expect(page.getByText(`Inventaire ${inv.number} validé : stock ajusté`)).toBeVisible();
@@ -383,7 +384,7 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
       }),
     ]);
     expect(validated.status(), await validated.text()).toBe(200);
-    expect(sold.status(), await sold.text()).toBe(200);
+    expect(sold.status(), await sold.text()).toBe(201);
     // Écart = physique − solde COURANT relu sous verrou : quel que soit l'ordre, le stock final
     // vaut le comptage moins la vente si elle est passée après, Σ lots = stock dans tous les cas.
     const lots = await balances(request, article);
@@ -415,8 +416,10 @@ test.describe('Inventaires par lot — Lot 3-H', () => {
     expect(await overflow(page)).toBe(false);
     await page.getByRole('button', { name: 'Ajouter un lot découvert' }).click();
     const dialog = page.getByRole('dialog');
-    const dialogBox = await dialog.boundingBox();
-    expect(Math.round(dialogBox?.width ?? 0)).toBeGreaterThanOrEqual(width - 1);
+    // Plein écran une fois l'animation d'ouverture terminée.
+    await expect
+      .poll(async () => Math.round((await dialog.boundingBox())?.width ?? 0))
+      .toBeGreaterThanOrEqual(width - 1);
     await dialog.locator('#discover-number').fill(z);
     await dialog.locator('#discover-expiry').fill(day(120));
     await dialog.locator('#discover-quantity').fill('2');
