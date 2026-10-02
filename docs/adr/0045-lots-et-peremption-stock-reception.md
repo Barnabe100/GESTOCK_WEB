@@ -1,7 +1,7 @@
 # ADR-0045 — Lots et péremption : stock et réception
 
-- **Statut** : Proposée (Lot 3-G — décisions D1 à D20 et P1 (P1-b) validées par TechNova ;
-  implémentation non commencée)
+- **Statut** : Acceptée (Lot 3-G — décisions D1 à D20 et P1 (P1-b) validées par TechNova ;
+  implémentation livrée, validation finale en attente)
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
   [ADR-0028](0028-fuseau-horaire-du-tenant.md) (dates métier dans le fuseau du tenant),
@@ -289,6 +289,42 @@ GS1 de lot ; quarantaine, blocage qualité, rappels de lots ; lots par emplaceme
 article et site) ; FIFO / FEFO comptable ; correction administrative des lots (D11) ; exports ;
 réglage du seuil par article ; fonctionnalité de plan ; images des articles ; modification du
 Desktop.
+
+## Implémentation (Lot 3-G)
+
+Choix techniques faits pendant l'implémentation, dans le cadre des décisions ci-dessus :
+
+- **Fermeture P1-b** : constante du code `LOT_TRACKING_AVAILABLE = False`
+  (`app/modules/catalog/lot_tracking.py`), lue à chaque activation (création ou modification
+  d'article : `422 lot_tracking_unavailable`) et exposée en lecture par
+  `GET /catalog/lot-tracking` (l'interface ne propose alors pas le réglage). Aucun module de
+  l'application ne la modifie (test statique). **Mécanismes réservés aux tests** : la fixture
+  pytest `lot_tracking_open` remplace la constante dans le processus de test (`monkeypatch`) ;
+  les tests de bout en bout marquent un article « suivi par lot » avec le rôle propriétaire de
+  la base (`ownerSql`), comme les autres données que seule l'administration peut fixer. Le
+  Lot 3-H lèvera la fermeture en passant la constante à `True`.
+- **Seuil par défaut** : 30 jours (`DEFAULT_EXPIRY_WARNING_DAYS`), réglable de 0 à 365 par le
+  tenant (`stock_settings`, ligne absente = défaut). Modification : `stock.threshold.manage`
+  (permission existante des seuils de stock) **et** accès à tous les sites (réglage commun à
+  l'entreprise : `403 tenant_wide_access_required` pour un rôle limité à un site) ; auditée.
+- **États** : périmé si la date est antérieure à `tenant_today` ; bientôt périmé d'aujourd'hui
+  (inclus) à aujourd'hui + seuil ; normal au-delà ; « sans péremption » sans date.
+- **Lot connu** : péremption identique exigée (D4) ; une date de fabrication renseignée doit
+  aussi être identique à celle du lot (`lot_manufacturing_mismatch`) — absente, elle est
+  acceptée ; le lot reste figé. Un même lot saisi sur plusieurs lignes porte les mêmes dates.
+- **Péremption sur un article suivi sans péremption** : facultative (obligatoire seulement si
+  l'article est suivi en péremption, D5).
+- **Réglages** : suivi par lot et suivi de péremption modifiables seulement à stock nul sur tous
+  les sites et soldes de lots nuls (D6, D7) ; verrou exclusif de l'article (une validation de
+  réception lit les réglages sous verrou partagé).
+- **Visibilité** (D15) : un lot est visible par les sites où il a un solde (même nul après une
+  annulation) parmi les sites visibles du membre ; ailleurs `404 stock_lot_not_found`.
+- **Fiche lot** : réceptions et mouvements servis par les listes existantes filtrées par
+  `lot_id` (`GET /stock/entries`, `GET /stock/movements`), avec leurs propres permissions.
+- **Audit** : `stock_lot.created` (lot créé à la validation), détail des lots reçus dans
+  `stock_entry.validated`, réglages de l'article dans `article.updated`,
+  `stock_settings.updated`.
+- **Migration 0034** : retour arrière refusé si des lots existent (traçabilité).
 
 ## Références
 

@@ -180,18 +180,21 @@ export default function LotsPage() {
             }}
           />
         )}
-        <label className="sm-daterange-item">
-          <span>{t('lots.expiresBefore')}</span>
-          <InputText
-            id="lots-expires-before"
-            type="date"
-            value={expiresBefore}
-            onChange={(e) => {
-              setExpiresBefore(e.target.value);
-              resetPage();
-            }}
-          />
-        </label>
+        {/* Échéance : même mise en page que les filtres de période (largeur pleine sur mobile). */}
+        <div className="sm-daterange" role="group" aria-label={t('lots.expiresBefore')}>
+          <label className="sm-daterange-item">
+            <span>{t('lots.expiresBefore')}</span>
+            <InputText
+              id="lots-expires-before"
+              type="date"
+              value={expiresBefore}
+              onChange={(e) => {
+                setExpiresBefore(e.target.value);
+                resetPage();
+              }}
+            />
+          </label>
+        </div>
       </FilterBar>
       <ServerTable
         query={lots}

@@ -409,3 +409,20 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Affichage | Niveaux de stock (colonne, recherche, filtre, tri), inventaires (tri par emplacement), entrées et sorties (indicatif), fiche article (vue par site). |
 | Droits | `stock.location.manage` (Administrateur, Gestionnaire) ; consultation `stock.level.view` ; portée des sites (lecture : sites visibles ; écriture : `operation_site`). |
 | Hors périmètre | WMS, stock par emplacement, picking, rangement guidé, palettes, zones hiérarchiques, codes-barres et étiquettes d'emplacement, lots, péremption. |
+
+## 15. Lot 3-G — lots et péremption : stock et réception (ADR-0045)
+
+| Règle | Web |
+|---|---|
+| Desktop | Aucune notion de lot ni de péremption : règles entièrement nouvelles (décisions D1 à D20). |
+| Fermeture P1-b | Le suivi par lot n'est **pas activable en exploitation** tant que la consommation des lots (Lot 3-H) n'est pas livrée : refus du serveur (`lot_tracking_unavailable`), constante du code `catalog.lot_tracking` — jamais un réglage du tenant, du plan, de la console, d'une variable d'environnement ou du client. Tests seulement : fixture pytest `lot_tracking_open` ; E2E : préparation par le rôle propriétaire de la base. |
+| Article | `lot_tracked` (numéro de lot obligatoire à la réception) et `expiry_tracked` (péremption obligatoire, suppose le suivi par lot, qui suppose un article géré en stock) ; modifiables seulement à stock nul sur tous les sites et soldes de lots nuls (D6, D7) ; `catalog.article.update`. |
+| Lot | Appartient à l'article ; identité (article, numéro sans distinction de casse, espaces de bord retirés), le fournisseur n'en fait pas partie (D2, D3) ; créé à la validation d'une réception ; numéro et dates figés (D11) ; jamais supprimé. |
+| Réception | `PURCHASE` et `INITIAL_STOCK` (D9) : lot saisi dès le brouillon (D8), revalidé à la validation ; plusieurs lots d'un article et un lot en plusieurs présentations (D19, quantité en unité de base) ; lot connu reçu avec une autre péremption : refus (D4) ; fabrication ≤ péremption ; péremption passée acceptée (D17). |
+| Soldes | Par lot et par site, ventilation du stock du site (Σ lots = stock, D1) ; tenus par `StockService` sous les verrous des niveaux (ordre site, article, lot), jamais négatifs ; aucune consommation automatique (Lot 3-H). |
+| Annulation | Mouvement inverse sur le même lot ; refusée si un solde de lot devenait négatif (D10, `insufficient_lot_stock`). |
+| CMUP | Inchangé (C1, D12) : par (site, article), aucun coût par lot ; le coût reçu reste une information de réception (`cost_view`). |
+| Péremption | État calculé (`tenant_today`) : périmé avant aujourd'hui, bientôt périmé d'aujourd'hui à aujourd'hui + seuil, normal au-delà ; seuil du tenant (`stock_settings`, défaut 30 jours, 0 à 365 ; `stock.threshold.manage` et accès à tous les sites). |
+| Affichage | Page Lots (filtres, échéance la plus proche d'abord), fiche lot (soldes par site visible, réceptions, mouvements), fiche article (lots), réception (lot, péremption, état), journal des mouvements. |
+| Droits | Aucune permission nouvelle (D14) : `stock.level.view` (lots, seuil), permissions des entrées (saisie), `catalog.article.update` (réglages), `stock.threshold.manage` (seuil). |
+| Hors périmètre | Consommation des lots (ventes, POS, sorties, transferts, inventaires), FEFO, choix du lot, lot sur le reçu (3-H) ; alertes, tableau de bord, notifications de péremption (3-I) ; coût par lot, numéros de série, codes-barres de lot, lots par emplacement. |

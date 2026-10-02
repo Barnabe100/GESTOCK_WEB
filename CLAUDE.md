@@ -198,7 +198,22 @@ par un transfert ; affichage niveaux (colonne, filtre `location_id` / `unlocated
 (vue par site) ; permission `stock.location.manage` (Administrateur, Gestionnaire), consultation
 `stock.level.view`, portée des sites (`filter_site_ids` / `operation_site`) ; inventaire sur
 mobile : emplacement sous l'article (correctif `366332d`, inclus). **Lot 3-F validé** (état de
-référence `366332d`). Ne pas passer au lot
+référence `366332d`). **Lot 3-G livré — lots et péremption : stock et réception**
+([ADR-0045](docs/adr/0045-lots-et-peremption-stock-reception.md), migration 0034) :
+**fermeture P1-b** — le suivi par lot n'est PAS activable en exploitation tant que la
+consommation des lots (Lot 3-H) n'est pas livrée (refus serveur `lot_tracking_unavailable`,
+constante du code `catalog.lot_tracking`, jamais un réglage ; tests seulement : fixture
+`lot_tracking_open`, E2E par le rôle propriétaire) ; articles non suivis strictement inchangés ;
+`catalog_articles.lot_tracked` / `expiry_tracked` (péremption ⇒ lot ⇒ géré en stock, changement
+à stock nul seulement) ; `stock_lots` (article + numéro sans casse, fournisseur hors identité,
+figés, jamais supprimés), `stock_lot_levels` (solde par lot et par site, Σ lots = stock, tenu par
+`StockService` sous les verrous des niveaux, jamais négatif, **aucune consommation**) ;
+réceptions `PURCHASE` / `INITIAL_STOCK` par lot (lot dès le brouillon, revalidé, plusieurs lots
+par article, un lot en plusieurs présentations, lot connu avec une autre péremption refusé),
+annulation sur le même lot (refus si un lot devenait négatif) ; **CMUP inchangé** (aucun coût
+par lot) ; état de péremption calculé (`tenant_today`, seuil `stock_settings` du tenant, défaut
+30 jours) ; `/stock/lots`, `/stock/lots/{id}`, `/stock/settings`, `/catalog/lot-tracking`,
+filtres `lot_id` ; aucune permission nouvelle. Ne pas passer au lot
 suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et

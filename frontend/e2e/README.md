@@ -210,6 +210,14 @@ la suite peut être rejouée sur la même base.
   entrée affichant l'emplacement courant ; fiche article par site, transfert sans copie,
   affectation au dépôt limitée à ses emplacements ; désactivation (affectation conservée, plus
   affectable) ; membre limité à la boutique ; affichage mobile.
+- `lots-3g.e2e.ts` (Lot 3-G, ADR-0045) : entreprise créée pour l'exécution ; fermeture P1-b
+  (suivi par lot ni proposé dans la fiche article ni accepté par l'API) ; article marqué « suivi
+  par lot » par le rôle propriétaire de la base (préparation **réservée aux tests**,
+  `ownerSql`) ; réception de deux lots d'un article (péremption passée acceptée, états
+  « Bientôt périmé » / « Périmé »), article non suivi sans champ de lot ; lot connu avec une
+  autre péremption refusé ; page Lots (seuil, tri, filtre d'état), fiche lot (soldes,
+  réceptions, mouvements), fiche article, journal, Σ lots = stock ; annulation de la réception ;
+  formulaire de réception et page Lots sur mobile sans débordement.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,
