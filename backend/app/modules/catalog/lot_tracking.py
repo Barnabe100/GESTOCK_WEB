@@ -1,28 +1,26 @@
-"""Fermeture P1-b du suivi par lot (Lot 3-G, ADR-0045).
+"""Disponibilité du suivi par lot — P1-b LEVÉE (Lot 3-H clôturé, ADR-0045).
 
-Le Lot 3-G livre le modèle des lots (référentiel, soldes par lot et par site, réceptions par lot)
-mais la consommation des lots par les ventes, le POS, les sorties, les transferts et les
-inventaires n'arrive qu'avec le Lot 3-H. Tant qu'elle n'existe pas, un article suivi par lot
-verrait son stock baisser sans qu'aucun lot ne baisse : l'invariant Σ lots = stock (site,
-article) serait rompu. Le passage d'un article au suivi par lot est donc REFUSÉ par le serveur.
+Le Lot 3-G a livré le modèle des lots (référentiel, soldes par lot et par site, réceptions par
+lot) avec une fermeture P1-b : tant que la consommation des lots n'existait pas, un article
+suivi par lot aurait vu son stock baisser sans qu'aucun lot ne baisse (invariant Σ lots = stock
+rompu), et le serveur refusait donc le passage au suivi par lot (``lot_tracking_unavailable``).
 
-Cette fermeture est une règle applicative du produit, figée dans le code : elle ne dépend ni du
-tenant, ni du plan, ni de la console TechNova, ni d'un paramètre du client, ni d'une variable
-d'environnement, ni d'un réglage. Seule la livraison validée du Lot 3-H (changement de code) la
-lève, en passant ``LOT_TRACKING_AVAILABLE`` à ``True``.
+Le Lot 3-H a livré la consommation des lots par tous les flux (ventes, POS, sorties, transferts,
+inventaires), les annulations exactes, le garde-fou serveur (``lot_required``) et la garde du
+changement de suivi : la fermeture est levée, ``LOT_TRACKING_AVAILABLE`` vaut ``True``.
 
-Tests automatisés seulement : la fixture pytest ``lot_tracking_open`` remplace la constante
-le temps d'un test (``monkeypatch``), dans le processus de test ; les tests de bout en bout
-préparent leurs données avec le rôle propriétaire de la base (comme les autres données que
-seule l'administration peut fixer). Aucun code de l'application ne modifie cette constante (test
-statique).
+La disponibilité reste une règle applicative du produit, figée dans le code : elle ne dépend ni
+du tenant, ni du plan, ni de la console TechNova, ni d'un paramètre du client, ni d'une variable
+d'environnement, ni d'un réglage. Aucun code de l'application ne modifie cette constante (test
+statique) ; les tests peuvent la remplacer le temps d'un test (``monkeypatch``) pour vérifier le
+refus si elle était refermée.
 """
 
 from typing import Final
 
-LOT_TRACKING_AVAILABLE: Final[bool] = False
+LOT_TRACKING_AVAILABLE: Final[bool] = True
 
 
 def lot_tracking_available() -> bool:
-    """Activation du suivi par lot possible (Lot 3-H livré)."""
+    """Activation du suivi par lot possible (P1-b levée avec la clôture du Lot 3-H)."""
     return LOT_TRACKING_AVAILABLE

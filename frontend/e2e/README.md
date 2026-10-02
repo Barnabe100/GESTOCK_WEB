@@ -210,17 +210,17 @@ la suite peut être rejouée sur la même base.
   entrée affichant l'emplacement courant ; fiche article par site, transfert sans copie,
   affectation au dépôt limitée à ses emplacements ; désactivation (affectation conservée, plus
   affectable) ; membre limité à la boutique ; affichage mobile.
-- `lots-3g.e2e.ts` (Lot 3-G, ADR-0045) : entreprise créée pour l'exécution ; fermeture P1-b
-  (suivi par lot ni proposé dans la fiche article ni accepté par l'API) ; article marqué « suivi
-  par lot » par le rôle propriétaire de la base (préparation **réservée aux tests**,
-  `ownerSql`) ; réception de deux lots d'un article (péremption passée acceptée, états
+- `lots-3g.e2e.ts` (Lot 3-G, ADR-0045) : entreprise créée pour l'exécution ; P1-b levée :
+  suivi par lot proposé dans la fiche article et activé par l'interface (péremption seulement
+  avec le lot), péremption sans lot refusée par l'API ; autres articles suivis activés par l'API
+  (`enableLotTracking`) ; réception de deux lots d'un article (péremption passée acceptée, états
   « Bientôt périmé » / « Périmé »), article non suivi sans champ de lot ; lot connu avec une
   autre péremption refusé ; page Lots (seuil, tri, filtre d'état), fiche lot (soldes,
   réceptions, mouvements), fiche article, journal, Σ lots = stock ; annulation de la réception ;
   formulaire de réception et page Lots sur mobile sans débordement.
-- `lots-3ha.e2e.ts` (Lot 3-H-A, ADR-0045) : entreprise créée pour l'exécution ; P1-b toujours
-  fermée ; articles suivis par lot préparés par `ownerSql` (réservé aux tests) avec un stock
-  initial par lot ; article non suivi : un mouvement sans lot ; vente back-office en FEFO sur
+- `lots-3ha.e2e.ts` (Lot 3-H-A, ADR-0045) : entreprise créée pour l'exécution ; P1-b levée ;
+  articles passés au suivi par lot par l'API (`enableLotTracking`) avec un stock initial par
+  lot ; article non suivi : un mouvement sans lot ; vente back-office en FEFO sur
   plusieurs lots (lot périmé jamais choisi, détail par lot) ; lot périmé : refus puis dérogation
   explicite (motif, confirmation, trace sur la fiche) ; dérogation refusée au Gestionnaire
   (API) ; POS en FEFO sans sélecteur, lots sur le dialogue de confirmation ; sortie : brouillon
@@ -229,14 +229,14 @@ la suite peut être rejouée sur la même base.
   lots ; deux ventes simultanées sans double consommation ; POS et sortie sur mobile sans
   débordement.
 - `lots-3hb1.e2e.ts` (Lot 3-H-B1, ADR-0045) : entreprise créée pour l'exécution avec un dépôt
-  actif ; P1-b toujours fermée ; articles suivis préparés par `ownerSql` ; transfert 70 = A 50 +
+  actif ; P1-b levée ; articles passés au suivi par l'API (`enableLotTracking`) ; transfert 70 = A 50 +
   B 20 par l'interface (demandé / réparti / reste), soldes des deux sites, mouvements par lot
   (même lot des deux côtés), annulation exacte puis seconde annulation refusée ; lot périmé non
   sélectionnable et refusé par le serveur ; lot insuffisant refusé en bloc ; 2 cartons répartis
   (présentation seulement si exacte) ; deux transferts simultanés du même lot ; transfert
   multi-lots sur mobile sans débordement.
 - `inventory-lots-3h.e2e.ts` (finalisation 3-H, ADR-0045) : entreprise créée pour l'exécution ;
-  P1-b toujours fermée ; articles suivis préparés par `ownerSql` ; écarts croisés A −5 / B +5
+  P1-b levée ; articles passés au suivi par l'API (`enableLotTracking`) ; écarts croisés A −5 / B +5
   (écart de l'article nul, deux ajustements par lot) ; lot découvert créé à la validation
   seulement, lot attendu non saisi = 0 ; comptage 8 Carton 24 + 5 = 197 par lot ; lot reçu
   pendant le comptage : validation refusée, « Actualiser les lots », puis validée ; lot périmé

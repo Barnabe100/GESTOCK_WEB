@@ -200,10 +200,9 @@ par un transfert ; affichage niveaux (colonne, filtre `location_id` / `unlocated
 mobile : emplacement sous l'article (correctif `366332d`, inclus). **Lot 3-F validé** (état de
 référence `366332d`). **Lot 3-G livré — lots et péremption : stock et réception**
 ([ADR-0045](docs/adr/0045-lots-et-peremption-stock-reception.md), migration 0034) :
-**fermeture P1-b** — le suivi par lot n'est PAS activable en exploitation tant que la
-consommation des lots (Lot 3-H) n'est pas livrée (refus serveur `lot_tracking_unavailable`,
-constante du code `catalog.lot_tracking`, jamais un réglage ; tests seulement : fixture
-`lot_tracking_open`, E2E par le rôle propriétaire) ; articles non suivis strictement inchangés ;
+**fermeture P1-b** (LEVÉE avec la clôture du 3-H) — le suivi par lot n'était pas activable tant
+que la consommation des lots n'était pas livrée (refus serveur `lot_tracking_unavailable`,
+constante du code `catalog.lot_tracking`, jamais un réglage) ; articles non suivis strictement inchangés ;
 `catalog_articles.lot_tracked` / `expiry_tracked` (péremption ⇒ lot ⇒ géré en stock, changement
 à stock nul seulement) ; `stock_lots` (article + numéro sans casse, fournisseur hors identité,
 figés, jamais supprimés), `stock_lot_levels` (solde par lot et par site, Σ lots = stock, tenu par
@@ -237,8 +236,8 @@ transféré (`lot_expired_not_transferable`, sans dérogation) ; CMUP source lu 
 coût en sortie et en entrée, CMUP destination calculé une fois par ligne (identique à un
 transfert non réparti) ; annulation par mouvement d'origine, refus total si un lot destination
 ne suffit plus ; `GET /stock/transfers/available-lots` (`stock.transfer.create`, aucune
-permission nouvelle) ; articles non suivis inchangés. **Finalisation 3-H livrée — en attente de
-validation — inventaires par lot** (ADR-0045, décisions D-3 à D-7 ; migration 0037) : suivi par
+permission nouvelle) ; articles non suivis inchangés. **Finalisation 3-H livrée et validée
+(référence `c62be93`) — inventaires par lot** (ADR-0045, décisions D-3 à D-7 ; migration 0037) : suivi par
 lot FIGÉ par ligne au démarrage (`inventory_lines.lot_tracked`, relu sous verrou :
 `409 inventory_lot_mode_changed`) ; `inventory_line_lots` (lots attendus = solde non nul au
 démarrage, non saisis = 0 ; lots découverts : règles 3-G, lot existant rattaché, sinon créé **à
@@ -249,10 +248,11 @@ courant relu sous verrou, **un `ADJUSTMENT` par lot avec écart même si l'écar
 nul**, invariant Σ lots = stock avant et après (`StockService.lock_site_lots`,
 `verify_lot_invariant`) ; CMUP inchangé ; changement de suivi refusé avec des documents ouverts
 (`article_in_open_documents`, port `catalog.lot_flags_port`) ou, à l'activation, un historique
-sans lot encore annulable (`article_has_untracked_history`) ; aucune permission nouvelle ;
-conditions techniques de la levée de P1-b réunies, **P1-b toujours active**
-(`LOT_TRACKING_AVAILABLE = False` : levée sur accord explicite de TechNova seulement) ; 3-H non
-clôturé. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+sans lot encore annulable (`article_has_untracked_history`) ; aucune permission nouvelle.
+**P1-b LEVÉE — suivi par lot officiellement disponible** (`LOT_TRACKING_AVAILABLE = True`,
+accord de TechNova ; règles inchangées : stock nul, péremption ⇒ lot ⇒ géré en stock, documents
+ouverts, historique sans lot) ; **Lot 3-H CLÔTURÉ**. 3-I (alertes et tableau de bord de
+péremption) non commencé. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

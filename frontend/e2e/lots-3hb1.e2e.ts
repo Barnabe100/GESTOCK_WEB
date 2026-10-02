@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, createActiveSite, loginUi, ownerSql, provisionTenant, tokenFor } from './support';
+import {
+  bearer,
+  createActiveSite,
+  enableLotTracking,
+  loginUi,
+  ownerSql,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-H-B1 (ADR-0045) — transferts inter-sites par lot, sur une entreprise créée pour
@@ -8,8 +16,8 @@ import { bearer, createActiveSite, loginUi, ownerSql, provisionTenant, tokenFor 
  * mouvements, annulation exacte, lot périmé non transférable, lot insuffisant, conditionnement,
  * concurrence, écran étroit.
  *
- * P1-b reste active : les articles sont marqués « suivis par lot » par le mécanisme RÉSERVÉ AUX
- * TESTS (rôle propriétaire de la base, ``ownerSql``) — l'application refuse toujours l'activation.
+ * P1-b levée (clôture du Lot 3-H) : les articles sont passés au suivi par lot par l'API, comme
+ * le ferait un utilisateur (article géré en stock, stock nul).
  */
 
 const RUN = Date.now().toString().slice(-7);
@@ -67,7 +75,7 @@ interface Article {
   suffix: string;
 }
 
-/** Article suivi par lot (préparation RÉSERVÉE AUX TESTS) : une réception par lot sur le site
+/** Article suivi par lot (activation réelle par l'API) : une réception par lot sur le site
  *  principal, `[numéro, quantité, décalage de péremption en jours]`. */
 async function trackedArticle(
   request: APIRequestContext,
@@ -84,9 +92,7 @@ async function trackedArticle(
     unit: 'bouteille',
     sale_price: '500',
   });
-  ownerSql(
-    `UPDATE catalog_articles SET lot_tracked = true, expiry_tracked = true WHERE id = '${article.id}'`,
-  );
+  await enableLotTracking(request, world.token, article.id);
   for (const [number, quantity, offset] of lots) {
     const entry = await api(request, 'post', '/stock/entries', {
       site_id: world.site.id,
@@ -209,7 +215,7 @@ test.describe('Transferts par lot — Lot 3-H-B1', () => {
     page,
     request,
   }) => {
-    expect(await api(request, 'get', '/catalog/lot-tracking')).toEqual({ available: false });
+    expect(await api(request, 'get', '/catalog/lot-tracking')).toEqual({ available: true });
     const article = await trackedArticle(request, [
       ['A', '100', 30],
       ['B', '50', 60],

@@ -1,14 +1,12 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, loginUi, ownerSql, provisionTenant, tokenFor } from './support';
+import { bearer, enableLotTracking, loginUi, provisionTenant, tokenFor } from './support';
 
 /**
  * Lot 3-G (ADR-0045), sur une entreprise créée pour l'exécution :
- * - fermeture P1-b : le suivi par lot n'est pas proposé dans la fiche article et l'API refuse
- *   son activation (la consommation des lots arrive avec le Lot 3-H) ;
- * - mécanisme RÉSERVÉ AUX TESTS : un article est marqué « suivi par lot » directement en base
- *   avec le rôle propriétaire (``ownerSql``, comme les autres données que seule l'administration
- *   peut fixer) — aucune voie de l'application ne le permet ;
+ * - P1-b levée (clôture du Lot 3-H) : le suivi par lot est proposé dans la fiche article et
+ *   activé par l'interface (péremption seulement avec le lot), audité ; les autres articles
+ *   suivis sont activés par l'API, comme le ferait un utilisateur ;
  * - réception par lot (deux lots d'un même article, péremption passée acceptée), lot connu avec
  *   une autre péremption refusé, page Lots (états, filtres), fiche lot, fiche article, journal,
  *   annulation ; article non suivi sans champ de lot ; formulaire de réception sur mobile.
@@ -20,6 +18,7 @@ const EMAIL = `lots-${RUN}@example.com`;
 const PASSWORD = 'E2e-Lots-2026';
 const MILK = `LAIT3G-${RUN}`;
 const SUGAR = `SUCRE3G-${RUN}`;
+const YOGURT = `YAOURT3G-${RUN}`;
 const LOT_SOON = `LS-${RUN}`;
 const LOT_PAST = `LP-${RUN}`;
 
@@ -35,6 +34,7 @@ interface World {
   site: { id: string; name: string };
   milk: string;
   sugar: string;
+  yogurt: string;
 }
 
 let world: World;
@@ -109,31 +109,41 @@ test.beforeAll(async ({ request }) => {
     ).id;
   world.milk = await article(MILK, `Lait UHT 3G ${RUN}`);
   world.sugar = await article(SUGAR, `Sucre 3G ${RUN}`);
-  // Préparation RÉSERVÉE AUX TESTS (rôle propriétaire de la base) : article suivi par lot,
-  // l'application refusant l'activation tant que le Lot 3-H n'est pas livré (P1-b).
-  ownerSql(
-    `UPDATE catalog_articles SET lot_tracked = true, expiry_tracked = true WHERE id = '${world.milk}'`,
-  );
+  world.yogurt = await article(YOGURT, `Yaourt 3G ${RUN}`);
+  // P1-b levée : activation réelle par l'API (article géré en stock, stock nul).
+  await enableLotTracking(request, world.token, world.milk);
 });
 
 test.describe('Lots et péremption — Lot 3-G', () => {
-  test('P1-b : suivi par lot ni proposé ni accepté', async ({ page, request }) => {
-    expect(await get(request, '/catalog/lot-tracking')).toEqual({ available: false });
-    const refused = await request.patch(`/api/v1/catalog/articles/${world.sugar}`, {
-      headers: bearer(world.token),
-      data: { lot_tracked: true, expiry_tracked: true },
-    });
-    expect(refused.status()).toBe(422);
-    expect(((await refused.json()) as { code: string }).code).toBe('lot_tracking_unavailable');
-
+  test('P1-b levée : suivi par lot proposé et activé depuis la fiche article', async ({
+    page,
+    request,
+  }) => {
+    expect(await get(request, '/catalog/lot-tracking')).toEqual({ available: true });
     await loginUi(page, EMAIL, PASSWORD, TENANT);
-    await page.goto(`/catalog/articles/${world.sugar}`);
+    await page.goto(`/catalog/articles/${world.yogurt}`);
     await page.getByRole('button', { name: 'Modifier' }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByTestId('lot-tracking-unavailable')).toBeVisible();
-    await expect(dialog.getByLabel('Suivi par lot')).toHaveCount(0);
-
-    // L'article préparé par le mécanisme réservé aux tests est bien suivi par lot.
+    await expect(dialog.getByTestId('lot-tracking-unavailable')).toHaveCount(0);
+    // La péremption suppose le lot : case désactivée tant que le lot n'est pas coché.
+    await expect(dialog.locator('#article-expiry_tracked')).toBeDisabled();
+    await dialog.getByText('Suivi par lot', { exact: true }).click();
+    await expect(dialog.locator('#article-expiry_tracked')).toBeEnabled();
+    await dialog.getByText('Suivi de la date de péremption', { exact: true }).click();
+    await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+    await expect(dialog).toHaveCount(0);
+    const yogurt = await get<{ lot_tracked: boolean; expiry_tracked: boolean }>(
+      request,
+      `/catalog/articles/${world.yogurt}`,
+    );
+    expect([yogurt.lot_tracked, yogurt.expiry_tracked]).toEqual([true, true]);
+    // Activation incohérente refusée par le serveur : péremption sans lot.
+    const refused = await request.patch(`/api/v1/catalog/articles/${world.sugar}`, {
+      headers: bearer(world.token),
+      data: { expiry_tracked: true },
+    });
+    expect(refused.status()).toBe(422);
+    expect(((await refused.json()) as { code: string }).code).toBe('expiry_tracking_requires_lots');
     const milk = await get<{ lot_tracked: boolean }>(request, `/catalog/articles/${world.milk}`);
     expect(milk.lot_tracked).toBe(true);
   });

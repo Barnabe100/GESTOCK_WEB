@@ -9,7 +9,7 @@
   écart, même si l'écart de l'article est nul ; invariant Σ lots = stock ; CMUP inchangé.
 - Changement de suivi refusé si un document deviendrait incohérent (inventaire ouvert,
   brouillon portant des lots, historique validé annulable sans lot à l'activation).
-- P1-b reste active : les tests l'ouvrent avec la fixture ``lot_tracking_open``.
+- P1-b levée (clôture du Lot 3-H) : la fixture ``lot_tracking_open`` reste explicite, sans effet.
 """
 
 import threading
@@ -141,8 +141,8 @@ def _ab(w: World) -> None:
 
 def test_untracked_article_inventory_unchanged(world: World, owner_db: Session) -> None:
     """Article non suivi : aucune ligne de lot, comptage de la ligne, un ajustement sans lot —
-    P1-b fermée dans ce test (aucune fixture)."""
-    assert lot_tracking.LOT_TRACKING_AVAILABLE is False
+    suivi disponible (P1-b levée, aucune fixture) mais non activé sur l'article."""
+    assert lot_tracking.LOT_TRACKING_AVAILABLE is True
     sh.validated_entry(world, [(1, "10", "100")])
     inv = _inventory(world, [1])
     line = _line_of(world, inv, 1)

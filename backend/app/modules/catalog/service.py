@@ -108,8 +108,8 @@ def _ensure_price_allowed(ctx: RequestContext) -> None:
 
 
 def _ensure_lot_tracking_available() -> None:
-    """Fermeture P1-b (Lot 3-G, ADR-0045) : le suivi par lot n'est pas activable tant que la
-    consommation des lots (Lot 3-H) n'est pas livrée — règle du produit, jamais un réglage."""
+    """Disponibilité du suivi par lot (P1-b, ADR-0045) : levée avec le Lot 3-H ; le refus ne
+    s'appliquerait que si la constante du code était refermée — jamais un réglage."""
     if not lot_tracking_available():
         raise BusinessRuleError(
             "Le suivi par lot sera disponible avec la consommation des lots par les ventes, "
@@ -501,8 +501,9 @@ class ArticleService:
     def _ensure_lot_flags_change(self, article: Article, updates: dict[str, Any]) -> None:
         """Lot 3-G (ADR-0045) : suivi par lot / de péremption modifiés seulement à stock nul sur
         TOUS les sites (D6) et soldes de lots tous nuls (D7) ; activation du suivi par lot
-        fermée tant que le Lot 3-H n'est pas livré (P1-b). Verrou exclusif de l'article d'abord :
-        une réception en cours de validation (verrou partagé) se termine avant la vérification."""
+        soumise à sa disponibilité (P1-b, levée avec le Lot 3-H). Verrou exclusif de l'article
+        d'abord : une réception en cours de validation (verrou partagé) se termine avant la
+        vérification."""
         if updates.get("lot_tracked", article.lot_tracked) and not article.lot_tracked:
             _ensure_lot_tracking_available()
         self.db.execute(select(Article.id).where(Article.id == article.id).with_for_update()).one()

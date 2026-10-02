@@ -415,7 +415,7 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Règle | Web |
 |---|---|
 | Desktop | Aucune notion de lot ni de péremption : règles entièrement nouvelles (décisions D1 à D20). |
-| Fermeture P1-b | Le suivi par lot n'est **pas activable en exploitation** tant que la consommation des lots (Lot 3-H) n'est pas livrée : refus du serveur (`lot_tracking_unavailable`), constante du code `catalog.lot_tracking` — jamais un réglage du tenant, du plan, de la console, d'une variable d'environnement ou du client. Tests seulement : fixture pytest `lot_tracking_open` ; E2E : préparation par le rôle propriétaire de la base. |
+| Fermeture P1-b (levée) | Le suivi par lot n'était **pas activable en exploitation** tant que la consommation des lots (Lot 3-H) n'était pas livrée (refus `lot_tracking_unavailable`). **Levée avec la clôture du Lot 3-H** : constante du code `catalog.lot_tracking.LOT_TRACKING_AVAILABLE = True` — jamais un réglage du tenant, du plan, de la console, d'une variable d'environnement ou du client. |
 | Article | `lot_tracked` (numéro de lot obligatoire à la réception) et `expiry_tracked` (péremption obligatoire, suppose le suivi par lot, qui suppose un article géré en stock) ; modifiables seulement à stock nul sur tous les sites et soldes de lots nuls (D6, D7) ; `catalog.article.update`. |
 | Lot | Appartient à l'article ; identité (article, numéro sans distinction de casse, espaces de bord retirés), le fournisseur n'en fait pas partie (D2, D3) ; créé à la validation d'une réception ; numéro et dates figés (D11) ; jamais supprimé. |
 | Réception | `PURCHASE` et `INITIAL_STOCK` (D9) : lot saisi dès le brouillon (D8), revalidé à la validation ; plusieurs lots d'un article et un lot en plusieurs présentations (D19, quantité en unité de base) ; lot connu reçu avec une autre péremption : refus (D4) ; fabrication ≤ péremption ; péremption passée acceptée (D17). |
@@ -471,5 +471,5 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Écart | Par lot : physique − solde courant du lot relu sous verrou ; un `ADJUSTMENT` par lot avec écart, même si l'écart de l'article est nul ; invariant Σ lots = stock avant et après. |
 | CMUP | Inchangé (un ajustement ne le recalcule pas ; aucun coût par lot). |
 | Changement de suivi | Stock nul sur tous les sites, aucun document ouvert (`article_in_open_documents`) et, à l'activation, aucun historique sans lot annulable (`article_has_untracked_history`). |
-| P1-b | Conditions techniques réunies ; **toujours active** jusqu'à l'accord explicite de TechNova. |
+| P1-b | **Levée** (accord de TechNova) : suivi par lot officiellement disponible ; Lot 3-H clôturé. |
 

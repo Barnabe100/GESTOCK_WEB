@@ -4,11 +4,11 @@
   référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18 et décisions complémentaires O-1 à
   O-6, section « Lot 3-H ») : **3-H-A livré et validé** (référence `096730b` ; ventes, POS,
   sorties, annulations ; section « Implémentation (Lot 3-H-A) ») ; **3-H-B1 livré et validé**
-  (transferts par lot ; section « Implémentation (Lot 3-H-B1) ») ; **finalisation 3-H livrée —
-  en attente de validation** (inventaires par lot, garde du changement de suivi, audit des
-  flux, préparation de la levée de P1-b ; section « Implémentation (finalisation 3-H :
-  inventaires par lot) ») ; **P1-b toujours active** (`LOT_TRACKING_AVAILABLE = False`, levée
-  sur accord explicite de TechNova seulement) ; 3-H non clôturé
+  (transferts par lot ; section « Implémentation (Lot 3-H-B1) ») ; **finalisation 3-H livrée et
+  validée** (référence `c62be93` ; inventaires par lot, garde du changement de suivi, audit des
+  flux ; section « Implémentation (finalisation 3-H : inventaires par lot) ») ; **P1-b LEVÉE**
+  (`LOT_TRACKING_AVAILABLE = True`, accord de TechNova ; section « Levée de P1-b ») : le suivi
+  par lot est **officiellement disponible** ; **Lot 3-H CLÔTURÉ** ; alertes de péremption : 3-I
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
   [ADR-0028](0028-fuseau-horaire-du-tenant.md) (dates métier dans le fuseau du tenant),
@@ -825,7 +825,7 @@ Aucun chemin n'écrit un mouvement sans lot pour un article suivi ; l'invariant 
 est contrôlé par le moteur (transferts, inventaires) et garanti par les verrous (ventes,
 sorties, réceptions).
 
-### Préparation de la levée de P1-b (non levée)
+### Préparation de la levée de P1-b
 
 Conditions techniques de la levée (D1, D20, H-D14, O-6) — **toutes satisfaites** à l'issue de
 cette livraison, sous réserve de la validation de TechNova :
@@ -845,6 +845,34 @@ La levée elle-même reste **un changement de code distinct** (`LOT_TRACKING_AVA
 dans `catalog.lot_tracking`, adaptation des tests qui vérifient la fermeture), effectué
 **uniquement après l'accord explicite de TechNova** ; elle n'est pas faite ici. Le 3-H n'est
 pas clôturé avant cette validation.
+
+## Levée de P1-b (clôture du Lot 3-H)
+
+Accord explicite de TechNova après validation de la finalisation (référence `c62be93`, CI #55
+verte) : **P1-b est levée**, le suivi par lot (et de péremption) est **officiellement
+disponible** en exploitation ; **le Lot 3-H est clôturé**.
+
+- **Changement de code** : `catalog.lot_tracking.LOT_TRACKING_AVAILABLE = True` (constante du
+  code, toujours jamais un réglage ni une variable d'environnement ; aucun module de
+  l'application ne la modifie — test statique). Le mécanisme de refus
+  (`lot_tracking_unavailable`) reste en place et testé en refermant la constante le temps d'un
+  test.
+- **Aucune règle modifiée** : activation à stock nul sur tous les sites (`article_has_stock`),
+  péremption ⇒ lot ⇒ géré en stock (`expiry_tracking_requires_lots`,
+  `lot_tracking_requires_stock`), documents ouverts (`article_in_open_documents`), historique
+  sans lot annulable (`article_has_untracked_history`), garde-fou `lot_required`, invariant
+  Σ lots = stock, FEFO, dérogation aux lots périmés, transferts, inventaires, CMUP.
+- **Désactivation** (inchangée, D7) : à stock et soldes de lots nuls ; l'annulation ultérieure
+  d'un document validé portant des lots remet en stock **sans lot**
+  (`StockService._restore_without_lot`, 3-H-A) — l'article n'en tient plus ; testé.
+- **Interface** : la fiche article propose « Suivi par lot » et « Suivi de la date de
+  péremption » (péremption activable seulement avec le lot), état fourni par le serveur
+  (`GET /catalog/lot-tracking` → `{available: true}`).
+- **Tests adaptés** (seulement ceux qui vérifiaient la fermeture) : activation réelle sans
+  fixture (API et interface), refus si la constante était refermée, constante `True` dans le
+  test statique, articles non suivis vérifiés avec le suivi disponible ; E2E : articles passés
+  au suivi par l'API (`enableLotTracking`) au lieu du rôle propriétaire de la base. La fixture
+  `lot_tracking_open` reste explicite dans les tests des lots, sans effet.
 
 ## Références
 

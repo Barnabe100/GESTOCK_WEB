@@ -10,8 +10,8 @@ et annulations.
 - Sorties : choix manuel, brouillon incomplet admis, somme exacte exigée à la validation.
 - Annulations : restauration exacte par mouvement d'origine, même sur un lot devenu périmé.
 - Garde-fou (O-6) : aucun mouvement sans lot pour un article suivi.
-- P1-b reste active : les tests l'ouvrent avec la fixture ``lot_tracking_open`` (réservée aux
-  tests, ``monkeypatch`` dans ce processus).
+- P1-b levée (clôture du Lot 3-H) : la fixture ``lot_tracking_open`` reste explicite, sans
+  effet ; les articles non suivis sont vérifiés inchangés avec le suivi disponible.
 """
 
 import threading
@@ -484,9 +484,9 @@ def test_guard_refuses_any_movement_without_lot_for_tracked_article(
 
 
 def test_untracked_article_unchanged(world: World, owner_db: Session) -> None:
-    """Article non suivi : un mouvement par ligne, sans lot, comme avant le Lot 3-H — P1-b
-    toujours fermée dans ce test (aucune fixture)."""
-    assert lot_tracking.LOT_TRACKING_AVAILABLE is False
+    """Article non suivi : un mouvement par ligne, sans lot, comme avant le Lot 3-H — suivi par
+    lot disponible (P1-b levée, aucune fixture) mais non activé sur l'article."""
+    assert lot_tracking.LOT_TRACKING_AVAILABLE is True
     sh.validated_entry(world, [(0, "10", "100")])
     sale, response = _sell(world, [(0, "4")])
     validated = _ok(response)
@@ -1092,11 +1092,50 @@ def test_no_cost_leak(world: World, lot_tracking_open: None, client: TestClient)
 # --- Divers ---------------------------------------------------------------------------------------
 
 
-def test_p1b_still_closed_in_production(world: World) -> None:
-    assert lot_tracking.LOT_TRACKING_AVAILABLE is False
+def test_p1b_lifted_real_activation_then_fefo_sale(world: World, owner_db: Session) -> None:
+    """P1-b levée : activation réelle (aucune fixture) puis vente en FEFO sur le lot qui périme
+    le premier ; le garde-fou refuse toujours un mouvement sans lot."""
+    assert lot_tracking.LOT_TRACKING_AVAILABLE is True
+    _ok(
+        world.owner.patch(
+            f"/catalog/articles/{world.articles[0]}",
+            json={"lot_tracked": True, "expiry_tracked": True},
+        )
+    )
+    _stock(world, 0, [("LATE", "5", _iso(60)), ("EARLY", "5", _iso(10))])
+    sale, response = _sell(world, [(0, "3")])
+    _ok(response)
+    assert _moves(owner_db, sale["id"]) == [("EARLY", "-3.000")]
+    _invariant(owner_db, world, 0)
+    # Un lot est désormais exigé dès le brouillon de réception de l'article suivi.
     assert _code(
-        world.owner.patch(f"/catalog/articles/{world.articles[0]}", json={"lot_tracked": True})
-    ) == (422, "lot_tracking_unavailable")
+        world.owner.post(
+            "/stock/entries",
+            json={
+                "site_id": world.site,
+                "supplier_id": world.supplier,
+                "lines": [_line(world, 0, "1")],
+            },
+        )
+    ) == (422, "lot_number_required")
+
+
+def test_deactivation_then_cancellation_restores_without_lot(
+    world: World, owner_db: Session
+) -> None:
+    """Après la levée de P1-b : suivi retiré à stock nul (D7), une vente validée portant des
+    lots s'annule encore — remise en stock SANS lot (``_restore_without_lot``), les soldes de
+    lots restent nuls ; l'article n'en tient plus."""
+    _track(world, 0)
+    _stock(world, 0, [("A", "4", _iso(30))])
+    sale, response = _sell(world, [(0, "4")])
+    _ok(response)
+    off = {"lot_tracked": False, "expiry_tracked": False}
+    _ok(world.owner.patch(f"/catalog/articles/{world.articles[0]}", json=off))
+    _ok(world.owner.post(f"/sales/{sale['id']}/cancel", json={"reason": "Erreur de saisie"}))
+    assert _moves(owner_db, sale["id"], "CANCELLATION") == [("-", "4.000")]
+    assert _balance(owner_db, world, "A") == "0.000"
+    assert sh.level(owner_db, world, 0)[0] == "4.000"
 
 
 def test_movement_uniqueness_includes_lot(

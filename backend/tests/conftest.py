@@ -449,7 +449,8 @@ def add_site(
 
 @pytest.fixture
 def lot_tracking_open(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """RÉSERVÉ AUX TESTS : lève la fermeture P1-b (ADR-0045) le temps d'un test, dans ce
-    processus (``monkeypatch``) — jamais un mécanisme de l'application (Lots 3-G, 3-H)."""
+    """RÉSERVÉ AUX TESTS : garantit le suivi par lot disponible le temps d'un test
+    (``monkeypatch``). Depuis la levée de P1-b (clôture du Lot 3-H, ADR-0045), la constante vaut
+    déjà ``True`` : la fixture reste explicite dans les tests des lots, sans effet."""
     monkeypatch.setattr(lot_tracking, "LOT_TRACKING_AVAILABLE", True)
     yield

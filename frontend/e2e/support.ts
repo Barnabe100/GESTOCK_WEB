@@ -272,6 +272,23 @@ export async function paymentMethodId(
 export const SALE_NUMBER = /VENT-[A-Z0-9-]+-\d{4}-\d{6,}/;
 
 /**
+ * Lot 3-H (P1-b levée) : active le suivi par lot ET de péremption d'un article par l'API, comme
+ * un utilisateur (article géré en stock, stock nul, aucun document ouvert : règles du serveur).
+ */
+export async function enableLotTracking(
+  request: APIRequestContext,
+  token: string,
+  articleId: string,
+  expiry = true,
+): Promise<void> {
+  const response = await request.patch(`/api/v1/catalog/articles/${articleId}`, {
+    headers: bearer(token),
+    data: { lot_tracked: true, expiry_tracked: expiry },
+  });
+  expect(response.status(), await response.text()).toBe(200);
+}
+
+/**
  * SQL exécuté avec le rôle propriétaire de la base (préparation de données de test que
  * seule l'administration TechNova peut modifier, ex. paramètres commerciaux d'un plan).
  */

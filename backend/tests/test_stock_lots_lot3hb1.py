@@ -12,7 +12,7 @@
 - Annulation : un inverse par mouvement d'origine, même lot ; refus total si un lot destination
   ne suffit plus (``insufficient_lot_stock``).
 - Aucune permission nouvelle ; lots disponibles d'un transfert : ``stock.transfer.create``.
-- P1-b reste active : les tests l'ouvrent avec la fixture ``lot_tracking_open``.
+- P1-b levée (clôture du Lot 3-H) : la fixture ``lot_tracking_open`` reste explicite, sans effet.
 """
 
 import inspect
@@ -984,8 +984,9 @@ def test_permissions_and_site_scope(
 
 
 def test_untracked_transfer_unchanged(world: World, owner_db: Session) -> None:
-    """Article non suivi : une paire par ligne, sans lot ni répartition — P1-b fermée."""
-    assert lot_tracking.LOT_TRACKING_AVAILABLE is False
+    """Article non suivi : une paire par ligne, sans lot ni répartition — suivi disponible
+    (P1-b levée) mais non activé sur l'article."""
+    assert lot_tracking.LOT_TRACKING_AVAILABLE is True
     sh.validated_entry(world, [(1, "10", "100")])
     transfer = _transfer(world, [_tline(world, 1, "4")])
     rows = _rows(owner_db, transfer["id"])

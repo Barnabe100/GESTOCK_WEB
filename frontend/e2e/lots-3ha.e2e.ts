@@ -4,7 +4,7 @@ import {
   bearer,
   createMember,
   loginUi,
-  ownerSql,
+  enableLotTracking,
   provisionTenant,
   SALE_NUMBER,
   tokenFor,
@@ -16,8 +16,8 @@ import {
  * les annulations ; lots périmés jamais vendus automatiquement, dérogation explicite ;
  * conditionnements ; permissions ; concurrence ; écrans étroits (POS, sortie).
  *
- * P1-b reste active : les articles sont marqués « suivis par lot » par le mécanisme RÉSERVÉ AUX
- * TESTS (rôle propriétaire de la base, ``ownerSql``) — l'application refuse toujours l'activation.
+ * P1-b levée (clôture du Lot 3-H) : les articles sont passés au suivi par lot par l'API, comme
+ * le ferait un utilisateur (article géré en stock, stock nul).
  */
 
 const RUN = Date.now().toString().slice(-7);
@@ -60,7 +60,7 @@ interface Article {
 }
 
 /**
- * Article suivi par lot (préparation RÉSERVÉE AUX TESTS) et stock initial par lot, une réception
+ * Article suivi par lot (activation réelle par l'API) et stock initial par lot, une réception
  * par lot : `[numéro, quantité, décalage de péremption en jours]`.
  */
 async function trackedArticle(
@@ -80,9 +80,7 @@ async function trackedArticle(
     sale_price: '500',
   });
   if (tracked) {
-    ownerSql(
-      `UPDATE catalog_articles SET lot_tracked = true, expiry_tracked = true WHERE id = '${article.id}'`,
-    );
+    await enableLotTracking(request, world.token, article.id);
   }
   for (const [number, quantity, offset] of lots) {
     const entry = await api(request, 'post', '/stock/entries', {
@@ -186,8 +184,8 @@ test.beforeAll(async ({ request }) => {
 });
 
 test.describe('Consommation des lots — Lot 3-H-A', () => {
-  test('P1-b toujours fermée ; article non suivi : vente inchangée', async ({ request }) => {
-    expect(await api(request, 'get', '/catalog/lot-tracking')).toEqual({ available: false });
+  test('P1-b levée ; article non suivi : vente inchangée', async ({ request }) => {
+    expect(await api(request, 'get', '/catalog/lot-tracking')).toEqual({ available: true });
     const plain = await trackedArticle(request, [['P', '10', 0]], false);
     const { sale } = await api<{ sale: { id: string; lines: { lots: unknown[] }[] } }>(
       request,

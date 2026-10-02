@@ -1,9 +1,9 @@
 """Lot 3-G (ADR-0045) — lots et péremption : stock et réception.
 
-- Fermeture P1-b : le suivi par lot n'est PAS activable en exploitation (refus du serveur, règle
-  du produit) tant que la consommation des lots (Lot 3-H) n'est pas livrée. Les autres tests
-  l'ouvrent avec la fixture ``lot_tracking_open``, réservée aux tests (``monkeypatch`` dans le
-  processus de test).
+- P1-b LEVÉE (clôture du Lot 3-H) : le suivi par lot est activable en exploitation (constante
+  du code, jamais un réglage) ; la fixture ``lot_tracking_open`` reste explicite mais n'a plus
+  d'effet ; le refus ``lot_tracking_unavailable`` n'est vérifié qu'en refermant la constante le
+  temps d'un test (``monkeypatch``).
 - Lot = (article, numéro sans distinction de casse) ; solde par lot et par site, ventilation du
   stock du site (Σ lots = stock) ; réceptions d'achat et de stock initial ; annulation sur le
   même lot ; lot connu reçu avec une autre péremption : refus ; CMUP inchangé (aucun coût par
@@ -161,11 +161,63 @@ def _iso(days: int) -> str:
     return (_today() + timedelta(days=days)).isoformat()
 
 
-# --- 1-3. Fermeture P1-b --------------------------------------------------------------------------
+# --- 1-3. P1-b levée ------------------------------------------------------------------------------
 
 
-def test_lot_tracking_refused_in_production(world: World) -> None:
-    """P1-b : la règle du produit refuse l'activation, quel que soit le rôle ou l'offre."""
+def test_lot_tracking_available_in_production(world: World, owner_db: Session) -> None:
+    """P1-b levée : activation RÉELLE (aucune fixture) sur un article géré en stock à stock nul ;
+    règles des réglages conservées (péremption ⇒ lot ⇒ géré en stock) ; activation auditée."""
+    assert lot_tracking.LOT_TRACKING_AVAILABLE is True
+    assert _ok(world.owner.get("/catalog/lot-tracking")) == {"available": True}
+    article = world.articles[0]
+    # Le suivi de péremption suppose le suivi par lot : refusé seul.
+    assert _code(
+        world.owner.patch(f"/catalog/articles/{article}", json={"expiry_tracked": True})
+    ) == (422, "expiry_tracking_requires_lots")
+    # Lot seul, puis péremption.
+    _ok(world.owner.patch(f"/catalog/articles/{article}", json={"lot_tracked": True}))
+    detail = _ok(world.owner.get(f"/catalog/articles/{article}"))
+    assert (detail["lot_tracked"], detail["expiry_tracked"]) == (True, False)
+    _ok(world.owner.patch(f"/catalog/articles/{article}", json={"expiry_tracked": True}))
+    detail = _ok(world.owner.get(f"/catalog/articles/{article}"))
+    assert (detail["lot_tracked"], detail["expiry_tracked"]) == (True, True)
+    audit = _audit(world, "article.updated")
+    assert {"before": False, "after": True} in [a["data"].get("lot_tracked") for a in audit]
+    # Désormais : le lot est exigé à la réception, puis reçu et soldé par lot.
+    assert _code(_draft(world, [_line(world, 0, "5")])) == (422, "lot_number_required")
+    _receive(world, [_line(world, 0, "5", lot="L1", expiry=_iso(60))])
+    _invariant(owner_db, world, 0)
+    # Article créé directement suivi (géré en stock) ; incohérences refusées à la création.
+    category = _ok(world.owner.get("/catalog/articles", params={"limit": 1}))["items"][0]
+    base = {"designation": "Lait", "category_id": category["category_id"], "unit": "u"}
+    created = _ok(
+        world.owner.post(
+            "/catalog/articles",
+            json={**base, "reference": "LOT-1", "lot_tracked": True, "expiry_tracked": True},
+        ),
+        201,
+    )
+    assert (created["lot_tracked"], created["expiry_tracked"]) == (True, True)
+    assert _code(
+        world.owner.post(
+            "/catalog/articles",
+            json={**base, "reference": "LOT-2", "lot_tracked": False, "expiry_tracked": True},
+        )
+    ) == (422, "expiry_tracking_requires_lots")
+    assert _code(
+        world.owner.post(
+            "/catalog/articles",
+            json={**base, "reference": "LOT-3", "stock_managed": False, "lot_tracked": True},
+        )
+    ) == (422, "lot_tracking_requires_stock")
+
+
+def test_lot_tracking_refused_if_the_gate_were_closed(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Le mécanisme de disponibilité reste en place : constante refermée (test seulement), le
+    serveur refuse l'activation, par modification comme par création."""
+    monkeypatch.setattr(lot_tracking, "LOT_TRACKING_AVAILABLE", False)
     assert _ok(world.owner.get("/catalog/lot-tracking")) == {"available": False}
     article = world.articles[0]
     for body in ({"lot_tracked": True}, {"lot_tracked": True, "expiry_tracked": True}):
@@ -185,25 +237,17 @@ def test_lot_tracking_refused_in_production(world: World) -> None:
         },
     )
     assert _code(created) == (422, "lot_tracking_unavailable")
-    # Le suivi de péremption suppose le suivi par lot : refusé seul.
-    assert _code(
-        world.owner.patch(f"/catalog/articles/{article}", json={"expiry_tracked": True})
-    ) == (422, "expiry_tracking_requires_lots")
     detail = _ok(world.owner.get(f"/catalog/articles/{article}"))
     assert (detail["lot_tracked"], detail["expiry_tracked"]) == (False, False)
-    # Aucun lot ne peut être saisi : l'article n'est pas suivi.
-    assert _code(_draft(world, [_line(world, 0, "5", lot="L1")])) == (
-        422,
-        "article_not_lot_tracked",
-    )
 
 
 def test_lot_tracking_gate_is_a_code_constant_never_changed_by_the_app() -> None:
-    """La fermeture est une constante du code (``False``) : ni variable d'environnement, ni
-    réglage, ni donnée ; aucun module de l'application ne la modifie."""
+    """La disponibilité est une constante du code (``True`` depuis la levée de P1-b) : ni
+    variable d'environnement, ni réglage, ni donnée ; aucun module de l'application ne la
+    modifie."""
     source = (APP_DIR / "modules/catalog/lot_tracking.py").read_text()
-    assert "LOT_TRACKING_AVAILABLE: Final[bool] = False" in source
-    assert lot_tracking.LOT_TRACKING_AVAILABLE is False
+    assert "LOT_TRACKING_AVAILABLE: Final[bool] = True" in source
+    assert lot_tracking.LOT_TRACKING_AVAILABLE is True
     assert not re.search(r"environ|getenv|settings|os\.", source.split('"""', 2)[2])
     assigning = [
         path
@@ -211,17 +255,6 @@ def test_lot_tracking_gate_is_a_code_constant_never_changed_by_the_app() -> None
         if re.search(r"LOT_TRACKING_AVAILABLE\s*[:=]|setattr\([^)]*LOT_TRACKING", path.read_text())
     ]
     assert assigning == [APP_DIR / "modules/catalog/lot_tracking.py"]
-
-
-def test_test_fixture_opens_the_gate_only_for_the_test(
-    world: World, lot_tracking_open: None
-) -> None:
-    assert _ok(world.owner.get("/catalog/lot-tracking")) == {"available": True}
-    _track(world, 0)
-    detail = _ok(world.owner.get(f"/catalog/articles/{world.articles[0]}"))
-    assert (detail["lot_tracked"], detail["expiry_tracked"]) == (True, True)
-    audit = _audit(world, "article.updated")[-1]
-    assert audit["data"]["lot_tracked"] == {"before": False, "after": True}
 
 
 # --- Réglages de l'article (D6, D7) ---------------------------------------------------------------
