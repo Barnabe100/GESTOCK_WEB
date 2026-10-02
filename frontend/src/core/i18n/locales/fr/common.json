@@ -1863,6 +1863,7 @@
     "trackingHelp": "Le numéro de lot (et la date de péremption si elle est suivie) est demandé à chaque réception. Modifiable seulement lorsque le stock de l'article est nul sur tous les sites.",
     "trackingUnavailable": "Le suivi par lot sera disponible avec la consommation des lots par les ventes, les sorties, les transferts et les inventaires.",
     "datesInvalid": "La date de fabrication ne peut pas être postérieure à la date de péremption",
-    "shortage": "lot {{number}} (solde {{available}})"
+    "shortage": "lot {{number}} (solde {{available}})",
+    "expiryFilter": "Échéance"
   }
 }

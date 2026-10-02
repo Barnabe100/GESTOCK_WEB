@@ -181,7 +181,7 @@ export default function LotsPage() {
           />
         )}
         {/* Échéance : même mise en page que les filtres de période (largeur pleine sur mobile). */}
-        <div className="sm-daterange" role="group" aria-label={t('lots.expiresBefore')}>
+        <div className="sm-daterange" role="group" aria-label={t('lots.expiryFilter')}>
           <label className="sm-daterange-item">
             <span>{t('lots.expiresBefore')}</span>
             <InputText
