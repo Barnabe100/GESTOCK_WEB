@@ -13,6 +13,9 @@ import { PAYMENT_METHODS_FIXTURE, paymentFixture, saleFixture } from '@/modules/
 import type { PosArticle } from './api';
 import PosPage from './PosPage';
 
+// Dialogue des paiements chargé à la demande : marge pour une machine chargée (CI).
+const SLOW = { timeout: 5000 };
+
 const money = (v: string) => formatMoney(v, 'XOF', 'fr').replace(/\s/g, ' ');
 const text = (el: Element) => (el.textContent ?? '').replace(/\s/g, ' ');
 
@@ -212,7 +215,7 @@ describe('point de vente', () => {
     fireEvent.keyDown(search, { key: 'Enter' });
     expect(await screen.findByLabelText('Quantité de Ciment 50 kg')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'F8' });
-    expect(await screen.findByRole('dialog', { name: 'Paiements (F8)' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Paiements (F8)' }, SLOW)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
     fireEvent.keyDown(window, { key: 'F10' });
     expect(await screen.findByRole('dialog', { name: 'Valider la vente ?' })).toBeTruthy();
@@ -223,7 +226,7 @@ describe('point de vente', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));
     fireEvent.click(tile('Ciment 50 kg'));
     fireEvent.click(screen.getByRole('button', { name: 'Paiement (F8)' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Paiements (F8)' });
+    const dialog = await screen.findByRole('dialog', { name: 'Paiements (F8)' }, SLOW);
     // Moyens configurés et disponibles sur le site (libellés de l'entreprise).
     const methods = await within(dialog).findByRole('group', {
       name: 'Ajouter un moyen de paiement',
