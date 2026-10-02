@@ -236,5 +236,7 @@
   "lot_allocation_incomplete": "La répartition par lot ne correspond pas à la quantité de la ligne ({{articles}} : demandé {{requested}}, réparti {{allocated}}).",
   "lot_allocation_exceeds": "La répartition par lot dépasse la quantité de la ligne ({{articles}}).",
   "duplicate_lot_allocation": "Un même lot est choisi plusieurs fois sur la ligne ({{lots}}).",
-  "lot_required": "Article suivi par lot : cette opération exige un lot ({{articles}})."
+  "lot_required": "Article suivi par lot : cette opération exige un lot ({{articles}}).",
+  "lot_expired_not_transferable": "Un lot périmé ne peut pas être transféré ({{lots}}).",
+  "lot_invariant_broken": "Les soldes des lots ne correspondent pas au stock de l'article ({{articles}}) : opération refusée."
 }

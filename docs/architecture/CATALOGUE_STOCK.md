@@ -443,3 +443,18 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Restitution | Lots et péremption dans la fiche de vente, le dialogue de confirmation du POS (aucun ticket 80 mm), la fiche de sortie, le journal des mouvements ; lots disponibles par point d'accès dédié (POS, vente, sortie). |
 | Hors périmètre (3-H-B, 3-I) | Transferts et inventaires par lot (refusés par le garde-fou pour un article suivi), retours, remboursements, alertes de péremption ; P1-b toujours active. |
 
+## 17. Lot 3-H-B1 — transferts inter-sites par lot (ADR-0045)
+
+| Règle | Web |
+|---|---|
+| Desktop | Aucune notion de lot : règles entièrement nouvelles (D-1, D-2, D-8 de l'audit 3-H-B). |
+| Moteur | `StockService.transfer_lots` seul : verrous article (partagé) → niveaux des deux sites (site, article) → soldes de lots des deux sites (site, article, lot) ; invariant Σ lots = stock contrôlé avant écriture ; tout ou rien. |
+| Répartition | Choix manuel des lots du site source (unité de base) ; brouillon incomplet admis ; somme exacte exigée à la validation (`lot_allocation_incomplete`) ; tout revérifié par le serveur. |
+| Identité du lot | Une paire `TRANSFER_OUT` / `TRANSFER_IN` par lot, MÊME lot (numéro, dates) sur les deux sites ; aucun lot créé par un transfert. |
+| Lots périmés | Jamais transférés (`lot_expired_not_transferable`, aucune dérogation) ; l'annulation d'un transfert validé reste possible. |
+| CMUP | Aucun coût par lot : CMUP source lu une fois, même coût en sortie et en entrée (valeur sortie = valeur entrée) ; CMUP destination calculé une fois par ligne, identique à un transfert non réparti. |
+| Annulation | Un inverse par mouvement d'origine, même lot ; refus total si un lot du site destination ne suffit plus (`insufficient_lot_stock`) ; jamais deux fois. |
+| Conditionnements | Présentation d'un mouvement réparti seulement si exactement représentable (comme 3-H-A). |
+| Articles non suivis | Inchangés : une paire sans lot par ligne. |
+| Hors périmètre (3-H-B2, 3-H-B3) | Inventaires par lot (refusés par le garde-fou pour un article suivi) ; levée de P1-b ; P1-b toujours active. |
+

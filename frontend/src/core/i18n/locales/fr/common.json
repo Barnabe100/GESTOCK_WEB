@@ -1880,7 +1880,9 @@
     "available": "Disponible : {{quantity}}",
     "quantity": "Quantité du lot {{number}}",
     "help": "Quantités en unité de base. Le brouillon peut rester incomplet ; à la validation, la somme des lots doit être égale à la quantité de la ligne (contrôlé par le serveur).",
-    "unexpiredShortage": "{{reference}} (manque {{missing}} ; {{expired}} en lots périmés)"
+    "unexpiredShortage": "{{reference}} (manque {{missing}} ; {{expired}} en lots périmés)",
+    "expiredNotTransferable": "Périmé — non transférable",
+    "transferHelp": "Lots du site source, quantités en unité de base : chaque lot est reçu sous le même numéro sur le site destination. Le brouillon peut rester incomplet ; à la validation, la somme des lots doit être égale à la quantité de la ligne. Un lot périmé ne peut pas être transféré (contrôlé par le serveur)."
   },
   "expiredLots": {
     "title": "Lot périmé",

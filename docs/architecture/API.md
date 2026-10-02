@@ -191,11 +191,12 @@ revenue à un plan sans la fonctionnalité reste consultable. Règles : [`CATALO
 | Méthode | Chemin | Permission | Rôle |
 |---|---|---|---|
 | GET | `/stock/transfers` | `stock.transfer.view` | Transferts dont un site est visible et dont les deux sites sont accessibles ; `search` (numéro), `status`, `source_site_id`, `destination_site_id`, `date_from`, `date_to` ; tri `number` (défaut décroissant), `operation_date`, `created_at` |
-| POST | `/stock/transfers` | `stock.transfer.create` | Brouillon `TRF-000001` : `{source_site_id?, destination_site_id, operation_date?, comment?, lines: [{article_id, quantity}]}` (source = site sélectionné par défaut) |
+| GET | `/stock/transfers/available-lots` | `stock.transfer.create` | Lot 3-H-B1 ([ADR-0045](../adr/0045-lots-et-peremption-stock-reception.md)) : lots d'un article (`article_id`) ayant un solde positif sur le site SOURCE (`site_id`, sinon site sélectionné ; accessible et permission détenue sur ce site) — même réponse que `/stock/available-lots` ; lots périmés signalés `expired` (jamais transférables) ; **aucun coût** ; fonctionnalité `stock.transfers` |
+| POST | `/stock/transfers` | `stock.transfer.create` | Brouillon `TRF-000001` : `{source_site_id?, destination_site_id, operation_date?, comment?, lines: [{article_id, packaging_id?, quantity, lots?: [{lot_id, quantity}]}]}` (source = site sélectionné par défaut) ; Lot 3-H-B1 : `lots` = répartition manuelle d'un article suivi, en unité de base, incomplète admise (`article_not_lot_tracked`, `lot_not_available`, `duplicate_lot_allocation`, `quantity_not_whole`, `lot_allocation_exceeds`) |
 | GET | `/stock/transfers/{id}` | `stock.transfer.view` | Détail avec lignes (coût et valeur après validation) |
 | PUT | `/stock/transfers/{id}` | `stock.transfer.update` | Remplacer destination, date, commentaire et lignes d'un brouillon (source fixe) |
-| POST | `/stock/transfers/{id}/validate` | `stock.transfer.validate` | Sortie `TRANSFER_OUT` du site source et entrée `TRANSFER_IN` du site destination, en une transaction |
-| POST | `/stock/transfers/{id}/cancel` | `stock.transfer.cancel` | `{reason}` (5–500 car.) ; brouillon : abandon ; validé : mouvements inverses sur les deux sites, CMUP inchangés |
+| POST | `/stock/transfers/{id}/validate` | `stock.transfer.validate` | Sortie `TRANSFER_OUT` du site source et entrée `TRANSFER_IN` du site destination, en une transaction ; Lot 3-H-B1 : une paire par lot, même lot des deux côtés, même coût (CMUP source) — `422 lot_allocation_incomplete`, `lot_not_available`, `lot_expired_not_transferable`, `insufficient_lot_stock`, `lot_invariant_broken` ; `lines[].lots` = répartition réelle |
+| POST | `/stock/transfers/{id}/cancel` | `stock.transfer.cancel` | `{reason}` (5–500 car.) ; brouillon : abandon ; validé : mouvements inverses sur les deux sites (un par mouvement d'origine, même lot), CMUP inchangés ; refus total `insufficient_lot_stock` si un lot destination ne suffit plus |
 
 La permission est exigée sur les **deux** sites (rôles limités à un site). Codes :
 `same_site_transfer`, `site_required`, `future_operation_date`, `duplicate_article_line`,

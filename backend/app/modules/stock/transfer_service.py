@@ -8,6 +8,10 @@
   double validation, même simultanée, ne s'applique qu'une fois.
 - Sites : deux sites distincts, actifs et accessibles au membre ; la permission de l'opération
   est exigée **sur les deux sites** (un rôle limité à un site n'y suffit pas pour l'autre).
+- Lot 3-H-B1 (ADR-0045) : un article suivi par lot est réparti MANUELLEMENT sur ses lots
+  (brouillon incomplet admis, somme exacte à la validation) ; ``StockService.transfer_lots``
+  produit une paire sortie / entrée par lot, sous le MÊME lot des deux côtés ; lot périmé
+  refusé (``lot_expired_not_transferable``, sans dérogation) ; aucune permission nouvelle.
 """
 
 import uuid
@@ -20,21 +24,39 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
-from app.modules.catalog.api import ArticleRef, get_article_refs
+from app.modules.catalog.api import QUANTITY_STEP, ArticleRef, get_article_refs
+from app.modules.stock.api import available_lots_out
 from app.modules.stock.document_service import (
+    check_lot_choices,
     packaging_snapshot,
     present_lines,
     revalidate_lines,
 )
+from app.modules.stock.lot_service import (
+    ExpiryContext,
+    expiry_context,
+    lot_allocations,
+    lot_infos,
+)
 from app.modules.stock.models import (
     DocumentStatus,
     MovementType,
+    StockMovement,
     StockTransfer,
     StockTransferLine,
+    StockTransferLineLot,
 )
-from app.modules.stock.schemas import LineOut, TransferCreate, TransferInput, TransferOut
+from app.modules.stock.schemas import (
+    AvailableLotsOut,
+    LineLotOut,
+    LineOut,
+    TransferCreate,
+    TransferInput,
+    TransferOut,
+)
 from app.modules.stock.sites import tenant_today, visible_site_ids
 from app.modules.stock.stock_service import (
+    LotPick,
     MovementRequest,
     StockService,
     TransferItem,
@@ -222,6 +244,17 @@ class TransferService:
                         if line.packaging_id
                         else {}
                     ),
+                    # Lot 3-H-B1 : choix de lots du brouillon (unité de base).
+                    **(
+                        {
+                            "lots": [
+                                {"lot_id": str(c.lot_id), "base_quantity": format(c.quantity, "f")}
+                                for c in line.lots
+                            ]
+                        }
+                        if line.lots
+                        else {}
+                    ),
                 }
                 for line in transfer.lines
             ],
@@ -243,6 +276,8 @@ class TransferService:
 
     def _apply_input(self, transfer: StockTransfer, data: TransferInput) -> None:
         presented = present_lines(self.db, data.lines)
+        # Lot 3-H-B1 : choix des lots contrôlés dès le brouillon (mêmes règles que les sorties).
+        check_lot_choices(self.db, data.lines, presented)
         transfer.destination_site_id = data.destination_site_id
         transfer.operation_date = self._operation_date(data.operation_date)
         transfer.comment = data.comment
@@ -252,9 +287,19 @@ class TransferService:
                 tenant_id=self.ctx.tenant_id,
                 line_no=index,
                 article_id=shown.article_id,
+                lots=[
+                    StockTransferLineLot(
+                        tenant_id=self.ctx.tenant_id,
+                        article_id=shown.article_id,
+                        lot_id=choice.lot_id,
+                        position=position,
+                        quantity=choice.quantity.quantize(QUANTITY_STEP),
+                    )
+                    for position, choice in enumerate(line.lots, start=1)
+                ],
                 **shown.columns(),
             )
-            for index, shown in enumerate(presented, start=1)
+            for index, (line, shown) in enumerate(zip(data.lines, presented, strict=True), start=1)
         ]
 
     # --- Cycle de vie -------------------------------------------------------------------------
@@ -298,7 +343,9 @@ class TransferService:
 
     def validate(self, transfer_id: uuid.UUID) -> StockTransfer:
         """Sortie du site source et entrée du site destination en une transaction : tout le
-        stock source est contrôlé avant la moindre écriture ; tout échec annule l'ensemble."""
+        stock source est contrôlé avant la moindre écriture ; tout échec annule l'ensemble.
+        Lot 3-H-B1 : répartition par lot revérifiée par le moteur (lots du site source, non
+        périmés, soldes sous verrou, somme exacte) ; un article non suivi garde sa paire unique."""
         transfer = self.get(transfer_id, lock=True)
         self._require_draft(transfer)
         if not transfer.lines:
@@ -307,7 +354,7 @@ class TransferService:
             transfer.source_site_id, transfer.destination_site_id, "stock.transfer.validate"
         )
         revalidate_lines(self.db, transfer.lines)
-        pairs = self._stock().transfer(
+        movements = self._stock().transfer_lots(
             transfer.source_site_id,
             transfer.destination_site_id,
             [
@@ -316,16 +363,25 @@ class TransferService:
                     article_id=line.article_id,
                     quantity=line.base_quantity,
                     packaging=packaging_snapshot(line),
+                    picks=tuple(LotPick(c.lot_id, c.quantity) for c in line.lots),
                 )
                 for line in transfer.lines
             ],
             source_type=SOURCE_TYPE,
             source_id=transfer.id,
             source_number=transfer.number,
+            today=tenant_today(self.ctx, self.now),
         )
-        for line, (outgoing, _) in zip(transfer.lines, pairs, strict=True):
-            line.unit_cost = outgoing.unit_cost
-            line.amount = round_money(line.base_quantity * (outgoing.unit_cost or Decimal("0")))
+        # Coût figé = CMUP du site source lu une fois (identique pour tous les mouvements d'une
+        # ligne, sortie ET entrée) ; montant arrondi une seule fois : quantité totale × coût.
+        costs = {
+            m.source_line_id: m.unit_cost
+            for m in movements
+            if m.movement_type is MovementType.TRANSFER_OUT
+        }
+        for line in transfer.lines:
+            line.unit_cost = costs[line.id]
+            line.amount = round_money(line.base_quantity * (line.unit_cost or Decimal("0")))
         transfer.status = DocumentStatus.VALIDATED
         transfer.validated_at = self.now
         transfer.validated_by = self.ctx.user.id
@@ -338,6 +394,7 @@ class TransferService:
                 "status": DocumentStatus.VALIDATED.value,
                 **self._snapshot(transfer),
                 "total": format(self._total(transfer) or Decimal("0"), "f"),
+                **self._lots_audit(movements),
             },
         )
         return transfer
@@ -354,6 +411,7 @@ class TransferService:
         self._check_sites(
             transfer.source_site_id, transfer.destination_site_id, "stock.transfer.cancel"
         )
+        restored: list[StockMovement] = []
         if previous is DocumentStatus.VALIDATED:
             stock = self._stock()
             outgoing = stock.movements_of(transfer.id, MovementType.TRANSFER_OUT)
@@ -362,8 +420,8 @@ class TransferService:
             requests: list[tuple[uuid.UUID, MovementRequest]] = []
             for line in transfer.lines:
                 # Retrait du site destination (−q), puis remise sur le site source (+q) : un
-                # inverse par mouvement d'origine (structure prête pour plusieurs mouvements par
-                # ligne — Lot 3-H-B ; aujourd'hui, un mouvement de chaque côté).
+                # inverse par mouvement d'origine, MÊME lot, même quantité, même coût (Lot 3-H-B1 :
+                # plusieurs par ligne répartie) ; refus total si un solde devenait négatif.
                 for origin in incoming[line.id]:
                     requests.append(
                         (
@@ -412,7 +470,7 @@ class TransferService:
                             ),
                         )
                     )
-            stock.apply_many(requests)
+            restored = stock.apply_many(requests)
         transfer.status = DocumentStatus.CANCELLED
         transfer.cancelled_at = self.now
         transfer.cancelled_by = self.ctx.user.id
@@ -427,9 +485,52 @@ class TransferService:
                 "reason": reason,
                 "stock_restored": previous is DocumentStatus.VALIDATED,
                 **self._snapshot(transfer),
+                **self._lots_audit(restored),
             },
         )
         return transfer
+
+    def _lots_audit(self, movements: Sequence[StockMovement]) -> dict[str, Any]:
+        """Lots déplacés (validation) ou restaurés (annulation), pour l'audit : site, lot,
+        quantité signée (la traçabilité reste le journal des mouvements)."""
+        with_lot = [m for m in movements if m.lot_id is not None]
+        if not with_lot:
+            return {}
+        refs = get_article_refs(self.db, {m.article_id for m in with_lot})
+        infos = lot_infos(self.db, {m.lot_id for m in with_lot if m.lot_id})
+        return {
+            "lots": [
+                {
+                    "site_id": str(m.site_id),
+                    "movement_type": m.movement_type.value,
+                    "reference": refs[m.article_id].reference if m.article_id in refs else None,
+                    "lot_id": str(m.lot_id),
+                    "lot_number": infos[m.lot_id].number if m.lot_id in infos else None,
+                    "base_quantity": format(m.quantity, "f"),
+                }
+                for m in with_lot
+                if m.lot_id is not None
+            ]
+        }
+
+    def available_lots(self, article_id: uuid.UUID, site_id: uuid.UUID | None) -> AvailableLotsOut:
+        """Lots disponibles d'un article sur le SITE SOURCE d'un transfert (Lot 3-H-B1, D-8) :
+        solde positif, péremption et état ; lots périmés signalés (``expired``), jamais
+        transférables (D-1). Aucun coût. Le site (sélectionné ou fourni) doit être accessible et
+        ``stock.transfer.create`` détenue sur lui (rôles et abonnement de CE site)."""
+        selected = self.ctx.site.id if self.ctx.site is not None else None
+        site = site_id or selected
+        if site is None:
+            raise BusinessRuleError("Choisissez un site", code="site_required")
+        if site not in self.ctx.capabilities.accessible_site_ids:
+            raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+        if site != selected and "stock.transfer.create" not in self._permissions_on(site):
+            raise ForbiddenError(
+                "Permission insuffisante sur ce site",
+                code="site_permission_denied",
+                extra={"site_id": str(site), "permission": "stock.transfer.create"},
+            )
+        return available_lots_out(self.db, self.ctx, self.now, site, article_id)
 
     # --- Sortie API -----------------------------------------------------------------------------
 
@@ -456,6 +557,7 @@ class TransferService:
             if with_lines
             else {}
         )
+        lots = self._line_lots(transfers) if with_lines else {}
         return [
             TransferOut(
                 id=t.id,
@@ -476,13 +578,60 @@ class TransferService:
                 cancelled_at=t.cancelled_at,
                 cancelled_by_name=user_names.get(t.cancelled_by) if t.cancelled_by else None,
                 cancellation_reason=t.cancellation_reason,
-                lines=[_line_out(line, refs) for line in t.lines] if with_lines else [],
+                lines=[_line_out(line, refs, lots.get(line.id)) for line in t.lines]
+                if with_lines
+                else [],
             )
             for t in transfers
         ]
 
+    def _line_lots(self, transfers: Sequence[StockTransfer]) -> dict[uuid.UUID, list[LineLotOut]]:
+        """Répartition par lot des lignes (Lot 3-H-B1) : brouillon = choix saisis ; transfert
+        validé ou annulé = répartition réelle lue dans le journal (sorties du site source)."""
+        expiry: ExpiryContext = expiry_context(self.db, self.ctx, self.now)
+        drafts = [t for t in transfers if t.status is DocumentStatus.DRAFT]
+        result: dict[uuid.UUID, list[LineLotOut]] = {}
+        infos = lot_infos(
+            self.db, {c.lot_id for t in drafts for line in t.lines for c in line.lots}
+        )
+        for t in drafts:
+            for line in t.lines:
+                if not line.lots:
+                    continue
+                result[line.id] = [
+                    LineLotOut(
+                        lot_id=c.lot_id,
+                        lot_number=infos[c.lot_id].number if c.lot_id in infos else "?",
+                        expiry_date=infos[c.lot_id].expiry_date if c.lot_id in infos else None,
+                        state=expiry.state(infos[c.lot_id].expiry_date)
+                        if c.lot_id in infos
+                        else None,
+                        quantity=c.quantity,
+                    )
+                    for c in line.lots
+                ]
+        done = {t.id for t in transfers if t.status is not DocumentStatus.DRAFT}
+        for line_id, allocations in lot_allocations(
+            self.db, done, MovementType.TRANSFER_OUT
+        ).items():
+            result[line_id] = [
+                LineLotOut(
+                    lot_id=a.lot_id,
+                    lot_number=a.lot_number,
+                    expiry_date=a.expiry_date,
+                    state=expiry.state(a.expiry_date),
+                    quantity=a.quantity,
+                )
+                for a in allocations
+            ]
+        return result
 
-def _line_out(line: StockTransferLine, refs: dict[uuid.UUID, ArticleRef]) -> LineOut:
+
+def _line_out(
+    line: StockTransferLine,
+    refs: dict[uuid.UUID, ArticleRef],
+    lots: list[LineLotOut] | None = None,
+) -> LineOut:
     ref = refs.get(line.article_id)
     return LineOut(
         id=line.id,
@@ -498,4 +647,5 @@ def _line_out(line: StockTransferLine, refs: dict[uuid.UUID, ArticleRef]) -> Lin
         packaging_name=line.packaging_name,
         packaging_conversion=line.packaging_conversion,
         base_quantity=line.base_quantity,
+        lots=lots or [],
     )

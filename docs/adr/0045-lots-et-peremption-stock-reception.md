@@ -2,8 +2,10 @@
 
 - **Statut** : Acceptée — Lot 3-G (décisions D1 à D20 et P1-b) livré et validé (état de
   référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18 et décisions complémentaires O-1 à
-  O-6, section « Lot 3-H ») : **3-H-A livré — en attente de validation** (ventes, POS, sorties,
-  annulations ; section « Implémentation (Lot 3-H-A) ») ; **3-H-B non commencé** ; P1-b
+  O-6, section « Lot 3-H ») : **3-H-A livré et validé** (référence `096730b` ; ventes, POS,
+  sorties, annulations ; section « Implémentation (Lot 3-H-A) ») ; **3-H-B1 livré — en attente
+  de validation** (transferts par lot ; section « Implémentation (Lot 3-H-B1) ») ;
+  **3-H-B2 (inventaires par lot) et 3-H-B3 (clôture, levée de P1-b) non commencés** ; P1-b
   toujours active
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
@@ -536,7 +538,9 @@ Aucun ne remet en cause une décision ; ils seront tranchés au plan technique d
   3-C : quantités entières dans la présentation pour un article non décimal) ; pour un
   article décimal, une quantité fractionnaire exacte (par exemple 1,25) reste conforme.
   Lecture à confirmer au plan technique.
-- **T-3 — CMUP d'un `TRANSFER_IN` réparti (H-D17)** : solution technique exacte (voir
+- **T-3 — CMUP d'un `TRANSFER_IN` réparti (H-D17)** — *tranché en 3-H-B1 (D-2 : CMUP source
+  lu une fois, même coût en sortie et en entrée, CMUP destination calculé une fois par ligne ;
+  voir « Implémentation (Lot 3-H-B1) »)* : solution technique exacte (voir
   « Vérifications techniques », point 3), vérifiée pendant 3-H-B.
 - **T-4 — Lot découvert à l'inventaire (O-5)** : au 3-G, le référentiel des lots n'est
   alimenté que par les réceptions validées ; création par l'inventaire à fixer (au plus tard à
@@ -622,6 +626,80 @@ inventaires) non commencé ; **P1-b toujours active** (`LOT_TRACKING_AVAILABLE =
   existent ou si une vente porte une dérogation.
 - **Tests** : fixture `lot_tracking_open` déplacée dans `tests/conftest.py` (même mécanisme
   réservé aux tests) ; E2E : articles suivis préparés par `ownerSql`.
+
+## Implémentation (Lot 3-H-B1)
+
+Transferts inter-sites par lot, livré sur la branche de travail, **en attente de validation** ;
+3-H-B2 (inventaires par lot) et 3-H-B3 (clôture, levée de P1-b) **non commencés** ; **P1-b
+toujours active** (`LOT_TRACKING_AVAILABLE = False`). Décisions validées par TechNova
+(audit 3-H-B, 2026-10-02) : D-1 (lot périmé jamais transféré, sans dérogation), D-2 (CMUP),
+D-6 (limitation de l'historique sans lot inchangée), D-7 (changement de suivi avec documents
+ouverts : hors 3-H-B1), D-8 (aucune permission nouvelle, point d'accès des lots propre aux
+transferts) ; D-3 à D-5 concernent 3-H-B2.
+
+- **Brouillon** : `TransferLineInput.lots` (`lot_id`, quantité en unité de base) — choix
+  manuels dans `stock_transfer_line_lots` (lignes enfants supprimées et recréées avec la
+  ligne). Mêmes contrôles que les sorties (fonction commune `check_lot_choices`) : article
+  suivi (`article_not_lot_tracked`), lot de l'article et du tenant (`lot_not_available`), sans
+  doublon (`duplicate_lot_allocation`), 3 décimales (`base_quantity_precision`), entier pour
+  un article entier (`quantity_not_whole`), somme au plus égale à la ligne
+  (`lot_allocation_exceeds`) ; répartition **incomplète admise**.
+- **Moteur** : `StockService.transfer_lots` — seul chemin des transferts (articles suivis ou
+  non ; `TransferService` orchestre, le moteur écrit). Verrou partagé des articles, niveaux des
+  **deux** sites (ordre global site → article), contrôle du stock source
+  (`insufficient_stock`), lots désignés relus (RLS, même article : `lot_not_available`), soldes
+  des lots des deux sites verrouillés (`FOR UPDATE`, ordre global site → article → lot ; solde
+  destination d'un lot créé à zéro au besoin), **invariant Σ lots = stock** contrôlé sur les
+  deux sites avant toute écriture (`422 lot_invariant_broken`), puis répartition revérifiée :
+  lot présent au site source (`lot_not_available`), **non périmé** au jour du tenant
+  (`422 lot_expired_not_transferable`, D-1), solde suffisant (`insufficient_lot_stock`), somme
+  exacte (`lot_allocation_exceeds` / `lot_allocation_incomplete`). Tout ou rien.
+- **Mouvements** : par (ligne, lot), un `TRANSFER_OUT` (source, −q) puis un `TRANSFER_IN`
+  (destination, +q), **même `lot_id`** — le même `stock_lot` (numéro, dates), jamais un lot
+  créé par un transfert ; il devient visible au site destination avec son solde. Présentation
+  d'un mouvement réparti : `split_packaging` (O-3), identique sur la paire. Article non suivi :
+  une paire sans lot par ligne, exactement comme avant (aucune table de répartition).
+- **CMUP (T-3, D-2)** : aucun coût par lot (C1). Le CMUP du site source est lu une fois ; tous
+  les mouvements de la ligne (sorties ET entrées) portent ce même coût — valeur sortie = valeur
+  entrée **exactement** (même `Decimal`, aucun arrondi intermédiaire) ; montant de la ligne =
+  `round_money(quantité × coût)`, arrondi une seule fois. Le CMUP destination est calculé
+  **une fois par ligne** sur la quantité totale : `round_cost((Qd × Cd + Q × c) / (Qd + Q))` —
+  identique à un transfert non réparti (paramètre interne `entry_weights` de `_write` : la
+  première entrée de la ligne pèse la quantité totale, les suivantes ne recalculent pas ; avant /
+  après de la première entrée = Cd → nouveau CMUP, des suivantes = nouveau → nouveau). Plusieurs
+  lignes du même article : un calcul par ligne, enchaînés comme avant.
+- **Annulation** (H-D10, H-D11) : un inverse par mouvement d'origine (même lot, même quantité,
+  même coût, `origin_movement_id`), destination puis source ; autorisée sur un lot devenu
+  périmé ; refus **total** si un lot du site destination ne suffit plus
+  (`422 insufficient_lot_stock`, aucune restauration partielle) ; double annulation refusée
+  (`409 transfer_already_cancelled`, transfert verrouillé, unicité des mouvements). Dans
+  `_write`, les soldes de lots sont désormais contrôlés **avant** le stock (site, article) :
+  pour un article suivi, le refus nomme le lot en cause (les articles non suivis ne sont pas
+  concernés).
+- **Lots disponibles** (D-8) : `GET /stock/transfers/available-lots?article_id&site_id`
+  (`stock.transfer.create` + fonctionnalité `stock.transfers`) — site accessible et
+  permission détenue sur ce site (rôles et abonnement du site), même fonction
+  `available_lots` (solde positif, péremption, état, `expired`) ; aucun coût. Le point
+  d'accès des sorties n'est pas élargi.
+- **Restitution et audit** : `LineOut.lots` d'un transfert (choix du brouillon ; répartition
+  réelle lue dans les `TRANSFER_OUT` du journal pour un transfert validé ou annulé) ;
+  instantané des audits `stock_transfer.created/updated` avec les choix de lots ;
+  `stock_transfer.validated` et `stock_transfer.cancelled` : `lots` (site, type de mouvement,
+  lot, quantité signée).
+- **Interface** : `LotAllocationEditor` partagé avec les sorties (point d'accès en paramètre,
+  `blockExpired` : lot périmé affiché « Périmé — non transférable », saisie bloquée) ;
+  « Demandé / Réparti / Reste » ; lots sous l'article dans la fiche d'un transfert ; écran
+  étroit en une colonne.
+- **Migration 0036** : `stock_transfer_line_lots` (RLS `ENABLE` + `FORCE`, politique
+  `tenant_isolation`, `SELECT, INSERT, UPDATE, DELETE` pour le rôle applicatif, aucun droit
+  pour le rôle de la console ; FK composites `(tenant_id, transfer_line_id, article_id)` →
+  ligne de transfert et `(tenant_id, article_id, lot_id)` → lot ; unique
+  `(transfer_line_id, lot_id)` ; `quantity > 0`) ; unicité `(tenant_id, id, article_id)` des
+  lignes de transfert. Migration additive ; retour arrière refusé si des choix de lots de
+  transfert existent.
+- **Garde-fou** : inchangé ; l'ancien chemin `StockService.transfer` (paire unique sans lot)
+  reste refusé pour un article suivi (`lot_required`) et n'est plus appelé (test statique).
+  Les inventaires d'articles suivis restent refusés jusqu'à 3-H-B2.
 
 ## Références
 

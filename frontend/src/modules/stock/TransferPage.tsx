@@ -20,6 +20,7 @@ import {
   formatCost,
   formatMoney,
   formatQuantity,
+  multiplyQuantity,
   normalizeDecimal,
 } from '@/shared/lib/decimal';
 import { formatPresented, toBase, type PresentationPackaging } from '@/shared/lib/presentation';
@@ -35,8 +36,9 @@ import { confirmAction } from '@/shared/ui/confirm';
 import { COST_VIEW, type ScanResult } from '@/modules/catalog/api';
 import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 
-import type { DocumentLine } from './api';
+import { transferLotsPath, type DocumentLine } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
+import { LotAllocationEditor } from './LotAllocationEditor';
 import {
   TRANSFERS_FEATURE,
   useAvailableStock,
@@ -45,7 +47,7 @@ import {
   type StockTransfer,
   type TransferInput,
 } from './transferApi';
-import { stockError } from './ui';
+import { LineLotsList, stockError } from './ui';
 
 const quantity = z.string().refine((v) => {
   const n = normalizeDecimal(v, 3);
@@ -70,6 +72,8 @@ const schema = z
           article: z.custom<ArticleOption | null>().refine((v) => Boolean(v), 'required'),
           packaging: z.custom<PresentationPackaging | null>(),
           quantity,
+          /** Lot 3-H-B1 : répartition manuelle par lot (unité de base). */
+          lots: z.array(z.object({ lot_id: z.string(), quantity: z.string() })),
         }),
       )
       .min(1, 'empty'),
@@ -86,6 +90,13 @@ const schema = z
     ids.forEach((id, index) => {
       if (id && ids.indexOf(id) !== index) {
         ctx.addIssue({ code: 'custom', path: ['lines', index, 'article'], message: 'duplicate' });
+      }
+    });
+    // Lot 3-H-B1 : quantités par lot bien formées ; la somme exacte est exigée par le serveur
+    // à la validation seulement (brouillon incomplet admis).
+    values.lines.forEach((line, index) => {
+      if (line.lots.some((l) => normalizeDecimal(l.quantity, 3) === null)) {
+        ctx.addIssue({ code: 'custom', path: ['lines', index, 'lots'], message: 'quantity' });
       }
     });
   });
@@ -113,8 +124,16 @@ function defaults(transfer: StockTransfer | undefined, source: string | null): F
             }
           : null,
       quantity: line.quantity,
+      lots: (line.lots ?? []).map((l) => ({ lot_id: l.lot_id, quantity: l.quantity })),
     })),
   };
+}
+
+/** Quantité de la ligne en unité de base (indicative, pour « Demandé / Réparti / Reste »). */
+function requestedBase(line: FormValues['lines'][number] | undefined): string | null {
+  const quantity = normalizeDecimal(line?.quantity ?? '', 3);
+  if (quantity === null) return null;
+  return line?.packaging ? multiplyQuantity(quantity, line.packaging.conversion) : quantity;
 }
 
 function toInput(values: FormValues, isNew: boolean): TransferInput {
@@ -127,6 +146,11 @@ function toInput(values: FormValues, isNew: boolean): TransferInput {
       article_id: line.article?.id ?? '',
       packaging_id: line.packaging?.id ?? null,
       quantity: normalizeDecimal(line.quantity, 3) ?? '0',
+      // Lot 3-H-B1 : choix des lots envoyés tels quels (le serveur les contrôle tous).
+      lots: line.lots.map((l) => ({
+        lot_id: l.lot_id,
+        quantity: normalizeDecimal(l.quantity, 3) ?? '0',
+      })),
     })),
   };
 }
@@ -172,6 +196,8 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
     can('stock.level.view'),
   );
   const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
+  // Lot 3-H-B1 : lots déjà enregistrés sur les lignes (libellé d'un lot sans solde restant).
+  const knownLots = (transfer?.lines ?? []).flatMap((l) => l.lots ?? []);
 
   /** Lot 3-D : le scan présélectionne article + présentation ; la quantité reste à saisir. */
   const onScan = (scan: ScanResult) => {
@@ -187,7 +213,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
       return;
     }
     lines.append(
-      { article, packaging, quantity: '' },
+      { article, packaging, quantity: '', lots: [] },
       { focusName: `lines.${lines.fields.length}.quantity` },
     );
   };
@@ -242,7 +268,11 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
               <Dropdown
                 inputId="transfer-source"
                 value={field.value}
-                onChange={(e) => field.onChange(e.value)}
+                onChange={(e) => {
+                  field.onChange(e.value);
+                  // Autre site source : les lots choisis ne s'y trouvent plus.
+                  form.getValues('lines').forEach((_, i) => form.setValue(`lines.${i}.lots`, []));
+                }}
                 options={siteOptions}
                 placeholder={t('stock.chooseSite')}
                 disabled={!isNew}
@@ -322,7 +352,9 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
                       value={f.value}
                       onChange={(value) => {
                         f.onChange(value);
+                        // Autre article : retour à l'unité de base, lots à rechoisir.
                         form.setValue(`lines.${index}.packaging`, null);
+                        form.setValue(`lines.${index}.lots`, []);
                       }}
                       invalid={Boolean(lineErrors?.article)}
                     />
@@ -387,6 +419,28 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
                 aria-label={t('stock.removeLine')}
                 onClick={() => lines.remove(index)}
               />
+              {article && source && (
+                <Controller
+                  control={form.control}
+                  name={`lines.${index}.lots`}
+                  render={({ field: f }) => (
+                    <LotAllocationEditor
+                      id={`line-${index}-lots`}
+                      articleId={article.id}
+                      siteId={source}
+                      unit={article.unit}
+                      requested={requestedBase(line)}
+                      value={f.value}
+                      known={knownLots}
+                      locale={locale}
+                      onChange={f.onChange}
+                      lotsPath={transferLotsPath}
+                      blockExpired
+                      help={t('lotAllocation.transferHelp')}
+                    />
+                  )}
+                />
+              )}
             </div>
           );
         })}
@@ -396,7 +450,9 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
             icon="pi pi-plus"
             outlined
             label={t('stock.addLine')}
-            onClick={() => lines.append({ article: null, packaging: null, quantity: '1' })}
+            onClick={() =>
+              lines.append({ article: null, packaging: null, quantity: '1', lots: [] })
+            }
           />
         </div>
       </fieldset>
@@ -464,7 +520,13 @@ function TransferSummary({ transfer }: { transfer: StockTransfer }) {
       <DataTable value={transfer.lines} dataKey="id" emptyMessage={t('stock.noLines')}>
         <Column
           header={t('stock.article')}
-          body={(l: DocumentLine) => `${l.article_reference} — ${l.article_designation}`}
+          body={(l: DocumentLine) => (
+            <div className="sm-cell-stack">
+              <span>{`${l.article_reference} — ${l.article_designation}`}</span>
+              {/* Lot 3-H-B1 : lots transférés (le même lot sur les deux sites). */}
+              <LineLotsList lots={l.lots ?? []} unit={l.unit} locale={locale} />
+            </div>
+          )}
         />
         <Column
           header={t('stock.quantity')}

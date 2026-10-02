@@ -558,8 +558,9 @@ export interface AvailableLots {
 
 /**
  * Lots disponibles d'un article sur un site. `path` : point d'accès propre à l'usage — sorties
- * (`/stock/available-lots`), ventes (`/sales/articles/{id}/lots`), point de vente
- * (`/pos/articles/{id}/lots`) — chacun avec ses permissions.
+ * (`/stock/available-lots`), transferts (`/stock/transfers/available-lots`), ventes
+ * (`/sales/articles/{id}/lots`), point de vente (`/pos/articles/{id}/lots`) — chacun avec ses
+ * permissions.
  */
 export function useAvailableLots(path: string | null, enabled = true) {
   return useQuery({
@@ -571,4 +572,10 @@ export function useAvailableLots(path: string | null, enabled = true) {
 
 export function exitLotsPath(articleId: string, siteId: string): string {
   return `/stock/available-lots?${new URLSearchParams({ article_id: articleId, site_id: siteId }).toString()}`;
+}
+
+/** Lots du site SOURCE d'un transfert (Lot 3-H-B1) : point d'accès propre aux transferts
+ *  (`stock.transfer.create`) ; lots périmés signalés, jamais transférables. */
+export function transferLotsPath(articleId: string, siteId: string): string {
+  return `/stock/transfers/available-lots?${new URLSearchParams({ article_id: articleId, site_id: siteId }).toString()}`;
 }

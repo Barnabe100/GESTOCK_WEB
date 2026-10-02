@@ -228,6 +228,13 @@ la suite peut être rejouée sur la même base.
   d'une vente (restauration exacte, seconde annulation refusée) ; 2 cartons répartis sur deux
   lots ; deux ventes simultanées sans double consommation ; POS et sortie sur mobile sans
   débordement.
+- `lots-3hb1.e2e.ts` (Lot 3-H-B1, ADR-0045) : entreprise créée pour l'exécution avec un dépôt
+  actif ; P1-b toujours fermée ; articles suivis préparés par `ownerSql` ; transfert 70 = A 50 +
+  B 20 par l'interface (demandé / réparti / reste), soldes des deux sites, mouvements par lot
+  (même lot des deux côtés), annulation exacte puis seconde annulation refusée ; lot périmé non
+  sélectionnable et refusé par le serveur ; lot insuffisant refusé en bloc ; 2 cartons répartis
+  (présentation seulement si exacte) ; deux transferts simultanés du même lot ; transfert
+  multi-lots sur mobile sans débordement.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

@@ -650,6 +650,8 @@ class StockTransferLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
         *_presentation_args("stock_transfer_lines", "transfer_id"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="unit_cost_non_negative"),
+        # Lot 3-H-B1 : cible de la FK composite des choix de lots (lot du MÊME article).
+        UniqueConstraint("tenant_id", "id", "article_id"),
     )
 
     transfer_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
@@ -659,3 +661,38 @@ class StockTransferLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
     # Figés à la validation : CMUP du site source (coût de sortie ET d'entrée) et valeur.
     unit_cost: Mapped[Decimal | None] = mapped_column(UNIT_COST)
     amount: Mapped[Decimal | None] = mapped_column(MONEY)
+
+    lots: Mapped[list["StockTransferLineLot"]] = relationship(
+        cascade="all, delete-orphan", order_by="StockTransferLineLot.position", lazy="selectin"
+    )
+
+
+class StockTransferLineLot(IdMixin, TenantScopedMixin, Base):
+    """Choix manuel d'un lot sur une ligne de transfert (Lot 3-H-B1, ADR-0045) : quantité en
+    UNITÉ DE BASE, prise sur le site source et reçue sur le site destination sous le MÊME lot.
+    Donnée de BROUILLON — supprimée et recréée avec la ligne à chaque enregistrement,
+    éventuellement incomplète, revalidée intégralement à la validation ; la traçabilité
+    définitive est le journal des mouvements (une paire sortie / entrée par lot, M1)."""
+
+    __tablename__ = "stock_transfer_line_lots"
+    __table_args__ = (
+        # Ligne du même tenant ET du même article ; lot du même article (FK composites).
+        ForeignKeyConstraint(
+            ["tenant_id", "transfer_line_id", "article_id"],
+            [
+                "stock_transfer_lines.tenant_id",
+                "stock_transfer_lines.id",
+                "stock_transfer_lines.article_id",
+            ],
+            ondelete="CASCADE",
+        ),
+        _lot_fk(),
+        UniqueConstraint("transfer_line_id", "lot_id"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+    )
+
+    transfer_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    lot_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)

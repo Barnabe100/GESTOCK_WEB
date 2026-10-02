@@ -426,7 +426,7 @@ def test_guard_refuses_any_movement_without_lot_for_tracked_article(
 ) -> None:
     _track(world, 0)
     _stock(world, 0, [("A", "5", _iso(30))])
-    # Flux non encore adapté (transferts : Lot 3-H-B) : refus du serveur, rien n'est écrit.
+    # Transfert sans répartition par lot (Lot 3-H-B1) : refus du serveur, rien n'est écrit.
     transfer = _ok(
         world.owner.post(
             "/stock/transfers",
@@ -440,7 +440,7 @@ def test_guard_refuses_any_movement_without_lot_for_tracked_article(
     )
     assert _code(world.owner.post(f"/stock/transfers/{transfer['id']}/validate")) == (
         422,
-        "lot_required",
+        "lot_allocation_incomplete",
     )
     assert sh.level(owner_db, world, 0)[0] == "5.000"
     # Directement au moteur : refus, avec ou sans quantité suffisante.

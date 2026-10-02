@@ -176,7 +176,7 @@ describe('saisie et consultation d’un transfert', () => {
       destination_site_id: 's2',
       operation_date: '2026-09-24',
       comment: null,
-      lines: [{ article_id: 'a1', packaging_id: null, quantity: '10' }],
+      lines: [{ article_id: 'a1', packaging_id: null, quantity: '10', lots: [] }],
     });
   });
 

@@ -11,7 +11,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.modules.stock.models import DocumentStatus
-from app.modules.stock.schemas import CancelInput, TransferCreate, TransferInput, TransferOut
+from app.modules.stock.schemas import (
+    AvailableLotsOut,
+    CancelInput,
+    TransferCreate,
+    TransferInput,
+    TransferOut,
+)
 from app.modules.stock.transfer_service import TransferService
 from app.platform.context import (
     DbSession,
@@ -72,6 +78,21 @@ def create_transfer(body: TransferCreate, ctx: Create, db: DbSession, now: NowDe
     transfer = service.create(body)
     db.commit()
     return service.to_out([transfer], with_lines=True)[0]
+
+
+@router.get("/available-lots", response_model=AvailableLotsOut, dependencies=FEATURE)
+def transfer_available_lots(
+    ctx: Create,
+    db: DbSession,
+    now: NowDep,
+    article_id: uuid.UUID,
+    site_id: uuid.UUID | None = None,
+) -> AvailableLotsOut:
+    """Lots disponibles d'un article sur le site SOURCE d'un transfert (choix manuel, Lot
+    3-H-B1, D-8) : solde positif, péremption et état ; lots périmés signalés et jamais
+    transférables (D-1). Aucun coût. Point d'accès propre aux transferts
+    (``stock.transfer.create``) : celui des sorties n'est pas élargi."""
+    return TransferService(db, ctx, now).available_lots(article_id, site_id)
 
 
 @router.get("/{transfer_id}", response_model=TransferOut)

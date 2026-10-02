@@ -18,6 +18,10 @@ CMUP d'un niveau de stock.
   manuelle, un mouvement par lot (M1), tout ou rien. Garde-fou serveur (H-D14, O-6) : tout
   mouvement d'un article suivi par lot porte un lot ; aucun mouvement d'un article non suivi
   n'en porte.
+- Lot 3-H-B1 : ``transfer_lots`` est le moteur UNIQUE des transferts d'articles suivis par
+  lot — une paire ``TRANSFER_OUT`` / ``TRANSFER_IN`` par lot, sous le MÊME lot des deux côtés,
+  au CMUP source lu une fois ; CMUP destination calculé une seule fois par ligne (identique à un
+  transfert non réparti, T-3).
 """
 
 import uuid
@@ -125,6 +129,8 @@ class TransferItem:
     article_id: uuid.UUID
     quantity: Decimal
     packaging: PackagingSnapshot | None = None
+    # Lot 3-H-B1 : répartition MANUELLE d'un article suivi par lot (somme exacte exigée).
+    picks: tuple["LotPick", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -402,41 +408,294 @@ class StockService:
         )
         planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]] = []
         for item in items:
-            cost = levels[(source_site_id, item.article_id)].average_cost
-            outgoing = MovementRequest(
-                article_id=item.article_id,
-                movement_type=MovementType.TRANSFER_OUT,
-                quantity=-item.quantity,
-                unit_cost=cost,
-                source_type=source_type,
-                source_id=source_id,
-                source_line_id=item.line_id,
-                source_number=source_number,
-                comment=source_number,
-                packaging=item.packaging,
-            )
-            incoming = replace(
-                outgoing, movement_type=MovementType.TRANSFER_IN, quantity=item.quantity
-            )
-            planned.append((source_site_id, outgoing, levels[(source_site_id, item.article_id)]))
-            planned.append(
-                (destination_site_id, incoming, levels[(destination_site_id, item.article_id)])
+            planned.extend(
+                _transfer_pair(
+                    source_site_id,
+                    destination_site_id,
+                    item,
+                    levels,
+                    item.quantity,
+                    None,
+                    item.packaging,
+                    source_type=source_type,
+                    source_id=source_id,
+                    source_number=source_number,
+                )
             )
         movements = self._write(planned)
         return [(movements[i], movements[i + 1]) for i in range(0, len(movements), 2)]
+
+    def transfer_lots(
+        self,
+        source_site_id: uuid.UUID,
+        destination_site_id: uuid.UUID,
+        items: Sequence[TransferItem],
+        *,
+        source_type: str,
+        source_id: uuid.UUID,
+        source_number: str,
+        today: date,
+    ) -> list[StockMovement]:
+        """Transfert inter-sites d'articles suivis ou non par lot (Lot 3-H-B1), tout ou rien,
+        dans la transaction de l'appelant — SEUL moteur des transferts par lot :
+
+        1. verrou partagé des articles puis verrou des niveaux des DEUX sites, ordre global
+           (site, article) ;
+        2. contrôle global du stock source (``insufficient_stock``) ;
+        3. lots désignés relus (même tenant par RLS, même article : ``lot_not_available``) ;
+           soldes des lots des deux sites verrouillés APRÈS les niveaux, ordre global
+           (site, article, lot) — les soldes destination manquants créés à zéro ;
+        4. invariant Σ lots = stock contrôlé sur les deux sites (``lot_invariant_broken``) ;
+        5. répartition MANUELLE revérifiée : lot présent au site source, non périmé
+           (``lot_expired_not_transferable``, D-1, sans dérogation), solde suffisant, somme
+           exacte (``lot_allocation_exceeds`` / ``lot_allocation_incomplete``) ;
+        6. par (ligne, lot) : ``TRANSFER_OUT`` (source, −q) et ``TRANSFER_IN`` (destination,
+           +q), MÊME lot, MÊME coût = CMUP source lu une fois (aucun arrondi intermédiaire :
+           valeur sortie = valeur entrée) ; CMUP destination calculé UNE fois par ligne sur la
+           quantité totale (identique à un transfert non réparti, T-3).
+
+        Article non suivi : une paire par ligne, exactement comme ``transfer``. Renvoie les
+        mouvements créés, paire par paire, dans l'ordre des lignes puis des lots."""
+        if source_site_id == destination_site_id:
+            raise ValueError("un transfert exige deux sites distincts")
+        if not items:
+            return []
+        article_ids = {item.article_id for item in items}
+        sites = (source_site_id, destination_site_id)
+        levels = self._lock({(site, a) for a in article_ids for site in sites})
+        flags = lock_lot_flags(self.db, article_ids)
+        refs = get_article_refs(self.db, article_ids)
+        for item in items:
+            if item.quantity <= 0:
+                raise ValueError("un transfert exige une quantité positive")
+            if item.picks and not flags[item.article_id].lot_tracked:
+                raise BusinessRuleError(
+                    "Cet article n'est pas suivi par lot",
+                    code="article_not_lot_tracked",
+                    extra={"articles": [refs[item.article_id].reference]},
+                )
+        # Stock total du site source insuffisant : même refus qu'un transfert non suivi.
+        self._ensure_non_negative(
+            [
+                (
+                    source_site_id,
+                    MovementRequest(
+                        article_id=item.article_id,
+                        movement_type=MovementType.TRANSFER_OUT,
+                        quantity=-item.quantity,
+                        source_type=source_type,
+                        source_id=source_id,
+                        source_line_id=item.line_id,
+                    ),
+                    levels[(source_site_id, item.article_id)],
+                )
+                for item in items
+            ]
+        )
+        tracked = {a for a in article_ids if flags[a].lot_tracked}
+        lot_levels = self._lock_transfer_lots(source_site_id, destination_site_id, items, tracked)
+        self._ensure_lot_invariant(levels, lot_levels, tracked, sites, refs)
+        candidates: dict[uuid.UUID, dict[uuid.UUID, _LotCandidate]] = {}
+        for (site_id, article_id, lot_id), (level, lot) in lot_levels.items():
+            if site_id == source_site_id:
+                candidates.setdefault(article_id, {})[lot_id] = _LotCandidate(
+                    level=level, lot=lot, remaining=level.quantity
+                )
+        planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]] = []
+        # Index (dans ``planned``) d'une ENTRÉE → quantité pesée dans le CMUP destination :
+        # la quantité TOTALE de la ligne pour sa première entrée, 0 pour les suivantes.
+        entry_weights: dict[int, Decimal] = {}
+
+        def pair(
+            item: TransferItem,
+            quantity: Decimal,
+            lot_id: uuid.UUID | None,
+            packaging: PackagingSnapshot | None,
+        ) -> tuple[
+            tuple[uuid.UUID, MovementRequest, StockLevel],
+            tuple[uuid.UUID, MovementRequest, StockLevel],
+        ]:
+            return _transfer_pair(
+                *sites,
+                item,
+                levels,
+                quantity,
+                lot_id,
+                packaging,
+                source_type=source_type,
+                source_id=source_id,
+                source_number=source_number,
+            )
+
+        for item in items:
+            ref = refs[item.article_id]
+            if item.article_id not in tracked:
+                planned.extend(pair(item, item.quantity, None, item.packaging))
+                continue
+            allocated = sum((pick.quantity for pick in item.picks), Decimal("0"))
+            if allocated > item.quantity:
+                raise BusinessRuleError(
+                    "La répartition par lot dépasse la quantité de la ligne",
+                    code="lot_allocation_exceeds",
+                    extra={
+                        "articles": [ref.reference],
+                        "requested": format(item.quantity, "f"),
+                        "allocated": format(allocated, "f"),
+                    },
+                )
+            allocations, _ = self._allocate(
+                ConsumptionRequest(
+                    article_id=item.article_id,
+                    movement_type=MovementType.TRANSFER_OUT,
+                    quantity=item.quantity,
+                    source_type=source_type,
+                    source_id=source_id,
+                    source_line_id=item.line_id,
+                    picks=item.picks,
+                    manual=True,
+                ),
+                ref,
+                flags[item.article_id],
+                candidates.get(item.article_id, {}),
+                today,
+                refuse_expired=True,
+            )
+            for position, (lot_id, quantity) in enumerate(allocations):
+                packaging = split_packaging(item.packaging, quantity, ref.decimal_quantity_allowed)
+                outgoing, incoming = pair(item, quantity, lot_id, packaging)
+                planned.append(outgoing)
+                entry_weights[len(planned)] = item.quantity if position == 0 else Decimal("0")
+                planned.append(incoming)
+        return self._write(
+            planned,
+            {key: level for key, (level, _) in lot_levels.items()},
+            entry_weights=entry_weights,
+        )
+
+    def _lock_transfer_lots(
+        self,
+        source_site_id: uuid.UUID,
+        destination_site_id: uuid.UUID,
+        items: Sequence[TransferItem],
+        tracked: set[uuid.UUID],
+    ) -> dict[LotKey, tuple[StockLotLevel, StockLot]]:
+        """Soldes des lots des articles suivis sur les DEUX sites, verrouillés APRÈS les niveaux
+        dans l'ordre global (site, article, lot). Les lots désignés sont d'abord relus (même
+        tenant par RLS, même article) ; leur solde destination est créé à zéro au besoin — le
+        MÊME lot, jamais un nouveau ``stock_lot`` (aucun lot n'est créé par un transfert)."""
+        if not tracked:
+            return {}
+        picks = [(item.article_id, pick) for item in items for pick in item.picks]
+        lots = {
+            lot.id: lot
+            for lot in self.db.scalars(
+                select(StockLot).where(StockLot.id.in_({pick.lot_id for _, pick in picks}))
+            )
+        }
+        for article_id, pick in picks:
+            lot = lots.get(pick.lot_id)
+            if lot is None or lot.article_id != article_id:
+                # Lot inconnu, d'un autre tenant (RLS) ou d'un autre article.
+                refs = get_article_refs(self.db, {article_id})
+                raise BusinessRuleError(
+                    "Ce lot n'est pas disponible pour cet article sur ce site",
+                    code="lot_not_available",
+                    extra={
+                        "articles": [refs[article_id].reference] if article_id in refs else [],
+                        "lot_id": str(pick.lot_id),
+                    },
+                )
+        wanted = sorted({(destination_site_id, a, pick.lot_id) for a, pick in picks})
+        if wanted:
+            self.db.execute(
+                insert(StockLotLevel)
+                .values(
+                    [
+                        {
+                            "id": uuid.uuid4(),
+                            "tenant_id": self.tenant_id,
+                            "site_id": site_id,
+                            "article_id": article_id,
+                            "lot_id": lot_id,
+                            "quantity": Decimal("0"),
+                        }
+                        for site_id, article_id, lot_id in wanted
+                    ]
+                )
+                .on_conflict_do_nothing(index_elements=["tenant_id", "site_id", "lot_id"])
+            )
+        rows = self.db.execute(
+            select(StockLotLevel, StockLot)
+            .join(
+                StockLot,
+                (StockLot.id == StockLotLevel.lot_id)
+                & (StockLot.tenant_id == StockLotLevel.tenant_id),
+            )
+            .where(
+                StockLotLevel.site_id.in_((source_site_id, destination_site_id)),
+                StockLotLevel.article_id.in_(tracked),
+            )
+            .order_by(StockLotLevel.site_id, StockLotLevel.article_id, StockLotLevel.lot_id)
+            .with_for_update(of=StockLotLevel)
+            .execution_options(populate_existing=True)
+        ).all()
+        return {
+            (level.site_id, level.article_id, level.lot_id): (level, lot) for level, lot in rows
+        }
+
+    def _ensure_lot_invariant(
+        self,
+        levels: dict[Key, StockLevel],
+        lot_levels: dict[LotKey, tuple[StockLotLevel, StockLot]],
+        tracked: set[uuid.UUID],
+        sites: Sequence[uuid.UUID],
+        refs: dict[uuid.UUID, ArticleRef],
+    ) -> None:
+        """Invariant Σ soldes des lots = stock du site (3-G), contrôlé sous verrou AVANT toute
+        écriture sur chaque site concerné : s'il est déjà rompu, l'opération est refusée."""
+        totals: dict[Key, Decimal] = {}
+        for (site_id, article_id, _), (level, _) in lot_levels.items():
+            totals[(site_id, article_id)] = totals.get((site_id, article_id), Decimal("0")) + (
+                level.quantity
+            )
+        broken = [
+            (site_id, article_id)
+            for article_id in sorted(tracked)
+            for site_id in sites
+            if totals.get((site_id, article_id), Decimal("0"))
+            != levels[(site_id, article_id)].quantity
+        ]
+        if broken:
+            raise BusinessRuleError(
+                "Les soldes des lots ne correspondent pas au stock de l'article",
+                code="lot_invariant_broken",
+                extra={
+                    "articles": sorted({refs[article_id].reference for _, article_id in broken}),
+                    "site_ids": sorted({str(site_id) for site_id, _ in broken}),
+                },
+            )
 
     def _write(
         self,
         planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]],
         lots: dict[LotKey, StockLotLevel] | None = None,
+        *,
+        entry_weights: dict[int, Decimal] | None = None,
     ) -> list[StockMovement]:
+        """Écritures (après les contrôles globaux). ``entry_weights`` (interne, transferts par
+        lot) : pour l'ENTRÉE d'index donné, quantité pesée dans le CMUP — la quantité totale de
+        la ligne pour sa première entrée, 0 pour les suivantes (CMUP déjà calculé) ; absent :
+        la quantité du mouvement (comportement de toujours)."""
         lots = lots or {}
+        entry_weights = entry_weights or {}
         self._ensure_lot_guard(planned)
-        self._ensure_non_negative(planned)
+        # Soldes des lots d'abord (Lot 3-H-B1) : pour un article suivi, Σ lots = stock — le refus
+        # nomme le lot en cause (``insufficient_lot_stock``) ; puis le stock (site, article).
         self._ensure_lots_non_negative(planned, lots)
+        self._ensure_non_negative(planned)
         movements: list[StockMovement] = []
         previous_id: uuid.UUID | None = None
-        for site_id, request, level in planned:
+        for index, (site_id, request, level) in enumerate(planned):
             # Identifiants strictement croissants dans une même écriture : l'ordre du journal
             # (``occurred_at``, ``id``) est celui des mouvements (lots d'une ligne, M1).
             movement_id = new_id()
@@ -452,9 +711,11 @@ class StockService:
             if request.movement_type in COST_ENTRY_TYPES:
                 if request.quantity <= 0 or unit_cost is None:
                     raise ValueError("une ENTRÉE exige une quantité positive et un coût")
-                level.average_cost = compute_average_cost(
-                    quantity_before, cost_before, request.quantity, unit_cost
-                )
+                weight = entry_weights.get(index, request.quantity)
+                if weight > 0:
+                    level.average_cost = compute_average_cost(
+                        quantity_before, cost_before, weight, unit_cost
+                    )
             elif unit_cost is None:
                 # Sortie (ou annulation d'une sortie sans coût fourni) : CMUP courant du site.
                 unit_cost = cost_before
@@ -623,10 +884,13 @@ class StockService:
         flags: LotFlags,
         candidates: dict[uuid.UUID, _LotCandidate],
         today: date,
+        *,
+        refuse_expired: bool = False,
     ) -> tuple[list[tuple[uuid.UUID, Decimal]], Decimal]:
         """Répartition d'une ligne sur les lots (soldes de travail décrémentés au fil des lignes
         d'une même opération). Renvoie les allocations (lot, quantité) et la quantité restée
-        sans lot non périmé (automatique seulement)."""
+        sans lot non périmé (automatique seulement). ``refuse_expired`` (transferts, D-1) : un
+        lot périmé désigné est refusé (``lot_expired_not_transferable``)."""
         allocations: list[tuple[uuid.UUID, Decimal]] = []
         seen: set[uuid.UUID] = set()
         picked = Decimal("0")
@@ -646,6 +910,16 @@ class StockService:
                     extra={"articles": [ref.reference], "lots": [candidate.lot.number]},
                 )
             seen.add(pick.lot_id)
+            if refuse_expired and is_expired(candidate.lot, flags, today):
+                raise BusinessRuleError(
+                    "Un lot périmé ne peut pas être transféré",
+                    code="lot_expired_not_transferable",
+                    extra={
+                        "articles": [ref.reference],
+                        "lots": [candidate.lot.number],
+                        "lot_id": str(pick.lot_id),
+                    },
+                )
             if pick.quantity <= 0:
                 raise ValueError("une allocation exige une quantité positive")
             if pick.quantity > candidate.remaining:
@@ -862,6 +1136,43 @@ class StockService:
 
 
 _UNTRACKED = LotFlags(lot_tracked=False, expiry_tracked=False)
+
+
+def _transfer_pair(
+    source_site_id: uuid.UUID,
+    destination_site_id: uuid.UUID,
+    item: TransferItem,
+    levels: dict[Key, StockLevel],
+    quantity: Decimal,
+    lot_id: uuid.UUID | None,
+    packaging: PackagingSnapshot | None,
+    *,
+    source_type: str,
+    source_id: uuid.UUID,
+    source_number: str,
+) -> tuple[
+    tuple[uuid.UUID, MovementRequest, StockLevel], tuple[uuid.UUID, MovementRequest, StockLevel]
+]:
+    """Paire ``TRANSFER_OUT`` (source, −q) / ``TRANSFER_IN`` (destination, +q) : même coût =
+    CMUP du site source (inchangé par une sortie), même lot, même présentation."""
+    outgoing = MovementRequest(
+        article_id=item.article_id,
+        movement_type=MovementType.TRANSFER_OUT,
+        quantity=-quantity,
+        unit_cost=levels[(source_site_id, item.article_id)].average_cost,
+        source_type=source_type,
+        source_id=source_id,
+        source_line_id=item.line_id,
+        source_number=source_number,
+        comment=source_number,
+        packaging=packaging,
+        lot_id=lot_id,
+    )
+    incoming = replace(outgoing, movement_type=MovementType.TRANSFER_IN, quantity=quantity)
+    return (
+        (source_site_id, outgoing, levels[(source_site_id, item.article_id)]),
+        (destination_site_id, incoming, levels[(destination_site_id, item.article_id)]),
+    )
 
 
 def _plain(request: ConsumptionRequest) -> MovementRequest:

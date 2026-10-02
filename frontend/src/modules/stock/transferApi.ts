@@ -34,7 +34,14 @@ export interface TransferInput {
   destination_site_id: string;
   operation_date: string | null;
   comment: string | null;
-  lines: { article_id: string; packaging_id: string | null; quantity: string }[];
+  /** `lots` (Lot 3-H-B1) : répartition manuelle d'un article suivi par lot, en unité de base —
+   *  incomplète dans le brouillon, somme exacte exigée par le serveur à la validation. */
+  lines: {
+    article_id: string;
+    packaging_id: string | null;
+    quantity: string;
+    lots: { lot_id: string; quantity: string }[];
+  }[];
 }
 
 export const transferKeys = { all: ['stock', 'transfers'] as const };

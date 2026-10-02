@@ -237,6 +237,62 @@ def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:
     return used
 
 
+def check_lot_choices(db: Session, lines: Sequence[Any], presented: list[PresentedLine]) -> None:
+    """Choix des lots d'un brouillon de sortie (Lot 3-H-A, H-D8, O-4) ou de transfert
+    (Lot 3-H-B1) : article suivi par lot, lots de l'article (et du tenant), sans doublon,
+    quantités en unité de base (entières pour un article en quantités entières), somme au plus
+    égale à la quantité de la ligne. Une répartition INCOMPLÈTE est admise ; tout est revérifié
+    à la validation."""
+    refs = get_article_refs(db, {line.article_id for line in lines})
+    lots = lot_infos(db, {c.lot_id for line in lines for c in line.lots})
+    for line, shown in zip(lines, presented, strict=True):
+        if not line.lots:
+            continue
+        ref = refs[line.article_id]
+        if not ref.lot_tracked:
+            raise BusinessRuleError(
+                "Cet article n'est pas suivi par lot",
+                code="article_not_lot_tracked",
+                extra={"articles": [ref.reference]},
+            )
+        seen: set[uuid.UUID] = set()
+        total = Decimal("0")
+        for choice in line.lots:
+            lot = lots.get(choice.lot_id)
+            if lot is None or lot.article_id != line.article_id:
+                raise BusinessRuleError(
+                    "Ce lot n'est pas disponible pour cet article",
+                    code="lot_not_available",
+                    extra={"articles": [ref.reference], "lot_id": str(choice.lot_id)},
+                )
+            if choice.lot_id in seen:
+                raise BusinessRuleError(
+                    "Un même lot est choisi plusieurs fois sur la ligne",
+                    code="duplicate_lot_allocation",
+                    extra={"articles": [ref.reference], "lots": [lot.number]},
+                )
+            seen.add(choice.lot_id)
+            quantity = choice.quantity.quantize(QUANTITY_STEP)
+            if quantity != choice.quantity:
+                raise BusinessRuleError(
+                    "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
+                    code="base_quantity_precision",
+                    extra={"articles": [ref.reference]},
+                )
+            ensure_whole(ref, quantity)
+            total += quantity
+        if total > shown.base_quantity:
+            raise BusinessRuleError(
+                "La répartition par lot dépasse la quantité de la ligne",
+                code="lot_allocation_exceeds",
+                extra={
+                    "articles": [ref.reference],
+                    "requested": format(shown.base_quantity, "f"),
+                    "allocated": format(total, "f"),
+                },
+            )
+
+
 class _DocumentService(Generic[Doc]):
     model: type[Doc]
     source_type: str
@@ -715,7 +771,7 @@ class ExitService(_DocumentService[StockExit]):
     def _apply_input(self, document: StockExit, data: ExitInput) -> None:
         self._check_reason(data.reason_id)
         presented = present_lines(self.db, data.lines)
-        self._check_lot_choices(data.lines, presented)
+        check_lot_choices(self.db, data.lines, presented)
         document.operation_date = self._operation_date(data.operation_date)
         document.reason_id = data.reason_id
         document.beneficiary = data.beneficiary
@@ -740,60 +796,6 @@ class ExitService(_DocumentService[StockExit]):
             )
             for index, (line, shown) in enumerate(zip(data.lines, presented, strict=True), start=1)
         ]
-
-    def _check_lot_choices(self, lines: Sequence[Any], presented: list[PresentedLine]) -> None:
-        """Choix des lots d'un brouillon (Lot 3-H-A, H-D8, O-4) : article suivi par lot, lots
-        de l'article (et du tenant), sans doublon, quantités en unité de base (entières pour un
-        article en quantités entières), somme au plus égale à la quantité de la ligne. Une
-        répartition INCOMPLÈTE est admise ; tout est revérifié à la validation."""
-        refs = get_article_refs(self.db, {line.article_id for line in lines})
-        lots = lot_infos(self.db, {c.lot_id for line in lines for c in line.lots})
-        for line, shown in zip(lines, presented, strict=True):
-            if not line.lots:
-                continue
-            ref = refs[line.article_id]
-            if not ref.lot_tracked:
-                raise BusinessRuleError(
-                    "Cet article n'est pas suivi par lot",
-                    code="article_not_lot_tracked",
-                    extra={"articles": [ref.reference]},
-                )
-            seen: set[uuid.UUID] = set()
-            total = Decimal("0")
-            for choice in line.lots:
-                lot = lots.get(choice.lot_id)
-                if lot is None or lot.article_id != line.article_id:
-                    raise BusinessRuleError(
-                        "Ce lot n'est pas disponible pour cet article",
-                        code="lot_not_available",
-                        extra={"articles": [ref.reference], "lot_id": str(choice.lot_id)},
-                    )
-                if choice.lot_id in seen:
-                    raise BusinessRuleError(
-                        "Un même lot est choisi plusieurs fois sur la ligne",
-                        code="duplicate_lot_allocation",
-                        extra={"articles": [ref.reference], "lots": [lot.number]},
-                    )
-                seen.add(choice.lot_id)
-                quantity = choice.quantity.quantize(QUANTITY_STEP)
-                if quantity != choice.quantity:
-                    raise BusinessRuleError(
-                        "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
-                        code="base_quantity_precision",
-                        extra={"articles": [ref.reference]},
-                    )
-                ensure_whole(ref, quantity)
-                total += quantity
-            if total > shown.base_quantity:
-                raise BusinessRuleError(
-                    "La répartition par lot dépasse la quantité de la ligne",
-                    code="lot_allocation_exceeds",
-                    extra={
-                        "articles": [ref.reference],
-                        "requested": format(shown.base_quantity, "f"),
-                        "allocated": format(total, "f"),
-                    },
-                )
 
     def create(self, data: ExitCreate) -> StockExit:
         site_id = operation_site(self.ctx, data.site_id)

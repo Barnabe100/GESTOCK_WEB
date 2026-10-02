@@ -214,7 +214,7 @@ annulation sur le même lot (refus si un lot devenait négatif) ; **CMUP inchang
 par lot) ; état de péremption calculé (`tenant_today`, seuil `stock_settings` du tenant, défaut
 30 jours) ; `/stock/lots`, `/stock/lots/{id}`, `/stock/settings`, `/catalog/lot-tracking`,
 filtres `lot_id` ; aucune permission nouvelle. **Lot 3-G validé** (état de référence `4fd303f`).
-**Lot 3-H-A livré — en attente de validation — consommation des lots : ventes, POS, sorties**
+**Lot 3-H-A livré et validé (référence `096730b`) — consommation des lots : ventes, POS, sorties**
 (ADR-0045 : H-D1 à H-D18, O-1 à O-6 ; migration 0035) : moteur UNIQUE `StockService.consume`
 (verrous article → niveau → lots, un mouvement par lot M1, tout ou rien) ; ventes / POS en
 **FEFO** (non périmés, péremption croissante, sans date ensuite, création, numéro ; FIFO sans
@@ -227,8 +227,19 @@ MANUEL (`stock_exit_line_lots`, brouillon incomplet admis, somme exacte à la va
 article non suivi refusé) ; présentation d'un mouvement réparti seulement si exacte ; unicité
 des mouvements avec `lot_id` (`NULLS NOT DISTINCT`) ; lots disponibles : `/pos/articles/{id}/lots`,
 `/sales/articles/{id}/lots`, `/stock/available-lots` ; aucun ticket 80 mm (dialogue du POS) ;
-CMUP inchangé. **3-H-B non commencé** (transferts, inventaires : refusés par le garde-fou pour
-un article suivi) ; **P1-b toujours active**. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+CMUP inchangé. **Lot 3-H-B1 livré — en attente de validation — transferts par lot**
+(ADR-0045, décisions D-1, D-2, D-8 ; migration 0036) : choix MANUEL des lots
+(`stock_transfer_line_lots`, brouillon incomplet admis, somme exacte à la validation) ; moteur
+UNIQUE `StockService.transfer_lots` (niveaux des deux sites puis soldes de lots, ordre global,
+invariant Σ lots = stock contrôlé, `lot_invariant_broken`) ; une paire `TRANSFER_OUT` /
+`TRANSFER_IN` par lot, **même lot** des deux côtés (aucun lot créé) ; lot périmé jamais
+transféré (`lot_expired_not_transferable`, sans dérogation) ; CMUP source lu une fois, même
+coût en sortie et en entrée, CMUP destination calculé une fois par ligne (identique à un
+transfert non réparti) ; annulation par mouvement d'origine, refus total si un lot destination
+ne suffit plus ; `GET /stock/transfers/available-lots` (`stock.transfer.create`, aucune
+permission nouvelle) ; articles non suivis inchangés. **3-H-B2 (inventaires par lot) et 3-H-B3
+(clôture, levée de P1-b) non commencés** (inventaires d'un article suivi : refusés par le
+garde-fou) ; **P1-b toujours active**. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

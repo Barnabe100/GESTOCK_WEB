@@ -30,11 +30,14 @@ export function allocatedTotal(choices: LotChoice[]): string {
 }
 
 /**
- * Répartition MANUELLE d'une ligne de sortie sur les lots (Lot 3-H-A, H-D1, O-4) : lots ayant
- * un solde sur le site (numéro, quantité disponible, péremption, état), plusieurs lots possibles,
- * quantités en unité de base. « Demandé / Réparti / Reste » est indicatif : le brouillon peut
- * rester incomplet, le serveur exige la somme exacte à la validation et revérifie lots, soldes,
- * site et quantités. Rien n'est affiché pour un article non suivi par lot.
+ * Répartition MANUELLE d'une ligne sur les lots — sorties (Lot 3-H-A, H-D1, O-4) et transferts
+ * (Lot 3-H-B1) : lots ayant un solde sur le site (numéro, quantité disponible, péremption, état),
+ * plusieurs lots possibles, quantités en unité de base. « Demandé / Réparti / Reste » est
+ * indicatif : le brouillon peut rester incomplet, le serveur exige la somme exacte à la
+ * validation et revérifie lots, soldes, site et quantités. Rien n'est affiché pour un article
+ * non suivi par lot. `lotsPath` : point d'accès propre à l'usage (permissions distinctes) ;
+ * `blockExpired` (transferts, D-1) : un lot périmé est affiché avec son état mais n'est pas
+ * sélectionnable (le serveur le refuse de toute façon).
  */
 export function LotAllocationEditor({
   id,
@@ -46,6 +49,9 @@ export function LotAllocationEditor({
   known = [],
   locale,
   onChange,
+  lotsPath = exitLotsPath,
+  blockExpired = false,
+  help,
 }: {
   id: string;
   articleId: string;
@@ -58,9 +64,13 @@ export function LotAllocationEditor({
   known?: LineLot[];
   locale: string;
   onChange: (value: LotChoice[]) => void;
+  lotsPath?: (articleId: string, siteId: string) => string;
+  blockExpired?: boolean;
+  /** Aide affichée sous l'éditeur (défaut : celle des sorties). */
+  help?: string;
 }) {
   const { t } = useTranslation();
-  const query = useAvailableLots(siteId ? exitLotsPath(articleId, siteId) : null);
+  const query = useAvailableLots(siteId ? lotsPath(articleId, siteId) : null);
   if (query.isPending && siteId) return <LoadingState />;
   const data = query.data;
   if (!data?.lot_tracked && value.length === 0) return null;
@@ -76,6 +86,7 @@ export function LotAllocationEditor({
         quantity: '0',
         expiry_date: lot?.expiry_date ?? null,
         state: lot?.state ?? null,
+        expired: false,
       };
     });
   const rows = [...available, ...missing];
@@ -112,6 +123,9 @@ export function LotAllocationEditor({
             const inputId = `${id}-${lot.lot_id}`;
             const typed = quantityOf(lot.lot_id);
             const invalid = typed !== '' && normalizeDecimal(typed, 3) === null;
+            // Lot périmé non transférable : saisie bloquée (une valeur déjà saisie reste
+            // modifiable pour pouvoir la retirer).
+            const blocked = blockExpired && lot.expired && typed === '';
             return (
               <li key={lot.lot_id} className="sm-lot-allocation-row">
                 <div className="sm-cell-stack">
@@ -125,6 +139,9 @@ export function LotAllocationEditor({
                     {t('lotAllocation.available', { quantity: q(lot.quantity) })}
                   </span>
                   {lot.state && lot.state !== 'no_expiry' && <LotStateTag state={lot.state} />}
+                  {blockExpired && lot.expired && (
+                    <span className="p-error">{t('lotAllocation.expiredNotTransferable')}</span>
+                  )}
                 </div>
                 <label htmlFor={inputId} className="sm-lot-allocation-input">
                   <span>{t('lotAllocation.quantity', { number: lot.number })}</span>
@@ -134,6 +151,7 @@ export function LotAllocationEditor({
                     value={typed}
                     invalid={invalid}
                     aria-invalid={invalid}
+                    disabled={blocked}
                     onChange={(e) => setQuantity(lot.lot_id, e.target.value)}
                   />
                 </label>
@@ -142,7 +160,7 @@ export function LotAllocationEditor({
           })}
         </ul>
       )}
-      <small className="sm-help">{t('lotAllocation.help')}</small>
+      <small className="sm-help">{help ?? t('lotAllocation.help')}</small>
     </fieldset>
   );
 }
