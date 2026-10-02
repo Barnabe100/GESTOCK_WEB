@@ -1,6 +1,6 @@
 # ADR-0044 — Emplacements physiques des articles par site
 
-- **Statut** : Acceptée (Lot 3-F — localisation physique du stock)
+- **Statut** : Acceptée et validée (Lot 3-F — localisation physique du stock)
 - **Date** : 2026-10-01
 - **Prolonge** : [ADR-0033](0033-abonnement-par-site.md) (site = périmètre d'écriture),
   [ADR-0018](0018-transferts-inter-sites.md) (transferts),
@@ -72,3 +72,8 @@ d'emplacement, adresses complexes, lots, péremption, FIFO / FEFO.
   supprimée, audité).
 - Le module `inventory_count` lit l'emplacement courant par `stock.api.locations_view`
   (dépendance déclarée, aucun import des modèles du stock).
+- **Validation** (TechNova, 2026-10-02) : décisions D1 à D9 appliquées ; lot validé et clôturé.
+  État de référence : commit `366332d` (CI #48 verte), qui comprend l'implémentation `32922d2`
+  (CI #47 verte) et le correctif mobile `366332d` — sur petit écran, la colonne « Emplacement »
+  du comptage d'inventaire est masquée et l'emplacement est affiché sous l'article (aucun
+  débordement) ; ce correctif fait partie de l'état validé du lot.

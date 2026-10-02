@@ -163,7 +163,9 @@ l'inventaire : signalé, rien n'est compté.
 
 Chaque ligne affiche l'emplacement COURANT de l'article sur le site de l'inventaire (« Non rangé »
 sinon) ; le tri `location` ordonne le parcours de comptage (non rangés en fin). Aucun instantané :
-l'emplacement n'influence ni le stock théorique, ni l'écart, ni la validation.
+l'emplacement n'influence ni le stock théorique, ni l'écart, ni la validation. Sur petit écran
+(≤ 800 px), la colonne est masquée et l'emplacement est affiché sous l'article (correctif
+`366332d`, compris dans l'état validé du Lot 3-F).
 
 ## 13. Hors périmètre (V1)
 

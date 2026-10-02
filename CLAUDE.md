@@ -184,7 +184,7 @@ réception validée, information historique — le prix d'achat de référence n
 fournisseur principal = filtre catalogue existant ; chronologie `GET /suppliers/{id}/history`
 (`audit.log.view`, évènements réels) ; recherche des entrées par nom du fournisseur
 (`suppliers.api.suppliers_named`) et filtres Entrées / Articles ; aucune permission nouvelle,
-aucun export, aucun indicateur au tableau de bord. **Lot 3-E validé.** **Lot 3-F livré —
+aucun export, aucun indicateur au tableau de bord. **Lot 3-E validé.** **Lot 3-F livré, validé et clôturé —
 emplacements physiques par site** ([ADR-0044](docs/adr/0044-emplacements-par-site.md), migration
 0033) : entité `stock_locations` d'UN site (nom 100 unique par site insensible à la casse, jamais
 supprimée, désactivée = plus affectable, affectations existantes conservées) ; emplacement
@@ -196,7 +196,9 @@ courante seulement (aucun instantané), changements audités `stock_location.*` 
 par un transfert ; affichage niveaux (colonne, filtre `location_id` / `unlocated`, tri
 `location`), inventaires (tri par emplacement), entrées / sorties (indicatif), fiche article
 (vue par site) ; permission `stock.location.manage` (Administrateur, Gestionnaire), consultation
-`stock.level.view`, portée des sites (`filter_site_ids` / `operation_site`). Ne pas passer au lot
+`stock.level.view`, portée des sites (`filter_site_ids` / `operation_site`) ; inventaire sur
+mobile : emplacement sous l'article (correctif `366332d`, inclus). **Lot 3-F validé** (état de
+référence `366332d`). Ne pas passer au lot
 suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et

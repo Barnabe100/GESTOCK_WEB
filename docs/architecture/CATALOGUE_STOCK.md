@@ -394,7 +394,7 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Droits | Aucune permission nouvelle : `suppliers.supplier.view`, `stock.entry.view` (portée des sites), `catalog.article.view`, `catalog.article.cost_view` (coûts absents sinon), `audit.log.view`. |
 | Hors périmètre | Contacts multiples, commandes, factures, paiements, dettes, retours fournisseurs, exports, lots, péremption. |
 
-## 14. Lot 3-F — emplacements physiques par site (ADR-0044)
+## 14. Lot 3-F — emplacements physiques par site (ADR-0044, validé)
 
 | Règle | Web |
 |---|---|
