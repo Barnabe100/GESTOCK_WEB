@@ -133,7 +133,8 @@ async function level(request: APIRequestContext, article: Article, site: Site) {
     'get',
     `/stock/levels?article_id=${article.id}&site_id=${site.id}`,
   );
-  return page.items[0]?.quantity ?? '0.000';
+  // Quantité normalisée à 3 décimales (un niveau absent ou nul vaut 0).
+  return Number(page.items[0]?.quantity ?? '0').toFixed(3);
 }
 
 async function choose(page: Page, inputId: string, label: string) {
