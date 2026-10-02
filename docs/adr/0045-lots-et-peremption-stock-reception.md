@@ -1,7 +1,7 @@
 # ADR-0045 — Lots et péremption : stock et réception
 
-- **Statut** : Proposée (Lot 3-G — décisions D1 à D20 validées par TechNova ; implémentation
-  non commencée)
+- **Statut** : Proposée (Lot 3-G — décisions D1 à D20 et P1 (P1-b) validées par TechNova ;
+  implémentation non commencée)
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
   [ADR-0028](0028-fuseau-horaire-du-tenant.md) (dates métier dans le fuseau du tenant),
@@ -46,7 +46,8 @@ sans introduire de comptabilité de stock par lot.
    site** dès le Lot 3-G. Le stock `(site, article)` reste la référence de contrôle (stock
    jamais négatif) ; les soldes par lot en sont une **ventilation**. Invariant :
    **Σ quantités des lots = quantité du stock (site, article)**. Les flux sortants consommeront
-   les lots (Lot 3-H). Aucune variante où les lots ont un solde sans être consommés.
+   les lots (Lot 3-H). Aucune variante où les lots ont un solde sans être consommés : le suivi
+   par lot n'est activable en exploitation qu'avec la consommation (décision P1-b ci-dessous).
 2. **D2 — Unicité** : numéro de lot unique par **(tenant, article)**, comparé **sans
    distinction de casse** ; espaces de bord retirés selon la convention existante (schémas
    `strip_whitespace`, contrôle `btrim(…) = …` en base comme `stock_locations`). Un même numéro
@@ -107,8 +108,8 @@ sans introduire de comptabilité de stock par lot.
 19. **D19 — Conditionnements** : le lot est indépendant de la présentation ; un même lot peut être
     reçu dans plusieurs présentations (L001 : 2 Carton 24 puis 10 bouteilles) ; quantité du lot
     **toujours en unité de base** ; règles 3-C inchangées.
-20. **D20 — Découpage** : voir « Séparation 3-G / 3-H / 3-I ». Images des articles reportées ;
-    pas de Lot 3-J pour l'instant.
+20. **D20 — Découpage** : voir « Séparation 3-G / 3-H / 3-I » et la décision P1-b. Images des
+    articles reportées ; pas de Lot 3-J pour l'instant.
 
 ## Modèle de données conceptuel
 
@@ -154,25 +155,40 @@ sinon **normal**.
 
 | Lot | Contenu |
 |---|---|
-| **3-G** (cette ADR) | référentiel des lots ; réglages de suivi de l'article ; solde par lot et par site ; réceptions `PURCHASE` et `INITIAL_STOCK` ; annulation de réception ; traçabilité des mouvements d'entrée ; consultation (page des lots, fiche lot, fiche article, réception, mouvements) ; calcul de l'état de péremption |
-| **3-H** | consommation des lots par les ventes, le POS, les sorties, les transferts et les inventaires (comptage par lot) ; choix automatique ou manuel du lot ; annulations / retours avec le lot ; comportement face à un lot périmé ; lot éventuel sur le reçu |
+| **3-G** (cette ADR) | **suivi par lot non activable en exploitation (P1-b)** ; référentiel des lots ; réglages de suivi de l'article ; solde par lot et par site ; réceptions `PURCHASE` et `INITIAL_STOCK` ; annulation de réception ; traçabilité des mouvements d'entrée ; consultation (page des lots, fiche lot, fiche article, réception, mouvements) ; calcul de l'état de péremption |
+| **3-H** | **ouverture de l'activation du suivi par lot, livrée avec** la consommation des lots par les ventes, le POS, les sorties, les transferts et les inventaires (comptage par lot) ; choix automatique ou manuel du lot ; annulations / retours avec le lot ; comportement face à un lot périmé ; lot éventuel sur le reçu |
 | **3-I** | alertes et tableau de bord de péremption ; notifications ; traitement éventuel des lots périmés ; rapports de péremption |
 
-### Point ouvert P1 — cohérence de l'invariant entre 3-G et 3-H (à trancher avant l'implémentation)
+### Décision P1 — activation du suivi fermée jusqu'à 3-H (P1-b, validée le 2026-10-02)
 
-D1 impose Σ lots = stock et interdit des soldes non consommés, tandis que D20 place la
-consommation dans 3-H. Si 3-G est livré seul, une vente, une sortie, un transfert ou un
-ajustement d'inventaire sur un article suivi diminuerait le stock (site, article) sans diminuer
-aucun lot : l'invariant serait rompu. Une règle explicite est nécessaire ; options identifiées
-(aucune n'est retenue par cette ADR) :
+D1 impose Σ lots = stock et interdit des soldes non consommés ; D20 place la consommation dans
+3-H. Livré seul, un article suivi verrait son stock (site, article) diminuer par une vente, une
+sortie, un transfert ou un ajustement d'inventaire sans qu'aucun lot ne diminue. La
+contradiction est levée ainsi (options P1-a « refuser les flux sortants des articles suivis » et
+P1-c « consommation automatique dès 3-G » écartées) :
 
-- **P1-a** : jusqu'à 3-H, toute opération autre qu'une réception (vente, POS, sortie, transfert,
-  ajustement d'inventaire) sur un article suivi par lot est **refusée** par le serveur (garde
-  centrale dans `StockService`, code d'erreur dédié) ; l'activation du suivi reste possible.
-- **P1-b** : le Lot 3-G n'est **pas mis en production seul** : il est livré et validé, mais
-  l'activation du suivi par lot reste indisponible jusqu'à la livraison de 3-H.
-- **P1-c** : consommation automatique minimale dès 3-G (contraire au découpage D20 ; écartée
-  sauf décision contraire).
+- **3-G implémente et teste** le modèle de suivi par lot, le référentiel des lots, les soldes par
+  lot et par site, les réceptions `PURCHASE` et `INITIAL_STOCK` par lot, leur annulation, la
+  traçabilité des mouvements d'entrée, la consultation et l'état de péremption.
+- **Le suivi par lot n'est pas activable en exploitation** tant que la consommation des lots
+  (3-H) n'est pas disponible : le **serveur** refuse le passage d'un article au suivi par lot
+  (et donc au suivi de péremption) avec un code d'erreur stable (nom fixé à l'implémentation) ;
+  le refus fait foi côté backend, jamais décidé par l'interface.
+- **Cette fermeture est un état du produit**, levé uniquement par la livraison validée de 3-H
+  (changement de code) : ni paramètre du client, ni réglage du tenant, ni fonctionnalité de plan
+  (D13), ni action de la console TechNova, ni variable modifiable en exploitation. Les tests de
+  3-G l'ouvrent explicitement par un dispositif réservé aux tests (mécanisme fixé à
+  l'implémentation).
+- **En exploitation**, aucun article n'est donc suivi par lot : aucun lot n'est demandé, créé ni
+  consommé, et l'invariant Σ lots = stock (site, article) est respecté (aucun solde de lot).
+- **Articles non suivis** (tous, en exploitation) : réceptions, ventes, POS, sorties, transferts
+  et inventaires **strictement inchangés** ; aucun lot demandé ; aucune opération bloquée.
+- **Aucune consommation automatique** des lots dans 3-G ; aucun élément de 3-H implémenté dans
+  le cadre de 3-G.
+- **Interface** : l'activation du suivi n'est pas proposée tant que la fermeture est en vigueur
+  (état fourni par le serveur) ; les écrans de lots n'affichent que ce que le serveur renvoie.
+- **3-H** ouvrira l'activation dans la même livraison que la consommation des lots (ventes, POS,
+  sorties, transferts, inventaires), après validation.
 
 ## Sécurité / multi-tenant
 
@@ -218,12 +234,16 @@ l'historique non reconstructible (STK-06).
 - Interface : réglages sur la fiche article, saisie du lot sur la réception (y compris sur
   mobile), page et fiche des lots, lots sur la fiche article (par site), colonne lot dans les
   mouvements ; textes i18n et codes d'erreur traduits.
+- P1-b : le code de 3-G est livré sans être exploitable par les entreprises ; sa mise en
+  service opérationnelle dépend de la livraison de 3-H (qui lève la fermeture de l'activation).
 - L'ancrage « module `stock.lots` » d'ARCHITECTURE §10 est remplacé par cette ADR (capacité du
   module `stock`, sans fonctionnalité de plan).
 
 ## Risques
 
-- Rupture de l'invariant Σ lots = stock entre 3-G et 3-H (point ouvert P1).
+- Ouverture de l'activation avant la livraison de 3-H (dispositif de test actif hors des
+  tests, contournement de la fermeture) : l'invariant Σ lots = stock serait rompu par les flux
+  sortants ; la fermeture doit être contrôlée par le serveur et couverte par des tests (P1-b).
 - Régression du cœur `StockService` (verrous, ordre, interblocages) qui sert aussi ventes et POS.
 - Contraintes d'unicité des lignes : `check_articles` est partagé avec les sorties et les
   transferts ; modification à limiter aux entrées.
@@ -233,6 +253,11 @@ l'historique non reconstructible (STK-06).
 
 ## Tests attendus
 
+- **Fermeture P1-b** : en configuration d'exploitation, activation du suivi par lot (et de
+  péremption) refusée par l'API avec le code dédié, pour tout rôle ; aucune autre voie
+  (paramètre du client, réglage du tenant, plan) ne l'ouvre ; l'interface ne propose pas
+  l'activation. Les scénarios suivants s'exécutent avec la fermeture levée par le dispositif de
+  test.
 - **Réglages** : activation refusée avec du stock sur un site, acceptée à stock nul ;
   désactivation refusée avec un solde de lot non nul ; refus pour un article non géré ; suivi de
   péremption sans suivi par lot refusé ; audit.
@@ -251,8 +276,8 @@ l'historique non reconstructible (STK-06).
 - **Sécurité** : isolation RLS SQL et API des nouvelles tables ; FK composite (lot d'un autre
   article ou tenant) ; membre limité à un site (lots et soldes d'un autre site invisibles) ;
   permissions ; coûts absents sans `cost_view`.
-- **Non-régression** : articles non suivis strictement inchangés ; suites stock, ventes, POS,
-  transferts, inventaires ; comportement retenu pour P1.
+- **Non-régression** : articles non suivis strictement inchangés — aucune opération bloquée ni
+  modifiée, aucun lot demandé ; suites stock, ventes, POS, transferts, inventaires.
 - **Migration** : montée / descente / montée, `alembic check`.
 - **Interface et E2E** : saisie de réception avec lots (desktop et mobile), page et fiche des
   lots, états de péremption, fiche article ; suite E2E complète.
