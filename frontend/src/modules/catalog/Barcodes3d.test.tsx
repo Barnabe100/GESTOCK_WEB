@@ -288,7 +288,8 @@ describe('scan des écrans opérationnels (Lot 3-D)', () => {
     const quantity = (await screen.findByLabelText(/Quantité/, {
       selector: 'input[id^="line-0-quantity"]',
     })) as HTMLInputElement;
-    expect(quantity.value).toBe('1');
+    // Valeur posée par le formulaire après l'ajout de la ligne (mise à jour asynchrone).
+    await waitFor(() => expect(quantity.value).toBe('1'));
     // Second scan : la même ligne passe à 2 (jamais 24 unités de base).
     scan('Scanner un code-barres', 'C-1');
     await waitFor(() => expect(quantity.value).toBe('2.000'));
