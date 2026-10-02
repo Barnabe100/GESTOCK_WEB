@@ -16,7 +16,7 @@ import { z } from 'zod';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { useSuppliers } from '@/modules/suppliers/api';
-import { formatCost, formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
+import { formatCost, formatMoney, multiplyQuantity, normalizeDecimal } from '@/shared/lib/decimal';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
@@ -46,8 +46,9 @@ import { PresentationField } from '@/modules/catalog/PresentationField';
 import { formatPresented, type PresentationPackaging } from '@/shared/lib/presentation';
 
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
+import { LotAllocationEditor } from './LotAllocationEditor';
 import { ArticleLocationHint, LocationLabel } from './LocationAssignDialog';
-import { LotLabel, stockError } from './ui';
+import { LineLotsList, LotLabel, stockError } from './ui';
 
 const OPTIONS_QUERY = 'limit=200&status=active&sort=name';
 
@@ -64,6 +65,8 @@ const lineSchema = z.object({
   lot_number: z.string().max(50),
   lot_expiry_date: z.string(),
   lot_manufacturing_date: z.string(),
+  /** Lot 3-H-A (sorties) : répartition manuelle par lot, en unité de base. */
+  lots: z.array(z.object({ lot_id: z.string(), quantity: z.string() })),
 });
 
 function buildSchema(kind: DocumentKind) {
@@ -87,6 +90,15 @@ function buildSchema(kind: DocumentKind) {
       }
       if (kind === 'exits' && !values.reason_id) {
         ctx.addIssue({ code: 'custom', path: ['reason_id'], message: 'required' });
+      }
+      if (kind === 'exits') {
+        values.lines.forEach((line, index) => {
+          // Lot 3-H-A : quantités par lot bien formées ; la somme exacte est exigée par le
+          // serveur à la validation seulement (brouillon incomplet admis).
+          if (line.lots.some((l) => normalizeDecimal(l.quantity, 3) === null)) {
+            ctx.addIssue({ code: 'custom', path: ['lines', index, 'lots'], message: 'quantity' });
+          }
+        });
       }
       if (kind === 'entries') {
         values.lines.forEach((line, index) => {
@@ -162,8 +174,16 @@ function defaults(document: StockDocument | undefined, siteId: string | null): F
       lot_number: line.lot_number ?? '',
       lot_expiry_date: line.lot_expiry_date ?? '',
       lot_manufacturing_date: line.lot_manufacturing_date ?? '',
+      lots: (line.lots ?? []).map((l) => ({ lot_id: l.lot_id, quantity: l.quantity })),
     })),
   };
+}
+
+/** Quantité de la ligne en unité de base, indicative (le serveur la recalcule). */
+function requestedBase(line: FormValues['lines'][number] | undefined): string | null {
+  const quantity = normalizeDecimal(line?.quantity ?? '', 3);
+  if (quantity === null) return null;
+  return line?.packaging ? multiplyQuantity(quantity, line.packaging.conversion) : quantity;
 }
 
 const EMPTY_LINE = {
@@ -173,6 +193,7 @@ const EMPTY_LINE = {
   lot_number: '',
   lot_expiry_date: '',
   lot_manufacturing_date: '',
+  lots: [],
 };
 
 function toInput(kind: DocumentKind, values: FormValues, isNew: boolean): EntryInput | ExitInput {
@@ -216,7 +237,14 @@ function toInput(kind: DocumentKind, values: FormValues, isNew: boolean): EntryI
     reason_id: values.reason_id ?? '',
     beneficiary: values.beneficiary.trim() || null,
     reference: values.reference.trim() || null,
-    lines,
+    // Lot 3-H-A : choix des lots envoyés tels quels (le serveur les contrôle tous).
+    lines: lines.map((line, index) => ({
+      ...line,
+      lots: (values.lines[index]?.lots ?? []).map((l) => ({
+        lot_id: l.lot_id,
+        quantity: normalizeDecimal(l.quantity, 3) ?? '0',
+      })),
+    })),
   };
 }
 
@@ -294,6 +322,8 @@ function DocumentSummary({ kind, document }: { kind: DocumentKind; document: Sto
                 state={l.lot_state}
                 locale={locale}
               />
+              {/* Lot 3-H-A : répartition par lot d'une sortie (journal des mouvements). */}
+              <LineLotsList lots={l.lots ?? []} unit={l.unit} locale={locale} />
             </div>
           )}
         />
@@ -460,6 +490,8 @@ function DocumentForm({
   );
 
   const busy = save.isPending || validate.isPending;
+  // Lot 3-H-A : lots déjà enregistrés sur les lignes (libellé d'un lot sans solde restant).
+  const knownLots = (document?.lines ?? []).flatMap((l) => l.lots ?? []);
   const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
 
   /** Lot 3-D : le scan présélectionne article + présentation ; quantité (et coût) à saisir. */
@@ -632,6 +664,7 @@ function DocumentForm({
                         f.onChange(value);
                         // Autre article : retour à l'unité de base, lot à ressaisir.
                         form.setValue(`lines.${index}.packaging`, null);
+                        form.setValue(`lines.${index}.lots`, []);
                         if (kind === 'entries') {
                           form.setValue(`lines.${index}.lot_number`, '');
                           form.setValue(`lines.${index}.lot_expiry_date`, '');
@@ -707,6 +740,25 @@ function DocumentForm({
                 aria-label={t('stock.removeLine')}
                 onClick={() => lines.remove(index)}
               />
+              {kind === 'exits' && article && hintSite && (
+                <Controller
+                  control={form.control}
+                  name={`lines.${index}.lots`}
+                  render={({ field: f }) => (
+                    <LotAllocationEditor
+                      id={`line-${index}-lots`}
+                      articleId={article.id}
+                      siteId={hintSite}
+                      unit={article.unit}
+                      requested={requestedBase(watchedLines[index])}
+                      value={f.value}
+                      known={knownLots}
+                      locale={locale}
+                      onChange={f.onChange}
+                    />
+                  )}
+                />
+              )}
               {kind === 'entries' &&
                 (article?.lot_tracked || Boolean(watchedLines[index]?.lot_number)) && (
                   <div className="sm-line-lot">

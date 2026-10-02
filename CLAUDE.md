@@ -213,8 +213,22 @@ par article, un lot en plusieurs présentations, lot connu avec une autre pérem
 annulation sur le même lot (refus si un lot devenait négatif) ; **CMUP inchangé** (aucun coût
 par lot) ; état de péremption calculé (`tenant_today`, seuil `stock_settings` du tenant, défaut
 30 jours) ; `/stock/lots`, `/stock/lots/{id}`, `/stock/settings`, `/catalog/lot-tracking`,
-filtres `lot_id` ; aucune permission nouvelle. Ne pas passer au lot
-suivant sans validation. Non implémentés (feuille de route §13) :
+filtres `lot_id` ; aucune permission nouvelle. **Lot 3-G validé** (état de référence `4fd303f`).
+**Lot 3-H-A livré — en attente de validation — consommation des lots : ventes, POS, sorties**
+(ADR-0045 : H-D1 à H-D18, O-1 à O-6 ; migration 0035) : moteur UNIQUE `StockService.consume`
+(verrous article → niveau → lots, un mouvement par lot M1, tout ou rien) ; ventes / POS en
+**FEFO** (non périmés, péremption croissante, sans date ensuite, création, numéro ; FIFO sans
+suivi de péremption), jamais de lot périmé automatiquement — `insufficient_unexpired_stock`,
+dérogation explicite `expired_lot_override` (permission **`sales.sale.expired_lot_override`**,
+Administrateur seulement par `*`, motif, audit `sale.expired_lot_overridden`) ; sorties à choix
+MANUEL (`stock_exit_line_lots`, brouillon incomplet admis, somme exacte à la validation,
+`lot_allocation_incomplete`) ; annulations : un inverse par mouvement d'origine, même lot ;
+**garde-fou** dans `StockService._write` (article suivi sans lot : `lot_required` ; lot sur
+article non suivi refusé) ; présentation d'un mouvement réparti seulement si exacte ; unicité
+des mouvements avec `lot_id` (`NULLS NOT DISTINCT`) ; lots disponibles : `/pos/articles/{id}/lots`,
+`/sales/articles/{id}/lots`, `/stock/available-lots` ; aucun ticket 80 mm (dialogue du POS) ;
+CMUP inchangé. **3-H-B non commencé** (transferts, inventaires : refusés par le garde-fou pour
+un article suivi) ; **P1-b toujours active**. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

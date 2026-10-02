@@ -107,6 +107,24 @@ export interface DocumentLine {
   lot_expiry_date?: string | null;
   lot_manufacturing_date?: string | null;
   lot_state?: LotState | null;
+  /** Lot 3-H-A (sorties) : choix du brouillon, ou répartition réelle d'une sortie validée
+   *  (journal des mouvements). Quantités en unité de base. */
+  lots?: LineLot[];
+}
+
+/** Lot d'une ligne de sortie (Lot 3-H-A) : quantité en unité de base. */
+export interface LineLot {
+  lot_id: string;
+  lot_number: string;
+  expiry_date?: string | null;
+  state?: LotState | null;
+  quantity: string;
+}
+
+/** Choix manuel d'un lot sur une ligne (quantité en unité de base). */
+export interface LotAllocationInput {
+  lot_id: string;
+  quantity: string;
 }
 
 interface DocumentBase {
@@ -180,7 +198,14 @@ export interface ExitInput {
   beneficiary: string | null;
   reference: string | null;
   comment: string | null;
-  lines: { article_id: string; packaging_id: string | null; quantity: string }[];
+  /** `lots` (Lot 3-H-A) : répartition manuelle d'un article suivi par lot — incomplète
+   *  possible dans un brouillon, somme exacte exigée par le serveur à la validation. */
+  lines: {
+    article_id: string;
+    packaging_id: string | null;
+    quantity: string;
+    lots?: LotAllocationInput[];
+  }[];
 }
 
 // --- Lots et péremption (Lot 3-G, ADR-0045) -----------------------------------------------------
@@ -507,4 +532,43 @@ export function useSupplierReceivedArticles(supplierId: string, query: string) {
       ),
     placeholderData: keepPreviousData,
   });
+}
+
+// --- Lots disponibles (Lot 3-H-A, H-D18) ---------------------------------------------------------
+
+/** Lot ayant un solde positif sur le site : ordre de consommation du serveur (FEFO / FIFO),
+ *  lots périmés en dernier (`expired` : jamais consommés automatiquement). Aucun coût. */
+export interface AvailableLot {
+  lot_id: string;
+  number: string;
+  quantity: string;
+  expiry_date: string | null;
+  manufacturing_date: string | null;
+  state: LotState;
+  expired: boolean;
+  created_at: string;
+}
+
+export interface AvailableLots {
+  article_id: string;
+  lot_tracked: boolean;
+  expiry_tracked: boolean;
+  lots: AvailableLot[];
+}
+
+/**
+ * Lots disponibles d'un article sur un site. `path` : point d'accès propre à l'usage — sorties
+ * (`/stock/available-lots`), ventes (`/sales/articles/{id}/lots`), point de vente
+ * (`/pos/articles/{id}/lots`) — chacun avec ses permissions.
+ */
+export function useAvailableLots(path: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [...lotKeys.all, 'available', path],
+    queryFn: ({ signal }) => api.get<AvailableLots>(path ?? '', signal),
+    enabled: enabled && path !== null,
+  });
+}
+
+export function exitLotsPath(articleId: string, siteId: string): string {
+  return `/stock/available-lots?${new URLSearchParams({ article_id: articleId, site_id: siteId }).toString()}`;
 }

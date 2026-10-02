@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { SalePaymentBadge, soldQuantity } from '@/modules/sales/ui';
+import { LineLotsList } from '@/modules/stock/ui';
 import { formatMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 
@@ -11,7 +12,8 @@ import type { CheckoutResult } from './api';
 
 /**
  * Confirmation après encaissement : données renvoyées par le serveur (numéro, lignes, total,
- * paiements, reste dû). Point d'extension du futur ticket / reçu (impression, PDF) : il
+ * paiements, reste dû). Lot 3-H-A (O-2) : lots consommés et péremption sous chaque ligne. Aucun
+ * ticket imprimé 80 mm ici : point d'extension du futur ticket / reçu (impression, PDF), qui
  * consommera le même `CheckoutResult`.
  */
 export function PosReceipt({
@@ -55,6 +57,7 @@ export function PosReceipt({
                   <span className="sm-muted">
                     {`${soldQuantity(line, locale)} × ${money(line.unit_price)}`}
                   </span>
+                  <LineLotsList lots={line.lots ?? []} unit={line.unit} locale={locale} />
                 </td>
                 <td className="sm-num">{money(line.line_total)}</td>
               </tr>

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/core/api/client';
-import type { Payment, Sale } from '@/modules/sales/api';
+import type { ExpiredLotOverride, Payment, Sale } from '@/modules/sales/api';
 import type { Page } from '@/shared/lib/serverTable';
 
 /** Conditionnement ACTIF (Lot 3-B) : quantité de base = quantité × `conversion`. */
@@ -51,6 +51,8 @@ export interface CheckoutInput {
   }[];
   /** Dépassement de la limite de crédit autorisé (si le serveur le permet à l'utilisateur). */
   credit_override?: { reason: string } | null;
+  /** Lot 3-H-A (O-1) : dérogation explicite à la vente d'un lot périmé (motif, audit). */
+  expired_lot_override?: ExpiredLotOverride | null;
   /** Une clé par panier : une double soumission renvoie la même vente. */
   idempotency_key: string;
 }

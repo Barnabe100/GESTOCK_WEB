@@ -114,3 +114,8 @@ export function compareQuantity(a: string, b: string): number {
 export function addQuantity(a: string, b: string): string {
   return fromScaled(toScaled(a, 3) + toScaled(b, 3), 3);
 }
+
+/** Différence de deux quantités décimales (3 décimales, signe conservé), sans float. */
+export function subtractQuantity(a: string, b: string): string {
+  return fromScaled(toScaled(a, 3) - toScaled(b, 3), 3);
+}

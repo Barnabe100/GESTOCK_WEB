@@ -53,6 +53,16 @@ class SaleCancel(BaseModel):
         return value
 
 
+class SaleLineLotOut(BaseModel):
+    """Lot consommé par une ligne de vente validée (Lot 3-H-A) : quantité en unité de base,
+    lue dans le journal des mouvements (source de vérité, M1)."""
+
+    lot_id: uuid.UUID
+    lot_number: str
+    expiry_date: date | None = None
+    quantity: Quantity
+
+
 class SaleLineOut(BaseModel):
     id: uuid.UUID
     line_no: int
@@ -70,6 +80,8 @@ class SaleLineOut(BaseModel):
     packaging_name: str | None = None
     packaging_conversion: Quantity | None = None
     base_quantity: Quantity
+    # Lot 3-H-A : répartition par lot (vente validée ou annulée, article suivi par lot).
+    lots: list[SaleLineLotOut] = Field(default_factory=list)
 
 
 class SaleOut(BaseModel):
@@ -107,6 +119,10 @@ class SaleOut(BaseModel):
     credit_override_by_name: str | None = None
     credit_override_reason: str | None = None
     credit_override_amount: Money | None = None
+    # Lot 3-H-A (O-1) : dérogation à la vente d'un lot périmé.
+    expired_lot_override_at: datetime | None = None
+    expired_lot_override_by_name: str | None = None
+    expired_lot_override_reason: str | None = None
     lines: list[SaleLineOut] = Field(default_factory=list)
 
 
@@ -178,6 +194,33 @@ class CreditOverride(BaseModel):
         return value
 
 
+class ExpiredLotPick(BaseModel):
+    """Lot périmé désigné explicitement (Lot 3-H-A, O-1) : ``quantity`` en UNITÉ DE BASE,
+    imputée sur les lignes de l'article dans leur ordre."""
+
+    article_id: uuid.UUID
+    lot_id: uuid.UUID
+    quantity: PositiveQuantity
+
+
+class ExpiredLotOverride(BaseModel):
+    """Dérogation à la vente d'un lot périmé (Lot 3-H-A, O-1) : jamais automatique — lots
+    périmés désignés explicitement, motif obligatoire (5 à 500 caractères) ; l'auteur est
+    l'utilisateur authentifié, qui doit détenir ``sales.sale.expired_lot_override`` sur le site
+    de la vente. Le reste de chaque ligne est consommé en FEFO sur les lots non périmés."""
+
+    reason: str = Field(max_length=500)
+    lots: list[ExpiredLotPick] = Field(min_length=1, max_length=50)
+
+    @field_validator("reason")
+    @classmethod
+    def _min_length(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 5:
+            raise ValueError("le motif doit contenir au moins 5 caractères")
+        return value
+
+
 class SaleValidate(BaseModel):
     """Corps facultatif de la validation : encaissements immédiats (paiement comptant), créés
     dans la même transaction que la validation. Le reste dû devient une créance soumise à la
@@ -185,6 +228,7 @@ class SaleValidate(BaseModel):
 
     payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
     credit_override: CreditOverride | None = None
+    expired_lot_override: ExpiredLotOverride | None = None
 
 
 class PaymentOut(BaseModel):
@@ -233,6 +277,7 @@ class SaleCheckout(SaleCreate):
 
     payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
     credit_override: CreditOverride | None = None
+    expired_lot_override: ExpiredLotOverride | None = None
     idempotency_key: uuid.UUID
 
 

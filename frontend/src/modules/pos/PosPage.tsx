@@ -46,6 +46,9 @@ import {
 import { PosCustomerDialog } from './PosCustomerDialog';
 import { PosPaymentDialog, toCheckoutPayment, type PosPayment } from './PosPaymentDialog';
 import { PosReceipt } from './PosReceipt';
+import { ExpiredLotOverridePanel } from '@/modules/sales/ExpiredLotOverridePanel';
+import type { ExpiredLotOverride } from '@/modules/sales/api';
+import { expiredShortages, type ExpiredShortage } from '@/modules/stock/ui';
 import { RecentSalesDialog } from './RecentSalesDialog';
 
 type PosDialog = 'customer' | 'payment' | 'confirm' | 'recent' | null;
@@ -85,6 +88,8 @@ export default function PosPage() {
   const [error, setError] = useState<string | null>(null);
   const [overrideAllowed, setOverrideAllowed] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
+  // Lot 3-H-A (O-1) : refus « stock non périmé insuffisant » — dérogation explicite proposée.
+  const [expired, setExpired] = useState<ExpiredShortage[]>([]);
   const [tab, setTab] = useState<'catalog' | 'cart'>('catalog');
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -125,6 +130,7 @@ export default function PosPage() {
     setError(null);
     setOverrideAllowed(false);
     setOverrideReason('');
+    setExpired([]);
     setDialog(null);
     setTab('catalog');
     document.getElementById('pos-search')?.focus();
@@ -179,7 +185,7 @@ export default function PosPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [dialog, result, lines.length, canPay, canSell]);
 
-  const confirm = (withOverride = false) => {
+  const confirm = (withOverride = false, expiredLotOverride: ExpiredLotOverride | null = null) => {
     if (!siteId) return;
     setError(null);
     checkout.mutate(
@@ -193,6 +199,7 @@ export default function PosPage() {
         })),
         payments: payments.map((p) => toCheckoutPayment(p, cashRegisterId)),
         credit_override: withOverride ? { reason: overrideReason.trim() } : null,
+        ...(expiredLotOverride ? { expired_lot_override: expiredLotOverride } : {}),
         idempotency_key: cartKey,
       },
       {
@@ -208,6 +215,7 @@ export default function PosPage() {
               e.code === 'credit_limit_exceeded' &&
               e.extra.override_allowed === true,
           );
+          setExpired(expiredShortages(e));
         },
       },
     );
@@ -611,6 +619,14 @@ export default function PosPage() {
               />
             )}
             {error && <Message severity="error" text={error} />}
+            {expired.length > 0 && (
+              <ExpiredLotOverridePanel
+                shortages={expired}
+                idPrefix="pos"
+                pending={checkout.isPending}
+                onConfirm={(override) => confirm(false, override)}
+              />
+            )}
             {overrideAllowed && (
               <FormField
                 id="pos-override-reason"

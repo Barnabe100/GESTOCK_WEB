@@ -24,9 +24,17 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ForbiddenError, NotFoundError
-from app.modules.catalog.api import ArticleRef, articles_view
-from app.modules.stock.models import StockEntryLine, StockLot, StockLotLevel, StockSettings
+from app.modules.catalog.api import ArticleRef, LotFlags, articles_view, get_article_refs
+from app.modules.stock.models import (
+    MovementType,
+    StockEntryLine,
+    StockLot,
+    StockLotLevel,
+    StockMovement,
+    StockSettings,
+)
 from app.modules.stock.sites import filter_site_ids, tenant_today, visible_site_ids
+from app.modules.stock.stock_service import fefo_key, is_expired
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
 from app.platform.tenancy.models import Site
@@ -277,6 +285,152 @@ def lot_names(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, StockLot]:
     if not ids:
         return {}
     return {lot.id: lot for lot in db.scalars(select(StockLot).where(StockLot.id.in_(ids)))}
+
+
+# --- Consommation (Lot 3-H-A) ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LotInfo:
+    id: uuid.UUID
+    article_id: uuid.UUID
+    number: str
+    expiry_date: date | None
+
+
+def lot_infos(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, LotInfo]:
+    """Lots du tenant (RLS) : un identifiant inconnu (ou d'un autre tenant) est absent."""
+    return {
+        lot.id: LotInfo(lot.id, lot.article_id, lot.number, lot.expiry_date)
+        for lot in lot_names(db, ids).values()
+    }
+
+
+def is_expired_lot(info: LotInfo, flags: LotFlags, today: date) -> bool:
+    """Même règle que le moteur (``is_expired``) pour un lot lu par ``lot_infos``."""
+    return flags.expiry_tracked and info.expiry_date is not None and info.expiry_date < today
+
+
+@dataclass(frozen=True)
+class LotAllocation:
+    """Quantité (unité de base, positive) d'une ligne de document prise sur un lot — lue dans
+    le journal des mouvements, source de vérité de la consommation (M1)."""
+
+    line_id: uuid.UUID
+    lot_id: uuid.UUID
+    lot_number: str
+    expiry_date: date | None
+    quantity: Any
+
+
+def lot_allocations(
+    db: Session, source_ids: set[uuid.UUID], movement_type: MovementType
+) -> dict[uuid.UUID, list[LotAllocation]]:
+    """Répartition par lot des lignes de documents validés (ventes, sorties), par ligne, dans
+    l'ordre de consommation."""
+    if not source_ids:
+        return {}
+    rows = db.execute(
+        select(
+            StockMovement.source_line_id,
+            StockMovement.lot_id,
+            StockLot.number,
+            StockLot.expiry_date,
+            StockMovement.quantity,
+        )
+        .join(
+            StockLot,
+            and_(
+                StockLot.id == StockMovement.lot_id, StockLot.tenant_id == StockMovement.tenant_id
+            ),
+        )
+        .where(
+            StockMovement.source_id.in_(source_ids),
+            StockMovement.movement_type == movement_type,
+        )
+        .order_by(StockMovement.occurred_at, StockMovement.id)
+    ).all()
+    result: dict[uuid.UUID, list[LotAllocation]] = {}
+    for line_id, lot_id, number, expiry, quantity in rows:
+        result.setdefault(line_id, []).append(
+            LotAllocation(line_id, lot_id, number, expiry, abs(quantity))
+        )
+    return result
+
+
+@dataclass(frozen=True)
+class AvailableLot:
+    lot_id: uuid.UUID
+    number: str
+    quantity: Any
+    expiry_date: date | None
+    manufacturing_date: date | None
+    state: LotState
+    # Lot périmé au sens de la règle de vente (article suivi en péremption, date passée) :
+    # jamais consommé automatiquement (H-D3, O-1).
+    expired: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class AvailableLots:
+    article_id: uuid.UUID
+    lot_tracked: bool
+    expiry_tracked: bool
+    lots: list[AvailableLot]
+
+
+def available_lots(
+    db: Session, ctx: RequestContext, now: datetime, site_id: uuid.UUID, article_id: uuid.UUID
+) -> AvailableLots:
+    """Lots d'un article ayant un solde positif sur un site (H-D18) : POS, dérogation d'une
+    vente, choix manuel d'une sortie. Ordre = celui du moteur : lots non périmés dans l'ordre
+    FEFO / FIFO de consommation automatique, puis lots périmés. Aucun coût. Le site est
+    contrôlé par l'appelant (``operation_site``) ; article d'un autre tenant : introuvable."""
+    ref = get_article_refs(db, {article_id}).get(article_id)
+    if ref is None:
+        raise NotFoundError("Article introuvable", code="article_not_found")
+    flags = LotFlags(ref.lot_tracked, ref.expiry_tracked)
+    expiry = expiry_context(db, ctx, now)
+    rows = db.execute(
+        select(StockLot, StockLotLevel.quantity)
+        .join(
+            StockLotLevel,
+            and_(
+                StockLotLevel.lot_id == StockLot.id, StockLotLevel.tenant_id == StockLot.tenant_id
+            ),
+        )
+        .where(
+            StockLotLevel.site_id == site_id,
+            StockLotLevel.article_id == article_id,
+            StockLotLevel.quantity > 0,
+        )
+    ).all()
+    ordered = sorted(
+        rows,
+        key=lambda row: (
+            is_expired(row[0], flags, expiry.today),
+            fefo_key(row[0], flags.expiry_tracked),
+        ),
+    )
+    return AvailableLots(
+        article_id=article_id,
+        lot_tracked=ref.lot_tracked,
+        expiry_tracked=ref.expiry_tracked,
+        lots=[
+            AvailableLot(
+                lot_id=lot.id,
+                number=lot.number,
+                quantity=quantity,
+                expiry_date=lot.expiry_date,
+                manufacturing_date=lot.manufacturing_date,
+                state=expiry.state(lot.expiry_date),
+                expired=is_expired(lot, flags, expiry.today),
+                created_at=lot.created_at,
+            )
+            for lot, quantity in ordered
+        ],
+    )
 
 
 # --- Consultation ---------------------------------------------------------------------------------

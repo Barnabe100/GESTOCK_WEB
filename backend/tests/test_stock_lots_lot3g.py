@@ -13,7 +13,6 @@
 
 import re
 import threading
-from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -34,13 +33,6 @@ from tests.conftest import PASSWORD, Api, login
 from tests.stock_helpers import World
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
-
-
-@pytest.fixture
-def lot_tracking_open(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """RÉSERVÉ AUX TESTS : lève la fermeture P1-b le temps d'un test, dans ce processus."""
-    monkeypatch.setattr(lot_tracking, "LOT_TRACKING_AVAILABLE", True)
-    yield
 
 
 def _ok(response: Any, status: int = 200) -> Any:

@@ -19,6 +19,7 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { type ScanResult } from '@/modules/catalog/api';
 import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 import { ArticlePicker, toArticleOption, type ArticleOption } from '@/modules/stock/ArticlePicker';
+import { expiredShortages, LineLotsList, type ExpiredShortage } from '@/modules/stock/ui';
 import {
   addQuantity,
   formatMoney,
@@ -43,6 +44,7 @@ import {
   type Sale,
   type SaleInput,
   type SaleLine,
+  type ExpiredLotOverride,
 } from './api';
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
 import { PaymentsPanel } from './PaymentsPanel';
@@ -223,6 +225,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
   const [validationError, setValidationError] = useState<{
     message: string;
     overrideAllowed: boolean;
+    expiredShortages: ExpiredShortage[];
   } | null>(null);
   const onValidate = form.handleSubmit((values) => {
     setValidationError(null);
@@ -232,10 +235,16 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
     values: FormValues,
     payments: ImmediatePayment[],
     creditOverride: CreditOverride | null,
+    expiredLotOverride: ExpiredLotOverride | null = null,
   ) => {
     try {
       const saved = form.formState.isDirty || !sale ? await persist(values) : sale;
-      const validated = await validate.mutateAsync({ id: saved.id, payments, creditOverride });
+      const validated = await validate.mutateAsync({
+        id: saved.id,
+        payments,
+        creditOverride,
+        expiredLotOverride,
+      });
       setValidating(null);
       toast.success(t('sales.validated', { number: validated.number ?? '' }));
     } catch (error) {
@@ -247,6 +256,8 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
           error instanceof ApiError &&
           error.code === 'credit_limit_exceeded' &&
           error.extra.override_allowed === true,
+        // Lot 3-H-A (O-1) : lots périmés disponibles, dérogation explicite seulement.
+        expiredShortages: expiredShortages(error),
       });
     }
   };
@@ -448,8 +459,9 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
           pending={save.isPending || validate.isPending}
           error={validationError?.message ?? null}
           overrideAllowed={validationError?.overrideAllowed ?? false}
-          onConfirm={(payments, creditOverride) =>
-            void confirmValidation(validating, payments, creditOverride)
+          expiredShortages={validationError?.expiredShortages ?? []}
+          onConfirm={(payments, creditOverride, expiredLotOverride) =>
+            void confirmValidation(validating, payments, creditOverride, expiredLotOverride)
           }
           onClose={() => setValidating(null)}
         />
@@ -487,6 +499,16 @@ function SaleSummary({ sale }: { sale: Sale }) {
           })
         : null,
     ],
+    [
+      t('expiredLots.override'),
+      sale.expired_lot_override_at
+        ? t('expiredLots.overrideDetail', {
+            name: sale.expired_lot_override_by_name ?? '',
+            date: formatDateTime(sale.expired_lot_override_at, locale, timezone),
+            reason: sale.expired_lot_override_reason ?? '',
+          })
+        : null,
+    ],
     [t('sales.notes'), sale.notes],
     [t('stock.createdBy'), at(sale.created_by_name, sale.created_at)],
     [t('stock.validatedBy'), at(sale.validated_by_name, sale.validated_at)],
@@ -510,7 +532,13 @@ function SaleSummary({ sale }: { sale: Sale }) {
       <DataTable value={sale.lines} dataKey="id">
         <Column
           header={t('stock.article')}
-          body={(l: SaleLine) => `${l.article_reference} — ${l.article_designation}`}
+          body={(l: SaleLine) => (
+            <div className="sm-cell-stack">
+              <span>{`${l.article_reference} — ${l.article_designation}`}</span>
+              {/* Lot 3-H-A : lots consommés (FEFO, ou dérogation), journal des mouvements. */}
+              <LineLotsList lots={l.lots ?? []} unit={l.unit} locale={locale} />
+            </div>
+          )}
         />
         <Column header={t('stock.quantity')} body={(l: SaleLine) => soldQuantity(l, locale)} />
         {sale.lines.some((l) => l.packaging_id) && (

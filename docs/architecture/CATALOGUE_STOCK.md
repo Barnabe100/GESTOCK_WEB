@@ -426,3 +426,20 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Affichage | Page Lots (filtres, échéance la plus proche d'abord), fiche lot (soldes par site visible, réceptions, mouvements), fiche article (lots), réception (lot, péremption, état), journal des mouvements. |
 | Droits | Aucune permission nouvelle (D14) : `stock.level.view` (lots, seuil), permissions des entrées (saisie), `catalog.article.update` (réglages), `stock.threshold.manage` (seuil). |
 | Hors périmètre | Consommation des lots (ventes, POS, sorties, transferts, inventaires), FEFO, choix du lot, lot sur le reçu (3-H) ; alertes, tableau de bord, notifications de péremption (3-I) ; coût par lot, numéros de série, codes-barres de lot, lots par emplacement. |
+
+## 16. Lot 3-H-A — consommation des lots : ventes, POS, sorties (ADR-0045)
+
+| Règle | Web |
+|---|---|
+| Desktop | Aucune notion de lot : règles entièrement nouvelles (H-D1 à H-D18, O-1 à O-6). |
+| Moteur | `StockService.consume` seul : verrous article (partagé) → niveau (site, article) → soldes de lots (site, article, lot) ; un mouvement par lot (M1) ; tout ou rien ; Σ lots = stock conservé. |
+| Ventes, POS | FEFO automatique (non périmés, péremption croissante, sans date ensuite, création, numéro) ; FIFO (création, numéro) sans suivi de péremption ; aucun choix de lot par le vendeur ; plusieurs lots par ligne, une seule ligne commerciale. |
+| Lots périmés | Jamais vendus automatiquement ; stock non périmé insuffisant : refus `insufficient_unexpired_stock` ; dérogation explicite (`sales.sale.expired_lot_override`, lot désigné, motif, audit) ; sortie autorisée (destruction). |
+| Sorties | Choix manuel des lots (unité de base) ; brouillon incomplet admis ; somme exacte exigée à la validation (`lot_allocation_incomplete`) ; tout revérifié par le serveur. |
+| Annulations | Un inverse par mouvement d'origine, sur le même lot, même devenu périmé ; jamais deux fois. |
+| Conditionnements | Stock en unité de base ; présentation d'un mouvement réparti seulement si la quantité est exactement représentable (3 décimales, entière pour un article entier) ; aucun arrondi. |
+| Garde-fou | Tout mouvement d'un article suivi porte un lot (`lot_required`) ; aucun lot sur un article non suivi. |
+| CMUP | Inchangé (C1) : ventes et sorties au CMUP du site. |
+| Restitution | Lots et péremption dans la fiche de vente, le dialogue de confirmation du POS (aucun ticket 80 mm), la fiche de sortie, le journal des mouvements ; lots disponibles par point d'accès dédié (POS, vente, sortie). |
+| Hors périmètre (3-H-B, 3-I) | Transferts et inventaires par lot (refusés par le garde-fou pour un article suivi), retours, remboursements, alertes de péremption ; P1-b toujours active. |
+

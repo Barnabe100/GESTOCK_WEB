@@ -28,6 +28,9 @@ MANIFEST = ModuleManifest(
         # exceptionnel de la limite de crédit (justification, audit) — Lot 1.
         PermissionDef("sales.sale.credit_create", W),
         PermissionDef("sales.sale.credit_override", W),
+        # Dérogation explicite à la vente d'un lot périmé (motif, audit) — Lot 3-H-A, O-1 :
+        # jamais accordée par défaut hors Administrateur (``*``).
+        PermissionDef("sales.sale.expired_lot_override", W),
         # Annulation (remise en stock d'une vente validée) : réservée à l'administration.
         PermissionDef("sales.sale.cancel", W),
         # Paiements (Phase 2.7) : encaissement indépendant de la validation de la vente.

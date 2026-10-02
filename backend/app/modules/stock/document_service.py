@@ -24,6 +24,7 @@ from app.modules.catalog.api import (
     base_quantity,
     check_packagings,
     ensure_conversion_unchanged,
+    ensure_whole,
     get_article_refs,
     lock_lot_flags,
 )
@@ -34,6 +35,8 @@ from app.modules.stock.lot_service import (
     check_known_lots,
     check_lot_inputs,
     expiry_context,
+    lot_allocations,
+    lot_infos,
     lot_key,
     resolve_lots,
 )
@@ -46,6 +49,7 @@ from app.modules.stock.models import (
     StockEntryLine,
     StockExit,
     StockExitLine,
+    StockExitLineLot,
     StockMovement,
     StockTransferLine,
 )
@@ -56,6 +60,7 @@ from app.modules.stock.schemas import (
     ExitCreate,
     ExitInput,
     ExitOut,
+    LineLotOut,
     LineOut,
 )
 from app.modules.stock.sites import (
@@ -65,10 +70,14 @@ from app.modules.stock.sites import (
     visible_site_ids,
 )
 from app.modules.stock.stock_service import (
+    ConsumptionRequest,
+    LotPick,
     MovementRequest,
     PackagingSnapshot,
     StockService,
     cost_per_base,
+    inverse_packaging,
+    movement_ref,
     refuse_unmanaged,
     round_money,
 )
@@ -323,45 +332,74 @@ class _DocumentService(Generic[Doc]):
     def _stock(self) -> StockService:
         return StockService(self.db, self.ctx.tenant_id, self.ctx.user.id, self.now)
 
-    def _origin_movements(self, document: Doc) -> dict[uuid.UUID, StockMovement]:
+    def _origin_movements(self, document: Doc) -> dict[uuid.UUID, list[StockMovement]]:
+        """Mouvements d'origine par ligne — plusieurs pour une ligne répartie sur plusieurs
+        lots (Lot 3-H, M1), dans l'ordre de création."""
         rows = self.db.scalars(
-            select(StockMovement).where(
+            select(StockMovement)
+            .where(
                 StockMovement.source_id == document.id,
                 StockMovement.movement_type != MovementType.CANCELLATION,
             )
+            .order_by(StockMovement.occurred_at, StockMovement.id)
         )
-        return {m.source_line_id: m for m in rows}
+        result: dict[uuid.UUID, list[StockMovement]] = {}
+        for movement in rows:
+            result.setdefault(movement.source_line_id, []).append(movement)
+        return result
 
     def _cancel(self, document_id: uuid.UUID, reason: str, sign: Decimal) -> Doc:
-        """Mouvement inverse par ligne ; refus total si un stock devenait négatif (ENT-08)."""
+        """Un mouvement inverse par mouvement d'origine — même quantité, même coût, MÊME lot
+        (3-G D10, 3-H H-D10 : restauration exacte, jamais sur un autre lot) ; refus total si un
+        stock ou un solde de lot devenait négatif (ENT-08)."""
         document = self.get(document_id, lock=True)
         self._require_status(document, DocumentStatus.VALIDATED, "document_not_validated")
         origins = self._origin_movements(document)
-        self._stock().apply(
-            document.site_id,
-            [
-                MovementRequest(
-                    article_id=line.article_id,
-                    movement_type=MovementType.CANCELLATION,
-                    # Unité de base (Lot 3-C) ; coût du mouvement d'origine (unité de base).
-                    quantity=sign * line.base_quantity,
-                    unit_cost=(
-                        origins[line.id].unit_cost if line.id in origins else line.unit_cost
-                    ),
-                    source_type=self.source_type,
-                    source_id=document.id,
-                    source_line_id=line.id,
-                    source_number=document.number,
-                    origin_movement_id=origins[line.id].id if line.id in origins else None,
-                    comment=f"Annulation {document.number}",
-                    packaging=packaging_snapshot(line),
-                    # Lot 3-G : réception annulée sur le MÊME lot (refus si son solde devenait
-                    # négatif, D10) ; aucun lot sur une sortie.
-                    lot_id=getattr(line, "lot_id", None),
+        comment = f"Annulation {document.number}"
+        requests: list[MovementRequest] = []
+        for line in document.lines:
+            line_packaging = packaging_snapshot(line)
+            line_origins = origins.get(line.id, [])
+            if not line_origins:
+                # Historique sans mouvement rattaché : inverse calculé depuis la ligne.
+                requests.append(
+                    MovementRequest(
+                        article_id=line.article_id,
+                        movement_type=MovementType.CANCELLATION,
+                        quantity=sign * line.base_quantity,
+                        unit_cost=line.unit_cost,
+                        source_type=self.source_type,
+                        source_id=document.id,
+                        source_line_id=line.id,
+                        source_number=document.number,
+                        comment=comment,
+                        packaging=line_packaging,
+                        lot_id=getattr(line, "lot_id", None),
+                    )
                 )
-                for line in document.lines
-            ],
-        )
+                continue
+            for origin in line_origins:
+                ref = movement_ref(origin)
+                requests.append(
+                    MovementRequest(
+                        article_id=line.article_id,
+                        movement_type=MovementType.CANCELLATION,
+                        # Unité de base ; coût du mouvement d'origine (unité de base).
+                        quantity=-origin.quantity,
+                        unit_cost=origin.unit_cost,
+                        source_type=self.source_type,
+                        source_id=document.id,
+                        source_line_id=line.id,
+                        source_number=document.number,
+                        origin_movement_id=origin.id,
+                        comment=comment,
+                        packaging=inverse_packaging(
+                            ref, line_packaging, single=len(line_origins) == 1
+                        ),
+                        lot_id=origin.lot_id,
+                    )
+                )
+        self._stock().apply(document.site_id, requests)
         document.status = DocumentStatus.CANCELLED
         document.cancelled_at = self.now
         document.cancelled_by = self.ctx.user.id
@@ -385,9 +423,17 @@ class _DocumentService(Generic[Doc]):
         locations = current_locations(
             self.db, document.site_id, {line.article_id for line in lines}
         )
+        lots = self._line_lots(document, expiry)
         return [
-            self._line_out(line, refs, locations.get(line.article_id), expiry) for line in lines
+            self._line_out(line, refs, locations.get(line.article_id), expiry, lots.get(line.id))
+            for line in lines
         ]
+
+    def _line_lots(
+        self, document: Doc, expiry: ExpiryContext | None
+    ) -> dict[uuid.UUID, list[LineLotOut]]:
+        """Répartition par lot des lignes (sorties seulement, Lot 3-H-A)."""
+        return {}
 
     def _line_out(
         self,
@@ -395,6 +441,7 @@ class _DocumentService(Generic[Doc]):
         refs: dict[uuid.UUID, ArticleRef],
         location: tuple[str, bool] | None = None,
         expiry: ExpiryContext | None = None,
+        lots: list[LineLotOut] | None = None,
     ) -> LineOut:
         ref = refs.get(line.article_id)
         lot_number = getattr(line, "lot_number", None)
@@ -419,6 +466,7 @@ class _DocumentService(Generic[Doc]):
             lot_expiry_date=lot_expiry,
             lot_manufacturing_date=getattr(line, "lot_manufacturing_date", None),
             lot_state=expiry.state(lot_expiry) if expiry and lot_number else None,
+            lots=lots or [],
         )
 
     def _common(self, documents: Sequence[Doc]) -> dict[str, dict[Any, str]]:
@@ -667,6 +715,7 @@ class ExitService(_DocumentService[StockExit]):
     def _apply_input(self, document: StockExit, data: ExitInput) -> None:
         self._check_reason(data.reason_id)
         presented = present_lines(self.db, data.lines)
+        self._check_lot_choices(data.lines, presented)
         document.operation_date = self._operation_date(data.operation_date)
         document.reason_id = data.reason_id
         document.beneficiary = data.beneficiary
@@ -677,10 +726,74 @@ class ExitService(_DocumentService[StockExit]):
                 tenant_id=self.ctx.tenant_id,
                 line_no=index,
                 article_id=shown.article_id,
+                lots=[
+                    StockExitLineLot(
+                        tenant_id=self.ctx.tenant_id,
+                        article_id=shown.article_id,
+                        lot_id=choice.lot_id,
+                        position=position,
+                        quantity=choice.quantity.quantize(QUANTITY_STEP),
+                    )
+                    for position, choice in enumerate(line.lots, start=1)
+                ],
                 **shown.columns(),
             )
-            for index, shown in enumerate(presented, start=1)
+            for index, (line, shown) in enumerate(zip(data.lines, presented, strict=True), start=1)
         ]
+
+    def _check_lot_choices(self, lines: Sequence[Any], presented: list[PresentedLine]) -> None:
+        """Choix des lots d'un brouillon (Lot 3-H-A, H-D8, O-4) : article suivi par lot, lots
+        de l'article (et du tenant), sans doublon, quantités en unité de base (entières pour un
+        article en quantités entières), somme au plus égale à la quantité de la ligne. Une
+        répartition INCOMPLÈTE est admise ; tout est revérifié à la validation."""
+        refs = get_article_refs(self.db, {line.article_id for line in lines})
+        lots = lot_infos(self.db, {c.lot_id for line in lines for c in line.lots})
+        for line, shown in zip(lines, presented, strict=True):
+            if not line.lots:
+                continue
+            ref = refs[line.article_id]
+            if not ref.lot_tracked:
+                raise BusinessRuleError(
+                    "Cet article n'est pas suivi par lot",
+                    code="article_not_lot_tracked",
+                    extra={"articles": [ref.reference]},
+                )
+            seen: set[uuid.UUID] = set()
+            total = Decimal("0")
+            for choice in line.lots:
+                lot = lots.get(choice.lot_id)
+                if lot is None or lot.article_id != line.article_id:
+                    raise BusinessRuleError(
+                        "Ce lot n'est pas disponible pour cet article",
+                        code="lot_not_available",
+                        extra={"articles": [ref.reference], "lot_id": str(choice.lot_id)},
+                    )
+                if choice.lot_id in seen:
+                    raise BusinessRuleError(
+                        "Un même lot est choisi plusieurs fois sur la ligne",
+                        code="duplicate_lot_allocation",
+                        extra={"articles": [ref.reference], "lots": [lot.number]},
+                    )
+                seen.add(choice.lot_id)
+                quantity = choice.quantity.quantize(QUANTITY_STEP)
+                if quantity != choice.quantity:
+                    raise BusinessRuleError(
+                        "La quantité en unité de base dépasse la précision autorisée (3 décimales)",
+                        code="base_quantity_precision",
+                        extra={"articles": [ref.reference]},
+                    )
+                ensure_whole(ref, quantity)
+                total += quantity
+            if total > shown.base_quantity:
+                raise BusinessRuleError(
+                    "La répartition par lot dépasse la quantité de la ligne",
+                    code="lot_allocation_exceeds",
+                    extra={
+                        "articles": [ref.reference],
+                        "requested": format(shown.base_quantity, "f"),
+                        "allocated": format(total, "f"),
+                    },
+                )
 
     def create(self, data: ExitCreate) -> StockExit:
         site_id = operation_site(self.ctx, data.site_id)
@@ -715,27 +828,35 @@ class ExitService(_DocumentService[StockExit]):
         if not document.lines:
             raise BusinessRuleError("Aucune ligne à valider", code="document_empty")
         revalidate_lines(self.db, document.lines)
-        movements = self._stock().apply(
+        # Lot 3-H-A : article suivi par lot — répartition MANUELLE du brouillon, revalidée par
+        # le moteur (lots de l'article sur ce site, soldes sous verrou, somme exacte, O-4) ;
+        # lots périmés autorisés en sortie (destruction, mise au rebut, H-D5).
+        movements = self._stock().consume(
             document.site_id,
             [
-                MovementRequest(
+                ConsumptionRequest(
                     article_id=line.article_id,
                     movement_type=MovementType.EXIT,
-                    quantity=-line.base_quantity,
+                    quantity=line.base_quantity,
                     source_type=self.source_type,
                     source_id=document.id,
                     source_line_id=line.id,
                     source_number=document.number,
                     comment=document.number,
                     packaging=packaging_snapshot(line),
+                    picks=tuple(LotPick(c.lot_id, c.quantity) for c in line.lots),
+                    manual=True,
                 )
                 for line in document.lines
             ],
+            today=tenant_today(self.ctx, self.now),
         )
-        # Coût figé = CMUP du site PAR UNITÉ DE BASE ; montant = quantité de base × CMUP.
-        for line, movement in zip(document.lines, movements, strict=True):
-            line.unit_cost = movement.unit_cost
-            line.amount = round_money(line.base_quantity * (movement.unit_cost or Decimal("0")))
+        # Coût figé = CMUP du site PAR UNITÉ DE BASE (identique pour tous les mouvements d'une
+        # ligne : une sortie ne modifie pas le CMUP) ; montant = quantité de base × CMUP.
+        costs = {m.source_line_id: m.unit_cost for m in movements}
+        for line in document.lines:
+            line.unit_cost = costs[line.id]
+            line.amount = round_money(line.base_quantity * (line.unit_cost or Decimal("0")))
         document.status = DocumentStatus.VALIDATED
         document.validated_at = self.now
         document.validated_by = self.ctx.user.id
@@ -748,9 +869,71 @@ class ExitService(_DocumentService[StockExit]):
                 "total": format(
                     sum((line.amount or Decimal("0") for line in document.lines), Decimal("0")), "f"
                 ),
+                **self._lots_audit(document, movements),
             },
         )
         return document
+
+    def _lots_audit(
+        self, document: StockExit, movements: Sequence[StockMovement]
+    ) -> dict[str, Any]:
+        """Lots consommés, pour l'audit de la validation (la traçabilité reste le journal)."""
+        with_lot = [m for m in movements if m.lot_id is not None]
+        if not with_lot:
+            return {}
+        refs = get_article_refs(self.db, {m.article_id for m in with_lot})
+        numbers = lot_infos(self.db, {m.lot_id for m in with_lot if m.lot_id})
+        return {
+            "lots": [
+                {
+                    "reference": refs[m.article_id].reference,
+                    "lot_number": numbers[m.lot_id].number,
+                    "base_quantity": format(-m.quantity, "f"),
+                }
+                for m in with_lot
+                if m.lot_id is not None
+            ]
+        }
+
+    def _line_lots(
+        self, document: StockExit, expiry: ExpiryContext | None
+    ) -> dict[uuid.UUID, list[LineLotOut]]:
+        """Brouillon : choix saisis ; sortie validée ou annulée : répartition réelle lue dans
+        le journal des mouvements (source de vérité, M1)."""
+        expiry = expiry or expiry_context(self.db, self.ctx, self.now)
+        if document.status is DocumentStatus.DRAFT:
+            infos = lot_infos(self.db, {c.lot_id for line in document.lines for c in line.lots})
+            return {
+                line.id: [
+                    LineLotOut(
+                        lot_id=c.lot_id,
+                        lot_number=infos[c.lot_id].number if c.lot_id in infos else "?",
+                        expiry_date=infos[c.lot_id].expiry_date if c.lot_id in infos else None,
+                        state=expiry.state(infos[c.lot_id].expiry_date)
+                        if c.lot_id in infos
+                        else None,
+                        quantity=c.quantity,
+                    )
+                    for c in line.lots
+                ]
+                for line in document.lines
+                if line.lots
+            }
+        return {
+            line_id: [
+                LineLotOut(
+                    lot_id=a.lot_id,
+                    lot_number=a.lot_number,
+                    expiry_date=a.expiry_date,
+                    state=expiry.state(a.expiry_date),
+                    quantity=a.quantity,
+                )
+                for a in allocations
+            ]
+            for line_id, allocations in lot_allocations(
+                self.db, {document.id}, MovementType.EXIT
+            ).items()
+        }
 
     def cancel(self, exit_id: uuid.UUID, reason: str) -> StockExit:
         return self._cancel(exit_id, reason, Decimal("1"))

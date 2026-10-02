@@ -7,6 +7,7 @@ from app.core.errors import ForbiddenError
 from app.modules.pos.schemas import PosArticleOut
 from app.modules.pos.service import article_by_barcode, search_articles
 from app.modules.sales.api import CheckoutOut, PaymentService, SaleCheckout, SaleService
+from app.modules.stock.api import AvailableLotsOut, available_lots_out, operation_site
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
 
 router = APIRouter(tags=["pos"])
@@ -48,6 +49,21 @@ def pos_article_by_barcode(
 ) -> PosArticleOut:
     """Scan d'un code-barres : correspondance EXACTE (article actif) ou ``404 barcode_unknown``."""
     return article_by_barcode(db, ctx, site_id, barcode)
+
+
+@router.get("/articles/{article_id}/lots", response_model=AvailableLotsOut)
+def pos_article_lots(
+    article_id: uuid.UUID,
+    ctx: Use,
+    db: DbSession,
+    now: NowDep,
+    site_id: uuid.UUID | None = None,
+) -> AvailableLotsOut:
+    """Lots disponibles au point de vente (Lot 3-H-A, H-D18) — point d'accès DÉDIÉ (pas la
+    page générale des lots) : site de vente, solde positif, péremption et état, ordre FEFO /
+    FIFO du moteur ; lots périmés signalés (dérogation explicite seulement). Aucun coût."""
+    site = operation_site(ctx, site_id)
+    return available_lots_out(db, ctx, now, site, article_id)
 
 
 @router.post("/checkout", response_model=CheckoutOut, status_code=status.HTTP_201_CREATED)

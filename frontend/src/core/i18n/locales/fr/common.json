@@ -434,6 +434,7 @@
     "sales.sale.cancel": "Annuler une vente",
     "sales.sale.credit_create": "Vendre à crédit (client identifié obligatoire)",
     "sales.sale.credit_override": "Autoriser le dépassement de la limite de crédit (justifié, audité)",
+    "sales.sale.expired_lot_override": "Vendre un lot périmé par dérogation explicite (motif, audité)",
     "stock.transfer.view": "Consulter les transferts inter-sites",
     "stock.transfer.create": "Créer un transfert (brouillon)",
     "stock.transfer.update": "Modifier un transfert en brouillon",
@@ -1865,5 +1866,33 @@
     "datesInvalid": "La date de fabrication ne peut pas être postérieure à la date de péremption",
     "shortage": "lot {{number}} (solde {{available}})",
     "expiryFilter": "Échéance"
+  },
+  "lotAllocation": {
+    "title": "Lots",
+    "lotsOfLine": "Lots de la ligne",
+    "requested": "Demandé : {{quantity}}",
+    "allocated": "Réparti : {{quantity}}",
+    "rest": "Reste : {{quantity}}",
+    "complete": "Répartition complète",
+    "incomplete": "Répartition incomplète",
+    "noLot": "Aucun lot disponible sur ce site.",
+    "noExpiry": "Sans péremption",
+    "available": "Disponible : {{quantity}}",
+    "quantity": "Quantité du lot {{number}}",
+    "help": "Quantités en unité de base. Le brouillon peut rester incomplet ; à la validation, la somme des lots doit être égale à la quantité de la ligne (contrôlé par le serveur).",
+    "unexpiredShortage": "{{reference}} (manque {{missing}} ; {{expired}} en lots périmés)"
+  },
+  "expiredLots": {
+    "title": "Lot périmé",
+    "warning": "Le stock non périmé ne suffit pas. Un lot périmé n'est jamais vendu automatiquement : seule une dérogation explicite, motivée et tracée le permet.",
+    "notAllowed": "Seul un utilisateur autorisé peut vendre un lot périmé. Réduisez la quantité ou faites appel à un responsable.",
+    "article": "{{reference}} : il manque {{missing}} en lots non périmés.",
+    "expiredOn": "Périmé depuis le {{date}}",
+    "reason": "Motif de la dérogation",
+    "reasonHelp": "Obligatoire (5 caractères au moins) : enregistré avec votre nom et audité.",
+    "confirm": "Je confirme vendre ces lots périmés",
+    "sell": "Vendre avec dérogation",
+    "override": "Dérogation lot périmé",
+    "overrideDetail": "par {{name}} le {{date}} — motif : {{reason}}"
   }
 }

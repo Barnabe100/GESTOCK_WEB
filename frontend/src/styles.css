@@ -2096,3 +2096,98 @@ a {
     padding-left: var(--sm-space-2);
   }
 }
+
+/* Lot 3-H-A : répartition par lot d'une ligne de sortie (pleine largeur sous la ligne), lots
+   consommés d'une ligne de vente, dérogation à un lot périmé. */
+.sm-lot-allocation {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: var(--sm-space-2) 0 0 var(--sm-space-3);
+  border: 0;
+  border-left: 3px solid var(--sm-border);
+}
+
+.sm-lot-allocation legend {
+  font-weight: 600;
+  padding: 0;
+}
+
+.sm-lot-allocation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-2) var(--sm-space-3);
+  margin: var(--sm-space-2) 0;
+}
+
+.sm-lot-allocation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sm-space-2);
+}
+
+.sm-lot-allocation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(8rem, 1fr);
+  gap: var(--sm-space-3);
+  align-items: end;
+  padding: var(--sm-space-2) 0;
+  border-bottom: 1px solid var(--sm-border);
+}
+
+.sm-lot-allocation-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.sm-lot-allocation-input .p-inputtext {
+  width: 100%;
+}
+
+.sm-line-lots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.sm-line-lots li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+  font-size: 0.875rem;
+}
+
+.sm-expired-override {
+  display: grid;
+  gap: var(--sm-space-3);
+  min-width: 0;
+  padding: var(--sm-space-3);
+  border: 1px solid var(--sm-border);
+  border-left: 4px solid var(--sm-danger-fg);
+  border-radius: var(--sm-radius);
+}
+
+.sm-expired-override h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+@media (max-width: 800px) {
+  .sm-lot-allocation {
+    padding-left: var(--sm-space-2);
+  }
+
+  .sm-lot-allocation-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

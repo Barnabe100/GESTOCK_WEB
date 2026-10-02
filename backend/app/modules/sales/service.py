@@ -35,7 +35,9 @@ from app.modules.catalog.api import (
     barcode_search,
     base_quantity,
     check_packagings,
+    ensure_whole,
     get_article_refs,
+    lock_lot_flags,
     lock_stock_managed,
 )
 from app.modules.customers.api import (
@@ -60,21 +62,30 @@ from app.modules.sales.payment_service import ZERO as MONEY_ZERO
 from app.modules.sales.payment_service import paid_amounts, paid_subquery, payment_status
 from app.modules.sales.schemas import (
     CreditOverride,
+    ExpiredLotOverride,
     PaymentCreate,
     SaleCheckout,
     SaleCreate,
     SaleInput,
     SaleLineInput,
+    SaleLineLotOut,
     SaleLineOut,
     SaleOut,
 )
 from app.modules.sales.scope import site_can
 from app.modules.stock.api import (
+    ConsumptionRequest,
+    LotAllocation,
+    LotPick,
     MovementRequest,
     MovementType,
     PackagingSnapshot,
     StockService,
     ensure_document_site,
+    inverse_packaging,
+    is_expired_lot,
+    lot_allocations,
+    lot_infos,
     operation_site,
     round_money,
     sees_all_sites,
@@ -96,6 +107,7 @@ VIEW_ALL = "sales.sale.view_all"
 EXPORT = "sales.sale.export"
 CREDIT_CREATE = "sales.sale.credit_create"
 CREDIT_OVERRIDE = "sales.sale.credit_override"
+EXPIRED_LOT_OVERRIDE = "sales.sale.expired_lot_override"
 ZERO = Decimal("0")
 QUANTITY_STEP = Decimal("0.001")  # NUMERIC(18,3) : même valeur en réponse, en audit et en base
 
@@ -552,7 +564,10 @@ class SaleService:
             ensure_document_site(self.ctx, existing.site_id, "sale_not_found")
             return existing, True
         sale = self.create(data, channel=channel, idempotency_key=data.idempotency_key)
-        return self.validate(sale.id, data.payments, data.credit_override), False
+        return (
+            self.validate(sale.id, data.payments, data.credit_override, data.expired_lot_override),
+            False,
+        )
 
     def update(self, sale_id: uuid.UUID, data: SaleInput) -> Sale:
         """Brouillon seulement ; lignes remplacées et prix relus dans le catalogue."""
@@ -573,10 +588,15 @@ class SaleService:
         sale_id: uuid.UUID,
         payments: Sequence[PaymentCreate] = (),
         credit_override: CreditOverride | None = None,
+        expired_lot_override: ExpiredLotOverride | None = None,
     ) -> Sale:
         """Validation (sortie de stock) et, facultativement, encaissements immédiats dans la
         même transaction : une vente payée comptant à la validation ne crée aucune exposition
-        de crédit. Les paiements passent par ``PaymentService`` (mêmes règles qu'en 2.7)."""
+        de crédit. Les paiements passent par ``PaymentService`` (mêmes règles qu'en 2.7).
+
+        Lot 3-H-A (ADR-0045) : un article suivi par lot est consommé par le moteur central en
+        FEFO / FIFO sur les lots non périmés (le vendeur ne choisit pas de lot) ; un lot périmé
+        n'est vendu que par une dérogation explicite (``expired_lot_override``, O-1)."""
         sale = self.get(sale_id, lock=True)
         self._require_status(sale, SaleStatus.DRAFT, "sale_not_draft")
         if not sale.lines:
@@ -619,25 +639,34 @@ class SaleService:
         # l'article ; un article non géré (service) se vend sans mouvement ni contrôle de stock.
         managed = lock_stock_managed(self.db, {line.article_id for line in sale.lines})
         stocked = [line for line in sale.lines if managed.get(line.article_id, True)]
-        # Sortie de stock : exclusivement via le moteur central (verrous, tout ou rien).
-        if stocked:
-            self._stock().apply(
+        picks = self._expired_lot_picks(sale, stocked, expired_lot_override)
+        # Sortie de stock : exclusivement via le moteur central (verrous, lots, tout ou rien).
+        movements = (
+            self._stock().consume(
                 sale.site_id,
                 [
-                    MovementRequest(
+                    ConsumptionRequest(
                         article_id=line.article_id,
                         movement_type=MovementType.SALE,
                         # Toujours en unité de base (Lot 3-B) : 2 cartons de 24 → −48.
-                        quantity=-line.base_quantity,
+                        quantity=line.base_quantity,
                         source_type=SOURCE_TYPE,
                         source_id=sale.id,
                         source_line_id=line.id,
                         source_number=sale.number,
                         packaging=_snapshot_of(line),
+                        picks=picks.get(line.id, ()),
                     )
                     for line in stocked
                 ],
+                today=tenant_today(self.ctx, self.now),
             )
+            if stocked
+            else []
+        )
+        consumed = self._consumed_lots(movements)
+        if expired_lot_override is not None:
+            self._record_expired_override(sale, expired_lot_override, picks, consumed)
         sale.status = SaleStatus.VALIDATED
         sale.validated_at = self.now
         sale.validated_by = self.ctx.user.id
@@ -652,11 +681,124 @@ class SaleService:
                 "lines": len(sale.lines),
                 "customer_id": str(sale.customer_id) if sale.customer_id else None,
                 "is_credit": sale.is_credit,
+                **({"lots": list(consumed.values())} if consumed else {}),
             },
         )
         for payment, _ in planned:
             payment_service.create(sale.id, payment)
         return sale
+
+    def _expired_lot_picks(
+        self,
+        sale: Sale,
+        stocked: Sequence[SaleLine],
+        override: ExpiredLotOverride | None,
+    ) -> dict[uuid.UUID, tuple[LotPick, ...]]:
+        """Dérogation (O-1) : permission sur le site de la vente, lots EXPLICITEMENT désignés,
+        de l'article, effectivement périmés (jamais un lot valide choisi par le vendeur : le
+        FEFO décide), quantités imputées sur les lignes de l'article dans leur ordre, au plus
+        leur quantité. Sans dérogation : aucun choix (FEFO seul, lots périmés exclus)."""
+        if override is None:
+            return {}
+        if not site_can(self.ctx, sale.site_id, EXPIRED_LOT_OVERRIDE):
+            raise ForbiddenError(
+                "Vous n'êtes pas autorisé à vendre un lot périmé",
+                code="expired_lot_override_not_allowed",
+            )
+        lines_by_article: dict[uuid.UUID, list[SaleLine]] = {}
+        for line in stocked:
+            lines_by_article.setdefault(line.article_id, []).append(line)
+        refs = get_article_refs(self.db, set(lines_by_article))
+        flags = lock_lot_flags(self.db, set(lines_by_article))
+        infos = lot_infos(self.db, {pick.lot_id for pick in override.lots})
+        today = tenant_today(self.ctx, self.now)
+        picks: dict[uuid.UUID, list[LotPick]] = {}
+        seen: set[uuid.UUID] = set()
+        for pick in override.lots:
+            article_lines = lines_by_article.get(pick.article_id)
+            info = infos.get(pick.lot_id)
+            if not article_lines or info is None or info.article_id != pick.article_id:
+                raise BusinessRuleError(
+                    "Ce lot n'est pas disponible pour un article de la vente",
+                    code="lot_not_available",
+                    extra={"lot_id": str(pick.lot_id)},
+                )
+            reference = refs[pick.article_id].reference
+            if pick.lot_id in seen:
+                raise BusinessRuleError(
+                    "Un même lot est désigné plusieurs fois",
+                    code="duplicate_lot_allocation",
+                    extra={"articles": [reference], "lots": [info.number]},
+                )
+            seen.add(pick.lot_id)
+            if not is_expired_lot(info, flags[pick.article_id], today):
+                raise BusinessRuleError(
+                    "Seul un lot périmé peut être désigné par une dérogation : les autres lots "
+                    "sont choisis automatiquement (FEFO)",
+                    code="lot_not_expired",
+                    extra={"articles": [reference], "lots": [info.number]},
+                )
+            quantity = pick.quantity.quantize(QUANTITY_STEP)
+            ensure_whole(refs[pick.article_id], quantity)
+            for line in article_lines:
+                if quantity == 0:
+                    break
+                taken = min(
+                    quantity,
+                    line.base_quantity - sum((p.quantity for p in picks.get(line.id, [])), ZERO),
+                )
+                if taken > 0:
+                    picks.setdefault(line.id, []).append(LotPick(pick.lot_id, taken))
+                    quantity -= taken
+            if quantity > 0:
+                raise BusinessRuleError(
+                    "La quantité désignée dépasse la quantité vendue de l'article",
+                    code="lot_allocation_exceeds",
+                    extra={"articles": [reference], "lots": [info.number]},
+                )
+        return {line_id: tuple(items) for line_id, items in picks.items()}
+
+    def _consumed_lots(self, movements: Sequence[Any]) -> dict[uuid.UUID, dict[str, str | None]]:
+        """Lots consommés (mouvement → détail d'audit) ; la traçabilité reste le journal."""
+        with_lot = [m for m in movements if m.lot_id is not None]
+        if not with_lot:
+            return {}
+        refs = get_article_refs(self.db, {m.article_id for m in with_lot})
+        infos = lot_infos(self.db, {m.lot_id for m in with_lot})
+        result: dict[uuid.UUID, dict[str, str | None]] = {}
+        for m in with_lot:
+            info = infos[m.lot_id]
+            result[m.id] = {
+                "article_id": str(m.article_id),
+                "reference": refs[m.article_id].reference,
+                "lot_id": str(m.lot_id),
+                "lot_number": info.number,
+                "expiry_date": info.expiry_date.isoformat() if info.expiry_date else None,
+                "base_quantity": format(-m.quantity, "f"),
+            }
+        return result
+
+    def _record_expired_override(
+        self,
+        sale: Sale,
+        override: ExpiredLotOverride,
+        picks: dict[uuid.UUID, tuple[LotPick, ...]],
+        consumed: dict[uuid.UUID, dict[str, str | None]],
+    ) -> None:
+        """Dérogation tracée (O-1) : auteur, date et motif sur la vente ; audit dédié avec la
+        vente, les articles, les lots périmés et leurs quantités."""
+        expired_ids = {str(p.lot_id) for items in picks.values() for p in items}
+        sale.expired_lot_override_by = self.ctx.user.id
+        sale.expired_lot_override_at = self.now
+        sale.expired_lot_override_reason = override.reason
+        self._audit(
+            "expired_lot_overridden",
+            sale,
+            {
+                "reason": override.reason,
+                "lots": [d for d in consumed.values() if d["lot_id"] in expired_ids],
+            },
+        )
 
     def cancel(self, sale_id: uuid.UUID, reason: str) -> Sale:
         """Brouillon : abandon sans effet sur le stock. Vente validée : mouvements inverses
@@ -665,6 +807,9 @@ class SaleService:
         sale = self.get(sale_id, lock=True)
         previous = sale.status
         skipped: list[uuid.UUID] = []
+        restored: list[SaleLine] = []
+        origins: dict[uuid.UUID, Any] = {}
+        restored_lots = False
         if previous is SaleStatus.CANCELLED:
             raise ConflictError("Vente déjà annulée", code="sale_already_cancelled")
         if previous is SaleStatus.VALIDATED:
@@ -698,23 +843,33 @@ class SaleService:
                 if line.id in origins and not managed.get(line.article_id, True)
             ]
             if restored:
+                # Un inverse par mouvement d'origine : même quantité, même coût, MÊME lot —
+                # restauration exacte, y compris sur un lot devenu périmé (H-D10) ; jamais sur
+                # un autre lot. Double annulation : refusée (statut verrouillé + unicité).
+                restored_lots = any(
+                    origin.lot_id is not None for line in restored for origin in origins[line.id]
+                )
                 self._stock().apply(
                     sale.site_id,
                     [
                         MovementRequest(
                             article_id=line.article_id,
                             movement_type=MovementType.CANCELLATION,
-                            quantity=line.base_quantity,
-                            unit_cost=origins[line.id].unit_cost,
+                            quantity=-origin.quantity,
+                            unit_cost=origin.unit_cost,
                             source_type=SOURCE_TYPE,
                             source_id=sale.id,
                             source_line_id=line.id,
                             source_number=sale.number,
-                            origin_movement_id=origins[line.id].id,
+                            origin_movement_id=origin.id,
                             comment=f"Annulation {sale.number}",
-                            packaging=_snapshot_of(line),
+                            packaging=inverse_packaging(
+                                origin, _snapshot_of(line), single=len(origins[line.id]) == 1
+                            ),
+                            lot_id=origin.lot_id,
                         )
                         for line in restored
+                        for origin in origins[line.id]
                     ],
                 )
         sale.status = SaleStatus.CANCELLED
@@ -731,6 +886,7 @@ class SaleService:
                 "reason": reason,
                 "stock_restored": previous is SaleStatus.VALIDATED,
                 "total": format(sale.total, "f"),
+                **({"lots": self._restored_lots(restored, origins)} if restored_lots else {}),
                 **(
                     {"not_restored_unmanaged": self._references(skipped)}
                     if previous is SaleStatus.VALIDATED and skipped
@@ -740,13 +896,41 @@ class SaleService:
         )
         return sale
 
+    def _restored_lots(
+        self, restored: Sequence[SaleLine], origins: dict[uuid.UUID, Any]
+    ) -> list[dict[str, str]]:
+        """Lots restaurés par l'annulation (audit) : exactement ceux des mouvements d'origine."""
+        pairs = [
+            (line, origin)
+            for line in restored
+            for origin in origins[line.id]
+            if origin.lot_id is not None
+        ]
+        refs = get_article_refs(self.db, {line.article_id for line, _ in pairs})
+        infos = lot_infos(self.db, {origin.lot_id for _, origin in pairs})
+        return [
+            {
+                "reference": refs[line.article_id].reference,
+                "lot_id": str(origin.lot_id),
+                "lot_number": infos[origin.lot_id].number,
+                "base_quantity": format(-origin.quantity, "f"),
+            }
+            for line, origin in pairs
+        ]
+
     # --- Sortie API ---------------------------------------------------------------------------
 
     def to_out(self, sales: Sequence[Sale], *, with_lines: bool = False) -> list[SaleOut]:
         users = {
             u
             for s in sales
-            for u in (s.created_by, s.validated_by, s.cancelled_by, s.credit_override_by)
+            for u in (
+                s.created_by,
+                s.validated_by,
+                s.cancelled_by,
+                s.credit_override_by,
+                s.expired_lot_override_by,
+            )
             if u
         }
         user_names = _names(self.db, User, users, User.full_name)
@@ -754,6 +938,16 @@ class SaleService:
         customers = get_customer_refs(self.db, {s.customer_id for s in sales if s.customer_id})
         refs = (
             get_article_refs(self.db, {line.article_id for s in sales for line in s.lines})
+            if with_lines
+            else {}
+        )
+        # Lot 3-H-A : répartition par lot des lignes (journal des mouvements ``SALE``).
+        allocations = (
+            lot_allocations(
+                self.db,
+                {s.id for s in sales if s.status is not SaleStatus.DRAFT},
+                MovementType.SALE,
+            )
             if with_lines
             else {}
         )
@@ -799,7 +993,14 @@ class SaleService:
                     credit_override_by_name=user_names.get(sale.credit_override_by),
                     credit_override_reason=sale.credit_override_reason,
                     credit_override_amount=sale.credit_override_amount,
-                    lines=[_line_out(line, refs) for line in sale.lines] if with_lines else [],
+                    expired_lot_override_at=sale.expired_lot_override_at,
+                    expired_lot_override_by_name=user_names.get(sale.expired_lot_override_by),
+                    expired_lot_override_reason=sale.expired_lot_override_reason,
+                    lines=[
+                        _line_out(line, refs, allocations.get(line.id, [])) for line in sale.lines
+                    ]
+                    if with_lines
+                    else [],
                 )
             )
         return result
@@ -846,7 +1047,9 @@ def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:
     return {packaging_id for packaging_id in rows if packaging_id is not None}
 
 
-def _line_out(line: SaleLine, refs: dict[uuid.UUID, ArticleRef]) -> SaleLineOut:
+def _line_out(
+    line: SaleLine, refs: dict[uuid.UUID, ArticleRef], lots: list[LotAllocation]
+) -> SaleLineOut:
     ref = refs.get(line.article_id)
     return SaleLineOut(
         id=line.id,
@@ -862,4 +1065,13 @@ def _line_out(line: SaleLine, refs: dict[uuid.UUID, ArticleRef]) -> SaleLineOut:
         packaging_name=line.packaging_name,
         packaging_conversion=line.packaging_conversion,
         base_quantity=line.base_quantity,
+        lots=[
+            SaleLineLotOut(
+                lot_id=a.lot_id,
+                lot_number=a.lot_number,
+                expiry_date=a.expiry_date,
+                quantity=a.quantity,
+            )
+            for a in lots
+        ],
     )

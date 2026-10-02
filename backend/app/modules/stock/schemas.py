@@ -83,12 +83,23 @@ class EntryCreate(EntryInput):
     site_id: uuid.UUID | None = None
 
 
+class LotAllocationInput(BaseModel):
+    """Choix manuel d'un lot (Lot 3-H-A) : ``quantity`` en UNITÉ DE BASE."""
+
+    lot_id: uuid.UUID
+    quantity: PositiveQuantity
+
+
 class ExitLineInput(BaseModel):
-    """``packaging_id`` (Lot 3-C) : conditionnement saisi ; absent = unité de base."""
+    """``packaging_id`` (Lot 3-C) : conditionnement saisi ; absent = unité de base.
+    ``lots`` (Lot 3-H-A, article suivi par lot) : répartition manuelle en unité de base,
+    éventuellement incomplète dans le brouillon ; à la validation, la somme doit égaler la
+    quantité de base de la ligne. Interdit pour un article non suivi."""
 
     article_id: uuid.UUID
     packaging_id: uuid.UUID | None = None
     quantity: PositiveQuantity
+    lots: list[LotAllocationInput] = Field(default_factory=list, max_length=100)
 
 
 class ExitInput(BaseModel):
@@ -102,6 +113,17 @@ class ExitInput(BaseModel):
 
 class ExitCreate(ExitInput):
     site_id: uuid.UUID | None = None
+
+
+class LineLotOut(BaseModel):
+    """Lot d'une ligne (Lot 3-H-A) : choix du brouillon (sortie) ou, pour un document validé,
+    répartition réelle lue dans le journal des mouvements. Quantité en unité de base."""
+
+    lot_id: uuid.UUID
+    lot_number: str
+    expiry_date: date | None = None
+    state: LotState | None = None
+    quantity: Quantity
 
 
 class LineOut(BaseModel):
@@ -130,6 +152,8 @@ class LineOut(BaseModel):
     lot_expiry_date: date | None = None
     lot_manufacturing_date: date | None = None
     lot_state: LotState | None = None
+    # Lot 3-H-A (sorties) : répartition par lot de la ligne.
+    lots: list[LineLotOut] = Field(default_factory=list)
 
 
 class DocumentOut(BaseModel):
@@ -388,3 +412,27 @@ class StockSettingsOut(BaseModel):
 
 class StockSettingsInput(BaseModel):
     expiry_warning_days: int = Field(ge=0, le=365)
+
+
+# --- Lots disponibles (Lot 3-H-A, H-D18) ---------------------------------------------------------
+
+
+class AvailableLotOut(BaseModel):
+    """Lot ayant un solde positif sur le site ; aucun coût. ``expired`` : périmé au sens de la
+    vente (jamais consommé automatiquement) ; ordre = ordre de consommation du serveur."""
+
+    lot_id: uuid.UUID
+    number: str
+    quantity: Quantity
+    expiry_date: date | None
+    manufacturing_date: date | None
+    state: LotState
+    expired: bool
+    created_at: datetime
+
+
+class AvailableLotsOut(BaseModel):
+    article_id: uuid.UUID
+    lot_tracked: bool
+    expiry_tracked: bool
+    lots: list[AvailableLotOut]

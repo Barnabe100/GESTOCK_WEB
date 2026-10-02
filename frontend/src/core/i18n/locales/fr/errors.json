@@ -228,5 +228,13 @@
   "lot_manufacturing_mismatch": "Le lot {{lots}} existe déjà avec une autre date de fabrication.",
   "insufficient_lot_stock": "Solde de lot insuffisant : {{details}}.",
   "stock_lot_not_found": "Lot introuvable.",
-  "tenant_wide_access_required": "Ce réglage concerne toute l'entreprise : il faut un accès à tous les sites."
+  "tenant_wide_access_required": "Ce réglage concerne toute l'entreprise : il faut un accès à tous les sites.",
+  "insufficient_unexpired_stock": "Stock non périmé insuffisant : {{details}}. Un lot périmé ne peut être vendu que par une dérogation explicite.",
+  "expired_lot_override_not_allowed": "Vous n'êtes pas autorisé à vendre un lot périmé.",
+  "lot_not_expired": "Seul un lot périmé peut faire l'objet d'une dérogation ; les autres lots sont choisis automatiquement (lot {{lots}}).",
+  "lot_not_available": "Ce lot n'est pas disponible pour cet article sur ce site.",
+  "lot_allocation_incomplete": "La répartition par lot ne correspond pas à la quantité de la ligne ({{articles}} : demandé {{requested}}, réparti {{allocated}}).",
+  "lot_allocation_exceeds": "La répartition par lot dépasse la quantité de la ligne ({{articles}}).",
+  "duplicate_lot_allocation": "Un même lot est choisi plusieurs fois sur la ligne ({{lots}}).",
+  "lot_required": "Article suivi par lot : cette opération exige un lot ({{articles}})."
 }

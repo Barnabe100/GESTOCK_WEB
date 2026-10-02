@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.db import create_db_engine, create_session_factory
 from app.main import create_app
+from app.modules.catalog import lot_tracking
 from app.platform.catalog.loader import load_catalog
 from app.platform.catalog.sync import sync_catalog
 from app.platform.provisioning.service import (
@@ -444,3 +445,11 @@ def add_site(
     if active and response.status_code == 201:
         activate_site(response.json()["id"])
     return response
+
+
+@pytest.fixture
+def lot_tracking_open(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """RÉSERVÉ AUX TESTS : lève la fermeture P1-b (ADR-0045) le temps d'un test, dans ce
+    processus (``monkeypatch``) — jamais un mécanisme de l'application (Lots 3-G, 3-H)."""
+    monkeypatch.setattr(lot_tracking, "LOT_TRACKING_AVAILABLE", True)
+    yield

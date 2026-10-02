@@ -292,14 +292,18 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
     __table_args__ = (
         _site_fk(),
         _article_fk(),
-        # Garde anti double application : un seul mouvement d'un type donné par ligne source et
-        # par site (un transfert touche deux sites : son annulation en inverse un sur chacun).
+        # Garde anti double application : un seul mouvement d'un type donné par ligne source,
+        # par site (un transfert touche deux sites : son annulation en inverse un sur chacun) et
+        # par lot (Lot 3-H, M1 : une ligne répartie produit un mouvement par lot). ``NULLS NOT
+        # DISTINCT`` : sans lot (article non suivi), toujours un seul mouvement par ligne.
         UniqueConstraint(
             "tenant_id",
             "source_line_id",
             "movement_type",
             "site_id",
-            name="uq_stock_movements_line_type_site",
+            "lot_id",
+            name="uq_stock_movements_line_type_site_lot",
+            postgresql_nulls_not_distinct=True,
         ),
         _packaging_fk(),
         CheckConstraint("quantity <> 0", name="quantity_not_zero"),
@@ -535,6 +539,8 @@ class StockExitLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
         *_presentation_args("stock_exit_lines", "exit_id"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="unit_cost_non_negative"),
+        # Lot 3-H-A : cible de la FK composite des choix de lots (lot du MÊME article).
+        UniqueConstraint("tenant_id", "id", "article_id"),
     )
 
     exit_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
@@ -544,6 +550,40 @@ class StockExitLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
     # Figés à la validation : CMUP du site et montant (SOR-03).
     unit_cost: Mapped[Decimal | None] = mapped_column(UNIT_COST)
     amount: Mapped[Decimal | None] = mapped_column(MONEY)
+
+    lots: Mapped[list["StockExitLineLot"]] = relationship(
+        cascade="all, delete-orphan", order_by="StockExitLineLot.position", lazy="selectin"
+    )
+
+
+class StockExitLineLot(IdMixin, TenantScopedMixin, Base):
+    """Choix manuel d'un lot sur une ligne de sortie (Lot 3-H-A, H-D1, H-D8, O-4) : quantité en
+    UNITÉ DE BASE. Donnée de BROUILLON — supprimée et recréée avec la ligne à chaque
+    enregistrement, éventuellement incomplète, revalidée intégralement à la validation ; la
+    traçabilité définitive est le journal des mouvements (un mouvement par lot, M1)."""
+
+    __tablename__ = "stock_exit_line_lots"
+    __table_args__ = (
+        # Ligne du même tenant ET du même article ; lot du même article (FK composites).
+        ForeignKeyConstraint(
+            ["tenant_id", "exit_line_id", "article_id"],
+            [
+                "stock_exit_lines.tenant_id",
+                "stock_exit_lines.id",
+                "stock_exit_lines.article_id",
+            ],
+            ondelete="CASCADE",
+        ),
+        _lot_fk(),
+        UniqueConstraint("exit_line_id", "lot_id"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+    )
+
+    exit_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    lot_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
 
 
 # --- Transferts inter-sites (Phase 2.5, fonctionnalité de plan ``stock.transfers``) -----------

@@ -36,6 +36,16 @@ export interface SaleLine {
   packaging_conversion?: string | null;
   /** Quantité en unité de base (celle du stock). */
   base_quantity?: string;
+  /** Lot 3-H-A : lots consommés (vente validée ou annulée), lus dans le journal des
+   *  mouvements — quantités en unité de base, ordre de consommation. */
+  lots?: SaleLineLot[];
+}
+
+export interface SaleLineLot {
+  lot_id: string;
+  lot_number: string;
+  expiry_date: string | null;
+  quantity: string;
 }
 
 /** Situation d'une vente à crédit, calculée par le serveur à partir des paiements. */
@@ -77,6 +87,10 @@ export interface Sale {
   credit_override_by_name: string | null;
   credit_override_reason: string | null;
   credit_override_amount: string | null;
+  /** Lot 3-H-A (O-1) : dérogation à la vente d'un lot périmé (auteur, date, motif). */
+  expired_lot_override_at?: string | null;
+  expired_lot_override_by_name?: string | null;
+  expired_lot_override_reason?: string | null;
   lines: SaleLine[];
 }
 
@@ -150,6 +164,16 @@ export interface CreditOverride {
 }
 
 /**
+ * Dérogation à la vente d'un lot périmé (Lot 3-H-A, O-1) : lots périmés désignés EXPLICITEMENT
+ * (quantités en unité de base) et motif ; jamais automatique, contrôlée et auditée par le
+ * serveur (`sales.sale.expired_lot_override`).
+ */
+export interface ExpiredLotOverride {
+  reason: string;
+  lots: { article_id: string; lot_id: string; quantity: string }[];
+}
+
+/**
  * Toute opération peut modifier le stock et les créances : ventes, niveaux, mouvements,
  * alertes et créances rechargés.
  */
@@ -174,15 +198,21 @@ export function useSaleMutations() {
         id,
         payments = [],
         creditOverride = null,
+        expiredLotOverride = null,
       }: {
         id: string;
         payments?: ImmediatePayment[];
         creditOverride?: CreditOverride | null;
+        expiredLotOverride?: ExpiredLotOverride | null;
       }) =>
         api.post<Sale>(
           `/sales/${id}/validate`,
-          payments.length > 0 || creditOverride
-            ? { payments, credit_override: creditOverride }
+          payments.length > 0 || creditOverride || expiredLotOverride
+            ? {
+                payments,
+                credit_override: creditOverride,
+                ...(expiredLotOverride ? { expired_lot_override: expiredLotOverride } : {}),
+              }
             : undefined,
         ),
       onSuccess,

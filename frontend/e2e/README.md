@@ -218,6 +218,16 @@ la suite peut être rejouée sur la même base.
   autre péremption refusé ; page Lots (seuil, tri, filtre d'état), fiche lot (soldes,
   réceptions, mouvements), fiche article, journal, Σ lots = stock ; annulation de la réception ;
   formulaire de réception et page Lots sur mobile sans débordement.
+- `lots-3ha.e2e.ts` (Lot 3-H-A, ADR-0045) : entreprise créée pour l'exécution ; P1-b toujours
+  fermée ; articles suivis par lot préparés par `ownerSql` (réservé aux tests) avec un stock
+  initial par lot ; article non suivi : un mouvement sans lot ; vente back-office en FEFO sur
+  plusieurs lots (lot périmé jamais choisi, détail par lot) ; lot périmé : refus puis dérogation
+  explicite (motif, confirmation, trace sur la fiche) ; dérogation refusée au Gestionnaire
+  (API) ; POS en FEFO sans sélecteur, lots sur le dialogue de confirmation ; sortie : brouillon
+  incomplet, validation refusée, multi-lots validée puis annulée (lots restaurés) ; annulation
+  d'une vente (restauration exacte, seconde annulation refusée) ; 2 cartons répartis sur deux
+  lots ; deux ventes simultanées sans double consommation ; POS et sortie sur mobile sans
+  débordement.
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

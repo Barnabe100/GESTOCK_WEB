@@ -21,6 +21,7 @@ from app.modules.sales.schemas import (
     SellerOut,
 )
 from app.modules.sales.service import SaleService
+from app.modules.stock.api import AvailableLotsOut, available_lots_out, operation_site
 from app.platform.audit.service import entity_history
 from app.platform.context import (
     DbSession,
@@ -99,6 +100,21 @@ def create_sale(body: SaleCreate, ctx: Create, db: DbSession, now: NowDep) -> Sa
     return service.to_out([sale], with_lines=True)[0]
 
 
+@router.get("/articles/{article_id}/lots", response_model=AvailableLotsOut)
+def sale_available_lots(
+    article_id: uuid.UUID,
+    ctx: Validate,
+    db: DbSession,
+    now: NowDep,
+    site_id: uuid.UUID | None = None,
+) -> AvailableLotsOut:
+    """Lots disponibles d'un article sur le site de vente (Lot 3-H-A, H-D18) : ordre de
+    consommation du serveur (FEFO / FIFO), lots périmés signalés (jamais consommés sans
+    dérogation explicite). Aucun coût."""
+    site = operation_site(ctx, site_id)
+    return available_lots_out(db, ctx, now, site, article_id)
+
+
 @router.get("/{sale_id}", response_model=SaleOut)
 def get_sale(sale_id: uuid.UUID, ctx: View, db: DbSession, now: NowDep) -> SaleOut:
     service = SaleService(db, ctx, now)
@@ -151,7 +167,12 @@ def validate_sale(
     if payments and not ctx.has_permission("sales.payment.create"):
         raise ForbiddenError("Permission insuffisante", code="permission_denied")
     service = SaleService(db, ctx, now)
-    sale = service.validate(sale_id, payments, body.credit_override if body else None)
+    sale = service.validate(
+        sale_id,
+        payments,
+        body.credit_override if body else None,
+        body.expired_lot_override if body else None,
+    )
     db.commit()
     return service.to_out([sale], with_lines=True)[0]
 

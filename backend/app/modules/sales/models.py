@@ -80,6 +80,12 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             "AND (credit_override_by IS NULL) = (credit_override_amount IS NULL)",
             name="credit_override_complete",
         ),
+        # Lot 3-H-A (O-1) : dérogation à la vente d'un lot périmé — auteur, date, motif.
+        CheckConstraint(
+            "(expired_lot_override_by IS NULL) = (expired_lot_override_at IS NULL) "
+            "AND (expired_lot_override_by IS NULL) = (expired_lot_override_reason IS NULL)",
+            name="expired_lot_override_complete",
+        ),
         Index("ix_sales_tenant_date", "tenant_id", "sale_date"),
     )
 
@@ -119,6 +125,11 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     credit_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     credit_override_reason: Mapped[str | None] = mapped_column(String(500))
     credit_override_amount: Mapped[Decimal | None] = mapped_column(MONEY)
+    # Dérogation explicite à la vente d'un lot périmé (``sales.sale.expired_lot_override``,
+    # Lot 3-H-A, O-1) : lots et quantités dans l'audit et le journal des mouvements.
+    expired_lot_override_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    expired_lot_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expired_lot_override_reason: Mapped[str | None] = mapped_column(String(500))
 
     lines: Mapped[list["SaleLine"]] = relationship(
         cascade="all, delete-orphan", order_by="SaleLine.line_no", lazy="selectin"

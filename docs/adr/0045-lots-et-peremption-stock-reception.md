@@ -2,7 +2,8 @@
 
 - **Statut** : Acceptée — Lot 3-G (décisions D1 à D20 et P1-b) livré et validé (état de
   référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18 et décisions complémentaires O-1 à
-  O-6, section « Lot 3-H ») : **décisions validées — implémentation non commencée** ; P1-b
+  O-6, section « Lot 3-H ») : **3-H-A livré — en attente de validation** (ventes, POS, sorties,
+  annulations ; section « Implémentation (Lot 3-H-A) ») ; **3-H-B non commencé** ; P1-b
   toujours active
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
@@ -525,12 +526,12 @@ ils n'existent plus comme points ouverts. Ils complètent H-D1 à H-D18 sans les
 Aucun ne remet en cause une décision ; ils seront tranchés au plan technique de 3-H-A /
 3-H-B et documentés ici.
 
-- **T-1 — Forme de la dérogation (O-1)** : comment la ligne de vente (et, le cas échéant, le
+- **T-1 — Forme de la dérogation (O-1)** — *tranché en 3-H-A (corps de validation `expired_lot_override`, refus `insufficient_unexpired_stock`, voir « Implémentation (Lot 3-H-A) »)* : comment la ligne de vente (et, le cas échéant, le
   point d'accès du POS H-D18) porte le choix explicite d'un lot périmé, le motif et
   l'autorisateur (colonnes ou détail de la ligne, sur le modèle des champs
   `credit_override_*`) ; combinaison FEFO + lot choisi sur une même ligne ; code d'erreur du
   refus par défaut (lots non périmés insuffisants), distinct de `insufficient_lot_stock`.
-- **T-2 — « Représentable » (O-3)** : en plus de l'exactitude à 3 décimales, la quantité dans
+- **T-2 — « Représentable » (O-3)** — *tranché en 3-H-A (règle `decimal_quantity_allowed` appliquée, confirmée par TechNova)* : en plus de l'exactitude à 3 décimales, la quantité dans
   le conditionnement doit respecter la règle `decimal_quantity_allowed` de l'article (3-B /
   3-C : quantités entières dans la présentation pour un article non décimal) ; pour un
   article décimal, une quantité fractionnaire exacte (par exemple 1,25) reste conforme.
@@ -542,9 +543,85 @@ Aucun ne remet en cause une décision ; ils seront tranchés au plan technique d
   la validation, sous les mêmes contrôles d'unicité et de péremption), ainsi que la règle des
   lots apparus ou disparus entre le démarrage de l'inventaire et sa validation (théorique
   capturé au démarrage, stock courant relu à la validation).
-- **T-5 — Garde-fou et 3-H-B (O-6)** : tant que 3-H-B n'est pas livré, les transferts et
+- **T-5 — Garde-fou et 3-H-B (O-6)** — *constaté en 3-H-A (`lot_required` sur un transfert d'article suivi)* : tant que 3-H-B n'est pas livré, les transferts et
   inventaires d'articles suivis seront refusés par le garde-fou dans les tests (sans effet en
   exploitation, P1-b active) ; l'ordre des tests doit en tenir compte.
+
+## Implémentation (Lot 3-H-A)
+
+Livré sur la branche de travail, **en attente de validation** ; 3-H-B (transferts,
+inventaires) non commencé ; **P1-b toujours active** (`LOT_TRACKING_AVAILABLE = False`).
+
+- **Moteur unique** : `StockService.consume(site, demandes, today=…)` — seule consommation des
+  lots (ventes, POS, sorties). Verrou partagé des articles (géré en stock, réglages de suivi),
+  verrou des niveaux (site, article), contrôle global du stock (`insufficient_stock`
+  inchangé), puis verrou des soldes de lots (`FOR UPDATE`, ordre site → article → lot),
+  répartition, un mouvement par lot (M1), écritures dans la transaction de l'appelant. Deux
+  ventes simultanées du même article s'exécutent l'une après l'autre ; la seconde voit les
+  soldes laissés par la première. `today` = `tenant_today` (aucune date du serveur).
+- **Ordre automatique** : FEFO pour un article suivi en péremption — lots non périmés,
+  péremption croissante, lots sans date ensuite, puis date de création du lot, numéro (sans
+  casse) et identifiant ; FIFO (création, numéro) sans suivi de péremption. Un lot est
+  « périmé » au sens de la vente si l'article est suivi en péremption et la date antérieure à
+  aujourd'hui (même règle que l'état affiché) ; sans suivi de péremption, aucune exclusion.
+- **Refus** (O-1) : stock du site insuffisant → `insufficient_stock` (inchangé) ; stock
+  suffisant mais lots non périmés insuffisants → **`422 insufficient_unexpired_stock`**
+  (`articles` : référence, manque, quantité en lots périmés, lots périmés disponibles) — jamais
+  de bascule automatique vers un lot périmé (T-1 tranché).
+- **Dérogation** (O-1, T-1) : corps de validation `expired_lot_override` (`reason` 5 à 500
+  caractères, `lots` : article, lot, quantité en unité de base) sur `POST /sales/{id}/validate`
+  et `POST /pos/checkout` ; permission **`sales.sale.expired_lot_override`** (écriture, module
+  Ventes ; Administrateur seulement par `*`) sur le site de la vente
+  (`403 expired_lot_override_not_allowed`) ; seul un lot **périmé** de l'article se désigne
+  (`422 lot_not_expired`, `lot_not_available`, `lot_allocation_exceeds`,
+  `duplicate_lot_allocation`) ; les quantités désignées sont imputées sur les lignes de
+  l'article dans leur ordre, le reste en FEFO. Auteur, date et motif sur la vente
+  (`sales.expired_lot_override_*`) ; audit `sale.expired_lot_overridden` (vente, article, lot,
+  quantité, motif). Aucun choix de lot n'est stocké sur un brouillon de vente.
+- **Sorties** (H-D1, H-D8, O-4) : choix manuels dans `stock_exit_line_lots` (lignes enfants
+  de la ligne, supprimées et recréées avec elle) ; au brouillon : article suivi, lots de
+  l'article, sans doublon, quantités à 3 décimales (entières pour un article entier), somme
+  au plus égale à la ligne (`lot_allocation_exceeds`) — incomplète admise ; à la validation :
+  somme exacte (`422 lot_allocation_incomplete`), lot présent sur le site
+  (`lot_not_available`), soldes sous verrou (`insufficient_lot_stock`). Lots périmés autorisés
+  en sortie (H-D5). Coût de ligne = CMUP du site (identique pour tous ses mouvements).
+- **Présentation** (O-3, T-2 tranché) : un mouvement réparti garde le conditionnement de la
+  ligne seulement si sa quantité vaut exactement `n` conditionnements, `n` à 3 décimales au
+  plus et entier pour un article en quantités entières (`split_packaging`) ; sinon aucun
+  instantané (contrainte tout ou rien respectée).
+- **Annulations** (H-D10) : un inverse par mouvement d'origine (même quantité, même coût, même
+  lot, `origin_movement_id`), y compris sur un lot devenu périmé ; double annulation refusée
+  (statut verrouillé et unicité). `movements_of` et `_origin_movements` renvoient désormais
+  plusieurs mouvements par ligne ; l'annulation d'un transfert inverse aussi chaque mouvement
+  (prête pour 3-H-B, sans lot aujourd'hui).
+- **Garde-fou** (H-D14, O-6) : dans `StockService._write`, pour TOUT mouvement — article suivi
+  sans lot : `422 lot_required` ; article non suivi avec lot : `422 article_not_lot_tracked`.
+  Les flux de 3-H-B (transferts, inventaires) d'un article suivi sont donc refusés (T-5) ;
+  sans effet en exploitation (P1-b). Annulation d'un mouvement par lot d'un article dont le
+  suivi a été retiré (à stock nul) : remise en stock sans lot. Annulation d'une vente
+  antérieure au suivi d'un article devenu suivi : refusée (`lot_required`, aucun lot connu).
+- **Unicité des mouvements** : `uq_stock_movements_line_type_site_lot (tenant_id,
+  source_line_id, movement_type, site_id, lot_id) NULLS NOT DISTINCT` ; identifiants des
+  mouvements d'une même écriture strictement croissants (ordre du journal = ordre de
+  consommation).
+- **Lots disponibles** (H-D18) : `GET /pos/articles/{id}/lots` (`pos.terminal.use`),
+  `GET /sales/articles/{id}/lots` (`sales.sale.validate`), `GET /stock/available-lots`
+  (`stock.exit.create`) — une seule fonction (`available_lots`) : site contrôlé
+  (`operation_site`), solde positif, péremption, état, `expired`, ordre du moteur ; aucun coût.
+- **Restitution** : `SaleLineOut.lots` et `LineOut.lots` (sorties) lus dans le journal des
+  mouvements pour un document validé ou annulé (choix saisis pour un brouillon de sortie) ;
+  dialogue de confirmation du POS et fiche de vente : lots et péremption (aucun ticket 80 mm,
+  O-2) ; audits `sale.validated`, `sale.cancelled`, `stock_exit.validated` : lots et quantités.
+- **CMUP** : inchangé (C1) ; ventes et sorties au CMUP du site ; T-3 (transfert réparti) reste
+  à 3-H-B.
+- **Migration 0035** : unicité des mouvements avec lot ; `stock_exit_line_lots` (RLS `ENABLE`
+  + `FORCE`, `SELECT, INSERT, UPDATE, DELETE`, FK composites `(tenant_id, exit_line_id,
+  article_id)` → ligne de sortie et `(tenant_id, article_id, lot_id)` → lot) ; unicité
+  `(tenant_id, id, article_id)` des lignes de sortie ; `sales.expired_lot_override_*`.
+  Retour arrière refusé si une ligne a été répartie sur plusieurs lots, si des choix de lots
+  existent ou si une vente porte une dérogation.
+- **Tests** : fixture `lot_tracking_open` déplacée dans `tests/conftest.py` (même mécanisme
+  réservé aux tests) ; E2E : articles suivis préparés par `ownerSql`.
 
 ## Références
 

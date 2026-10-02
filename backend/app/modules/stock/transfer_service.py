@@ -12,7 +12,6 @@
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -39,6 +38,7 @@ from app.modules.stock.stock_service import (
     MovementRequest,
     StockService,
     TransferItem,
+    inverse_packaging,
     round_money,
 )
 from app.platform.audit.service import audit_action
@@ -361,25 +361,57 @@ class TransferService:
             comment = f"Annulation {transfer.number}"
             requests: list[tuple[uuid.UUID, MovementRequest]] = []
             for line in transfer.lines:
-                # Retrait du site destination (−q), puis remise sur le site source (+q).
-                removal = MovementRequest(
-                    article_id=line.article_id,
-                    movement_type=MovementType.CANCELLATION,
-                    quantity=-line.base_quantity,
-                    unit_cost=line.unit_cost,
-                    source_type=SOURCE_TYPE,
-                    source_id=transfer.id,
-                    source_line_id=line.id,
-                    source_number=transfer.number,
-                    origin_movement_id=incoming[line.id].id,
-                    comment=comment,
-                    packaging=packaging_snapshot(line),
-                )
-                restore = replace(
-                    removal, quantity=line.base_quantity, origin_movement_id=outgoing[line.id].id
-                )
-                requests.append((transfer.destination_site_id, removal))
-                requests.append((transfer.source_site_id, restore))
+                # Retrait du site destination (−q), puis remise sur le site source (+q) : un
+                # inverse par mouvement d'origine (structure prête pour plusieurs mouvements par
+                # ligne — Lot 3-H-B ; aujourd'hui, un mouvement de chaque côté).
+                for origin in incoming[line.id]:
+                    requests.append(
+                        (
+                            transfer.destination_site_id,
+                            MovementRequest(
+                                article_id=line.article_id,
+                                movement_type=MovementType.CANCELLATION,
+                                quantity=-origin.quantity,
+                                unit_cost=line.unit_cost,
+                                source_type=SOURCE_TYPE,
+                                source_id=transfer.id,
+                                source_line_id=line.id,
+                                source_number=transfer.number,
+                                origin_movement_id=origin.id,
+                                comment=comment,
+                                packaging=inverse_packaging(
+                                    origin,
+                                    packaging_snapshot(line),
+                                    single=len(incoming[line.id]) == 1,
+                                ),
+                                lot_id=origin.lot_id,
+                            ),
+                        )
+                    )
+                for origin in outgoing[line.id]:
+                    requests.append(
+                        (
+                            transfer.source_site_id,
+                            MovementRequest(
+                                article_id=line.article_id,
+                                movement_type=MovementType.CANCELLATION,
+                                quantity=-origin.quantity,
+                                unit_cost=line.unit_cost,
+                                source_type=SOURCE_TYPE,
+                                source_id=transfer.id,
+                                source_line_id=line.id,
+                                source_number=transfer.number,
+                                origin_movement_id=origin.id,
+                                comment=comment,
+                                packaging=inverse_packaging(
+                                    origin,
+                                    packaging_snapshot(line),
+                                    single=len(outgoing[line.id]) == 1,
+                                ),
+                                lot_id=origin.lot_id,
+                            ),
+                        )
+                    )
             stock.apply_many(requests)
         transfer.status = DocumentStatus.CANCELLED
         transfer.cancelled_at = self.now

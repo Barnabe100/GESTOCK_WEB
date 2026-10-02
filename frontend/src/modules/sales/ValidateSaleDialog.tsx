@@ -12,7 +12,15 @@ import { formatMoney } from '@/shared/lib/decimal';
 import { FormField } from '@/shared/ui/FormField';
 import { LoadingState } from '@/shared/ui/LoadingState';
 
-import { useAvailablePaymentMethods, type CreditOverride, type ImmediatePayment } from './api';
+import type { ExpiredShortage } from '@/modules/stock/ui';
+
+import {
+  useAvailablePaymentMethods,
+  type CreditOverride,
+  type ExpiredLotOverride,
+  type ImmediatePayment,
+} from './api';
+import { ExpiredLotOverridePanel } from './ExpiredLotOverridePanel';
 import {
   defaultMethodId,
   PaymentFields,
@@ -25,8 +33,10 @@ import {
  * Confirmation de la validation d'une vente, avec encaissement immédiat facultatif (même
  * transaction). Le reste dû est une vente à crédit : client identifié obligatoire, permission
  * de vendre à crédit, limite de crédit du client. Dépassement de la limite : seulement si le
- * serveur l'autorise pour cet utilisateur (`overrideAllowed`), avec une justification. Le
- * serveur recalcule et contrôle tout (montants, monnaie, crédit).
+ * serveur l'autorise pour cet utilisateur (`overrideAllowed`), avec une justification. Lot
+ * 3-H-A : stock non périmé insuffisant (`expiredShortages`) — dérogation explicite proposée à
+ * qui détient la permission. Le serveur recalcule et contrôle tout (montants, monnaie, crédit,
+ * lots).
  */
 export function ValidateSaleDialog({
   total,
@@ -35,6 +45,7 @@ export function ValidateSaleDialog({
   pending,
   error = null,
   overrideAllowed = false,
+  expiredShortages = [],
   onConfirm,
   onClose,
 }: {
@@ -48,7 +59,13 @@ export function ValidateSaleDialog({
   error?: string | null;
   /** Limite de crédit dépassée et dépassement permis à cet utilisateur (réponse du serveur). */
   overrideAllowed?: boolean;
-  onConfirm: (payments: ImmediatePayment[], creditOverride: CreditOverride | null) => void;
+  /** Lot 3-H-A : refus `insufficient_unexpired_stock` (lots périmés disponibles). */
+  expiredShortages?: ExpiredShortage[];
+  onConfirm: (
+    payments: ImmediatePayment[],
+    creditOverride: CreditOverride | null,
+    expiredLotOverride?: ExpiredLotOverride | null,
+  ) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -72,10 +89,10 @@ export function ValidateSaleDialog({
   const current = { ...draft, methodId };
   const method = methods.find((m) => m.id === methodId);
 
-  const confirm = (withOverride: boolean) => {
+  const confirm = (withOverride: boolean, expiredLotOverride: ExpiredLotOverride | null = null) => {
     const creditOverride = withOverride ? { reason: reason.trim() } : null;
     if (!payNow || !canPay) {
-      onConfirm([], creditOverride);
+      onConfirm([], creditOverride, expiredLotOverride);
       return;
     }
     const result = toPaymentInput(t, current, methods);
@@ -92,6 +109,7 @@ export function ValidateSaleDialog({
         },
       ],
       creditOverride,
+      expiredLotOverride,
     );
   };
 
@@ -142,6 +160,14 @@ export function ValidateSaleDialog({
           }
         />
         {error && <Message severity="error" text={error} />}
+        {expiredShortages.length > 0 && (
+          <ExpiredLotOverridePanel
+            shortages={expiredShortages}
+            idPrefix="validate"
+            pending={pending}
+            onConfirm={(override) => confirm(false, override)}
+          />
+        )}
         {overrideAllowed && (
           <FormField
             id="validate-override-reason"

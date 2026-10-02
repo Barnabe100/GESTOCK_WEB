@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
+from app.modules.stock.api import available_lots_out
 from app.modules.stock.document_service import EntryService, ExitService
 from app.modules.stock.level_service import (
     StateFilter,
@@ -28,6 +29,7 @@ from app.modules.stock.models import (
 from app.modules.stock.movement_service import list_movements
 from app.modules.stock.reason_service import ExitReasonService
 from app.modules.stock.schemas import (
+    AvailableLotsOut,
     CancelInput,
     EntryCreate,
     EntryInput,
@@ -286,6 +288,21 @@ def validate_exit(exit_id: uuid.UUID, ctx: ExitValidate, db: DbSession, now: Now
     document = service.validate(exit_id)
     db.commit()
     return service.to_out([document], with_lines=True)[0]
+
+
+@router.get("/available-lots", response_model=AvailableLotsOut)
+def exit_available_lots(
+    ctx: ExitCreateCtx,
+    db: DbSession,
+    now: NowDep,
+    article_id: uuid.UUID,
+    site_id: uuid.UUID | None = None,
+) -> AvailableLotsOut:
+    """Lots disponibles d'un article sur le site d'une sortie (choix manuel, Lot 3-H-A) :
+    solde positif, péremption et état, ordre de consommation ; lots périmés compris (sortie
+    autorisée, H-D5). Aucun coût."""
+    site = operation_site(ctx, site_id)
+    return available_lots_out(db, ctx, now, site, article_id)
 
 
 @router.post("/exits/{exit_id}/cancel", response_model=ExitOut)
