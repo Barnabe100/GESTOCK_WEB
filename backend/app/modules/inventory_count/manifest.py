@@ -1,6 +1,6 @@
-from app.modules.catalog.api import register_packaging_usage
+from app.modules.catalog.api import register_lot_flags_check, register_packaging_usage
 from app.modules.inventory_count.router import router
-from app.modules.inventory_count.service import packagings_used
+from app.modules.inventory_count.service import lot_flags_check, packagings_used
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, W = AccessKind.READ, AccessKind.WRITE
@@ -8,6 +8,8 @@ P = "inventory_count.inventory"
 
 # Lot 3-C : un conditionnement utilisé par un comptage a sa conversion figée.
 register_packaging_usage("inventory_count", packagings_used)
+# Lot 3-H : le suivi par lot d'un article en cours d'inventaire (mode figé) ne change pas.
+register_lot_flags_check("inventory_count", lot_flags_check)
 
 MANIFEST = ModuleManifest(
     code="inventory_count",

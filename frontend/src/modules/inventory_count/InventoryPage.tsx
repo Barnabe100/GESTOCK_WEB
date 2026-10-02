@@ -8,8 +8,9 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 
+import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
-import { formatMoney } from '@/shared/lib/decimal';
+import { formatMoney, formatQuantity } from '@/shared/lib/decimal';
 import { translateError } from '@/shared/lib/errors';
 import { formatDateTime } from '@/shared/lib/format';
 import { confirmAction } from '@/shared/ui/confirm';
@@ -163,14 +164,25 @@ function InventorySummaryCards({ inventory }: { inventory: Inventory }) {
   );
 }
 
+/** Lot apparu sur le site depuis le démarrage (`409 inventory_lots_changed`). */
+interface AppearedLot {
+  lot_id: string;
+  reference: string;
+  lot_number: string | null;
+  quantity: string;
+}
+
 export default function InventoryPage() {
   const { t } = useTranslation();
   const toast = useToast();
-  const { can } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
+  const { locale } = capabilities.tenant;
   const { id } = useParams();
   const query = useInventory(id === 'new' ? undefined : id);
-  const { start, complete, reopen, validate } = useInventoryMutations();
+  const { start, complete, reopen, validate, refreshLots } = useInventoryMutations();
   const [cancelling, setCancelling] = useState(false);
+  // Lot 3-H : lots apparus sur le site pendant le comptage (refus de la validation).
+  const [appeared, setAppeared] = useState<AppearedLot[] | null>(null);
 
   // « new » sans la permission de création : la route de création n'existe pas pour ce rôle.
   if (id === 'new') return <NotFound />;
@@ -186,6 +198,16 @@ export default function InventoryPage() {
   const onError = (error: unknown) => toast.error(translateError(t, error));
   const allCounted = s !== null && s.counted === s.lines;
 
+  const onRefreshLots = () =>
+    refreshLots.mutate(inventory.id, {
+      onSuccess: () => {
+        setAppeared(null);
+        toast.success(t('inventoryLots.refreshed'));
+      },
+      onError,
+    });
+  const lotTracked = (inventory.lot_tracked_count ?? 0) > 0;
+
   const confirmValidation = () =>
     confirmAction(t, {
       header: t('inventories.validateTitle', { number: inventory.number }),
@@ -200,7 +222,12 @@ export default function InventoryPage() {
       onAccept: () =>
         validate.mutate(inventory.id, {
           onSuccess: (done) => toast.success(t('inventories.validated', { number: done.number })),
-          onError,
+          onError: (error) => {
+            if (error instanceof ApiError && error.code === 'inventory_lots_changed') {
+              setAppeared((error.extra.lots ?? []) as AppearedLot[]);
+            }
+            onError(error);
+          },
         }),
     });
 
@@ -231,6 +258,15 @@ export default function InventoryPage() {
           outlined
           loading={reopen.isPending}
           onClick={() => reopen.mutate(inventory.id, { onError })}
+        />
+      )}
+      {(status === 'COUNTING' || status === 'READY_TO_VALIDATE') && canCount && lotTracked && (
+        <Button
+          icon="pi pi-refresh"
+          label={t('inventoryLots.refresh')}
+          outlined
+          loading={refreshLots.isPending}
+          onClick={onRefreshLots}
         />
       )}
       {status === 'READY_TO_VALIDATE' && can(`${P}.validate`) && (
@@ -287,6 +323,31 @@ export default function InventoryPage() {
       )}
       {status === 'READY_TO_VALIDATE' && (
         <Message severity="warn" className="sm-block" text={t('inventories.readyInfo')} />
+      )}
+      {appeared && open && (
+        <div className="sm-block sm-lots-changed" role="alert">
+          <p className="sm-strong">{t('inventoryLots.changedTitle')}</p>
+          <ul>
+            {appeared.map((lot) => (
+              <li key={lot.lot_id}>
+                {t('inventoryLots.changedLot', {
+                  reference: lot.reference,
+                  number: lot.lot_number ?? '—',
+                  quantity: formatQuantity(lot.quantity, locale),
+                })}
+              </li>
+            ))}
+          </ul>
+          <p className="sm-help">{t('inventoryLots.changedHelp')}</p>
+          {canCount && (
+            <Button
+              icon="pi pi-refresh"
+              label={t('inventoryLots.refresh')}
+              loading={refreshLots.isPending}
+              onClick={onRefreshLots}
+            />
+          )}
+        </div>
       )}
       {status === 'VALIDATED' && (
         <div className="sm-block sm-tags">

@@ -1,10 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -13,6 +15,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -148,6 +151,8 @@ class InventoryLine(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             "+ count_unit_quantity)",
             name="count_packaging_consistent",
         ),
+        # Lot 3-H (inventaires par lot) : cible de la FK composite des lots de la ligne.
+        UniqueConstraint("tenant_id", "id", "article_id"),
     )
 
     inventory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
@@ -161,6 +166,114 @@ class InventoryLine(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     counted_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     # Lot 3-C : présentation du comptage (nulle : saisi directement en unité de base).
+    count_packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    count_packaging_name: Mapped[str | None] = mapped_column(String(50))
+    count_packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    count_packaging_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    count_unit_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    # Lot 3-H : mode de suivi par lot de l'article FIGÉ au démarrage du comptage ; relu sous
+    # verrou à la validation (``409 inventory_lot_mode_changed`` s'il a changé). Ligne suivie :
+    # comptage par lot (``inventory_line_lots``), ``quantity_physical`` = Σ des lots.
+    lot_tracked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+
+class InventoryLineLot(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Lot d'une ligne d'inventaire d'un article suivi par lot (Lot 3-H, ADR-0045).
+
+    - **Attendu** : lot ayant un solde non nul sur le site au démarrage (``lot_id`` connu,
+      ``stock_theoretical_initial`` = son solde) ; non saisi = physique 0 (O-5).
+    - **Découvert** (``discovered``) : lot trouvé physiquement, saisi pendant le comptage
+      (numéro, péremption, fabrication) ; ``lot_id`` renseigné s'il existe déjà (rattaché, jamais
+      dupliqué), sinon créé à la validation seulement (``resolve_lots``).
+    - Validation : ``stock_theoretical_at_validation`` = solde COURANT du lot relu sous verrou,
+      ``quantity_variance`` = physique − solde courant → un ``ADJUSTMENT`` par lot avec écart.
+    Aucun coût par lot (C1)."""
+
+    __tablename__ = "inventory_line_lots"
+    __table_args__ = (
+        # Ligne du même tenant ET du même article ; lot du même article (FK composites).
+        ForeignKeyConstraint(
+            ["tenant_id", "inventory_line_id", "article_id"],
+            ["inventory_lines.tenant_id", "inventory_lines.id", "inventory_lines.article_id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "article_id", "lot_id"],
+            ["stock_lots.tenant_id", "stock_lots.article_id", "stock_lots.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "count_packaging_id"],
+            ["catalog_packagings.tenant_id", "catalog_packagings.id"],
+            ondelete="RESTRICT",
+        ),
+        # Un lot une seule fois par ligne ; un lot découvert NOUVEAU une seule fois par numéro
+        # (sans distinction de casse) — index partiel dans la migration.
+        UniqueConstraint("inventory_line_id", "lot_id"),
+        Index(
+            "uq_inventory_line_lots_new_number",
+            "inventory_line_id",
+            text("lower(lot_number)"),
+            unique=True,
+            postgresql_where=text("lot_id IS NULL"),
+        ),
+        CheckConstraint("lot_id IS NOT NULL OR discovered", name="expected_has_lot"),
+        CheckConstraint("discovered = (lot_number IS NOT NULL)", name="discovered_has_number"),
+        CheckConstraint(
+            "discovered OR (expiry_date IS NULL AND manufacturing_date IS NULL)",
+            name="dates_only_discovered",
+        ),
+        CheckConstraint(
+            "manufacturing_date IS NULL OR expiry_date IS NULL "
+            "OR manufacturing_date <= expiry_date",
+            name="dates_ordered",
+        ),
+        CheckConstraint("stock_theoretical_initial >= 0", name="initial_non_negative"),
+        CheckConstraint(
+            "stock_theoretical_at_validation IS NULL OR stock_theoretical_at_validation >= 0",
+            name="at_validation_non_negative",
+        ),
+        CheckConstraint(
+            "quantity_physical IS NULL OR quantity_physical >= 0", name="physical_non_negative"
+        ),
+        CheckConstraint(
+            "quantity_variance IS NULL OR (stock_theoretical_at_validation IS NOT NULL "
+            "AND quantity_physical IS NOT NULL "
+            "AND quantity_variance = quantity_physical - stock_theoretical_at_validation)",
+            name="variance_consistent",
+        ),
+        CheckConstraint(
+            "(count_packaging_id IS NULL) = (count_packaging_name IS NULL) "
+            "AND (count_packaging_id IS NULL) = (count_packaging_conversion IS NULL) "
+            "AND (count_packaging_id IS NULL) = (count_packaging_quantity IS NULL) "
+            "AND (count_packaging_id IS NULL) = (count_unit_quantity IS NULL)",
+            name="count_packaging_complete",
+        ),
+        CheckConstraint(
+            "count_packaging_id IS NULL OR (count_packaging_conversion > 0 "
+            "AND count_packaging_quantity >= 0 AND count_unit_quantity >= 0 "
+            "AND quantity_physical = count_packaging_quantity * count_packaging_conversion "
+            "+ count_unit_quantity)",
+            name="count_packaging_consistent",
+        ),
+    )
+
+    inventory_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    lot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    discovered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Lot découvert : saisie (règles 3-G) ; nuls pour un lot attendu (lu dans le référentiel).
+    lot_number: Mapped[str | None] = mapped_column(String(50))
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    manufacturing_date: Mapped[date | None] = mapped_column(Date)
+    stock_theoretical_initial: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
+    stock_theoretical_at_validation: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    quantity_physical: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    quantity_variance: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counted_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     count_packaging_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     count_packaging_name: Mapped[str | None] = mapped_column(String(50))
     count_packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)

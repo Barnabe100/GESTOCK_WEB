@@ -3,10 +3,12 @@
 - **Statut** : Acceptée — Lot 3-G (décisions D1 à D20 et P1-b) livré et validé (état de
   référence `4fd303f`) ; Lot 3-H (décisions H-D1 à H-D18 et décisions complémentaires O-1 à
   O-6, section « Lot 3-H ») : **3-H-A livré et validé** (référence `096730b` ; ventes, POS,
-  sorties, annulations ; section « Implémentation (Lot 3-H-A) ») ; **3-H-B1 livré — en attente
-  de validation** (transferts par lot ; section « Implémentation (Lot 3-H-B1) ») ;
-  **3-H-B2 (inventaires par lot) et 3-H-B3 (clôture, levée de P1-b) non commencés** ; P1-b
-  toujours active
+  sorties, annulations ; section « Implémentation (Lot 3-H-A) ») ; **3-H-B1 livré et validé**
+  (transferts par lot ; section « Implémentation (Lot 3-H-B1) ») ; **finalisation 3-H livrée —
+  en attente de validation** (inventaires par lot, garde du changement de suivi, audit des
+  flux, préparation de la levée de P1-b ; section « Implémentation (finalisation 3-H :
+  inventaires par lot) ») ; **P1-b toujours active** (`LOT_TRACKING_AVAILABLE = False`, levée
+  sur accord explicite de TechNova seulement) ; 3-H non clôturé
 - **Date** : 2026-10-02
 - **Prolonge** : [ADR-0019](0019-inventaires.md) (inventaires),
   [ADR-0028](0028-fuseau-horaire-du-tenant.md) (dates métier dans le fuseau du tenant),
@@ -542,7 +544,9 @@ Aucun ne remet en cause une décision ; ils seront tranchés au plan technique d
   lu une fois, même coût en sortie et en entrée, CMUP destination calculé une fois par ligne ;
   voir « Implémentation (Lot 3-H-B1) »)* : solution technique exacte (voir
   « Vérifications techniques », point 3), vérifiée pendant 3-H-B.
-- **T-4 — Lot découvert à l'inventaire (O-5)** : au 3-G, le référentiel des lots n'est
+- **T-4 — Lot découvert à l'inventaire (O-5)** — *tranché à la finalisation 3-H (D-3, D-4 :
+  création à la validation seulement par `resolve_lots`, lot apparu → refus + « Actualiser les
+  lots » ; voir « Implémentation (finalisation 3-H : inventaires par lot) »)* : au 3-G, le référentiel des lots n'est
   alimenté que par les réceptions validées ; création par l'inventaire à fixer (au plus tard à
   la validation, sous les mêmes contrôles d'unicité et de péremption), ainsi que la règle des
   lots apparus ou disparus entre le démarrage de l'inventaire et sa validation (théorique
@@ -699,7 +703,148 @@ transferts) ; D-3 à D-5 concernent 3-H-B2.
   transfert existent.
 - **Garde-fou** : inchangé ; l'ancien chemin `StockService.transfer` (paire unique sans lot)
   reste refusé pour un article suivi (`lot_required`) et n'est plus appelé (test statique).
-  Les inventaires d'articles suivis restent refusés jusqu'à 3-H-B2.
+  Les inventaires d'articles suivis restaient refusés jusqu'à la finalisation (section
+  suivante).
+
+## Implémentation (finalisation 3-H : inventaires par lot)
+
+Inventaires par lot, garde du changement de suivi et préparation de la levée de P1-b, livrés sur
+la branche de travail, **en attente de validation**. **P1-b reste active** :
+`LOT_TRACKING_AVAILABLE = False` n'est **pas** modifié ; la levée attend l'accord explicite de
+TechNova (voir « Préparation de la levée de P1-b » ci-dessous). Décisions de l'audit 3-H-B
+appliquées : **D-3** (lot apparu pendant le comptage : refus + « Actualiser les lots »), **D-4**
+(lot découvert créé à la validation seulement, extension de D9), **D-5** (ligne comptée dès un
+comptage par lot ; lot attendu non saisi = 0, O-5) ; **D-6** (historique sans lot) et **D-7**
+(changement de suivi avec documents ouverts) sont fermés par la garde décrite plus bas.
+
+- **Mode figé au démarrage** : `inventory_lines.lot_tracked` copie le suivi de l'article (lu
+  sous verrou partagé des réglages, `lock_lot_flags`) au démarrage ; à la validation il est
+  relu sous le même verrou : différent → `409 inventory_lot_mode_changed` (rien n'est écrit).
+  Article non suivi : ligne et comptage **strictement inchangés** (`PATCH /lines`, un
+  ajustement sans lot) ; une ligne suivie refuse le comptage global
+  (`422 inventory_line_lot_tracked`).
+- **Lots attendus** (`inventory_line_lots`) : au démarrage, une ligne par lot de solde **non
+  nul** sur le site (`stock_theoretical_initial` = solde du lot) ; lot attendu non saisi =
+  physique 0 à la validation (O-5) ; il ne se retire pas (`inventory_lot_not_discovered`). Un
+  lot périmé reste attendu, comptable et ajustable (aucune dérogation nécessaire : l'inventaire
+  constate). Un lot à zéro au démarrage n'est pas attendu ; trouvé physiquement, il est ajouté
+  comme lot découvert et **rattaché** au lot existant (jamais de doublon).
+- **Comptage par lot** : `PUT /inventories/{id}/lines/{line_id}/lots` remplace le comptage de
+  la ligne (liste complète ; `duplicate_count_line`, `inventory_lot_not_found`) ; unité de base,
+  ou conditionnement + vrac (mécanisme commun 3-C : `packaging_inactive`, règle
+  `decimal_quantity_allowed`, 3 décimales, quantité de base calculée par le serveur ; 8 × 24 +
+  5 = 197) ; la ligne vaut Σ lots et devient « comptée » dès un comptage par lot (D-5).
+- **Lot découvert** (D-4, T-4) : `POST …/lots` (numéro, péremption, fabrication, quantité
+  facultative) — règles de saisie 3-G (`check_lot_inputs` : numéro, péremption exigée si
+  l'article la suit, fabrication ≤ péremption) et lot connu avec SA péremption
+  (`check_known_lots`, `lot_expiry_mismatch`) ; lot existant de l'article → `lot_id` rattaché
+  (théorique = solde courant sur le site) ; sinon ligne sans `lot_id`, numéro unique par ligne
+  sans casse (index partiel) ; doublon sur la ligne → `409 duplicate_lot_in_inventory`. **Aucun
+  lot n'est créé avant la validation** : `resolve_lots` (INSERT … ON CONFLICT, même moteur que
+  les réceptions) le crée ou le retrouve à la validation, avec revérification de la péremption ;
+  audit `stock_lot.created` avec la source (`source_type = inventory`, numéro). Un inventaire
+  annulé ne crée aucun lot. Retrait : `DELETE …/lots/{row_id}` (découvert seulement).
+- **Lots apparus pendant le comptage** (D-3) : à la validation, sous verrou, un lot de solde non
+  nul absent du comptage → `409 inventory_lots_changed` (`articles`, `lots` : référence, numéro,
+  quantité) ; `POST /inventories/{id}/refresh-lots` ajoute ces lots à compter (comptage terminé
+  → retour au comptage), rattache les découverts devenus existants ; audit
+  `inventory.lots_refreshed`. Jamais compté 0 sans avoir été montré.
+- **Validation** (moteur unique `StockService`) : comptages revalidés (conditionnement actif,
+  conversion inchangée : `409 packaging_conversion_changed`) ; mode relu ; lots découverts
+  résolus ; verrous des niveaux puis des soldes de lots du site (`lock_site_lots`, ordre global
+  article → lot ; solde créé à zéro pour un lot découvert) ; **invariant Σ lots = stock contrôlé
+  avant** (`422 lot_invariant_broken`) ; écart **par lot** = physique (0 si non saisi) − solde
+  COURANT du lot relu sous verrou ; **un `ADJUSTMENT` par lot avec écart, même si l'écart de
+  l'article est nul** (A −5 / B +5 → deux ajustements) ; totaux de la ligne = Σ lots ;
+  écritures par `StockService.apply` (garde-fou `lot_required` inchangé) ; invariant **revérifié
+  après** les écritures (`verify_lot_invariant`). Audit `inventory.validated` : `lots` (article,
+  lot, écart) et `lots_created`.
+- **CMUP** inchangé (C1) : un ajustement ne recalcule jamais le CMUP ; valeur des ajustements au
+  CMUP courant, aucun coût par lot.
+- **Immuabilité** : inventaire validé ou annulé → comptage, découverte, retrait, actualisation
+  refusés (`inventory_invalid_transition`) ; lignes de lots supprimées en cascade seulement avec
+  la ligne (brouillon).
+- **Concurrence** : verrou de l'inventaire ; verrous des niveaux et des soldes de lots dans
+  l'ordre global (validation simultanée avec une vente, une sortie, un transfert : sérialisées,
+  écart calculé sur le solde relu) ; même lot découvert sur deux sites en parallèle : un seul
+  `stock_lot` (ON CONFLICT).
+- **Garde du changement de suivi (D-6, D-7)** — `catalog.service._ensure_lot_flags_change`,
+  après le contrôle « stock nul sur tous les sites », seulement si un réglage change réellement :
+  port `catalog.lot_flags_port` (les modules déclarent leurs contrôles, le catalogue n'importe
+  aucun modèle) — **documents ouverts** utilisant l'article (inventaires non clos ; brouillons
+  d'entrées avec lot, de sorties et de transferts avec choix de lots) →
+  `409 article_in_open_documents` (`documents`, `count`) ; à l'**activation** du suivi par lot,
+  **historique sans lot encore annulable** (vente, entrée, sortie ou transfert validé dont un
+  mouvement sans lot n'est pas déjà annulé) → `409 article_has_untracked_history`. Une
+  annulation ultérieure ne peut donc jamais réintroduire un mouvement sans lot pour un article
+  suivi (limitation historique de D-6 fermée). Conséquence produit : un article ayant un
+  historique annulable doit voir ces documents annulés, ou rester non suivi, pour passer au
+  suivi par lot.
+- **API** : `InventoryLineOut.lot_tracked`, `lots` (`InventoryLotOut` : théorique au démarrage,
+  stock courant, stock à la validation, physique, écart, présentation, état de péremption ;
+  **aucun coût**) ; `InventoryOut.lot_tracked_count` ; `PUT|POST /inventories/{id}/lines/{line_id}/lots`,
+  `DELETE /inventories/{id}/lines/{line_id}/lots/{row_id}`, `POST /inventories/{id}/refresh-lots`
+  — permission `inventory_count.inventory.count` (consultation : `view`, validation :
+  `validate`) ; **aucune permission nouvelle** ; portée des sites inchangée.
+- **Interface** : ligne suivie repérée « Suivi par lot », dépliée par défaut (lots en cartes :
+  numéro, péremption et état, théorique, stock actuel, saisie unité de base ou conditionnement +
+  vrac, écart, badge « Lot découvert » et retrait) ; total de la ligne calculé par le serveur ;
+  dialogue « Ajouter un lot découvert » (plein écran sur petit écran) ; action « Actualiser les
+  lots » et encadré des lots apparus après un refus de validation ; une colonne sur mobile, aucun
+  débordement horizontal.
+- **Migration 0037** : `inventory_lines.lot_tracked` (`false` par défaut) et unicité
+  `(tenant_id, id, article_id)` ; table `inventory_line_lots` (RLS `ENABLE` + `FORCE`, politique
+  `tenant_isolation`, `SELECT, INSERT, UPDATE, DELETE` pour le rôle applicatif, aucun droit pour
+  le rôle de la console ; FK composites `(tenant_id, inventory_line_id, article_id)` → ligne
+  (CASCADE), `(tenant_id, article_id, lot_id)` → lot, `(tenant_id, count_packaging_id)` →
+  conditionnement ; unique `(inventory_line_id, lot_id)` et index unique partiel du numéro d'un
+  lot nouveau ; contrôles : lot attendu porteur d'un lot, numéro d'un découvert, dates réservées
+  aux découverts et ordonnées, quantités ≥ 0, écart cohérent, présentation complète). Retour
+  arrière refusé si des lignes de lots ou des lignes suivies existent.
+- **Test statique des écrivains** : l'ensemble exact des appels d'écriture de stock hors du
+  module `stock` est figé (entrées / sorties : `apply`, `consume` ; transferts :
+  `transfer_lots`, `apply_many` ; ventes : `consume`, `apply` ; inventaires : `apply`) — tout
+  nouvel écrivain doit être revu pour les lots.
+
+### Audit transversal des flux d'écriture (finalisation 3-H)
+
+| Flux | Article suivi | Article non suivi |
+|---|---|---|
+| Réception `PURCHASE` / `INITIAL_STOCK` | lot obligatoire, créé / retrouvé (`resolve_lots`), solde du lot (3-G) | inchangé |
+| Annulation de réception | même lot, refus si un lot devenait négatif | inchangé |
+| Vente / POS | FEFO non périmé, dérogation explicite (3-H-A) | inchangé |
+| Annulation de vente | inverse par mouvement, même lot | inchangé |
+| Sortie | choix manuel, somme exacte (3-H-A) | inchangé |
+| Annulation de sortie | inverse par mouvement, même lot | inchangé |
+| Transfert | choix manuel, même lot des deux côtés, périmé refusé (3-H-B1) | inchangé |
+| Annulation de transfert | inverse par mouvement, refus total si insuffisant | inchangé |
+| Inventaire | comptage par lot, un ajustement par lot (finalisation) | inchangé |
+| Tout autre chemin | refusé par le garde-fou `lot_required` (`StockService._write`) | — |
+
+Aucun chemin n'écrit un mouvement sans lot pour un article suivi ; l'invariant Σ lots = stock
+est contrôlé par le moteur (transferts, inventaires) et garanti par les verrous (ventes,
+sorties, réceptions).
+
+### Préparation de la levée de P1-b (non levée)
+
+Conditions techniques de la levée (D1, D20, H-D14, O-6) — **toutes satisfaites** à l'issue de
+cette livraison, sous réserve de la validation de TechNova :
+
+1. consommation des lots par tous les flux sortants : ventes, POS, sorties (3-H-A), transferts
+   (3-H-B1), inventaires (finalisation) ;
+2. annulations sur le même lot pour chaque flux ;
+3. garde-fou serveur : aucun mouvement sans lot pour un article suivi (`lot_required`) ;
+4. invariant Σ lots = stock contrôlé, tests de concurrence ;
+5. changement de suivi gardé : stock nul, aucun document ouvert, aucun historique sans lot
+   annulable ;
+6. articles non suivis strictement inchangés (suites de non-régression) ;
+7. interfaces desktop et mobile pour chaque flux ;
+8. aucune permission nouvelle hors `sales.sale.expired_lot_override` (3-H-A).
+
+La levée elle-même reste **un changement de code distinct** (`LOT_TRACKING_AVAILABLE = True`
+dans `catalog.lot_tracking`, adaptation des tests qui vérifient la fermeture), effectué
+**uniquement après l'accord explicite de TechNova** ; elle n'est pas faite ici. Le 3-H n'est
+pas clôturé avant cette validation.
 
 ## Références
 

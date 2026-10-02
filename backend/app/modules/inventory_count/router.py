@@ -10,11 +10,13 @@ from app.modules.inventory_count.schemas import (
     CandidateOut,
     CountsInput,
     CountsOut,
+    DiscoveredLotInput,
     InventoryCreate,
     InventoryLineOut,
     InventoryOut,
     InventoryUpdate,
     LineState,
+    LotCountsInput,
 )
 from app.modules.inventory_count.service import InventoryService
 from app.platform.context import (
@@ -145,6 +147,82 @@ def save_counts(
         inventory, PageParams(limit=len(line_ids), offset=0, sort=None), line_ids=line_ids
     )
     return CountsOut(lines=lines, summary=service.summary(inventory))
+
+
+def _line_and_summary(
+    service: InventoryService, inventory_id: uuid.UUID, line_id: uuid.UUID
+) -> CountsOut:
+    inventory = service.get(inventory_id)
+    lines, _ = service.lines(
+        inventory, PageParams(limit=1, offset=0, sort=None), line_ids=[line_id]
+    )
+    return CountsOut(lines=lines, summary=service.summary(inventory))
+
+
+# --- Lots d'une ligne suivie par lot (Lot 3-H) : comptage, découverte, actualisation ----------
+
+
+@router.put("/{inventory_id}/lines/{line_id}/lots", response_model=CountsOut)
+def save_lot_counts(
+    inventory_id: uuid.UUID,
+    line_id: uuid.UUID,
+    body: LotCountsInput,
+    ctx: Count,
+    db: DbSession,
+    now: NowDep,
+) -> CountsOut:
+    """Comptage complet d'une ligne suivie par lot (remplacement) ; lot non saisi = 0."""
+    service = InventoryService(db, ctx, now)
+    service.save_lot_counts(inventory_id, line_id, body.counts)
+    db.commit()
+    return _line_and_summary(service, inventory_id, line_id)
+
+
+@router.post(
+    "/{inventory_id}/lines/{line_id}/lots",
+    response_model=CountsOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_discovered_lot(
+    inventory_id: uuid.UUID,
+    line_id: uuid.UUID,
+    body: DiscoveredLotInput,
+    ctx: Count,
+    db: DbSession,
+    now: NowDep,
+) -> CountsOut:
+    """Lot trouvé physiquement : rattaché au lot existant, ou créé à la validation seulement
+    (``inventory_count.inventory.validate``)."""
+    service = InventoryService(db, ctx, now)
+    service.add_discovered_lot(inventory_id, line_id, body)
+    db.commit()
+    return _line_and_summary(service, inventory_id, line_id)
+
+
+@router.delete("/{inventory_id}/lines/{line_id}/lots/{lot_row_id}", response_model=CountsOut)
+def remove_discovered_lot(
+    inventory_id: uuid.UUID,
+    line_id: uuid.UUID,
+    lot_row_id: uuid.UUID,
+    ctx: Count,
+    db: DbSession,
+    now: NowDep,
+) -> CountsOut:
+    """Retrait d'un lot DÉCOUVERT (un lot attendu ne se retire pas : non trouvé = 0)."""
+    service = InventoryService(db, ctx, now)
+    service.remove_discovered_lot(inventory_id, line_id, lot_row_id)
+    db.commit()
+    return _line_and_summary(service, inventory_id, line_id)
+
+
+@router.post("/{inventory_id}/refresh-lots", response_model=InventoryOut)
+def refresh_lots(inventory_id: uuid.UUID, ctx: Count, db: DbSession, now: NowDep) -> InventoryOut:
+    """« Actualiser les lots » : lots apparus sur le site depuis le démarrage ajoutés au
+    comptage (retour au comptage si nécessaire)."""
+    service = InventoryService(db, ctx, now)
+    service.refresh_lots(inventory_id)
+    db.commit()
+    return _detail(service, inventory_id)
 
 
 @router.post("/{inventory_id}/start", response_model=InventoryOut)

@@ -24,6 +24,11 @@ from sqlalchemy import ColumnElement, Subquery, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.core.errors import BusinessRuleError, ConflictError
+from app.modules.catalog.lot_flags_port import (
+    BlockerKind,
+    LotFlagsBlocker,
+    register_lot_flags_check,
+)
 from app.modules.catalog.lot_tracking import lot_tracking_available
 from app.modules.catalog.models import Article, Barcode, Category, Packaging
 from app.modules.catalog.stock_port import register_lot_stocked_sites, register_stocked_sites
@@ -49,6 +54,9 @@ __all__ = [
     "lock_packagings",
     "lot_tracking_available",
     "lock_stock_managed",
+    "BlockerKind",
+    "LotFlagsBlocker",
+    "register_lot_flags_check",
     "register_lot_stocked_sites",
     "register_packaging_usage",
     "register_stocked_sites",

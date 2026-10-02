@@ -17,6 +17,7 @@ from app.core.errors import (
     NotFoundError,
 )
 from app.modules.catalog.api import barcode_search, resolve_barcode
+from app.modules.catalog.lot_flags_port import BlockerKind, lot_flags_blockers
 from app.modules.catalog.lot_tracking import lot_tracking_available
 from app.modules.catalog.models import Article, Barcode, BarcodeKind, Category, Packaging
 from app.modules.catalog.schemas import (
@@ -514,6 +515,34 @@ class ArticleService:
                 "Le suivi par lot ou de péremption ne se modifie qu'à stock nul sur tous les sites",
                 code="article_has_stock",
                 extra={"sites": sites},
+            )
+        # Lot 3-H : aucun document ne doit devenir incohérent (inventaire ouvert au mode figé,
+        # brouillon portant des lots ; à l'activation, document validé annulable sans lot).
+        changing = any(
+            key in updates and updates[key] != getattr(article, key) for key in LOT_FLAGS
+        )
+        if not changing:
+            return
+        enabling = bool(updates.get("lot_tracked", article.lot_tracked)) and not article.lot_tracked
+        blockers = lot_flags_blockers(self.db, self.ctx.tenant_id, article.id, enabling)
+        open_documents = sorted(
+            {b.document for b in blockers if b.kind is BlockerKind.OPEN_DOCUMENT}
+        )
+        if open_documents:
+            raise ConflictError(
+                "Des documents en cours concernent cet article : validez-les, annulez-les ou "
+                "retirez-en ses lots avant de modifier son suivi par lot ou de péremption",
+                code="article_in_open_documents",
+                extra={"documents": open_documents[:20], "count": len(open_documents)},
+            )
+        history = sorted({b.document for b in blockers if b.kind is BlockerKind.UNTRACKED_HISTORY})
+        if history:
+            raise ConflictError(
+                "Des documents validés encore annulables ont des mouvements sans lot pour cet "
+                "article : leur annulation deviendrait impossible une fois le suivi par lot "
+                "activé",
+                code="article_has_untracked_history",
+                extra={"documents": history[:20], "count": len(history)},
             )
 
     def _ensure_no_stock(self, article: Article) -> None:

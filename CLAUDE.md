@@ -227,7 +227,7 @@ MANUEL (`stock_exit_line_lots`, brouillon incomplet admis, somme exacte à la va
 article non suivi refusé) ; présentation d'un mouvement réparti seulement si exacte ; unicité
 des mouvements avec `lot_id` (`NULLS NOT DISTINCT`) ; lots disponibles : `/pos/articles/{id}/lots`,
 `/sales/articles/{id}/lots`, `/stock/available-lots` ; aucun ticket 80 mm (dialogue du POS) ;
-CMUP inchangé. **Lot 3-H-B1 livré — en attente de validation — transferts par lot**
+CMUP inchangé. **Lot 3-H-B1 livré et validé — transferts par lot**
 (ADR-0045, décisions D-1, D-2, D-8 ; migration 0036) : choix MANUEL des lots
 (`stock_transfer_line_lots`, brouillon incomplet admis, somme exacte à la validation) ; moteur
 UNIQUE `StockService.transfer_lots` (niveaux des deux sites puis soldes de lots, ordre global,
@@ -237,9 +237,22 @@ transféré (`lot_expired_not_transferable`, sans dérogation) ; CMUP source lu 
 coût en sortie et en entrée, CMUP destination calculé une fois par ligne (identique à un
 transfert non réparti) ; annulation par mouvement d'origine, refus total si un lot destination
 ne suffit plus ; `GET /stock/transfers/available-lots` (`stock.transfer.create`, aucune
-permission nouvelle) ; articles non suivis inchangés. **3-H-B2 (inventaires par lot) et 3-H-B3
-(clôture, levée de P1-b) non commencés** (inventaires d'un article suivi : refusés par le
-garde-fou) ; **P1-b toujours active**. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+permission nouvelle) ; articles non suivis inchangés. **Finalisation 3-H livrée — en attente de
+validation — inventaires par lot** (ADR-0045, décisions D-3 à D-7 ; migration 0037) : suivi par
+lot FIGÉ par ligne au démarrage (`inventory_lines.lot_tracked`, relu sous verrou :
+`409 inventory_lot_mode_changed`) ; `inventory_line_lots` (lots attendus = solde non nul au
+démarrage, non saisis = 0 ; lots découverts : règles 3-G, lot existant rattaché, sinon créé **à
+la validation seulement** par `resolve_lots`) ; lot apparu → `409 inventory_lots_changed` +
+« Actualiser les lots » (`POST /inventories/{id}/refresh-lots`) ; comptage par lot en unité de
+base ou conditionnement + vrac (`PUT …/lines/{line_id}/lots`) ; écart par lot sur le solde
+courant relu sous verrou, **un `ADJUSTMENT` par lot avec écart même si l'écart de l'article est
+nul**, invariant Σ lots = stock avant et après (`StockService.lock_site_lots`,
+`verify_lot_invariant`) ; CMUP inchangé ; changement de suivi refusé avec des documents ouverts
+(`article_in_open_documents`, port `catalog.lot_flags_port`) ou, à l'activation, un historique
+sans lot encore annulable (`article_has_untracked_history`) ; aucune permission nouvelle ;
+conditions techniques de la levée de P1-b réunies, **P1-b toujours active**
+(`LOT_TRACKING_AVAILABLE = False` : levée sur accord explicite de TechNova seulement) ; 3-H non
+clôturé. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

@@ -2191,3 +2191,119 @@ a {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --- Inventaires par lot (Lot 3-H) ------------------------------------------------------------ */
+
+.sm-lot-count {
+  display: grid;
+  gap: var(--sm-space-2);
+  min-width: 0;
+  padding: var(--sm-space-2) 0 var(--sm-space-2) var(--sm-space-3);
+  border-left: 3px solid var(--sm-border);
+}
+
+.sm-lot-count-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sm-space-2);
+}
+
+.sm-lot-count-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(6rem, auto);
+  gap: var(--sm-space-3);
+  align-items: center;
+  min-width: 0;
+  padding: var(--sm-space-2);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+  background: var(--sm-surface);
+}
+
+.sm-lot-count-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--sm-space-2);
+  min-width: 0;
+}
+
+.sm-lot-count-input .p-dropdown {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sm-lot-count-input .sm-lot-allocation-input {
+  flex: 1 1 6rem;
+}
+
+.sm-lot-count-input > .p-inputtext {
+  flex: 0 1 6rem;
+  min-width: 0;
+}
+
+.sm-lot-count-variance {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sm-space-2);
+}
+
+.sm-lot-count-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-3);
+}
+
+.sm-lot-total {
+  align-items: flex-end;
+}
+
+.sm-lots-changed {
+  display: grid;
+  gap: var(--sm-space-2);
+  padding: var(--sm-space-3);
+  border: 1px solid var(--sm-border);
+  border-left: 4px solid var(--sm-warning-fg);
+  border-radius: var(--sm-radius);
+  background: var(--sm-warning-bg);
+}
+
+.sm-lots-changed p,
+.sm-lots-changed ul {
+  margin: 0;
+}
+
+.sm-lots-changed .p-button {
+  justify-self: start;
+}
+
+@media (max-width: 800px) {
+  .sm-lot-count {
+    padding-left: var(--sm-space-2);
+  }
+
+  /* Une colonne : lot, saisie, écart (aucun débordement horizontal). */
+  .sm-lot-count-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sm-lot-count-variance {
+    justify-content: space-between;
+  }
+}
+
+/* Dialogue plein écran sur petit écran (ex. lot découvert). */
+@media (max-width: 640px) {
+  .sm-dialog-full-sm.p-dialog {
+    width: 100vw !important;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+}

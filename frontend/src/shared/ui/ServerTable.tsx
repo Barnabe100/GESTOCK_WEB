@@ -1,5 +1,9 @@
 import type { UseQueryResult } from '@tanstack/react-query';
-import { DataTable, type DataTableStateEvent } from 'primereact/datatable';
+import {
+  DataTable,
+  type DataTableExpandedRows,
+  type DataTableStateEvent,
+} from 'primereact/datatable';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -23,6 +27,8 @@ export function ServerTable<T extends object>({
   dataKey = 'id',
   rowClassName,
   onRowClick,
+  expandedRows,
+  rowExpansionTemplate,
   children,
 }: {
   query: UseQueryResult<Page<T>>;
@@ -34,6 +40,9 @@ export function ServerTable<T extends object>({
   rowClassName?: (row: T) => string | undefined;
   /** Ouverture au clic sur la ligne (confort) ; une action « Ouvrir » reste accessible au clavier. */
   onRowClick?: (row: T) => void;
+  /** Lignes dépliées (clé = `dataKey`) et contenu affiché sous chacune (ex. lots d'un article). */
+  expandedRows?: DataTableExpandedRows;
+  rowExpansionTemplate?: (row: T) => ReactNode;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -64,6 +73,10 @@ export function ServerTable<T extends object>({
         [onRowClick ? 'sm-clickable' : '', rowClassName?.(row) ?? ''].join(' ').trim()
       }
       onRowClick={onRowClick ? (e) => onRowClick(e.data as T) : undefined}
+      expandedRows={expandedRows}
+      rowExpansionTemplate={
+        rowExpansionTemplate ? (row: T) => rowExpansionTemplate(row) : undefined
+      }
       paginatorTemplate="RowsPerPageDropdown CurrentPageReport PrevPageLink PageLinks NextPageLink"
       currentPageReportTemplate={t('table.pageReport')}
       emptyMessage={empty ?? <EmptyState />}

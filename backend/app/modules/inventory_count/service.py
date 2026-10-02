@@ -15,6 +15,14 @@ information de traçabilité.
 - Un article ne figure qu'une fois par inventaire (contrainte en base) et dans un seul
   inventaire en cours par site (verrou consultatif par site pendant la vérification).
 - Aucune requête par article : lignes créées, relues et mises à jour par lots.
+- Lot 3-H (ADR-0045) : article suivi par lot — mode FIGÉ au démarrage (``lot_tracked`` de la
+  ligne, relu sous verrou à la validation : ``409 inventory_lot_mode_changed``), comptage PAR
+  LOT (``inventory_line_lots`` : lots attendus = solde non nul au démarrage, non saisis = 0 ;
+  lots découverts, créés à la validation seulement via ``resolve_lots``) ; à la validation,
+  écart par lot = physique − solde COURANT du lot relu sous verrou, un ``ADJUSTMENT`` par lot
+  avec écart — même si l'écart de l'article est nul ; lot apparu pendant le comptage :
+  ``409 inventory_lots_changed`` (action « Actualiser les lots ») ; invariant Σ lots = stock
+  contrôlé avant et après les écritures.
 """
 
 import uuid
@@ -46,6 +54,8 @@ from app.modules.catalog.api import (
 )
 from app.modules.catalog.api import (
     ArticleRef,
+    BlockerKind,
+    LotFlagsBlocker,
     PackagingRef,
     active_packagings,
     articles_view,
@@ -54,34 +64,49 @@ from app.modules.catalog.api import (
     ensure_conversion_unchanged,
     ensure_whole,
     get_article_refs,
+    lock_lot_flags,
 )
 from app.modules.inventory_count.models import (
     Inventory,
     InventoryLine,
+    InventoryLineLot,
     InventoryStatus,
     InventoryType,
 )
 from app.modules.inventory_count.schemas import (
     CandidateOut,
+    CountFields,
     CountInput,
     CountPackagingOut,
+    DiscoveredLotInput,
     InventoryCreate,
     InventoryLineOut,
+    InventoryLotOut,
     InventoryOut,
     InventorySummary,
     InventoryUpdate,
     LineState,
+    LotCountInput,
 )
 from app.modules.stock.api import (
+    LotInput,
     MovementRequest,
     MovementType,
     StockService,
+    check_known_lots,
+    check_lot_inputs,
     ensure_document_site,
+    existing_lot_infos,
+    expiry_context,
     levels_view,
     locations_view,
+    lot_infos,
+    lot_key,
     operation_site,
     refuse_unmanaged,
+    resolve_lots,
     round_money,
+    site_lot_balances,
     visible_site_ids,
 )
 from app.platform.audit.service import audit_action
@@ -249,6 +274,7 @@ class InventoryService:
                 line.count_packaging_conversion,
                 line.count_packaging_quantity,
                 line.count_unit_quantity,
+                line.lot_tracked,
                 locations.c.location_name,
             )
             .select_from(InventoryLine.__table__)
@@ -337,6 +363,7 @@ class InventoryService:
             if open_
             else {}
         )
+        lots = self._lots_out(inventory, [r for r in rows if r.lot_tracked])
         result = []
         for r in rows:
             counted = r.quantity_physical is not None
@@ -371,8 +398,91 @@ class InventoryService:
                         CountPackagingOut(id=p.id, name=p.name, conversion=p.conversion)
                         for p in packagings.get(r.article_id, [])
                     ],
+                    lot_tracked=r.lot_tracked,
+                    lots=lots.get(r.id, []),
                 )
             )
+        return result
+
+    def _lots_out(
+        self, inventory: Inventory, rows: Sequence[Any]
+    ) -> dict[uuid.UUID, list[InventoryLotOut]]:
+        """Lots des lignes suivies d'une page (Lot 3-H), en trois requêtes : lots des lignes,
+        référentiel des lots, soldes COURANTS du site (inventaire ouvert). Aucun coût."""
+        if not rows:
+            return {}
+        open_ = inventory.status in OPEN_STATUSES
+        lot_rows = self._rows_by_line([r.id for r in rows])
+        all_rows = [row for group in lot_rows.values() for row in group]
+        infos = lot_infos(self.db, {row.lot_id for row in all_rows if row.lot_id})
+        balances = (
+            site_lot_balances(self.db, inventory.site_id, {r.article_id for r in rows})
+            if open_
+            else {}
+        )
+        users = _names(
+            self.db, User, {row.counted_by for row in all_rows if row.counted_by}, User.full_name
+        )
+        expiry = expiry_context(self.db, self.ctx, self.now)
+        result: dict[uuid.UUID, list[InventoryLotOut]] = {}
+        for line_id, group in lot_rows.items():
+            out = []
+            for row in group:
+                info = infos.get(row.lot_id) if row.lot_id else None
+                expiry_date = info.expiry_date if info else row.expiry_date
+                current = (
+                    balances.get(row.article_id, {}).get(row.lot_id, ZERO_QTY)
+                    if open_ and row.lot_id
+                    else (ZERO_QTY if open_ else None)
+                )
+                variance: Decimal | None = row.quantity_variance
+                if open_ and row.quantity_physical is not None and current is not None:
+                    variance = row.quantity_physical - current
+                out.append(
+                    InventoryLotOut(
+                        id=row.id,
+                        lot_id=row.lot_id,
+                        lot_number=info.number if info else (row.lot_number or "?"),
+                        expiry_date=expiry_date,
+                        manufacturing_date=row.manufacturing_date,
+                        state=expiry.state(expiry_date),
+                        discovered=row.discovered,
+                        stock_theoretical_initial=row.stock_theoretical_initial,
+                        stock_current=current,
+                        stock_theoretical_at_validation=row.stock_theoretical_at_validation,
+                        quantity_physical=row.quantity_physical,
+                        quantity_variance=variance,
+                        counted_at=row.counted_at,
+                        counted_by_name=users.get(row.counted_by) if row.counted_by else None,
+                        count_packaging_id=row.count_packaging_id,
+                        count_packaging_name=row.count_packaging_name,
+                        count_packaging_conversion=row.count_packaging_conversion,
+                        count_packaging_quantity=row.count_packaging_quantity,
+                        count_unit_quantity=row.count_unit_quantity,
+                    )
+                )
+            result[line_id] = out
+        return result
+
+    def _rows_by_line(
+        self, line_ids: Iterable[uuid.UUID]
+    ) -> dict[uuid.UUID, list[InventoryLineLot]]:
+        """Lots des lignes : attendus d'abord, puis découverts, dans l'ordre de saisie."""
+        ids = list(line_ids)
+        result: dict[uuid.UUID, list[InventoryLineLot]] = {line_id: [] for line_id in ids}
+        if not ids:
+            return result
+        for row in self.db.scalars(
+            select(InventoryLineLot)
+            .where(InventoryLineLot.inventory_line_id.in_(ids))
+            .order_by(
+                InventoryLineLot.inventory_line_id,
+                InventoryLineLot.discovered,
+                InventoryLineLot.created_at,
+                InventoryLineLot.id,
+            )
+        ):
+            result[row.inventory_line_id].append(row)
         return result
 
     def summary(self, inventory: Inventory) -> InventorySummary:
@@ -744,13 +854,21 @@ class InventoryService:
         # Instantané du stock théorique au début du comptage (information seulement).
         quantities = self._quantities(inventory.site_id, article_ids)
         line_ids = self._line_articles(inventory)
+        # Lot 3-H : mode de suivi par lot FIGÉ (réglage lu sous verrou partagé de l'article).
+        flags = lock_lot_flags(self.db, article_ids)
         self.db.execute(
             update(InventoryLine),
             [
-                {"id": line_ids[article_id], "stock_theoretical_initial": quantity}
+                {
+                    "id": line_ids[article_id],
+                    "stock_theoretical_initial": quantity,
+                    "lot_tracked": flags[article_id].lot_tracked,
+                }
                 for article_id, quantity in quantities.items()
             ],
         )
+        tracked = {a for a in article_ids if flags[a].lot_tracked}
+        self._add_expected_lots(inventory, {a: line_ids[a] for a in tracked}, {})
         previous = inventory.status
         inventory.status = target
         inventory.started_at = self.now
@@ -763,9 +881,331 @@ class InventoryService:
                 "previous_status": previous.value,
                 "status": target.value,
                 "lines": len(article_ids),
+                **({"lot_tracked_lines": len(tracked)} if tracked else {}),
             },
         )
         return inventory
+
+    # --- Lots (Lot 3-H) -----------------------------------------------------------------------
+
+    def _add_expected_lots(
+        self,
+        inventory: Inventory,
+        lines: dict[uuid.UUID, uuid.UUID],
+        known: dict[uuid.UUID, set[uuid.UUID]],
+    ) -> list[tuple[uuid.UUID, uuid.UUID, Decimal]]:
+        """Lots ATTENDUS des lignes suivies (article → ligne) : solde non nul sur le site,
+        absents des lots déjà connus de la ligne (``known`` : article → lots). Théorique initial
+        = solde courant du lot. Renvoie (article, lot, solde) ajoutés."""
+        balances = site_lot_balances(self.db, inventory.site_id, set(lines))
+        added = [
+            (article_id, lot_id, quantity)
+            for article_id in sorted(lines)
+            for lot_id, quantity in sorted(balances.get(article_id, {}).items())
+            if lot_id not in known.get(article_id, set())
+        ]
+        if added:
+            self.db.execute(
+                insert(InventoryLineLot),
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "tenant_id": self.ctx.tenant_id,
+                        "inventory_line_id": lines[article_id],
+                        "article_id": article_id,
+                        "lot_id": lot_id,
+                        "discovered": False,
+                        "stock_theoretical_initial": quantity,
+                    }
+                    for article_id, lot_id, quantity in added
+                ],
+            )
+        return added
+
+    def _tracked_line(self, inventory: Inventory, line_id: uuid.UUID) -> InventoryLine:
+        line = self.db.scalars(
+            select(InventoryLine).where(
+                InventoryLine.inventory_id == inventory.id, InventoryLine.id == line_id
+            )
+        ).one_or_none()
+        if line is None:
+            raise NotFoundError("Ligne d'inventaire introuvable", code="inventory_line_not_found")
+        if not line.lot_tracked:
+            raise BusinessRuleError(
+                "Cette ligne n'est pas suivie par lot", code="inventory_line_not_lot_tracked"
+            )
+        return line
+
+    def _recount_line(self, line: InventoryLine, rows: Sequence[InventoryLineLot]) -> None:
+        """Ligne suivie : quantité physique = Σ des lots (lot non saisi = 0, O-5) ; la ligne est
+        comptée dès qu'un comptage par lot a été enregistré."""
+        line.quantity_physical = sum(
+            (row.quantity_physical or ZERO for row in rows), ZERO
+        ).quantize(QUANTITY_STEP)
+        line.counted_at = self.now
+        line.counted_by = self.ctx.user.id
+
+    def _apply_count(
+        self,
+        row: InventoryLineLot,
+        ref: ArticleRef,
+        count: CountFields | None,
+        packagings: dict[uuid.UUID, PackagingRef],
+    ) -> bool:
+        """Comptage d'un lot (mécanisme commun 3-C : unité de base, ou conditionnement + vrac).
+        Renvoie vrai si la saisie change."""
+        if count is None:
+            quantity, presentation = None, NO_PRESENTATION
+        else:
+            packaging = packagings[count.packaging_id] if count.packaging_id else None
+            quantity, presentation = _count_quantity(ref, count, packaging)
+        if quantity == row.quantity_physical and presentation == _presentation_of(row):
+            return False
+        row.quantity_physical = quantity
+        (
+            row.count_packaging_id,
+            row.count_packaging_name,
+            row.count_packaging_conversion,
+            row.count_packaging_quantity,
+            row.count_unit_quantity,
+        ) = presentation
+        row.counted_at = self.now if quantity is not None else None
+        row.counted_by = self.ctx.user.id if quantity is not None else None
+        return True
+
+    def _lot_label(self, rows: Sequence[InventoryLineLot]) -> dict[uuid.UUID, str]:
+        infos = lot_infos(self.db, {row.lot_id for row in rows if row.lot_id})
+        return {
+            row.id: infos[row.lot_id].number if row.lot_id in infos else (row.lot_number or "?")
+            for row in rows
+        }
+
+    def save_lot_counts(
+        self, inventory_id: uuid.UUID, line_id: uuid.UUID, counts: list[LotCountInput]
+    ) -> InventoryLine:
+        """Comptage COMPLET d'une ligne suivie par lot (remplacement) : lots listés comptés,
+        autres lots de la ligne effacés (= 0 à la validation, O-5)."""
+        inventory = self.get(inventory_id, lock=True)
+        self._require(inventory, "count")
+        line = self._tracked_line(inventory, line_id)
+        rows = self._rows_by_line([line.id])[line.id]
+        by_id = {row.id: row for row in rows}
+        ids = [c.lot_row_id for c in counts]
+        if len(set(ids)) != len(ids):
+            raise BusinessRuleError("Un lot apparaît plusieurs fois", code="duplicate_count_line")
+        missing = [str(i) for i in ids if i not in by_id]
+        if missing:
+            raise BusinessRuleError(
+                "Lot d'inventaire introuvable sur cette ligne",
+                code="inventory_lot_not_found",
+                extra={"lots": missing},
+            )
+        ref = get_article_refs(self.db, {line.article_id})[line.article_id]
+        packagings = check_packagings(
+            self.db, [(line.article_id, c.packaging_id) for c in counts if c.packaging_id]
+        )
+        wanted = {c.lot_row_id: c for c in counts}
+        labels = self._lot_label(rows)
+        changes = []
+        for row in rows:
+            before = row.quantity_physical
+            if self._apply_count(row, ref, wanted.get(row.id), packagings):
+                changes.append(
+                    {
+                        "reference": ref.reference,
+                        "lot_number": labels[row.id],
+                        "before": _fmt(before),
+                        "after": _fmt(row.quantity_physical),
+                    }
+                )
+        before_line = line.quantity_physical
+        self._recount_line(line, rows)
+        self.db.flush()
+        if changes or before_line != line.quantity_physical:
+            self._audit("counted", inventory, {"changes": changes, "lots": True})
+        return line
+
+    def add_discovered_lot(
+        self, inventory_id: uuid.UUID, line_id: uuid.UUID, data: DiscoveredLotInput
+    ) -> InventoryLine:
+        """Lot trouvé physiquement (T-4) : règles de saisie 3-G ; rattaché au lot EXISTANT de
+        l'article (jamais de doublon), sinon créé à la validation seulement ; refus s'il figure
+        déjà sur la ligne (``409 duplicate_lot_in_inventory``)."""
+        inventory = self.get(inventory_id, lock=True)
+        self._require(inventory, "count")
+        line = self._tracked_line(inventory, line_id)
+        refs = get_article_refs(self.db, {line.article_id})
+        ref = refs[line.article_id]
+        lot_input = LotInput(
+            line.article_id, data.lot_number, data.expiry_date, data.manufacturing_date
+        )
+        check_lot_inputs([lot_input], refs)
+        check_known_lots(self.db, [lot_input], refs)
+        rows = self._rows_by_line([line.id])[line.id]
+        key = lot_key(line.article_id, data.lot_number)
+        existing = existing_lot_infos(self.db, {key}).get(key)
+        duplicate = any(
+            (existing is not None and row.lot_id == existing.id)
+            or (
+                row.lot_id is None
+                and row.lot_number is not None
+                and row.lot_number.lower() == data.lot_number.lower()
+            )
+            for row in rows
+        )
+        if duplicate:
+            raise ConflictError(
+                "Ce lot figure déjà sur la ligne",
+                code="duplicate_lot_in_inventory",
+                extra={"articles": [ref.reference], "lots": [data.lot_number]},
+            )
+        initial = ZERO_QTY
+        if existing is not None:
+            initial = (
+                site_lot_balances(self.db, inventory.site_id, {line.article_id})
+                .get(line.article_id, {})
+                .get(existing.id, ZERO_QTY)
+            )
+        row = InventoryLineLot(
+            id=uuid.uuid4(),
+            tenant_id=self.ctx.tenant_id,
+            inventory_line_id=line.id,
+            article_id=line.article_id,
+            lot_id=existing.id if existing else None,
+            discovered=True,
+            lot_number=data.lot_number,
+            expiry_date=data.expiry_date,
+            manufacturing_date=data.manufacturing_date,
+            stock_theoretical_initial=initial,
+        )
+        self.db.add(row)
+        counted = data.quantity_physical is not None or data.packaging_id is not None
+        if counted:
+            packagings = check_packagings(
+                self.db, [(line.article_id, data.packaging_id)] if data.packaging_id else []
+            )
+            self._apply_count(row, ref, data, packagings)
+        self.db.flush()
+        self._recount_line(line, [*rows, row])
+        self.db.flush()
+        self._audit(
+            "lot_discovered",
+            inventory,
+            {
+                "reference": ref.reference,
+                "lot_number": data.lot_number,
+                "known_lot": existing is not None,
+                "expiry_date": data.expiry_date.isoformat() if data.expiry_date else None,
+                "quantity": _fmt(row.quantity_physical),
+            },
+        )
+        return line
+
+    def remove_discovered_lot(
+        self, inventory_id: uuid.UUID, line_id: uuid.UUID, row_id: uuid.UUID
+    ) -> InventoryLine:
+        """Retrait d'un lot DÉCOUVERT (saisie erronée) ; un lot attendu ne se retire jamais :
+        non trouvé, il est compté 0."""
+        inventory = self.get(inventory_id, lock=True)
+        self._require(inventory, "count")
+        line = self._tracked_line(inventory, line_id)
+        rows = self._rows_by_line([line.id])[line.id]
+        row = next((r for r in rows if r.id == row_id), None)
+        if row is None:
+            raise NotFoundError("Lot d'inventaire introuvable", code="inventory_lot_not_found")
+        if not row.discovered:
+            raise BusinessRuleError(
+                "Un lot attendu ne se retire pas : non trouvé, il est compté 0",
+                code="inventory_lot_not_discovered",
+            )
+        label = self._lot_label([row])[row.id]
+        self.db.delete(row)
+        self.db.flush()
+        self._recount_line(line, [r for r in rows if r.id != row_id])
+        self.db.flush()
+        ref = get_article_refs(self.db, {line.article_id})[line.article_id]
+        self._audit(
+            "lot_discovery_removed",
+            inventory,
+            {"reference": ref.reference, "lot_number": label},
+        )
+        return line
+
+    def _attach_discovered(
+        self, rows: Sequence[InventoryLineLot], refs: dict[uuid.UUID, ArticleRef]
+    ) -> None:
+        """Lot découvert NOUVEAU dont le numéro est entre-temps connu (créé par une réception
+        ou un autre inventaire) : rattaché au lot existant, sous réserve de la même péremption
+        (``lot_expiry_mismatch``) — jamais de doublon."""
+        pending = [row for row in rows if row.discovered and row.lot_id is None]
+        if not pending:
+            return
+        inputs = [
+            LotInput(row.article_id, row.lot_number, row.expiry_date, row.manufacturing_date)
+            for row in pending
+        ]
+        check_known_lots(self.db, inputs, refs)
+        known = existing_lot_infos(
+            self.db, {lot_key(row.article_id, row.lot_number or "") for row in pending}
+        )
+        for row in pending:
+            info = known.get(lot_key(row.article_id, row.lot_number or ""))
+            if info is not None:
+                row.lot_id = info.id
+
+    def refresh_lots(self, inventory_id: uuid.UUID) -> int:
+        """« Actualiser les lots » (D-3) : ajoute aux lignes suivies les lots apparus sur le site
+        depuis le démarrage (réception, transfert entrant…), à compter — jamais comptés 0 sans
+        avoir été montrés. Comptage terminé : retour au comptage s'il y a des lots ajoutés."""
+        inventory = self.get(inventory_id, lock=True)
+        if inventory.status not in (S.COUNTING, S.READY_TO_VALIDATE):
+            raise ConflictError(
+                "Opération impossible dans l'état actuel de l'inventaire",
+                code="inventory_invalid_transition",
+                extra={"status": inventory.status.value, "action": "refresh_lots"},
+            )
+        lines = list(
+            self.db.scalars(
+                select(InventoryLine).where(
+                    InventoryLine.inventory_id == inventory.id, InventoryLine.lot_tracked
+                )
+            )
+        )
+        rows_by_line = self._rows_by_line([line.id for line in lines])
+        refs = get_article_refs(self.db, {line.article_id for line in lines})
+        all_rows = [row for group in rows_by_line.values() for row in group]
+        self._attach_discovered(all_rows, refs)
+        self.db.flush()
+        known: dict[uuid.UUID, set[uuid.UUID]] = {}
+        for row in all_rows:
+            if row.lot_id is not None:
+                known.setdefault(row.article_id, set()).add(row.lot_id)
+        added = self._add_expected_lots(
+            inventory, {line.article_id: line.id for line in lines}, known
+        )
+        if added and inventory.status is S.READY_TO_VALIDATE:
+            inventory.status = S.COUNTING
+            inventory.completed_at = None
+            inventory.completed_by = None
+        self.db.flush()
+        if added:
+            infos = lot_infos(self.db, {lot_id for _, lot_id, _ in added})
+            self._audit(
+                "lots_refreshed",
+                inventory,
+                {
+                    "status": inventory.status.value,
+                    "lots": [
+                        {
+                            "reference": refs[article_id].reference,
+                            "lot_number": infos[lot_id].number if lot_id in infos else None,
+                            "stock_theoretical_initial": format(quantity, "f"),
+                        }
+                        for article_id, lot_id, quantity in added
+                    ],
+                },
+            )
+        return len(added)
 
     def save_counts(
         self, inventory_id: uuid.UUID, counts: list[CountInput]
@@ -792,6 +1232,16 @@ class InventoryService:
                 "Ligne d'inventaire introuvable",
                 code="inventory_line_not_found",
                 extra={"lines": missing},
+            )
+        # Lot 3-H : une ligne suivie par lot se compte PAR LOT (la quantité de la ligne est la
+        # somme des lots, calculée par le serveur).
+        tracked = [line for line in lines.values() if line.lot_tracked]
+        if tracked:
+            refs = get_article_refs(self.db, {line.article_id for line in tracked})
+            raise BusinessRuleError(
+                "Article suivi par lot : comptez chaque lot",
+                code="inventory_line_lot_tracked",
+                extra={"articles": sorted(refs[line.article_id].reference for line in tracked)},
             )
         # Lot 3-C : articles (règle des quantités entières) et conditionnements des comptages
         # (de l'article de la ligne, actifs, sous verrou partagé) — mécanisme commun.
@@ -888,10 +1338,10 @@ class InventoryService:
                 extra={"remaining": int(remaining)},
             )
 
-    def _revalidate_counts(self, lines: Sequence[InventoryLine]) -> None:
+    def _revalidate_counts(self, lines: Sequence[InventoryLine | InventoryLineLot]) -> None:
         """Lot 3-C : à la validation, tout comptage est relu — règle des quantités entières de
         l'article, conditionnement (existant, actif, conversion inchangée) et quantité de base
-        recalculée par le serveur."""
+        recalculée par le serveur. Lot 3-H : même contrôle pour chaque comptage PAR LOT."""
         refs = get_article_refs(self.db, {line.article_id for line in lines})
         counted = [line for line in lines if line.count_packaging_id is not None]
         packagings = check_packagings(
@@ -921,12 +1371,19 @@ class InventoryService:
         """Applique les écarts au stock, en une transaction (tout ou rien) :
 
         1. verrou de l'inventaire et contrôle du statut (PRÊT À VALIDER) ;
-        2. contrôle du comptage complet ;
-        3. verrou des niveaux (ordre global de ``StockService``) et relecture du stock courant ;
-        4. écart = physique − stock courant ; valeur = écart × CMUP courant ;
-        5. mouvements ``ADJUSTMENT`` pour les écarts non nuls, via ``StockService.apply``
-           (contrôle du stock négatif, CMUP inchangé) ;
-        6. lignes figées, statut VALIDÉ, audit. Le commit est fait par l'endpoint."""
+        2. contrôle du comptage complet et revalidation des comptages (3-C) ;
+        3. Lot 3-H : réglages de suivi relus sous verrou partagé des articles — mode changé
+           depuis le démarrage : ``409 inventory_lot_mode_changed`` ; lots découverts revérifiés
+           (règles 3-G) puis rattachés ou créés (``resolve_lots``, jamais de doublon) ;
+        4. verrou des niveaux puis des soldes de lots du site (ordre global de
+           ``StockService``), invariant Σ lots = stock contrôlé ; lot apparu depuis le démarrage
+           et absent du comptage : ``409 inventory_lots_changed`` ;
+        5. écart = physique − stock courant (par lot pour un article suivi : un lot non saisi
+           compte 0) ; valeur = écart × CMUP courant ;
+        6. mouvements ``ADJUSTMENT`` pour les écarts non nuls — un par LOT pour un article suivi,
+           même si l'écart de l'article est nul — via ``StockService.apply`` (stock jamais
+           négatif, CMUP inchangé), invariant revérifié après écriture ;
+        7. lignes figées, statut VALIDÉ, audit. Le commit est fait par l'endpoint."""
         inventory = self.get(inventory_id, lock=True)
         target = next_status(inventory.status, "validate")
         self._ensure_fully_counted(inventory)
@@ -939,44 +1396,84 @@ class InventoryService:
         )
         if not lines:
             raise BusinessRuleError("Aucun article à valider", code="inventory_empty")
-        self._revalidate_counts(lines)
+        tracked_lines = [line for line in lines if line.lot_tracked]
+        rows_by_line = self._rows_by_line([line.id for line in tracked_lines])
+        all_rows = [row for group in rows_by_line.values() for row in group]
+        self._revalidate_counts([*(line for line in lines if not line.lot_tracked), *all_rows])
+        article_ids = {line.article_id for line in lines}
+        flags = lock_lot_flags(self.db, article_ids)
+        refs = get_article_refs(self.db, article_ids)
+        changed = sorted(
+            refs[line.article_id].reference
+            for line in lines
+            if flags[line.article_id].lot_tracked != line.lot_tracked
+        )
+        if changed:
+            raise ConflictError(
+                "Le suivi par lot d'un article a changé depuis le début du comptage : "
+                "annulez cet inventaire et recommencez",
+                code="inventory_lot_mode_changed",
+                extra={"articles": changed},
+            )
+        created = self._resolve_discovered(inventory, all_rows, refs)
+        tracked_ids = {line.article_id for line in tracked_lines}
         stock = self._stock()
-        levels = stock.lock_levels(inventory.site_id, {line.article_id for line in lines})
+        levels = stock.lock_levels(inventory.site_id, article_ids)
+        lot_levels = stock.lock_site_lots(
+            inventory.site_id,
+            tracked_ids,
+            {(row.article_id, row.lot_id) for row in all_rows if row.lot_id is not None},
+        )
+        self._ensure_no_new_lots(tracked_lines, rows_by_line, lot_levels, refs)
         requests: list[MovementRequest] = []
+        lot_changes: list[dict[str, str]] = []
         surplus = shortage = 0
         surplus_value = shortage_value = ZERO
+        labels = self._lot_label(all_rows)
         for line in lines:
-            physical = line.quantity_physical
-            if physical is None or physical < 0:  # garde : contrôlé ci-dessus et en base
-                raise BusinessRuleError("Quantité physique invalide", code="invalid_quantity")
             level = levels[line.article_id]
-            variance = physical - level.quantity
+            if line.lot_tracked:
+                physical = ZERO_QTY
+                for row in rows_by_line[line.id]:
+                    assert row.lot_id is not None  # rattaché ou créé ci-dessus
+                    current = lot_levels[(line.article_id, row.lot_id)].quantity
+                    counted = row.quantity_physical if row.quantity_physical is not None else ZERO
+                    row.stock_theoretical_at_validation = current
+                    row.quantity_physical = counted.quantize(QUANTITY_STEP)
+                    row.quantity_variance = row.quantity_physical - current
+                    physical += row.quantity_physical
+                    if row.quantity_variance == 0:
+                        continue
+                    lot_changes.append(
+                        {
+                            "reference": refs[line.article_id].reference,
+                            "lot_number": labels[row.id],
+                            "variance": format(row.quantity_variance, "f"),
+                        }
+                    )
+                    requests.append(
+                        self._adjustment(inventory, line, row.quantity_variance, row.lot_id)
+                    )
+                line.quantity_physical = physical
+            physical_total = line.quantity_physical
+            if physical_total is None or physical_total < 0:  # garde : contrôlé et en base
+                raise BusinessRuleError("Quantité physique invalide", code="invalid_quantity")
+            variance = physical_total - level.quantity
             value = round_money(variance * level.average_cost)
             line.stock_theoretical_at_validation = level.quantity
             line.quantity_variance = variance
             line.unit_cost = level.average_cost
             line.adjustment_value = value
-            if variance == 0:
-                continue  # aucun mouvement sans écart
             if variance > 0:
                 surplus, surplus_value = surplus + 1, surplus_value + value
-            else:
+            elif variance < 0:
                 shortage, shortage_value = shortage + 1, shortage_value - value
-            requests.append(
-                MovementRequest(
-                    article_id=line.article_id,
-                    movement_type=MovementType.ADJUSTMENT,
-                    quantity=variance,
-                    source_type=SOURCE_TYPE,
-                    source_id=inventory.id,
-                    source_line_id=line.id,
-                    source_number=inventory.number,
-                    comment=f"Inventaire {inventory.number}",
-                )
-            )
+            if variance != 0 and not line.lot_tracked:
+                requests.append(self._adjustment(inventory, line, variance, None))
         # Moteur central : sortie au CMUP courant, excédent valorisé au CMUP courant (le type
         # ADJUSTMENT ne recalcule jamais le CMUP), stock jamais négatif, tout ou rien.
         movements = stock.apply(inventory.site_id, requests)
+        stock.verify_lot_invariant(inventory.site_id, tracked_ids)
         previous = inventory.status
         inventory.status = target
         inventory.validated_at = self.now
@@ -996,9 +1493,126 @@ class InventoryService:
                 "surplus_value": format(surplus_value, "f"),
                 "shortage_value": format(shortage_value, "f"),
                 "adjustment_value": format(surplus_value - shortage_value, "f"),
+                **({"lots": lot_changes} if lot_changes else {}),
+                **({"lots_created": created} if created else {}),
             },
         )
         return inventory
+
+    def _adjustment(
+        self,
+        inventory: Inventory,
+        line: InventoryLine,
+        variance: Decimal,
+        lot_id: uuid.UUID | None,
+    ) -> MovementRequest:
+        return MovementRequest(
+            article_id=line.article_id,
+            movement_type=MovementType.ADJUSTMENT,
+            quantity=variance,
+            source_type=SOURCE_TYPE,
+            source_id=inventory.id,
+            source_line_id=line.id,
+            source_number=inventory.number,
+            comment=f"Inventaire {inventory.number}",
+            lot_id=lot_id,
+        )
+
+    def _resolve_discovered(
+        self,
+        inventory: Inventory,
+        rows: Sequence[InventoryLineLot],
+        refs: dict[uuid.UUID, ArticleRef],
+    ) -> list[str]:
+        """Lots découverts (T-4, validation seulement) : règles 3-G revérifiées avec les
+        réglages courants, lot existant rattaché (même péremption, sinon ``lot_expiry_mismatch``),
+        lot nouveau créé par ``resolve_lots`` (``INSERT … ON CONFLICT``, audit
+        ``stock_lot.created`` avec l'inventaire comme source) ; jamais deux fois le même lot sur
+        une ligne. Renvoie les numéros des lots créés."""
+        discovered = [row for row in rows if row.discovered]
+        if not discovered:
+            return []
+        inputs = [
+            LotInput(row.article_id, row.lot_number, row.expiry_date, row.manufacturing_date)
+            for row in discovered
+        ]
+        check_lot_inputs(inputs, refs)
+        check_known_lots(self.db, inputs, refs)
+        pending = [row for row in discovered if row.lot_id is None]
+        known = existing_lot_infos(
+            self.db, {lot_key(row.article_id, row.lot_number or "") for row in pending}
+        )
+        resolved = resolve_lots(
+            self.db,
+            self.ctx,
+            [
+                LotInput(row.article_id, row.lot_number, row.expiry_date, row.manufacturing_date)
+                for row in pending
+            ],
+            refs,
+            source={"source_type": "inventory", "source_number": inventory.number},
+        )
+        created = []
+        for row in pending:
+            key = lot_key(row.article_id, row.lot_number or "")
+            row.lot_id = resolved[key]
+            if key not in known:
+                created.append(row.lot_number or "")
+        seen: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for row in rows:
+            key_line = (row.inventory_line_id, row.lot_id or uuid.UUID(int=0))
+            if key_line in seen:
+                raise ConflictError(
+                    "Un même lot figure deux fois sur une ligne",
+                    code="duplicate_lot_in_inventory",
+                    extra={
+                        "articles": [refs[row.article_id].reference],
+                        "lots": [row.lot_number or ""],
+                    },
+                )
+            seen.add(key_line)
+        self.db.flush()
+        return sorted(created)
+
+    def _ensure_no_new_lots(
+        self,
+        lines: Sequence[InventoryLine],
+        rows_by_line: dict[uuid.UUID, list[InventoryLineLot]],
+        lot_levels: dict[tuple[uuid.UUID, uuid.UUID], Any],
+        refs: dict[uuid.UUID, ArticleRef],
+    ) -> None:
+        """D-3 : un lot ayant un solde sur le site mais absent du comptage (apparu après le
+        démarrage : réception, transfert entrant…) n'est jamais compté 0 en silence —
+        ``409 inventory_lots_changed`` ; « Actualiser les lots » l'ajoute au comptage."""
+        counted = {(line.article_id, row.lot_id) for line in lines for row in rows_by_line[line.id]}
+        appeared = sorted(
+            (
+                key
+                for key, level in lot_levels.items()
+                if level.quantity != 0 and key not in counted
+            ),
+            key=lambda k: (str(k[0]), str(k[1])),
+        )
+        if not appeared:
+            return
+        infos = lot_infos(self.db, {lot_id for _, lot_id in appeared})
+        raise ConflictError(
+            "Des lots sont apparus sur le site depuis le début du comptage : actualisez les lots",
+            code="inventory_lots_changed",
+            extra={
+                "articles": sorted({refs[a].reference for a, _ in appeared}),
+                "lots": [
+                    {
+                        "article_id": str(article_id),
+                        "reference": refs[article_id].reference,
+                        "lot_id": str(lot_id),
+                        "lot_number": infos[lot_id].number if lot_id in infos else None,
+                        "quantity": format(lot_levels[(article_id, lot_id)].quantity, "f"),
+                    }
+                    for article_id, lot_id in appeared
+                ],
+            },
+        )
 
     def cancel(self, inventory_id: uuid.UUID, reason: str) -> Inventory:
         """Avant validation seulement, sans effet sur le stock. Un inventaire validé est
@@ -1020,8 +1634,11 @@ class InventoryService:
 
     # --- Sortie API ---------------------------------------------------------------------------
 
-    def _counts(self, inventories: Sequence[Inventory]) -> dict[uuid.UUID, tuple[int, int, int]]:
-        """(lignes, comptées, écarts non nuls) par inventaire, en une requête groupée."""
+    def _counts(
+        self, inventories: Sequence[Inventory]
+    ) -> dict[uuid.UUID, tuple[int, int, int, int]]:
+        """(lignes, comptées, écarts non nuls, suivies par lot) par inventaire, en une requête
+        groupée."""
         if not inventories:
             return {}
         levels = levels_view()
@@ -1036,6 +1653,7 @@ class InventoryService:
                 func.count(),
                 func.count(line.quantity_physical),
                 func.count().filter(variance != 0),
+                func.count().filter(line.lot_tracked),
             )
             .select_from(InventoryLine.__table__)
             .join(Inventory, Inventory.id == line.inventory_id)
@@ -1050,7 +1668,7 @@ class InventoryService:
             .where(line.inventory_id.in_([i.id for i in inventories]))
             .group_by(line.inventory_id)
         ).all()
-        return {row[0]: (int(row[1]), int(row[2]), int(row[3])) for row in rows}
+        return {row[0]: (int(row[1]), int(row[2]), int(row[3]), int(row[4])) for row in rows}
 
     def to_out(
         self, inventories: Sequence[Inventory], *, with_summary: bool = False
@@ -1077,9 +1695,10 @@ class InventoryService:
                 status=i.status,
                 inventory_type=i.inventory_type,
                 comment=i.comment,
-                line_count=counts.get(i.id, (0, 0, 0))[0],
-                counted_count=counts.get(i.id, (0, 0, 0))[1],
-                variance_count=counts.get(i.id, (0, 0, 0))[2],
+                line_count=counts.get(i.id, (0, 0, 0, 0))[0],
+                counted_count=counts.get(i.id, (0, 0, 0, 0))[1],
+                variance_count=counts.get(i.id, (0, 0, 0, 0))[2],
+                lot_tracked_count=counts.get(i.id, (0, 0, 0, 0))[3],
                 created_at=i.created_at,
                 updated_at=i.updated_at,
                 created_by_name=name(i.created_by),
@@ -1117,7 +1736,7 @@ Presentation = tuple[uuid.UUID | None, str | None, Decimal | None, Decimal | Non
 NO_PRESENTATION: Presentation = (None, None, None, None, None)
 
 
-def _presentation_of(line: InventoryLine) -> Presentation:
+def _presentation_of(line: InventoryLine | InventoryLineLot) -> Presentation:
     return (
         line.count_packaging_id,
         line.count_packaging_name,
@@ -1144,7 +1763,7 @@ def _base_count(
 
 
 def _count_quantity(
-    ref: ArticleRef, count: CountInput, packaging: PackagingRef | None
+    ref: ArticleRef, count: CountFields, packaging: PackagingRef | None
 ) -> tuple[Decimal | None, Presentation]:
     """Quantité physique (unité de base) et présentation d'un comptage saisi (Lot 3-C)."""
     if packaging is None:
@@ -1177,13 +1796,30 @@ def _names(db: Session, model: Any, ids: set[Any], column: Any) -> dict[Any, str
 
 
 def packagings_used(db: Session, ids: set[uuid.UUID]) -> set[uuid.UUID]:
-    """Port du catalogue (Lot 3-C) : conditionnements utilisés par un comptage d'inventaire."""
-    return {
-        packaging_id
-        for packaging_id in db.scalars(
-            select(InventoryLine.count_packaging_id)
-            .where(InventoryLine.count_packaging_id.in_(ids))
+    """Port du catalogue (Lot 3-C) : conditionnements utilisés par un comptage d'inventaire
+    (ligne ou lot, Lot 3-H)."""
+    used: set[uuid.UUID] = set()
+    for column in (InventoryLine.count_packaging_id, InventoryLineLot.count_packaging_id):
+        used |= {
+            packaging_id
+            for packaging_id in db.scalars(select(column).where(column.in_(ids)).distinct())
+            if packaging_id is not None
+        }
+    return used
+
+
+def lot_flags_check(
+    db: Session, tenant_id: uuid.UUID, article_id: uuid.UUID, enabling: bool
+) -> list[LotFlagsBlocker]:
+    """Port du catalogue (Lot 3-H) : un article figurant dans un inventaire OUVERT ne change pas
+    de suivi par lot ou de péremption (mode figé au démarrage, lots en cours de comptage)."""
+    return [
+        LotFlagsBlocker(BlockerKind.OPEN_DOCUMENT, number)
+        for number in db.scalars(
+            select(Inventory.number)
+            .join(InventoryLine, InventoryLine.inventory_id == Inventory.id)
+            .where(Inventory.status.in_(OPEN_STATUSES), InventoryLine.article_id == article_id)
             .distinct()
+            .limit(20)
         )
-        if packaging_id is not None
-    }
+    ]

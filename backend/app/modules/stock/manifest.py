@@ -1,10 +1,12 @@
 from app.modules.catalog.api import (
+    register_lot_flags_check,
     register_lot_stocked_sites,
     register_packaging_usage,
     register_stocked_sites,
 )
 from app.modules.stock.document_service import packagings_used
 from app.modules.stock.level_service import stocked_sites
+from app.modules.stock.lot_flags_checks import lot_flags_check
 from app.modules.stock.lot_service import lot_stocked_sites
 from app.modules.stock.reasons import ensure_system_exit_reasons
 from app.modules.stock.router import router
@@ -20,6 +22,8 @@ register_lot_stocked_sites(lot_stocked_sites)
 # Lot 3-C : un conditionnement saisi sur une entrée, une sortie ou un transfert (brouillon
 # compris) a sa conversion figée.
 register_packaging_usage("stock", packagings_used)
+# Lot 3-H : changement de suivi par lot refusé s'il rendait un document incohérent.
+register_lot_flags_check("stock", lot_flags_check)
 
 MANIFEST = ModuleManifest(
     code="stock",

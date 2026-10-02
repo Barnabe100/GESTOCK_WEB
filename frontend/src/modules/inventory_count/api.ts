@@ -43,6 +43,8 @@ export interface Inventory {
   line_count: number;
   counted_count: number;
   variance_count: number;
+  /** Lot 3-H : lignes suivies par lot (mode figé au démarrage). */
+  lot_tracked_count?: number;
   created_at: string;
   updated_at: string;
   created_by_name: string | null;
@@ -89,6 +91,41 @@ export interface InventoryLine {
   packagings?: { id: string; name: string; conversion: string }[];
   /** Lot 3-F : emplacement COURANT de l'article sur le site (nul : non rangé). */
   location_name?: string | null;
+  /** Lot 3-H : article suivi par lot (mode figé au démarrage) — comptage PAR LOT. */
+  lot_tracked?: boolean;
+  lots?: InventoryLot[];
+}
+
+/** Lot d'une ligne suivie par lot (Lot 3-H) : attendu (solde au démarrage) ou découvert.
+ *  Aucun coût. Écart = physique (0 si non saisi) − solde courant (figé à la validation). */
+export interface InventoryLot {
+  id: string;
+  lot_id: string | null;
+  lot_number: string;
+  expiry_date: string | null;
+  manufacturing_date: string | null;
+  state: 'no_expiry' | 'ok' | 'expiring_soon' | 'expired' | null;
+  discovered: boolean;
+  stock_theoretical_initial: string;
+  stock_current: string | null;
+  stock_theoretical_at_validation: string | null;
+  quantity_physical: string | null;
+  quantity_variance: string | null;
+  counted_at: string | null;
+  counted_by_name: string | null;
+  count_packaging_id?: string | null;
+  count_packaging_name?: string | null;
+  count_packaging_conversion?: string | null;
+  count_packaging_quantity?: string | null;
+  count_unit_quantity?: string | null;
+}
+
+/** Lot trouvé physiquement : règles 3-G contrôlées par le serveur. */
+export interface DiscoveredLotInput {
+  lot_number: string;
+  expiry_date: string | null;
+  manufacturing_date: string | null;
+  quantity_physical?: string | null;
 }
 
 /** Comptage : en unité de base, OU conditionnements + unités en vrac (calcul serveur). */
@@ -207,6 +244,44 @@ export function useInventoryMutations() {
       mutationFn: ({ id, reason }: { id: string; reason: string }) =>
         api.post<Inventory>(`/inventories/${id}/cancel`, { reason }),
       onSuccess: refresh,
+    }),
+    // Lot 3-H : lots apparus sur le site depuis le démarrage ajoutés au comptage.
+    refreshLots: useMutation({
+      mutationFn: (id: string) => api.post<Inventory>(`/inventories/${id}/refresh-lots`),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+type LinesAndSummary = { lines: InventoryLine[]; summary: InventorySummary };
+
+/** Lot 3-H : comptage par lot d'une ligne suivie, lots découverts. */
+export function useLotMutations(inventoryId: string) {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: inventoryKeys.all });
+  };
+  const base = (lineId: string) => `/inventories/${inventoryId}/lines/${lineId}/lots`;
+  return {
+    save: useMutation({
+      mutationFn: ({
+        lineId,
+        counts,
+      }: {
+        lineId: string;
+        counts: ({ lot_row_id: string } & CountValue)[];
+      }) => api.put<LinesAndSummary>(base(lineId), { counts }),
+      onSuccess,
+    }),
+    discover: useMutation({
+      mutationFn: ({ lineId, input }: { lineId: string; input: DiscoveredLotInput }) =>
+        api.post<LinesAndSummary>(base(lineId), input),
+      onSuccess,
+    }),
+    remove: useMutation({
+      mutationFn: ({ lineId, rowId }: { lineId: string; rowId: string }) =>
+        api.delete<LinesAndSummary>(`${base(lineId)}/${rowId}`),
+      onSuccess,
     }),
   };
 }

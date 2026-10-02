@@ -456,5 +456,20 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Annulation | Un inverse par mouvement d'origine, même lot ; refus total si un lot du site destination ne suffit plus (`insufficient_lot_stock`) ; jamais deux fois. |
 | Conditionnements | Présentation d'un mouvement réparti seulement si exactement représentable (comme 3-H-A). |
 | Articles non suivis | Inchangés : une paire sans lot par ligne. |
-| Hors périmètre (3-H-B2, 3-H-B3) | Inventaires par lot (refusés par le garde-fou pour un article suivi) ; levée de P1-b ; P1-b toujours active. |
+| Hors périmètre (3-H-B1) | Inventaires par lot (livrés à la finalisation 3-H, § 18) ; levée de P1-b ; P1-b toujours active. |
+
+## 18. Finalisation 3-H — inventaires par lot et garde du suivi (ADR-0045)
+
+| Règle | Web |
+|---|---|
+| Desktop | Aucune notion de lot : règles entièrement nouvelles (D-3, D-4, D-5 de l'audit 3-H-B). |
+| Mode | Suivi par lot figé par ligne au démarrage ; relu sous verrou à la validation (`inventory_lot_mode_changed`). Article non suivi : inventaire inchangé. |
+| Lots attendus | Lots de solde non nul sur le site au démarrage ; non saisi = physique 0 ; périmé : compté et ajusté. |
+| Lot découvert | Règles 3-G ; lot existant rattaché (jamais de doublon), sinon créé à la validation seulement (`resolve_lots`) ; inventaire annulé : aucun lot créé. |
+| Lot apparu | Refus de la validation (`inventory_lots_changed`) + « Actualiser les lots ». |
+| Comptage | Unité de base ou conditionnement + vrac par lot (règles 3-C) ; ligne = Σ lots. |
+| Écart | Par lot : physique − solde courant du lot relu sous verrou ; un `ADJUSTMENT` par lot avec écart, même si l'écart de l'article est nul ; invariant Σ lots = stock avant et après. |
+| CMUP | Inchangé (un ajustement ne le recalcule pas ; aucun coût par lot). |
+| Changement de suivi | Stock nul sur tous les sites, aucun document ouvert (`article_in_open_documents`) et, à l'activation, aucun historique sans lot annulable (`article_has_untracked_history`). |
+| P1-b | Conditions techniques réunies ; **toujours active** jusqu'à l'accord explicite de TechNova. |
 

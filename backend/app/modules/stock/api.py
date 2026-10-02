@@ -20,11 +20,19 @@ from app.modules.stock.lot_service import (
     ExpiryContext,
     LotAllocation,
     LotInfo,
+    LotInput,
+    LotState,
     available_lots,
+    check_known_lots,
+    check_lot_inputs,
+    existing_lot_infos,
     expiry_context,
     is_expired_lot,
     lot_allocations,
     lot_infos,
+    lot_key,
+    resolve_lots,
+    site_lot_balances,
 )
 from app.modules.stock.models import MovementType
 from app.modules.stock.schemas import AvailableLotOut, AvailableLotsOut, LevelOut
@@ -50,6 +58,14 @@ from app.modules.stock.stock_service import (
 from app.platform.context import RequestContext
 
 __all__ = [
+    "LotInput",
+    "LotState",
+    "check_known_lots",
+    "check_lot_inputs",
+    "existing_lot_infos",
+    "lot_key",
+    "resolve_lots",
+    "site_lot_balances",
     "AvailableLotsOut",
     "ConsumptionRequest",
     "ExpiryContext",

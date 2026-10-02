@@ -26,7 +26,8 @@ qui laisserait 100 en stock.)
 | Table | Rôle |
 |---|---|
 | `inventories` | En-tête : `number` (`INV-000001`, séquence `inventory`, unique par tenant), `site_id`, `status`, `inventory_type`, `comment`, `created_by`, `started_at`/`_by`, `completed_at`/`_by`, `validated_at`/`_by`, `cancelled_at`/`_by`, `cancellation_reason`, horodatages |
-| `inventory_lines` | Une ligne par article (`UNIQUE (inventory_id, article_id)`) : `stock_theoretical_initial`, `stock_theoretical_at_validation`, `quantity_physical` (≥ 0), `quantity_variance`, `unit_cost` (CMUP figé), `adjustment_value`, `counted_at`/`counted_by` ; comptage en conditionnement (Lot 3-C, §10) : `count_packaging_id`, `count_packaging_name`, `count_packaging_conversion`, `count_packaging_quantity`, `count_unit_quantity` |
+| `inventory_lines` | Une ligne par article (`UNIQUE (inventory_id, article_id)`) : `stock_theoretical_initial`, `stock_theoretical_at_validation`, `quantity_physical` (≥ 0), `quantity_variance`, `unit_cost` (CMUP figé), `adjustment_value`, `counted_at`/`counted_by` ; comptage en conditionnement (Lot 3-C, §10) : `count_packaging_id`, `count_packaging_name`, `count_packaging_conversion`, `count_packaging_quantity`, `count_unit_quantity` ; suivi par lot figé au démarrage (Lot 3-H, §13) : `lot_tracked` |
+| `inventory_line_lots` | Lot 3-H (§13) : comptage par lot d'une ligne suivie — lot attendu ou découvert, théorique au démarrage, stock à la validation, physique, écart, présentation ; aucun coût |
 
 Quantités `NUMERIC(18,3)`, CMUP `NUMERIC(18,4)`, montants `NUMERIC(18,2)` — `Decimal` côté
 serveur, chaînes dans l'API. Contraintes en base : FK composites `(tenant_id, …)` vers le site,
@@ -65,7 +66,7 @@ par un nouvel inventaire.
 |---|---|
 | Brouillon | Site, type, articles (ciblé : ajout / retrait), commentaire. Aucun effet sur le stock. |
 | Démarrage | Recalage de la liste (complet) ; **stock théorique initial** relevé pour chaque ligne. |
-| Comptage | Saisie progressive (`PATCH /inventories/{id}/lines`, par lots) ; `null` efface. Progression « Articles comptés : n / N ». |
+| Comptage | Saisie progressive (`PATCH /inventories/{id}/lines`, groupée ; article suivi par lot : par lot, §13) ; `null` efface. Progression « Articles comptés : n / N ». |
 | Fin du comptage | Toutes les lignes comptées (`inventory_not_fully_counted` sinon). Reprise possible. |
 | Validation | Voir §5. |
 | Annulation | Motif obligatoire (5–500 caractères) ; aucun effet sur le stock. |
@@ -167,7 +168,29 @@ l'emplacement n'influence ni le stock théorique, ni l'écart, ni la validation.
 (≤ 800 px), la colonne est masquée et l'emplacement est affiché sous l'article (correctif
 `366332d`, compris dans l'état validé du Lot 3-F).
 
-## 13. Hors périmètre (V1)
+## 13. Inventaires par lot (Lot 3-H, [ADR-0045](../adr/0045-lots-et-peremption-stock-reception.md))
+
+- **Mode figé** : au démarrage, chaque ligne copie le suivi par lot de l'article
+  (`lot_tracked`) ; à la validation, relu sous verrou — différent : `409
+  inventory_lot_mode_changed`. Article non suivi : comptage et validation inchangés.
+- **Lots attendus** : lots de solde non nul sur le site au démarrage (théorique = solde du lot) ;
+  un lot non saisi vaut 0 à la validation ; un lot périmé est compté et ajusté normalement.
+- **Comptage par lot** (`PUT …/lines/{line_id}/lots`, remplacement) : unité de base ou
+  conditionnement + vrac (§10) ; la ligne vaut Σ lots et est comptée dès un comptage par lot.
+- **Lot découvert** (`POST …/lots`, retrait `DELETE …/lots/{row_id}`) : règles 3-G ; lot
+  existant rattaché, sinon créé **à la validation seulement** (`resolve_lots`, audit
+  `stock_lot.created` avec l'inventaire pour source) ; inventaire annulé : aucun lot créé.
+- **Lot apparu** pendant le comptage (réception, transfert entrant) : validation refusée
+  (`409 inventory_lots_changed`), action « Actualiser les lots » (`POST …/refresh-lots`).
+- **Validation** : verrous des niveaux puis des soldes de lots ; invariant Σ lots = stock
+  contrôlé avant et après ; écart par lot = physique − solde courant du lot ; un `ADJUSTMENT`
+  par lot avec écart, **même si l'écart de l'article est nul** (A −5 / B +5) ; CMUP inchangé.
+- **Interface** : ligne suivie dépliable (dépliée par défaut), lots en cartes (péremption, état,
+  théorique, stock actuel, saisie, écart), dialogue de lot découvert (plein écran sur petit
+  écran), encadré des lots apparus ; une colonne sur mobile, aucun débordement horizontal.
+- Aucune permission nouvelle (`count`, `validate`, `view`).
+
+## 14. Hors périmètre (V1)
 
 Application mobile native (scan : §11), import / export Excel, comptage multi-équipe,
 double comptage, circuit d'approbation, sessions de comptage simultanées sur un même article,

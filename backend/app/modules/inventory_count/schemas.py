@@ -1,10 +1,11 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.modules.inventory_count.models import InventoryStatus, InventoryType
+from app.modules.stock.api import LotState
 from app.shared.schemas import Money, Quantity, SignedMoney, SignedQuantity, UnitCost
 from app.shared.text import Optional500
 
@@ -33,20 +34,19 @@ class InventoryUpdate(BaseModel):
     )
 
 
-class CountInput(BaseModel):
-    """Comptage d'une ligne : en unité de base (``quantity_physical`` ; ``None`` efface), OU
-    dans un conditionnement (Lot 3-C) : ``packaging_quantity`` conditionnements +
-    ``unit_quantity`` unités de base en vrac (8 cartons + 5 bouteilles) — le serveur calcule
-    la quantité physique en unité de base (8 × 24 + 5 = 197)."""
+class CountFields(BaseModel):
+    """Comptage : en unité de base (``quantity_physical`` ; ``None`` efface), OU dans un
+    conditionnement (Lot 3-C) : ``packaging_quantity`` conditionnements + ``unit_quantity``
+    unités de base en vrac (8 cartons + 5 bouteilles) — le serveur calcule la quantité physique
+    en unité de base (8 × 24 + 5 = 197)."""
 
-    line_id: uuid.UUID
     quantity_physical: Quantity | None = None
     packaging_id: uuid.UUID | None = None
     packaging_quantity: Quantity | None = None
     unit_quantity: Quantity | None = None
 
     @model_validator(mode="after")
-    def _one_form(self) -> "CountInput":
+    def _one_form(self) -> "CountFields":
         if self.packaging_id is None:
             if self.packaging_quantity is not None or self.unit_quantity is not None:
                 raise ValueError("packaging_quantity / unit_quantity exigent packaging_id")
@@ -58,8 +58,46 @@ class CountInput(BaseModel):
         return self
 
 
+class CountInput(CountFields):
+    """Comptage d'une ligne d'article NON suivi par lot."""
+
+    line_id: uuid.UUID
+
+
 class CountsInput(BaseModel):
     counts: list[CountInput] = Field(min_length=1, max_length=MAX_COUNTS_PER_REQUEST)
+
+
+class LotCountInput(CountFields):
+    """Comptage d'un lot d'une ligne d'article suivi par lot (Lot 3-H)."""
+
+    lot_row_id: uuid.UUID
+
+
+class LotCountsInput(BaseModel):
+    """Comptage COMPLET d'une ligne suivie par lot (remplacement) : un lot attendu absent de la
+    liste (ou sans quantité) compte pour 0 (O-5). Liste vide : ligne comptée, aucun lot présent."""
+
+    counts: list[LotCountInput] = Field(default_factory=list, max_length=MAX_COUNTS_PER_REQUEST)
+
+
+class DiscoveredLotInput(CountFields):
+    """Lot trouvé physiquement et absent de la liste (Lot 3-H, T-4) : règles de saisie 3-G
+    (numéro, péremption si l'article la suit, fabrication ≤ péremption, lot connu avec SA
+    péremption) ; rattaché au lot existant de l'article s'il est connu, sinon créé à la
+    validation seulement. Comptage facultatif dans la même requête."""
+
+    lot_number: str = Field(min_length=1, max_length=50)
+    expiry_date: date | None = None
+    manufacturing_date: date | None = None
+
+    @field_validator("lot_number")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("numéro de lot obligatoire")
+        return value
 
 
 class CancelInput(BaseModel):
@@ -114,6 +152,8 @@ class InventoryOut(BaseModel):
     line_count: int
     counted_count: int
     variance_count: int
+    # Lot 3-H : lignes suivies par lot (mode figé au démarrage) — action « Actualiser les lots ».
+    lot_tracked_count: int = 0
     created_at: datetime
     updated_at: datetime
     created_by_name: str | None
@@ -135,6 +175,32 @@ class CountPackagingOut(BaseModel):
     id: uuid.UUID
     name: str
     conversion: Quantity
+
+
+class InventoryLotOut(BaseModel):
+    """Lot d'une ligne suivie par lot (Lot 3-H). Aucun coût (C1). ``stock_current`` : solde
+    COURANT du lot sur le site (avant validation) ; ``quantity_variance`` : physique (0 si non
+    saisi) − solde courant, figé à la validation."""
+
+    id: uuid.UUID
+    lot_id: uuid.UUID | None
+    lot_number: str
+    expiry_date: date | None
+    manufacturing_date: date | None
+    state: LotState | None
+    discovered: bool
+    stock_theoretical_initial: Quantity
+    stock_current: Quantity | None
+    stock_theoretical_at_validation: Quantity | None
+    quantity_physical: Quantity | None
+    quantity_variance: SignedQuantity | None
+    counted_at: datetime | None
+    counted_by_name: str | None
+    count_packaging_id: uuid.UUID | None = None
+    count_packaging_name: str | None = None
+    count_packaging_conversion: Quantity | None = None
+    count_packaging_quantity: Quantity | None = None
+    count_unit_quantity: Quantity | None = None
 
 
 class InventoryLineOut(BaseModel):
@@ -168,6 +234,9 @@ class InventoryLineOut(BaseModel):
     # Lot 3-F : emplacement COURANT de l'article sur le site (nul : non rangé), jamais figé.
     location_name: str | None = None
     packagings: list[CountPackagingOut] = Field(default_factory=list)
+    # Lot 3-H : ligne suivie par lot (mode figé au démarrage) et ses lots.
+    lot_tracked: bool = False
+    lots: list[InventoryLotOut] = Field(default_factory=list)
 
 
 class CountsOut(BaseModel):

@@ -1,3 +1,4 @@
+import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
@@ -38,6 +39,7 @@ import {
   type LineState,
 } from './api';
 import { CandidatePicker } from './CandidatePicker';
+import { InventoryLotsPanel } from './InventoryLotsPanel';
 import { VarianceBadge } from './ui';
 
 const P = 'inventory_count.inventory';
@@ -307,6 +309,21 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
   const qty = (value: string | null, unit: string) =>
     value === null ? '—' : `${formatQuantity(value, locale)} ${unit}`;
   const num = { headerClassName: 'sm-num', bodyClassName: 'sm-num' };
+  // Lot 3-H : lignes suivies par lot dépliées par défaut (comptage par lot) ; repliables.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const expandedRows = Object.fromEntries(
+    (lines.data?.items ?? [])
+      .filter((l) => l.lot_tracked && !collapsed.has(l.id))
+      .map((l) => [l.id, true]),
+  );
+  const toggleLots = (id: string) =>
+    setCollapsed((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const lotsEditable = counting;
 
   return (
     <section className="sm-block" aria-label={t('inventories.lines')}>
@@ -364,6 +381,12 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
           onTableChange={setTable}
           // Comptage : saisie visible sans défilement horizontal, même sur mobile.
           minWidth={final ? '60rem' : counting ? '0' : '36rem'}
+          expandedRows={expandedRows}
+          rowExpansionTemplate={(l: InventoryLine) =>
+            l.lot_tracked && !draft ? (
+              <InventoryLotsPanel inventory={inventory} line={l} editable={lotsEditable} />
+            ) : null
+          }
           empty={
             scanned ? (
               <EmptyState
@@ -387,6 +410,7 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
                   <LocationLabel name={l.location_name} />
                 </div>
                 {!l.article_active && <StatusBadge tone="neutral" label={t('common.inactive')} />}
+                {l.lot_tracked && <StatusBadge tone="info" label={t('inventoryLots.tracked')} />}
               </div>
             )}
           />
@@ -431,6 +455,27 @@ export function InventoryLinesTable({ inventory }: { inventory: Inventory }) {
               header={t('inventories.physical')}
               {...num}
               body={(l: InventoryLine) => {
+                if (l.lot_tracked) {
+                  // Comptage par lot : total calculé par le serveur (Σ lots, non saisi = 0).
+                  const open = !collapsed.has(l.id);
+                  return (
+                    <div className="sm-cell-stack sm-lot-total">
+                      <span>{qty(l.quantity_physical, l.unit)}</span>
+                      <Button
+                        type="button"
+                        text
+                        size="small"
+                        icon={open ? 'pi pi-chevron-up' : 'pi pi-chevron-down'}
+                        label={t('inventoryLots.toggle', { count: l.lots?.length ?? 0 })}
+                        aria-expanded={open}
+                        aria-label={t(open ? 'inventoryLots.hide' : 'inventoryLots.show', {
+                          reference: l.reference,
+                        })}
+                        onClick={() => toggleLots(l.id)}
+                      />
+                    </div>
+                  );
+                }
                 if (!counting) return countedQuantity(l, locale);
                 const index = (lines.data?.items ?? []).findIndex((x) => x.id === l.id);
                 return (

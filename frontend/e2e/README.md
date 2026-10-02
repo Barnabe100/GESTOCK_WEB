@@ -235,6 +235,13 @@ la suite peut être rejouée sur la même base.
   sélectionnable et refusé par le serveur ; lot insuffisant refusé en bloc ; 2 cartons répartis
   (présentation seulement si exacte) ; deux transferts simultanés du même lot ; transfert
   multi-lots sur mobile sans débordement.
+- `inventory-lots-3h.e2e.ts` (finalisation 3-H, ADR-0045) : entreprise créée pour l'exécution ;
+  P1-b toujours fermée ; articles suivis préparés par `ownerSql` ; écarts croisés A −5 / B +5
+  (écart de l'article nul, deux ajustements par lot) ; lot découvert créé à la validation
+  seulement, lot attendu non saisi = 0 ; comptage 8 Carton 24 + 5 = 197 par lot ; lot reçu
+  pendant le comptage : validation refusée, « Actualiser les lots », puis validée ; lot périmé
+  compté et ajusté ; validation de l'inventaire et vente simultanées (Σ lots = stock) ; comptage
+  par lot sur mobile (cartes, dialogue plein écran, aucun débordement).
 - `pos.e2e.ts` (Phase 3.0) : article à 10 000 (50 u en boutique), caisse de la boutique ouverte
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,

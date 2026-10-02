@@ -25,12 +25,12 @@ CMUP d'un niveau de stock.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -643,10 +643,88 @@ class StockService:
             (level.site_id, level.article_id, level.lot_id): (level, lot) for level, lot in rows
         }
 
+    def lock_site_lots(
+        self,
+        site_id: uuid.UUID,
+        article_ids: set[uuid.UUID],
+        ensure: Iterable[tuple[uuid.UUID, uuid.UUID]] = (),
+    ) -> dict[tuple[uuid.UUID, uuid.UUID], StockLotLevel]:
+        """Inventaires par lot (Lot 3-H) : verrous dans l'ordre global — articles (partagé),
+        niveaux (site, article), puis TOUS les soldes de lots des articles sur le site (``FOR
+        UPDATE``, ordre site → article → lot) ; soldes manquants des lots ``ensure`` (article,
+        lot) créés à zéro (lot découvert, lot sans solde sur le site). Invariant Σ lots = stock
+        contrôlé avant toute écriture (``lot_invariant_broken``). Renvoie (article, lot) →
+        solde verrouillé. Aucune écriture de stock : l'appelant applique ensuite ses
+        mouvements via ``apply`` (même transaction, verrous déjà détenus)."""
+        if not article_ids:
+            return {}
+        levels = self._lock({(site_id, article_id) for article_id in article_ids})
+        wanted = sorted({(site_id, article_id, lot_id) for article_id, lot_id in ensure})
+        if wanted:
+            self.db.execute(
+                insert(StockLotLevel)
+                .values(
+                    [
+                        {
+                            "id": uuid.uuid4(),
+                            "tenant_id": self.tenant_id,
+                            "site_id": site,
+                            "article_id": article_id,
+                            "lot_id": lot_id,
+                            "quantity": Decimal("0"),
+                        }
+                        for site, article_id, lot_id in wanted
+                    ]
+                )
+                .on_conflict_do_nothing(index_elements=["tenant_id", "site_id", "lot_id"])
+            )
+        rows = self.db.scalars(
+            select(StockLotLevel)
+            .where(StockLotLevel.site_id == site_id, StockLotLevel.article_id.in_(article_ids))
+            .order_by(StockLotLevel.site_id, StockLotLevel.article_id, StockLotLevel.lot_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+        locked = {(row.site_id, row.article_id, row.lot_id): row for row in rows}
+        refs = get_article_refs(self.db, article_ids)
+        self._ensure_lot_invariant(levels, locked, article_ids, (site_id,), refs)
+        return {(article_id, lot_id): row for (_, article_id, lot_id), row in locked.items()}
+
+    def verify_lot_invariant(self, site_id: uuid.UUID, article_ids: set[uuid.UUID]) -> None:
+        """Défense en profondeur APRÈS les écritures (Lot 3-H) : Σ soldes des lots = stock du
+        site pour chaque article suivi, relus en base dans la transaction. Une rupture est une
+        erreur du moteur (jamais une règle métier) : l'opération entière est annulée."""
+        if not article_ids:
+            return
+        self.db.flush()
+        lots: dict[uuid.UUID, Decimal] = {
+            row[0]: row[1]
+            for row in self.db.execute(
+                select(StockLotLevel.article_id, func.sum(StockLotLevel.quantity))
+                .where(StockLotLevel.site_id == site_id, StockLotLevel.article_id.in_(article_ids))
+                .group_by(StockLotLevel.article_id)
+            )
+        }
+        stock: dict[uuid.UUID, Decimal] = {
+            row[0]: row[1]
+            for row in self.db.execute(
+                select(StockLevel.article_id, StockLevel.quantity).where(
+                    StockLevel.site_id == site_id, StockLevel.article_id.in_(article_ids)
+                )
+            )
+        }
+        broken = [
+            a
+            for a in sorted(article_ids)
+            if lots.get(a, Decimal("0")) != stock.get(a, Decimal("0"))
+        ]
+        if broken:
+            raise RuntimeError(f"invariant Σ lots = stock rompu après écriture : {broken}")
+
     def _ensure_lot_invariant(
         self,
         levels: dict[Key, StockLevel],
-        lot_levels: dict[LotKey, tuple[StockLotLevel, StockLot]],
+        lot_levels: Mapping[LotKey, tuple[StockLotLevel, StockLot] | StockLotLevel],
         tracked: set[uuid.UUID],
         sites: Sequence[uuid.UUID],
         refs: dict[uuid.UUID, ArticleRef],
@@ -654,7 +732,8 @@ class StockService:
         """Invariant Σ soldes des lots = stock du site (3-G), contrôlé sous verrou AVANT toute
         écriture sur chaque site concerné : s'il est déjà rompu, l'opération est refusée."""
         totals: dict[Key, Decimal] = {}
-        for (site_id, article_id, _), (level, _) in lot_levels.items():
+        for (site_id, article_id, _), entry in lot_levels.items():
+            level = entry[0] if isinstance(entry, tuple) else entry
             totals[(site_id, article_id)] = totals.get((site_id, article_id), Decimal("0")) + (
                 level.quantity
             )

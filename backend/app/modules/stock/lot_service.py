@@ -229,11 +229,16 @@ def check_known_lots(db: Session, lines: list[LotInput], refs: dict[uuid.UUID, A
 
 
 def resolve_lots(
-    db: Session, ctx: RequestContext, lines: list[LotInput], refs: dict[uuid.UUID, Any]
+    db: Session,
+    ctx: RequestContext,
+    lines: list[LotInput],
+    refs: dict[uuid.UUID, Any],
+    source: dict[str, str] | None = None,
 ) -> dict[tuple[uuid.UUID, str], uuid.UUID]:
     """Validation (D4, D9) : lot existant retrouvé, sinon créé. Deux validations simultanées
     créant le même lot : l'unicité (article, numéro) en garde un seul, l'autre est relu. Chaque
-    lot créé est audité."""
+    lot créé est audité ; ``source`` (Lot 3-H : inventaire d'un lot découvert) est ajoutée aux
+    données de l'audit."""
     keyed = {lot_key(line.article_id, line.number): line for line in lines if line.number}
     if not keyed:
         return {}
@@ -269,11 +274,42 @@ def resolve_lots(
                     "manufacturing_date": (
                         line.manufacturing_date.isoformat() if line.manufacturing_date else None
                     ),
+                    **(source or {}),
                 },
             )
     # Relecture (lots créés ici ou par une validation concurrente) puis contrôle D4.
     check_known_lots(db, list(keyed.values()), refs)
     return {key: lot.id for key, lot in _existing_lots(db, set(keyed)).items()}
+
+
+def existing_lot_infos(
+    db: Session, keys: set[tuple[uuid.UUID, str]]
+) -> dict[tuple[uuid.UUID, str], "LotInfo"]:
+    """Lots déjà connus (article, numéro sans casse) — rattachement d'un lot découvert à
+    l'inventaire (Lot 3-H) : jamais de doublon dans le référentiel."""
+    return {
+        key: LotInfo(lot.id, lot.article_id, lot.number, lot.expiry_date)
+        for key, lot in _existing_lots(db, keys).items()
+    }
+
+
+def site_lot_balances(
+    db: Session, site_id: uuid.UUID, article_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, dict[uuid.UUID, Any]]:
+    """Soldes NON NULS des lots des articles sur un site (lecture seule) : lots attendus d'un
+    inventaire (Lot 3-H, O-5) et détection des lots apparus pendant le comptage."""
+    if not article_ids:
+        return {}
+    result: dict[uuid.UUID, dict[uuid.UUID, Any]] = {}
+    for article_id, lot_id, quantity in db.execute(
+        select(StockLotLevel.article_id, StockLotLevel.lot_id, StockLotLevel.quantity).where(
+            StockLotLevel.site_id == site_id,
+            StockLotLevel.article_id.in_(article_ids),
+            StockLotLevel.quantity != 0,
+        )
+    ):
+        result.setdefault(article_id, {})[lot_id] = quantity
+    return result
 
 
 def entries_with_lot(lot_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
