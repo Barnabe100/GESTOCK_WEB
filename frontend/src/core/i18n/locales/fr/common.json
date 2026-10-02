@@ -94,7 +94,8 @@
     "pos": "Point de vente",
     "onboarding": "Installation",
     "paymentMethods": "Moyens de paiement",
-    "stockLocations": "Emplacements"
+    "stockLocations": "Emplacements",
+    "stockLots": "Lots"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -1816,5 +1817,52 @@
     "perSite": "Stock et emplacement par site",
     "perSiteHelp": "Chaque site a son propre emplacement pour cet article (sites accessibles seulement).",
     "noSite": "Aucun site accessible."
+  },
+  "lots": {
+    "title": "Lots",
+    "subtitle": "Lots reçus et leur solde sur vos sites, avec l'état de péremption. Les lots sont créés par les réceptions validées.",
+    "search": "Rechercher un lot ou un article",
+    "lotNumber": "Numéro de lot",
+    "lotNumberShort": "Lot {{number}}",
+    "expiryDate": "Date de péremption",
+    "manufacturingDate": "Date de fabrication",
+    "expiresOn": "péremption {{date}}",
+    "expiresBefore": "Péremption jusqu'au",
+    "state": "État",
+    "allStates": "Tous les états",
+    "states": {
+      "ok": "Normal",
+      "expiring_soon": "Bientôt périmé",
+      "expired": "Périmé",
+      "no_expiry": "Sans péremption"
+    },
+    "siteCount": "Sites",
+    "totalQuantity": "Quantité (sites visibles)",
+    "empty": "Aucun lot",
+    "emptyArticle": "Aucun lot reçu pour cet article",
+    "balances": "Solde par site",
+    "noBalance": "Aucun solde sur vos sites",
+    "receptions": "Réceptions du lot",
+    "noReceptions": "Aucune réception",
+    "movements": "Mouvements du lot",
+    "noMovements": "Aucun mouvement",
+    "openArticle": "Fiche article",
+    "frozenHelp": "Le numéro et les dates d'un lot sont figés après sa première réception validée.",
+    "threshold": "Seuil « bientôt périmé »",
+    "thresholdDays": "Nombre de jours",
+    "thresholdHelp": "Un lot est « bientôt périmé » de la date du jour jusqu'à ce nombre de jours avant sa péremption (0 à 365). Réglage commun à toute l'entreprise.",
+    "thresholdInvalid": "Saisissez un nombre entier de 0 à 365",
+    "thresholdCurrent": "Un lot est signalé « bientôt périmé » {{days}} jours avant sa péremption.",
+    "thresholdEdit": "Modifier le seuil",
+    "thresholdSaved": "Seuil enregistré",
+    "tracking": "Suivi",
+    "trackingWithExpiry": "Par lot, avec date de péremption",
+    "trackingWithoutExpiry": "Par lot, sans date de péremption",
+    "lotTracked": "Suivi par lot",
+    "expiryTracked": "Suivi de la date de péremption",
+    "trackingHelp": "Le numéro de lot (et la date de péremption si elle est suivie) est demandé à chaque réception. Modifiable seulement lorsque le stock de l'article est nul sur tous les sites.",
+    "trackingUnavailable": "Le suivi par lot sera disponible avec la consommation des lots par les ventes, les sorties, les transferts et les inventaires.",
+    "datesInvalid": "La date de fabrication ne peut pas être postérieure à la date de péremption",
+    "shortage": "lot {{number}} (solde {{available}})"
   }
 }

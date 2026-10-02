@@ -31,6 +31,8 @@ import { PackagingsSection } from './PackagingsSection';
 
 // Lot 3-F : stock et emplacement par site (module Stock), chargé seulement si autorisé.
 const ArticleSitesPanel = lazy(() => import('@/modules/stock/ArticleSitesPanel'));
+// Lot 3-G : lots de l'article (soldes et péremption sur les sites visibles).
+const ArticleLotsPanel = lazy(() => import('@/modules/stock/ArticleLotsPanel'));
 
 /**
  * Historique des prix (Lot 3-A) : entrées du journal d'audit existant, servies par le serveur
@@ -104,6 +106,14 @@ export default function ArticleDetailPage() {
       `${a.unit} · ${t(a.decimal_quantity_allowed ? 'articles.decimalQuantity' : 'articles.wholeQuantityOnly')}`,
     ],
     [t('articles.barcode'), a.barcode],
+    ...((a.lot_tracked
+      ? [
+          [
+            t('lots.tracking'),
+            t(a.expiry_tracked ? 'lots.trackingWithExpiry' : 'lots.trackingWithoutExpiry'),
+          ],
+        ]
+      : []) as [string, string | null][]),
     [t('articles.supplier'), a.main_supplier_name],
     [t('articles.description'), a.description],
   ];
@@ -172,6 +182,11 @@ export default function ArticleDetailPage() {
       {a.stock_managed && hasModule('stock') && can('stock.level.view') && (
         <Suspense fallback={<LoadingState />}>
           <ArticleSitesPanel articleId={a.id} reference={a.reference} />
+        </Suspense>
+      )}
+      {a.lot_tracked && hasModule('stock') && can('stock.level.view') && (
+        <Suspense fallback={<LoadingState />}>
+          <ArticleLotsPanel articleId={a.id} />
         </Suspense>
       )}
       <PackagingsSection article={a} />

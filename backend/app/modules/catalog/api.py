@@ -24,8 +24,9 @@ from sqlalchemy import ColumnElement, Subquery, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.core.errors import BusinessRuleError, ConflictError
+from app.modules.catalog.lot_tracking import lot_tracking_available
 from app.modules.catalog.models import Article, Barcode, Category, Packaging
-from app.modules.catalog.stock_port import register_stocked_sites
+from app.modules.catalog.stock_port import register_lot_stocked_sites, register_stocked_sites
 from app.modules.catalog.usage_port import register_packaging_usage
 from app.shared.pagination import escape_like
 
@@ -43,8 +44,12 @@ __all__ = [
     "ensure_whole",
     "get_article_refs",
     "is_whole",
+    "LotFlags",
+    "lock_lot_flags",
     "lock_packagings",
+    "lot_tracking_available",
     "lock_stock_managed",
+    "register_lot_stocked_sites",
     "register_packaging_usage",
     "register_stocked_sites",
     "resolve_barcode",
@@ -65,6 +70,9 @@ class ArticleRef:
     stock_managed: bool = True
     # Lot 3-B : ``False`` = quantités vendues entières seulement.
     decimal_quantity_allowed: bool = False
+    # Lot 3-G (ADR-0045) : stock ventilé par lot ; date de péremption obligatoire sur le lot.
+    lot_tracked: bool = False
+    expiry_tracked: bool = False
 
 
 @dataclass(frozen=True)
@@ -101,6 +109,8 @@ def get_article_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, Articl
             sale_price=a.sale_price,
             stock_managed=a.stock_managed,
             decimal_quantity_allowed=a.decimal_quantity_allowed,
+            lot_tracked=a.lot_tracked,
+            expiry_tracked=a.expiry_tracked,
         )
         for a in db.scalars(select(Article).where(Article.id.in_(ids)))
     }
@@ -170,6 +180,30 @@ def lock_stock_managed(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, bool
 
 
 @dataclass(frozen=True)
+class LotFlags:
+    """Réglages de suivi d'un article (Lot 3-G)."""
+
+    lot_tracked: bool
+    expiry_tracked: bool
+
+
+def lock_lot_flags(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, LotFlags]:
+    """Suivi par lot / de péremption des articles, lus sous verrou PARTAGÉ (``FOR SHARE``,
+    ordre des identifiants) jusqu'à la fin de la transaction (Lot 3-G) : la modification de ces
+    réglages prend le verrou exclusif de l'article avant de vérifier son stock — une réception
+    en cours de validation se termine d'abord, aucune ne lit un réglage en cours de changement."""
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Article.id, Article.lot_tracked, Article.expiry_tracked)
+        .where(Article.id.in_(ids))
+        .order_by(Article.id)
+        .with_for_update(read=True)
+    ).all()
+    return {row[0]: LotFlags(row[1], row[2]) for row in rows}
+
+
+@dataclass(frozen=True)
 class BarcodeMatch:
     """Présentation identifiée par un scan : l'article en unité de base (``packaging_id`` nul)
     ou l'article + un conditionnement."""
@@ -225,6 +259,8 @@ def articles_view() -> Subquery:
             Article.barcode,
             Article.is_active,
             Article.stock_managed,
+            Article.lot_tracked,
+            Article.expiry_tracked,
             Article.min_stock,
             Article.max_stock,
             Article.category_id,

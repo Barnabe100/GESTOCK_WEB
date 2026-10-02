@@ -8,7 +8,7 @@ peuvent pas s'appliquer deux fois.
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Generic, TypeVar
@@ -25,8 +25,18 @@ from app.modules.catalog.api import (
     check_packagings,
     ensure_conversion_unchanged,
     get_article_refs,
+    lock_lot_flags,
 )
 from app.modules.stock.location_service import current_locations
+from app.modules.stock.lot_service import (
+    ExpiryContext,
+    LotInput,
+    check_known_lots,
+    check_lot_inputs,
+    expiry_context,
+    lot_key,
+    resolve_lots,
+)
 from app.modules.stock.models import (
     DocumentStatus,
     EntryKind,
@@ -83,11 +93,20 @@ def _names(db: Session, model: Any, ids: set[uuid.UUID | None], column: Any) -> 
 
 
 def check_articles(
-    db: Session, lines: Sequence[tuple[uuid.UUID, uuid.UUID | None]]
+    db: Session,
+    lines: Sequence[tuple[uuid.UUID, uuid.UUID | None]],
+    lots: Sequence[str | None] | None = None,
 ) -> dict[uuid.UUID, ArticleRef]:
     """Articles des lignes d'un document : existants, actifs (ART-13), gérés en stock (Lot 3-A),
-    une ligne par présentation (article en unité de base, ou conditionnement — Lot 3-C)."""
-    if len(set(lines)) != len(lines):
+    une ligne par présentation (article en unité de base, ou conditionnement — Lot 3-C) et, pour
+    une réception (``lots``, Lot 3-G), par lot : un article peut figurer plusieurs fois dans la
+    même présentation si les lots diffèrent (numéro sans distinction de casse)."""
+    keyed: Sequence[Any] = (
+        lines
+        if lots is None
+        else [(*key, (lot or "").lower()) for key, lot in zip(lines, lots, strict=True)]
+    )
+    if len(set(keyed)) != len(keyed):
         raise BusinessRuleError(
             "Un article apparaît plusieurs fois dans la même présentation",
             code="duplicate_article_line",
@@ -131,12 +150,19 @@ class PresentedLine:
         }
 
 
-def present_lines(db: Session, lines: Sequence[Any]) -> list[PresentedLine]:
+def _lot_numbers(lines: Sequence[Any], with_lots: bool) -> list[str | None] | None:
+    return [line.lot_number for line in lines] if with_lots else None
+
+
+def present_lines(
+    db: Session, lines: Sequence[Any], *, with_lots: bool = False
+) -> list[PresentedLine]:
     """Lignes saisies (``article_id``, ``packaging_id``, ``quantity``) : articles et
     conditionnements relus (du tenant, de l'article, actifs, sous verrou partagé), règle des
-    quantités entières et quantité de base — UN mécanisme pour entrées, sorties, transferts."""
+    quantités entières et quantité de base — UN mécanisme pour entrées, sorties, transferts.
+    ``with_lots`` (réceptions, Lot 3-G) : une ligne par présentation ET par lot."""
     keys = [(line.article_id, line.packaging_id) for line in lines]
-    refs = check_articles(db, keys)
+    refs = check_articles(db, keys, _lot_numbers(lines, with_lots))
     packagings = check_packagings(db, keys)
     presented = []
     for line in lines:
@@ -153,12 +179,14 @@ def present_lines(db: Session, lines: Sequence[Any]) -> list[PresentedLine]:
     return presented
 
 
-def revalidate_lines(db: Session, lines: Sequence[Any]) -> dict[uuid.UUID, ArticleRef]:
+def revalidate_lines(
+    db: Session, lines: Sequence[Any], *, with_lots: bool = False
+) -> dict[uuid.UUID, ArticleRef]:
     """Validation d'un document : tout est relu — article (actif, géré), conditionnement
     (existant, actif, conversion inchangée), règle des quantités entières — et la quantité de
     base recalculée doit être celle de la ligne (jamais celle du client)."""
     keys = [(line.article_id, line.packaging_id) for line in lines]
-    refs = check_articles(db, keys)
+    refs = check_articles(db, keys, _lot_numbers(lines, with_lots))
     packagings = check_packagings(db, keys)
     for line in lines:
         ref = refs[line.article_id]
@@ -327,6 +355,9 @@ class _DocumentService(Generic[Doc]):
                     origin_movement_id=origins[line.id].id if line.id in origins else None,
                     comment=f"Annulation {document.number}",
                     packaging=packaging_snapshot(line),
+                    # Lot 3-G : réception annulée sur le MÊME lot (refus si son solde devenait
+                    # négatif, D10) ; aucun lot sur une sortie.
+                    lot_id=getattr(line, "lot_id", None),
                 )
                 for line in document.lines
             ],
@@ -341,22 +372,33 @@ class _DocumentService(Generic[Doc]):
 
     # --- Sortie API -----------------------------------------------------------------------------
 
-    def _lines_out(self, document: Doc, refs: dict[uuid.UUID, ArticleRef]) -> list[LineOut]:
+    def _lines_out(
+        self,
+        document: Doc,
+        refs: dict[uuid.UUID, ArticleRef],
+        expiry: ExpiryContext | None = None,
+    ) -> list[LineOut]:
         """Lignes d'un document, avec l'emplacement COURANT de chaque article sur le site du
-        document (Lot 3-F : indicatif, jamais figé ni contrôlé)."""
+        document (Lot 3-F : indicatif, jamais figé ni contrôlé) et, pour une réception, le lot
+        saisi et son état de péremption (Lot 3-G)."""
         lines = document.lines
         locations = current_locations(
             self.db, document.site_id, {line.article_id for line in lines}
         )
-        return [self._line_out(line, refs, locations.get(line.article_id)) for line in lines]
+        return [
+            self._line_out(line, refs, locations.get(line.article_id), expiry) for line in lines
+        ]
 
     def _line_out(
         self,
         line: Any,
         refs: dict[uuid.UUID, ArticleRef],
         location: tuple[str, bool] | None = None,
+        expiry: ExpiryContext | None = None,
     ) -> LineOut:
         ref = refs.get(line.article_id)
+        lot_number = getattr(line, "lot_number", None)
+        lot_expiry = getattr(line, "lot_expiry_date", None)
         return LineOut(
             id=line.id,
             line_no=line.line_no,
@@ -372,6 +414,11 @@ class _DocumentService(Generic[Doc]):
             packaging_conversion=line.packaging_conversion,
             base_quantity=line.base_quantity,
             location_name=location[0] if location else None,
+            lot_id=getattr(line, "lot_id", None),
+            lot_number=lot_number,
+            lot_expiry_date=lot_expiry,
+            lot_manufacturing_date=getattr(line, "lot_manufacturing_date", None),
+            lot_state=expiry.state(lot_expiry) if expiry and lot_number else None,
         )
 
     def _common(self, documents: Sequence[Doc]) -> dict[str, dict[Any, str]]:
@@ -434,9 +481,26 @@ class EntryService(_DocumentService[StockEntry]):
                 "Le fournisseur sélectionné est inactif", code="supplier_inactive"
             )
 
+    def _lot_inputs(self, lines: Sequence[Any]) -> list[LotInput]:
+        return [
+            LotInput(
+                article_id=line.article_id,
+                number=line.lot_number,
+                expiry_date=line.lot_expiry_date,
+                manufacturing_date=line.lot_manufacturing_date,
+            )
+            for line in lines
+        ]
+
     def _apply_input(self, entry: StockEntry, data: EntryInput) -> None:
         self._check_supplier(data.kind, data.supplier_id)
-        presented = present_lines(self.db, data.lines)
+        presented = present_lines(self.db, data.lines, with_lots=True)
+        # Lot 3-G (D5, D8, D17, D4) : lots contrôlés dès le brouillon (revérifiés à la
+        # validation) — obligatoires pour un article suivi, interdits sinon.
+        lots = self._lot_inputs(data.lines)
+        refs = get_article_refs(self.db, {line.article_id for line in data.lines})
+        check_lot_inputs(lots, refs)
+        check_known_lots(self.db, lots, refs)
         entry.kind = data.kind
         entry.operation_date = self._operation_date(data.operation_date)
         entry.supplier_id = data.supplier_id
@@ -450,6 +514,9 @@ class EntryService(_DocumentService[StockEntry]):
                 article_id=line.article_id,
                 unit_cost=line.unit_cost,
                 amount=round_money(shown.quantity * line.unit_cost),
+                lot_number=line.lot_number,
+                lot_expiry_date=line.lot_expiry_date,
+                lot_manufacturing_date=line.lot_manufacturing_date,
                 **shown.columns(),
             )
             for index, (line, shown) in enumerate(zip(data.lines, presented, strict=True), start=1)
@@ -487,7 +554,8 @@ class EntryService(_DocumentService[StockEntry]):
         self._require_status(entry, DocumentStatus.DRAFT, "document_not_draft")
         if not entry.lines:
             raise BusinessRuleError("Aucune ligne à valider", code="document_empty")
-        revalidate_lines(self.db, entry.lines)
+        revalidate_lines(self.db, entry.lines, with_lots=True)
+        lots_by_key = self._resolve_lots(entry)
         self._stock().apply(
             entry.site_id,
             [
@@ -503,6 +571,7 @@ class EntryService(_DocumentService[StockEntry]):
                     source_number=entry.number,
                     comment=entry.number,
                     packaging=packaging_snapshot(line),
+                    lot_id=line.lot_id,
                 )
                 for line in entry.lines
             ],
@@ -518,9 +587,42 @@ class EntryService(_DocumentService[StockEntry]):
                 "kind": entry.kind.value,
                 "lines": len(entry.lines),
                 "total": format(sum((line.amount for line in entry.lines), Decimal("0")), "f"),
+                **({"lots": lots_by_key} if lots_by_key else {}),
             },
         )
         return entry
+
+    def _resolve_lots(self, entry: StockEntry) -> list[dict[str, str]]:
+        """Lot 3-G (D4, D8, D9) : réglages de suivi relus sous verrou partagé de l'article (un
+        changement concurrent attend), saisie revalidée, lots retrouvés ou créés, ``lot_id`` fixé
+        sur chaque ligne. Renvoie le détail des lots reçus pour l'audit."""
+        article_ids = {line.article_id for line in entry.lines}
+        flags = lock_lot_flags(self.db, article_ids)
+        refs = {
+            article_id: replace(
+                ref,
+                lot_tracked=flags[article_id].lot_tracked,
+                expiry_tracked=flags[article_id].expiry_tracked,
+            )
+            for article_id, ref in get_article_refs(self.db, article_ids).items()
+        }
+        lots = self._lot_inputs(entry.lines)
+        check_lot_inputs(lots, refs)
+        resolved = resolve_lots(self.db, self.ctx, lots, refs)
+        received: list[dict[str, str]] = []
+        for line in entry.lines:
+            if line.lot_number is None:
+                continue
+            line.lot_id = resolved[lot_key(line.article_id, line.lot_number)]
+            received.append(
+                {
+                    "reference": refs[line.article_id].reference,
+                    "lot_number": line.lot_number,
+                    "base_quantity": format(line.base_quantity, "f"),
+                }
+            )
+        self.db.flush()
+        return received
 
     def cancel(self, entry_id: uuid.UUID, reason: str) -> StockEntry:
         return self._cancel(entry_id, reason, Decimal("-1"))
@@ -533,6 +635,7 @@ class EntryService(_DocumentService[StockEntry]):
             if with_lines
             else {}
         )
+        expiry = expiry_context(self.db, self.ctx, self.now) if with_lines else None
         return [
             EntryOut(
                 **self._base_out(entry, names),
@@ -540,7 +643,7 @@ class EntryService(_DocumentService[StockEntry]):
                 supplier_id=entry.supplier_id,
                 supplier_name=suppliers.get(entry.supplier_id) if entry.supplier_id else None,
                 document_reference=entry.document_reference,
-                lines=self._lines_out(entry, refs) if with_lines else [],
+                lines=self._lines_out(entry, refs, expiry) if with_lines else [],
             )
             for entry in entries
         ]

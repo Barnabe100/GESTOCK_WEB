@@ -21,6 +21,7 @@ import {
   COST_VIEW,
   PRICE_UPDATE,
   useCategories,
+  useLotTracking,
   useSaveArticle,
   type Article,
   type ArticleInput,
@@ -49,6 +50,8 @@ const schema = z.object({
   description: z.string().max(1000),
   stock_managed: z.boolean(),
   decimal_quantity_allowed: z.boolean(),
+  lot_tracked: z.boolean(),
+  expiry_tracked: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -76,6 +79,10 @@ export function ArticleDialog({
   const categories = useCategories(OPTIONS_QUERY);
   const suppliers = useSuppliers(OPTIONS_QUERY, showSupplier);
   const save = useSaveArticle();
+  // Lot 3-G (P1-b) : réglages de suivi proposés seulement s'ils sont activables, ou pour un
+  // article déjà suivi (désactivation possible à stock nul).
+  const lotTracking = useLotTracking();
+  const showLots = lotTracking.data?.available === true || article?.lot_tracked === true;
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -92,10 +99,13 @@ export function ArticleDialog({
       description: article?.description ?? '',
       stock_managed: article?.stock_managed ?? true,
       decimal_quantity_allowed: article?.decimal_quantity_allowed ?? false,
+      lot_tracked: article?.lot_tracked ?? false,
+      expiry_tracked: article?.expiry_tracked ?? false,
     },
   });
   const errors = form.formState.errors;
   const stockManaged = useWatch({ control: form.control, name: 'stock_managed' });
+  const lotTracked = useWatch({ control: form.control, name: 'lot_tracked' });
 
   // Une association existante à une catégorie devenue inactive reste affichée (ART-10).
   const categoryOptions = (categories.data?.items ?? []).map((c) => ({
@@ -137,6 +147,10 @@ export function ArticleDialog({
         stock_managed: values.stock_managed,
         decimal_quantity_allowed: values.decimal_quantity_allowed,
       });
+      if (showLots) {
+        input.lot_tracked = values.stock_managed && values.lot_tracked;
+        input.expiry_tracked = input.lot_tracked && values.expiry_tracked;
+      }
       // Sans accès aux fournisseurs, le lien existant n'est pas modifié.
       if (showSupplier) input.main_supplier_id = values.main_supplier_id;
     }
@@ -288,6 +302,49 @@ export function ArticleDialog({
           <label htmlFor="article-decimal_quantity_allowed">{t('articles.decimalQuantity')}</label>
         </div>
         <small className="sm-help">{t('articles.decimalQuantityHelp')}</small>
+        {stockManaged && showLots && (
+          <>
+            <div className="sm-checkbox">
+              <Controller
+                control={form.control}
+                name="lot_tracked"
+                render={({ field }) => (
+                  <Checkbox
+                    inputId="article-lot_tracked"
+                    checked={field.value}
+                    disabled={!canGeneral}
+                    onChange={(e) => {
+                      field.onChange(Boolean(e.checked));
+                      if (!e.checked) form.setValue('expiry_tracked', false);
+                    }}
+                  />
+                )}
+              />
+              <label htmlFor="article-lot_tracked">{t('lots.lotTracked')}</label>
+            </div>
+            <div className="sm-checkbox">
+              <Controller
+                control={form.control}
+                name="expiry_tracked"
+                render={({ field }) => (
+                  <Checkbox
+                    inputId="article-expiry_tracked"
+                    checked={field.value}
+                    disabled={!canGeneral || !lotTracked}
+                    onChange={(e) => field.onChange(Boolean(e.checked))}
+                  />
+                )}
+              />
+              <label htmlFor="article-expiry_tracked">{t('lots.expiryTracked')}</label>
+            </div>
+            <small className="sm-help">{t('lots.trackingHelp')}</small>
+          </>
+        )}
+        {stockManaged && !showLots && lotTracking.isSuccess && (
+          <small className="sm-help" data-testid="lot-tracking-unavailable">
+            {t('lots.trackingUnavailable')}
+          </small>
+        )}
         {stockManaged && (
           <>
             <div className="sm-form-grid">

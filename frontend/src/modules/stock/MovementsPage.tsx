@@ -21,6 +21,7 @@ import { ListEmpty } from '@/shared/ui/EmptyState';
 import { COST_VIEW } from '@/modules/catalog/api';
 
 import { useMovements, type Movement, type MovementType } from './api';
+import { LotLabel } from './ui';
 
 /** Types présents dans cette version (les autres sont réservés aux sous-phases suivantes). */
 const TYPES: MovementType[] = [
@@ -123,7 +124,13 @@ export default function MovementsPage() {
         <Column field="document_number" header={t('stock.document')} />
         <Column
           header={t('stock.article')}
-          body={(m: Movement) => `${m.article_reference} — ${m.article_designation}`}
+          body={(m: Movement) => (
+            <div className="sm-cell-stack">
+              <span>{`${m.article_reference} — ${m.article_designation}`}</span>
+              {/* Lot 3-G : lot de la réception (ou de son annulation). */}
+              <LotLabel number={m.lot_number} expiry={m.lot_expiry_date} locale={locale} />
+            </div>
+          )}
         />
         <Column
           header={t('stock.quantity')}

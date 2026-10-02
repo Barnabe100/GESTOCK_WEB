@@ -47,7 +47,7 @@ import { formatPresented, type PresentationPackaging } from '@/shared/lib/presen
 
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
 import { ArticleLocationHint, LocationLabel } from './LocationAssignDialog';
-import { stockError } from './ui';
+import { LotLabel, stockError } from './ui';
 
 const OPTIONS_QUERY = 'limit=200&status=active&sort=name';
 
@@ -60,6 +60,10 @@ const lineSchema = z.object({
     return n !== null && /[1-9]/.test(n);
   }, 'quantity'),
   unit_cost: z.string(),
+  /** Lot 3-G (réceptions) : lot saisi pour un article suivi par lot. */
+  lot_number: z.string().max(50),
+  lot_expiry_date: z.string(),
+  lot_manufacturing_date: z.string(),
 });
 
 function buildSchema(kind: DocumentKind) {
@@ -89,6 +93,33 @@ function buildSchema(kind: DocumentKind) {
           if (normalizeDecimal(line.unit_cost, 2) === null) {
             ctx.addIssue({ code: 'custom', path: ['lines', index, 'unit_cost'], message: 'money' });
           }
+          // Lot 3-G : lot obligatoire pour un article suivi, péremption s'il est suivi en
+          // péremption, fabrication ≤ péremption (le serveur applique les mêmes règles).
+          if (line.article?.lot_tracked && !line.lot_number.trim()) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['lines', index, 'lot_number'],
+              message: 'required',
+            });
+          }
+          if (line.article?.expiry_tracked && !line.lot_expiry_date) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['lines', index, 'lot_expiry_date'],
+              message: 'required',
+            });
+          }
+          if (
+            line.lot_expiry_date &&
+            line.lot_manufacturing_date &&
+            line.lot_manufacturing_date > line.lot_expiry_date
+          ) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['lines', index, 'lot_manufacturing_date'],
+              message: 'lotDates',
+            });
+          }
         });
       }
     });
@@ -114,6 +145,9 @@ function defaults(document: StockDocument | undefined, siteId: string | null): F
         reference: line.article_reference,
         designation: line.article_designation,
         unit: line.unit,
+        // Ligne enregistrée avec un lot : l'article est suivi par lot (guidage seulement).
+        lot_tracked: Boolean(line.lot_number),
+        expiry_tracked: Boolean(line.lot_expiry_date),
       }),
       packaging:
         line.packaging_id && line.packaging_name && line.packaging_conversion
@@ -125,9 +159,21 @@ function defaults(document: StockDocument | undefined, siteId: string | null): F
           : null,
       quantity: line.quantity,
       unit_cost: line.unit_cost ?? '',
+      lot_number: line.lot_number ?? '',
+      lot_expiry_date: line.lot_expiry_date ?? '',
+      lot_manufacturing_date: line.lot_manufacturing_date ?? '',
     })),
   };
 }
+
+const EMPTY_LINE = {
+  packaging: null,
+  quantity: '',
+  unit_cost: '',
+  lot_number: '',
+  lot_expiry_date: '',
+  lot_manufacturing_date: '',
+};
 
 function toInput(kind: DocumentKind, values: FormValues, isNew: boolean): EntryInput | ExitInput {
   const common = {
@@ -147,10 +193,22 @@ function toInput(kind: DocumentKind, values: FormValues, isNew: boolean): EntryI
       kind: values.entry_kind,
       supplier_id: initial ? null : values.supplier_id,
       document_reference: values.document_reference.trim() || null,
-      lines: lines.map((line, index) => ({
-        ...line,
-        unit_cost: normalizeDecimal(values.lines[index]?.unit_cost ?? '', 2) ?? '0',
-      })),
+      lines: lines.map((line, index) => {
+        const source = values.lines[index];
+        const lot = source?.lot_number.trim() ?? '';
+        return {
+          ...line,
+          unit_cost: normalizeDecimal(source?.unit_cost ?? '', 2) ?? '0',
+          // Lot 3-G : lot envoyé seulement s'il est saisi (le serveur l'exige ou le refuse).
+          ...(lot
+            ? {
+                lot_number: lot,
+                lot_expiry_date: source?.lot_expiry_date || null,
+                lot_manufacturing_date: source?.lot_manufacturing_date || null,
+              }
+            : {}),
+        };
+      }),
     };
   }
   return {
@@ -226,7 +284,18 @@ function DocumentSummary({ kind, document }: { kind: DocumentKind; document: Sto
       <DataTable value={document.lines} dataKey="id" emptyMessage={t('stock.noLines')}>
         <Column
           header={t('stock.article')}
-          body={(l: DocumentLine) => `${l.article_reference} — ${l.article_designation}`}
+          body={(l: DocumentLine) => (
+            <div className="sm-cell-stack">
+              <span>{`${l.article_reference} — ${l.article_designation}`}</span>
+              {/* Lot 3-G : lot reçu, péremption et état (calculé par le serveur). */}
+              <LotLabel
+                number={l.lot_number}
+                expiry={l.lot_expiry_date}
+                state={l.lot_state}
+                locale={locale}
+              />
+            </div>
+          )}
         />
         {/* Lot 3-F : emplacement COURANT sur le site du document (indicatif, jamais figé). */}
         <Column
@@ -399,15 +468,19 @@ function DocumentForm({
     const packaging = scan.packaging
       ? { id: scan.packaging.id, name: scan.packaging.name, conversion: scan.packaging.conversion }
       : null;
-    const existing = (form.getValues('lines') ?? []).findIndex(
-      (l) => l.article?.id === article.id && (l.packaging?.id ?? null) === (packaging?.id ?? null),
-    );
+    // Lot 3-G : un article suivi par lot peut figurer sur plusieurs lignes (un lot chacune).
+    const existing = article.lot_tracked
+      ? -1
+      : (form.getValues('lines') ?? []).findIndex(
+          (l) =>
+            l.article?.id === article.id && (l.packaging?.id ?? null) === (packaging?.id ?? null),
+        );
     if (existing >= 0) {
       form.setFocus(`lines.${existing}.quantity`);
       return;
     }
     lines.append(
-      { article, packaging, quantity: '', unit_cost: '' },
+      { ...EMPTY_LINE, article, packaging },
       { focusName: `lines.${lines.fields.length}.quantity` },
     );
   };
@@ -557,8 +630,13 @@ function DocumentForm({
                       value={f.value}
                       onChange={(value) => {
                         f.onChange(value);
-                        // Autre article : retour à l'unité de base.
+                        // Autre article : retour à l'unité de base, lot à ressaisir.
                         form.setValue(`lines.${index}.packaging`, null);
+                        if (kind === 'entries') {
+                          form.setValue(`lines.${index}.lot_number`, '');
+                          form.setValue(`lines.${index}.lot_expiry_date`, '');
+                          form.setValue(`lines.${index}.lot_manufacturing_date`, '');
+                        }
                       }}
                       invalid={Boolean(lineErrors?.article)}
                     />
@@ -629,6 +707,46 @@ function DocumentForm({
                 aria-label={t('stock.removeLine')}
                 onClick={() => lines.remove(index)}
               />
+              {kind === 'entries' &&
+                (article?.lot_tracked || Boolean(watchedLines[index]?.lot_number)) && (
+                  <div className="sm-line-lot">
+                    <FormField
+                      id={`line-${index}-lot`}
+                      label={t('lots.lotNumber')}
+                      required
+                      error={lineErrors?.lot_number && t('validation.required')}
+                    >
+                      <InputText
+                        id={`line-${index}-lot`}
+                        maxLength={50}
+                        {...form.register(`lines.${index}.lot_number`)}
+                      />
+                    </FormField>
+                    <FormField
+                      id={`line-${index}-expiry`}
+                      label={t('lots.expiryDate')}
+                      required={Boolean(article?.expiry_tracked)}
+                      error={lineErrors?.lot_expiry_date && t('validation.required')}
+                    >
+                      <InputText
+                        id={`line-${index}-expiry`}
+                        type="date"
+                        {...form.register(`lines.${index}.lot_expiry_date`)}
+                      />
+                    </FormField>
+                    <FormField
+                      id={`line-${index}-made`}
+                      label={t('lots.manufacturingDate')}
+                      error={lineErrors?.lot_manufacturing_date && t('lots.datesInvalid')}
+                    >
+                      <InputText
+                        id={`line-${index}-made`}
+                        type="date"
+                        {...form.register(`lines.${index}.lot_manufacturing_date`)}
+                      />
+                    </FormField>
+                  </div>
+                )}
             </div>
           );
         })}
@@ -638,9 +756,7 @@ function DocumentForm({
             icon="pi pi-plus"
             outlined
             label={t('stock.addLine')}
-            onClick={() =>
-              lines.append({ article: null, packaging: null, quantity: '', unit_cost: '' })
-            }
+            onClick={() => lines.append({ ...EMPTY_LINE, article: null })}
           />
         </div>
       </fieldset>

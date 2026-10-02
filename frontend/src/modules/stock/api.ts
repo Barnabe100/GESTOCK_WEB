@@ -62,6 +62,10 @@ export interface Movement {
   packaging_name?: string | null;
   packaging_conversion?: string | null;
   packaging_quantity?: string | null;
+  /** Lot 3-G : lot du mouvement (réception, annulation de réception). */
+  lot_id?: string | null;
+  lot_number?: string | null;
+  lot_expiry_date?: string | null;
 }
 
 export interface ExitReason {
@@ -97,6 +101,12 @@ export interface DocumentLine {
   base_quantity?: string;
   /** Lot 3-F (entrées, sorties) : emplacement COURANT sur le site du document, indicatif. */
   location_name?: string | null;
+  /** Lot 3-G (réceptions) : lot saisi ; `lot_id` résolu à la validation ; état calculé. */
+  lot_id?: string | null;
+  lot_number?: string | null;
+  lot_expiry_date?: string | null;
+  lot_manufacturing_date?: string | null;
+  lot_state?: LotState | null;
 }
 
 interface DocumentBase {
@@ -149,7 +159,18 @@ export interface EntryInput {
   document_reference: string | null;
   comment: string | null;
   /** `packaging_id` nul : unité de base ; quantité et coût dans la présentation saisie. */
-  lines: { article_id: string; packaging_id: string | null; quantity: string; unit_cost: string }[];
+  lines: EntryLineInput[];
+}
+
+export interface EntryLineInput {
+  article_id: string;
+  packaging_id: string | null;
+  quantity: string;
+  unit_cost: string;
+  /** Lot 3-G : article suivi par lot seulement (contrôle serveur). */
+  lot_number?: string | null;
+  lot_expiry_date?: string | null;
+  lot_manufacturing_date?: string | null;
 }
 
 export interface ExitInput {
@@ -160,6 +181,32 @@ export interface ExitInput {
   reference: string | null;
   comment: string | null;
   lines: { article_id: string; packaging_id: string | null; quantity: string }[];
+}
+
+// --- Lots et péremption (Lot 3-G, ADR-0045) -----------------------------------------------------
+
+/** État de péremption CALCULÉ par le serveur (fuseau et seuil du tenant). */
+export type LotState = 'no_expiry' | 'ok' | 'expiring_soon' | 'expired';
+export type LotStateFilter = 'all' | LotState;
+
+/** Lot et son solde (unité de base) sur les sites visibles — aucun coût (CMUP du site). */
+export interface StockLot {
+  id: string;
+  article_id: string;
+  article_reference: string;
+  article_designation: string;
+  unit: string;
+  number: string;
+  expiry_date: string | null;
+  manufacturing_date: string | null;
+  state: LotState;
+  quantity: string;
+  site_count: number;
+  created_at: string;
+}
+
+export interface StockLotDetail extends StockLot {
+  balances: { site_id: string; site_name: string; quantity: string }[];
 }
 
 export const stockKeys = {
@@ -279,6 +326,48 @@ export function useAssignLocation() {
       void qc.invalidateQueries({ queryKey: stockKeys.all });
       void qc.invalidateQueries({ queryKey: ['inventories'] });
     },
+  });
+}
+
+// --- Lots et seuil de péremption (Lot 3-G) ------------------------------------------------------
+
+export const lotKeys = {
+  all: ['stock', 'lots'] as const,
+  settings: ['stock', 'settings'] as const,
+};
+
+export function useLots(query: string, enabled = true) {
+  return useQuery({
+    queryKey: [...lotKeys.all, query],
+    queryFn: ({ signal }) => api.get<Page<StockLot>>(`/stock/lots?${query}`, signal),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export function useLot(id: string | undefined) {
+  return useQuery({
+    queryKey: [...lotKeys.all, 'detail', id],
+    queryFn: ({ signal }) => api.get<StockLotDetail>(`/stock/lots/${id}`, signal),
+    enabled: id !== undefined,
+  });
+}
+
+/** Seuil « bientôt périmé » du tenant, en jours (défaut serveur : 30). */
+export function useStockSettings(enabled = true) {
+  return useQuery({
+    queryKey: lotKeys.settings,
+    queryFn: ({ signal }) => api.get<{ expiry_warning_days: number }>('/stock/settings', signal),
+    enabled,
+  });
+}
+
+export function useSaveStockSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (expiry_warning_days: number) =>
+      api.put<{ expiry_warning_days: number }>('/stock/settings', { expiry_warning_days }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['stock'] }),
   });
 }
 

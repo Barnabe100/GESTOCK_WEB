@@ -46,6 +46,9 @@ class ArticleOut(BaseModel):
     is_active: bool
     stock_managed: bool
     decimal_quantity_allowed: bool
+    # Lot 3-G (ADR-0045) : suivi par lot et suivi de péremption.
+    lot_tracked: bool = False
+    expiry_tracked: bool = False
     created_at: datetime
     updated_at: datetime
     # Coût interne (Lot 3-A) : présent SEULEMENT avec ``catalog.article.cost_view`` — sinon le
@@ -69,6 +72,9 @@ class ArticleCreate(BaseModel):
     stock_managed: bool = True
     # Lot 3-B : quantités vendues décimales (kg, m, L) ; défaut : entières seulement.
     decimal_quantity_allowed: bool = False
+    # Lot 3-G : activation refusée tant que le Lot 3-H n'est pas livré (P1-b).
+    lot_tracked: bool = False
+    expiry_tracked: bool = False
 
 
 class ArticleUpdate(BaseModel):
@@ -87,6 +93,15 @@ class ArticleUpdate(BaseModel):
     barcode: Optional50 = None
     stock_managed: bool | None = None
     decimal_quantity_allowed: bool | None = None
+    lot_tracked: bool | None = None
+    expiry_tracked: bool | None = None
+
+
+class LotTrackingOut(BaseModel):
+    """Fermeture P1-b (Lot 3-G) : ``available`` faux tant que le Lot 3-H n'est pas livré —
+    l'interface ne propose alors pas l'activation du suivi par lot."""
+
+    available: bool
 
 
 class PriceChangeOut(BaseModel):

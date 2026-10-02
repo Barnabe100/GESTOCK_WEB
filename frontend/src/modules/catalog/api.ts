@@ -38,6 +38,10 @@ export interface Article {
   stock_managed: boolean;
   /** Lot 3-B : `false` = quantités vendues entières seulement (contrôle serveur). */
   decimal_quantity_allowed: boolean;
+  /** Lot 3-G : stock ventilé par lot (numéro obligatoire à la réception). */
+  lot_tracked: boolean;
+  /** Lot 3-G : date de péremption obligatoire sur le lot (suppose le suivi par lot). */
+  expiry_tracked: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +61,8 @@ export interface ArticleInput {
   barcode?: string;
   stock_managed?: boolean;
   decimal_quantity_allowed?: boolean;
+  lot_tracked?: boolean;
+  expiry_tracked?: boolean;
 }
 
 /**
@@ -150,6 +156,20 @@ export function useSetCategoryActive() {
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api.post<Category>(`/catalog/categories/${id}/${active ? 'activate' : 'deactivate'}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['catalog'] }),
+  });
+}
+
+/**
+ * Lot 3-G (ADR-0045, P1-b) : le suivi par lot est-il activable ? Faux tant que la consommation
+ * des lots (Lot 3-H) n'est pas livrée — l'interface ne propose pas l'activation et le serveur
+ * la refuse de toute façon (`lot_tracking_unavailable`).
+ */
+export function useLotTracking(enabled = true) {
+  return useQuery({
+    queryKey: ['catalog', 'lot-tracking'],
+    queryFn: ({ signal }) => api.get<{ available: boolean }>('/catalog/lot-tracking', signal),
+    staleTime: Infinity,
+    enabled,
   });
 }
 

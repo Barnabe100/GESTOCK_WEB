@@ -9,7 +9,13 @@ from sqlalchemy import Date, and_, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.modules.catalog.api import articles_view
-from app.modules.stock.models import MovementType, StockEntry, StockExit, StockMovement
+from app.modules.stock.models import (
+    MovementType,
+    StockEntry,
+    StockExit,
+    StockLot,
+    StockMovement,
+)
 from app.platform.identity.models import User
 from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, apply_sort, paginate_rows, search_filter
@@ -30,6 +36,7 @@ def list_movements(
     date_to: date | None = None,
     source_type: str | None = None,
     source_id: uuid.UUID | None = None,
+    lot_id: uuid.UUID | None = None,
 ) -> tuple[list[Any], int]:
     articles = articles_view()
     movement = StockMovement
@@ -44,6 +51,8 @@ def list_movements(
             articles.c.unit.label("unit"),
             User.full_name.label("user_name"),
             document_number.label("document_number"),
+            StockLot.number.label("lot_number"),
+            StockLot.expiry_date.label("lot_expiry_date"),
         )
         .join(Site, and_(Site.id == movement.site_id, Site.tenant_id == movement.tenant_id))
         .join(
@@ -54,6 +63,11 @@ def list_movements(
             ),
         )
         .outerjoin(User, User.id == movement.user_id)
+        # Lot 3-G : lot du mouvement (réception, annulation de réception).
+        .outerjoin(
+            StockLot,
+            and_(StockLot.id == movement.lot_id, StockLot.tenant_id == movement.tenant_id),
+        )
         .outerjoin(
             StockEntry,
             and_(
@@ -73,7 +87,9 @@ def list_movements(
         .where(movement.tenant_id == tenant_id, movement.site_id.in_(site_ids))
     )
     conditions = [
-        search_filter(search, articles.c.reference, articles.c.designation, document_number),
+        search_filter(
+            search, articles.c.reference, articles.c.designation, document_number, StockLot.number
+        ),
         movement.article_id == article_id if article_id else None,
         movement.movement_type == movement_type if movement_type else None,
         movement.user_id == user_id if user_id else None,
@@ -82,6 +98,7 @@ def list_movements(
         # Mouvements d'un document (ex. fiche d'une vente, Lot 2).
         movement.source_type == source_type if source_type else None,
         movement.source_id == source_id if source_id else None,
+        movement.lot_id == lot_id if lot_id else None,
     ]
     for condition in conditions:
         if condition is not None:

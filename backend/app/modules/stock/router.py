@@ -12,6 +12,12 @@ from app.modules.stock.level_service import (
     list_levels,
 )
 from app.modules.stock.location_service import LocationService
+from app.modules.stock.lot_service import (
+    LotService,
+    LotStateFilter,
+    SettingsService,
+    entries_with_lot,
+)
 from app.modules.stock.models import (
     DocumentStatus,
     EntryKind,
@@ -36,7 +42,12 @@ from app.modules.stock.schemas import (
     LocationCreate,
     LocationOut,
     LocationRename,
+    LotBalanceOut,
+    LotDetailOut,
+    LotOut,
     MovementOut,
+    StockSettingsInput,
+    StockSettingsOut,
     SupplierArticleOut,
     SupplierSummaryOut,
     ThresholdInput,
@@ -147,11 +158,14 @@ def list_entries(
     site_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    lot_id: uuid.UUID | None = None,
 ) -> Page[EntryOut]:
     service = EntryService(db, ctx, now)
     extra = [
         StockEntry.kind == kind if kind else None,
         StockEntry.supplier_id == supplier_id if supplier_id else None,
+        # Lot 3-G : réceptions d'un lot (fiche lot).
+        StockEntry.id.in_(entries_with_lot(lot_id)) if lot_id else None,
     ]
     items, total = service.search(
         paging,
@@ -433,6 +447,7 @@ def list_stock_movements(
     date_to: date | None = None,
     source_type: Annotated[str | None, Query(max_length=50)] = None,
     source_id: uuid.UUID | None = None,
+    lot_id: uuid.UUID | None = None,
 ) -> Page[MovementOut]:
     rows, total = list_movements(
         db,
@@ -448,6 +463,7 @@ def list_stock_movements(
         date_to=date_to,
         source_type=source_type,
         source_id=source_id,
+        lot_id=lot_id,
     )
     items = [
         MovementOut.model_validate(
@@ -459,6 +475,8 @@ def list_stock_movements(
                 "unit": row.unit,
                 "user_name": row.user_name,
                 "document_number": row.document_number,
+                "lot_number": row.lot_number,
+                "lot_expiry_date": row.lot_expiry_date,
             }
         )
         for row in rows
@@ -485,6 +503,7 @@ _MOVEMENT_FIELDS = (
     "packaging_name",
     "packaging_conversion",
     "packaging_quantity",
+    "lot_id",
 )
 
 
@@ -517,3 +536,64 @@ def supplier_articles(
         limit=paging.limit,
         offset=paging.offset,
     )
+
+
+# --- Lots et péremption (Lot 3-G, ADR-0045) : consultation et seuil du tenant ---------------------
+
+
+@router.get("/lots", response_model=Page[LotOut])
+def list_lots(
+    ctx: LevelView,
+    db: DbSession,
+    now: NowDep,
+    paging: Paging,
+    search: str | None = None,
+    article_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    state: LotStateFilter = LotStateFilter.ALL,
+    expires_before: date | None = None,
+    in_stock: bool = False,
+) -> Page[LotOut]:
+    """Lots ayant un solde (même nul) sur les sites visibles ; état de péremption calculé
+    (fuseau et seuil du tenant) ; tri par défaut : échéance la plus proche."""
+    items, total = LotService(db, ctx, now).search(
+        paging,
+        search=search,
+        article_id=article_id,
+        site_id=site_id,
+        state=state,
+        expires_before=expires_before,
+        in_stock=in_stock,
+    )
+    return Page(
+        items=[LotOut.model_validate(i) for i in items],
+        total=total,
+        limit=paging.limit,
+        offset=paging.offset,
+    )
+
+
+@router.get("/lots/{lot_id}", response_model=LotDetailOut)
+def get_lot(lot_id: uuid.UUID, ctx: LevelView, db: DbSession, now: NowDep) -> LotDetailOut:
+    """Fiche lot : soldes par site visible ; réceptions (``GET /stock/entries?lot_id=``) et
+    mouvements (``GET /stock/movements?lot_id=``) avec leurs propres permissions."""
+    row, balances = LotService(db, ctx, now).get(lot_id)
+    return LotDetailOut(
+        **LotOut.model_validate(row).model_dump(),
+        balances=[LotBalanceOut.model_validate(b) for b in balances],
+    )
+
+
+@router.get("/settings", response_model=StockSettingsOut)
+def get_stock_settings(ctx: LevelView, db: DbSession) -> StockSettingsOut:
+    return StockSettingsOut(expiry_warning_days=SettingsService(db, ctx).get())
+
+
+@router.put("/settings", response_model=StockSettingsOut)
+def update_stock_settings(
+    body: StockSettingsInput, ctx: ThresholdManage, db: DbSession
+) -> StockSettingsOut:
+    """Seuil « bientôt périmé » (D16) : ``stock.threshold.manage`` et accès à tous les sites."""
+    value = SettingsService(db, ctx).update(body.expiry_warning_days)
+    db.commit()
+    return StockSettingsOut(expiry_warning_days=value)

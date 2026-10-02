@@ -151,8 +151,8 @@ describe('navigation pilotée par le profil UX', () => {
       ['home', ['dashboard']],
       ['sales', ['sales']],
       // Historique des transferts consultable sans la fonctionnalité (aucune `feature`) ;
-      // emplacements (Lot 3-F) consultables avec `stock.level.view`.
-      ['stock', ['stock-levels', 'stock-locations', 'stock-transfers']],
+      // emplacements (Lot 3-F) et lots (Lot 3-G) consultables avec `stock.level.view`.
+      ['stock', ['stock-levels', 'stock-locations', 'stock-lots', 'stock-transfers']],
     ]);
   });
 

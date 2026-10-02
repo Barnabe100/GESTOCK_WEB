@@ -2064,3 +2064,35 @@ a {
   flex: 1 1 9rem;
   min-width: 0;
 }
+
+/* Lot 3-G : lot d'une ligne de réception (pleine largeur sous la ligne), libellé de lot. */
+.sm-line-lot {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sm-space-3);
+  padding-left: var(--sm-space-3);
+  border-left: 3px solid var(--sm-border);
+}
+
+.sm-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.sm-lot {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-2);
+  color: var(--sm-text-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 800px) {
+  .sm-line-lot {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: var(--sm-space-2);
+  }
+}

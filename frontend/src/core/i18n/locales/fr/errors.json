@@ -215,5 +215,18 @@
   "stock_location_name_taken": "Un emplacement de ce nom existe déjà sur ce site.",
   "stock_location_not_found": "Emplacement introuvable.",
   "stock_location_other_site": "Cet emplacement appartient à un autre site.",
-  "stock_location_inactive": "Cet emplacement est inactif : il ne peut plus être affecté."
+  "stock_location_inactive": "Cet emplacement est inactif : il ne peut plus être affecté.",
+  "lot_tracking_unavailable": "Le suivi par lot sera disponible avec la consommation des lots par les ventes, les sorties, les transferts et les inventaires.",
+  "expiry_tracking_requires_lots": "Le suivi de la date de péremption exige le suivi par lot.",
+  "lot_tracking_requires_stock": "Le suivi par lot exige un article géré en stock.",
+  "article_not_lot_tracked": "Cet article n'est pas suivi par lot : aucun lot ne peut être saisi ({{articles}}).",
+  "lot_number_required": "Numéro de lot obligatoire pour cet article ({{articles}}).",
+  "lot_expiry_required": "Date de péremption obligatoire pour cet article ({{articles}}).",
+  "lot_dates_invalid": "La date de fabrication ne peut pas être postérieure à la date de péremption (lot {{lots}}).",
+  "lot_data_inconsistent": "Un même lot est saisi avec des dates différentes (lot {{lots}}).",
+  "lot_expiry_mismatch": "Le lot {{lots}} existe déjà avec une autre date de péremption ({{expiry_date}}).",
+  "lot_manufacturing_mismatch": "Le lot {{lots}} existe déjà avec une autre date de fabrication.",
+  "insufficient_lot_stock": "Solde de lot insuffisant : {{details}}.",
+  "stock_lot_not_found": "Lot introuvable.",
+  "tenant_wide_access_required": "Ce réglage concerne toute l'entreprise : il faut un accès à tous les sites."
 }

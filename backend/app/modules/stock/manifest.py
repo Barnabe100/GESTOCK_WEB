@@ -1,6 +1,11 @@
-from app.modules.catalog.api import register_packaging_usage, register_stocked_sites
+from app.modules.catalog.api import (
+    register_lot_stocked_sites,
+    register_packaging_usage,
+    register_stocked_sites,
+)
 from app.modules.stock.document_service import packagings_used
 from app.modules.stock.level_service import stocked_sites
+from app.modules.stock.lot_service import lot_stocked_sites
 from app.modules.stock.reasons import ensure_system_exit_reasons
 from app.modules.stock.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
@@ -10,6 +15,8 @@ TRANSFERS = "stock.transfers"
 
 # Port du catalogue (Lot 3-A) : stock restant d'un article, sur tous les sites du tenant.
 register_stocked_sites(stocked_sites)
+# Lot 3-G : le suivi par lot ne se désactive qu'avec des soldes de lots tous nuls (D7).
+register_lot_stocked_sites(lot_stocked_sites)
 # Lot 3-C : un conditionnement saisi sur une entrée, une sortie ou un transfert (brouillon
 # compris) a sa conversion figée.
 register_packaging_usage("stock", packagings_used)

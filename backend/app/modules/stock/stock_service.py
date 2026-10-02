@@ -9,6 +9,11 @@ CMUP d'un niveau de stock.
 - Refuse tout stock négatif avant la moindre écriture (et la base le refuse aussi).
 - Recalcule le CMUP uniquement sur une ENTRÉE (achat, stock initial, transfert entrant), avec
   4 décimales (Q6).
+- Lot 3-G (ADR-0045) : un mouvement portant un lot (``lot_id`` : réception, annulation de
+  réception) fait varier du même montant le solde du lot sur le site — ventilation du stock
+  (site, article), verrouillée après les niveaux dans l'ordre global (site, article, lot),
+  jamais négative. Le CMUP reste celui du site (aucun coût par lot, C1). Aucune consommation
+  automatique de lots dans ce lot (Lot 3-H).
 """
 
 import uuid
@@ -22,9 +27,16 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError
 from app.modules.catalog.api import get_article_refs, lock_stock_managed
-from app.modules.stock.models import MovementType, StockLevel, StockMovement
+from app.modules.stock.models import (
+    MovementType,
+    StockLevel,
+    StockLot,
+    StockLotLevel,
+    StockMovement,
+)
 
 Key = tuple[uuid.UUID, uuid.UUID]  # (site, article)
+LotKey = tuple[uuid.UUID, uuid.UUID, uuid.UUID]  # (site, article, lot)
 
 # Mouvements porteurs d'un coût d'acquisition : seuls à recalculer le CMUP du site (STK-05).
 # Un transfert entrant est une entrée pour le site destination, au coût du site source.
@@ -85,6 +97,9 @@ class MovementRequest:
     source_number: str | None = None
     # Lot 3-C : présentation saisie ; ``quantity`` reste TOUJOURS en unité de base.
     packaging: PackagingSnapshot | None = None
+    # Lot 3-G : lot de l'article (même article garanti par FK composite) ; son solde sur le site
+    # varie de ``quantity``.
+    lot_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -195,9 +210,48 @@ class StockService:
         """Applique des mouvements sur un ou plusieurs sites, tout ou rien : verrouillage de tous
         les niveaux concernés, contrôle global du stock, puis écritures."""
         levels = self._lock({(site_id, r.article_id) for site_id, r in requests})
-        return self._write(
-            [(site_id, r, levels[(site_id, r.article_id)]) for site_id, r in requests]
+        lots = self._lock_lots(
+            {(site_id, r.article_id, r.lot_id) for site_id, r in requests if r.lot_id is not None}
         )
+        return self._write(
+            [(site_id, r, levels[(site_id, r.article_id)]) for site_id, r in requests], lots
+        )
+
+    def _lock_lots(self, keys: set[LotKey]) -> dict[LotKey, StockLotLevel]:
+        """Soldes des lots (site, article, lot), créés au besoin puis verrouillés APRÈS les
+        niveaux, dans l'ordre global (site, article, lot) : sans interblocage."""
+        ordered = sorted(keys)
+        if not ordered:
+            return {}
+        self.db.execute(
+            insert(StockLotLevel)
+            .values(
+                [
+                    {
+                        "id": uuid.uuid4(),
+                        "tenant_id": self.tenant_id,
+                        "site_id": site_id,
+                        "article_id": article_id,
+                        "lot_id": lot_id,
+                        "quantity": Decimal("0"),
+                    }
+                    for site_id, article_id, lot_id in ordered
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["tenant_id", "site_id", "lot_id"])
+        )
+        rows = self.db.scalars(
+            select(StockLotLevel)
+            .where(
+                tuple_(StockLotLevel.site_id, StockLotLevel.lot_id).in_(
+                    [(site_id, lot_id) for site_id, _, lot_id in ordered]
+                )
+            )
+            .order_by(StockLotLevel.site_id, StockLotLevel.article_id, StockLotLevel.lot_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+        return {(r.site_id, r.article_id, r.lot_id): r for r in rows}
 
     def transfer(
         self,
@@ -249,11 +303,18 @@ class StockService:
         return [(movements[i], movements[i + 1]) for i in range(0, len(movements), 2)]
 
     def _write(
-        self, planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]]
+        self,
+        planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]],
+        lots: dict[LotKey, StockLotLevel] | None = None,
     ) -> list[StockMovement]:
+        lots = lots or {}
         self._ensure_non_negative(planned)
+        self._ensure_lots_non_negative(planned, lots)
         movements: list[StockMovement] = []
         for site_id, request, level in planned:
+            if request.lot_id is not None:
+                lot_level = lots[(site_id, request.article_id, request.lot_id)]
+                lot_level.quantity = lot_level.quantity + request.quantity
             quantity_before, cost_before = level.quantity, level.average_cost
             quantity_after = quantity_before + request.quantity
             unit_cost = request.unit_cost
@@ -286,6 +347,7 @@ class StockService:
                 user_id=self.user_id,
                 comment=request.comment,
                 occurred_at=self.now,
+                lot_id=request.lot_id,
                 **_packaging_columns(request.packaging),
             )
             self.db.add(movement)
@@ -304,6 +366,51 @@ class StockService:
             )
         )
         return {m.source_line_id: MovementRef(id=m.id, unit_cost=m.unit_cost) for m in rows}
+
+    def _ensure_lots_non_negative(
+        self,
+        planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]],
+        lots: dict[LotKey, StockLotLevel],
+    ) -> None:
+        """Lot 3-G (D10) : aucun solde de lot négatif, contrôlé avant toute écriture — refus de
+        l'opération entière (ex. annulation d'une réception dont le lot a déjà été consommé)."""
+        projected: dict[LotKey, Decimal] = {}
+        shortages: list[LotKey] = []
+        for site_id, request, _ in planned:
+            if request.lot_id is None:
+                continue
+            key = (site_id, request.article_id, request.lot_id)
+            projected[key] = projected.get(key, lots[key].quantity) + request.quantity
+            if projected[key] < 0 and key not in shortages:
+                shortages.append(key)
+        if not shortages:
+            return
+        refs = get_article_refs(self.db, {article_id for _, article_id, _ in shortages})
+        numbers = {
+            row[0]: row[1]
+            for row in self.db.execute(
+                select(StockLot.id, StockLot.number).where(
+                    StockLot.id.in_({lot_id for _, _, lot_id in shortages})
+                )
+            )
+        }
+        raise BusinessRuleError(
+            "Solde de lot insuffisant : le solde du lot deviendrait négatif",
+            code="insufficient_lot_stock",
+            extra={
+                "lots": [
+                    {
+                        "article_id": str(article_id),
+                        "site_id": str(site_id),
+                        "lot_id": str(lot_id),
+                        "reference": refs[article_id].reference if article_id in refs else None,
+                        "lot_number": numbers.get(lot_id),
+                        "available": format(lots[(site_id, article_id, lot_id)].quantity, "f"),
+                    }
+                    for site_id, article_id, lot_id in shortages
+                ]
+            },
+        )
 
     def _ensure_non_negative(
         self, planned: list[tuple[uuid.UUID, MovementRequest, StockLevel]]

@@ -74,6 +74,9 @@ class Article(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         CheckConstraint("sale_price >= 0", name="sale_price_positive"),
         CheckConstraint("min_stock >= 0", name="min_stock_positive"),
         CheckConstraint("max_stock IS NULL OR max_stock >= min_stock", name="max_stock_gte_min"),
+        # Lot 3-G (ADR-0045) : suivi de péremption ⇒ suivi par lot ⇒ article géré en stock.
+        CheckConstraint("NOT expiry_tracked OR lot_tracked", name="expiry_requires_lots"),
+        CheckConstraint("NOT lot_tracked OR stock_managed", name="lots_require_stock"),
     )
 
     reference: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -96,6 +99,15 @@ class Article(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     # Lot 3-B (ADR-0040) : ``False`` = quantités vendues entières seulement (pièce, carton…) ;
     # ``True`` = quantités décimales (kg, m, L). Contrôlé par le serveur à chaque vente.
     decimal_quantity_allowed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    # Lot 3-G (ADR-0045) : stock ventilé par lot (numéro obligatoire à la réception) ; suivi de
+    # péremption = date de péremption obligatoire sur le lot. Activation fermée en exploitation
+    # jusqu'au Lot 3-H (P1-b, ``catalog.lot_tracking``).
+    lot_tracked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    expiry_tracked: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
 

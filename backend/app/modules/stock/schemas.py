@@ -4,9 +4,17 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.stock.level_service import LevelState
+from app.modules.stock.lot_service import LotState
 from app.modules.stock.models import DocumentStatus, EntryKind, MovementType
 from app.shared.schemas import Money, PositiveQuantity, Quantity, SignedQuantity, UnitCost
-from app.shared.text import Optional100, Optional150, Optional500, Required100, Required150
+from app.shared.text import (
+    Optional50,
+    Optional100,
+    Optional150,
+    Optional500,
+    Required100,
+    Required150,
+)
 
 # --- Motifs de sortie ---------------------------------------------------------------------------
 
@@ -53,6 +61,12 @@ class EntryLineInput(BaseModel):
     packaging_id: uuid.UUID | None = None
     quantity: PositiveQuantity
     unit_cost: Money
+    # Lot 3-G (ADR-0045) : article suivi par lot — numéro obligatoire (sans distinction de casse,
+    # espaces de bord retirés), péremption obligatoire si l'article est suivi en péremption,
+    # fabrication facultative (≤ péremption). Interdits pour un article non suivi.
+    lot_number: Optional50 = None
+    lot_expiry_date: date | None = None
+    lot_manufacturing_date: date | None = None
 
 
 class EntryInput(BaseModel):
@@ -109,6 +123,13 @@ class LineOut(BaseModel):
     # Lot 3-F (entrées, sorties) : emplacement COURANT de l'article sur le site du document,
     # à titre indicatif — jamais figé dans le document.
     location_name: str | None = None
+    # Lot 3-G (entrées) : lot saisi ; ``lot_id`` résolu à la validation ; état de péremption
+    # calculé (fuseau et seuil du tenant).
+    lot_id: uuid.UUID | None = None
+    lot_number: str | None = None
+    lot_expiry_date: date | None = None
+    lot_manufacturing_date: date | None = None
+    lot_state: LotState | None = None
 
 
 class DocumentOut(BaseModel):
@@ -220,6 +241,10 @@ class MovementOut(BaseModel):
     packaging_name: str | None = None
     packaging_conversion: Quantity | None = None
     packaging_quantity: Quantity | None = None
+    # Lot 3-G : lot du mouvement (réception, annulation de réception).
+    lot_id: uuid.UUID | None = None
+    lot_number: str | None = None
+    lot_expiry_date: date | None = None
 
 
 # --- Niveaux de stock et seuils ----------------------------------------------------------------
@@ -319,3 +344,47 @@ class LocationAssign(BaseModel):
     """Emplacement courant de l'article sur le site ; ``null`` = non rangé."""
 
     location_id: uuid.UUID | None = None
+
+
+# --- Lots et péremption (Lot 3-G, ADR-0045) ------------------------------------------------------
+
+
+class LotOut(BaseModel):
+    """Lot et son solde sur les sites visibles (ou le site filtré). Aucun coût (C1)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    article_id: uuid.UUID
+    article_reference: str
+    article_designation: str
+    unit: str
+    number: str
+    expiry_date: date | None
+    manufacturing_date: date | None
+    state: LotState
+    quantity: Quantity
+    site_count: int
+    created_at: datetime
+
+
+class LotBalanceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    site_id: uuid.UUID
+    site_name: str
+    quantity: Quantity
+
+
+class LotDetailOut(LotOut):
+    balances: list[LotBalanceOut] = Field(default_factory=list)
+
+
+class StockSettingsOut(BaseModel):
+    """Seuil « bientôt périmé » du tenant, en jours (défaut 30)."""
+
+    expiry_warning_days: int
+
+
+class StockSettingsInput(BaseModel):
+    expiry_warning_days: int = Field(ge=0, le=365)

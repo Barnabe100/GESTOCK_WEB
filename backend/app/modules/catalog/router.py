@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.errors import ForbiddenError, NotFoundError
-from app.modules.catalog.api import resolve_barcode
+from app.modules.catalog.api import lot_tracking_available, resolve_barcode
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
@@ -13,6 +13,7 @@ from app.modules.catalog.schemas import (
     BarcodeOut,
     CategoryInput,
     CategoryOut,
+    LotTrackingOut,
     PackagingCreate,
     PackagingOut,
     PackagingUpdate,
@@ -138,6 +139,13 @@ def list_articles(
         paging, search, status_filter, category_id, supplier_id, stock_managed
     )
     return Page(items=service.to_out(items), total=total, limit=paging.limit, offset=paging.offset)
+
+
+@router.get("/lot-tracking", response_model=LotTrackingOut, tags=["catalog"])
+def lot_tracking(ctx: ArticleView) -> LotTrackingOut:
+    """Fermeture P1-b (Lot 3-G, ADR-0045) : le suivi par lot est-il activable ? Faux tant que la
+    consommation des lots (Lot 3-H) n'est pas livrée ; le serveur refuse aussi l'activation."""
+    return LotTrackingOut(available=lot_tracking_available())
 
 
 @router.get(

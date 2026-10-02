@@ -16,6 +16,9 @@ export interface ArticleOption {
   sale_price?: string;
   /** Lot 3-B / 3-C : quantités décimales autorisées (guidage ; le serveur fait foi). */
   decimal_quantity_allowed?: boolean;
+  /** Lot 3-G : article suivi par lot / en péremption (guidage ; le serveur fait foi). */
+  lot_tracked?: boolean;
+  expiry_tracked?: boolean;
 }
 
 export function toArticleOption(a: {
@@ -25,6 +28,8 @@ export function toArticleOption(a: {
   unit: string;
   sale_price?: string;
   decimal_quantity_allowed?: boolean;
+  lot_tracked?: boolean;
+  expiry_tracked?: boolean;
 }): ArticleOption {
   return { ...a, label: `${a.reference} — ${a.designation}` };
 }

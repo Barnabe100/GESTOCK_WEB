@@ -17,6 +17,7 @@ from app.core.errors import (
     NotFoundError,
 )
 from app.modules.catalog.api import barcode_search, resolve_barcode
+from app.modules.catalog.lot_tracking import lot_tracking_available
 from app.modules.catalog.models import Article, Barcode, BarcodeKind, Category, Packaging
 from app.modules.catalog.schemas import (
     ArticleCreate,
@@ -29,7 +30,7 @@ from app.modules.catalog.schemas import (
     PackagingUpdate,
     PriceChangeOut,
 )
-from app.modules.catalog.stock_port import sites_with_stock
+from app.modules.catalog.stock_port import sites_with_lot_stock, sites_with_stock
 from app.modules.catalog.usage_port import packagings_in_use
 from app.modules.suppliers.api import get_supplier_ref, supplier_names
 from app.platform.audit.service import audit_action, changes, entity_field_history
@@ -45,6 +46,8 @@ SALE_PRICE = "sale_price"
 PURCHASE_PRICE = "purchase_price"
 PRICE_FIELDS = (SALE_PRICE, PURCHASE_PRICE)
 CENT = Decimal("0.01")
+# Lot 3-G (ADR-0045) : réglages de suivi par lot / de péremption d'un article.
+LOT_FLAGS = frozenset({"lot_tracked", "expiry_tracked"})
 
 CATEGORY_SORT = {"name": text_sort(Category.name), "created_at": Category.created_at}
 ARTICLE_SORT = {
@@ -100,6 +103,29 @@ def _ensure_price_allowed(ctx: RequestContext) -> None:
         raise ForbiddenError(
             "Vous n'êtes pas autorisé à modifier les prix catalogue",
             code="price_update_not_allowed",
+        )
+
+
+def _ensure_lot_tracking_available() -> None:
+    """Fermeture P1-b (Lot 3-G, ADR-0045) : le suivi par lot n'est pas activable tant que la
+    consommation des lots (Lot 3-H) n'est pas livrée — règle du produit, jamais un réglage."""
+    if not lot_tracking_available():
+        raise BusinessRuleError(
+            "Le suivi par lot sera disponible avec la consommation des lots par les ventes, "
+            "les sorties, les transferts et les inventaires",
+            code="lot_tracking_unavailable",
+        )
+
+
+def _check_lot_flags(stock_managed: bool, lot_tracked: bool, expiry_tracked: bool) -> None:
+    """Cohérence des réglages (Lot 3-G) : péremption ⇒ lot ⇒ article géré en stock."""
+    if expiry_tracked and not lot_tracked:
+        raise BusinessRuleError(
+            "Le suivi de péremption exige le suivi par lot", code="expiry_tracking_requires_lots"
+        )
+    if lot_tracked and not stock_managed:
+        raise BusinessRuleError(
+            "Le suivi par lot exige un article géré en stock", code="lot_tracking_requires_stock"
         )
 
 
@@ -268,6 +294,8 @@ class ArticleService:
                 is_active=a.is_active,
                 stock_managed=a.stock_managed,
                 decimal_quantity_allowed=a.decimal_quantity_allowed,
+                lot_tracked=a.lot_tracked,
+                expiry_tracked=a.expiry_tracked,
                 created_at=a.created_at,
                 updated_at=a.updated_at,
                 # Coût interne : champ ABSENT de la réponse sans ``cost_view`` (les routes
@@ -365,6 +393,9 @@ class ArticleService:
             self._ensure_active_supplier(data.main_supplier_id)
         if data.barcode:
             self._ensure_barcode_free(data.barcode)
+        _check_lot_flags(data.stock_managed, data.lot_tracked, data.expiry_tracked)
+        if data.lot_tracked:
+            _ensure_lot_tracking_available()
         article = Article(tenant_id=self.ctx.tenant_id, **data.model_dump())
         self._check_thresholds(article)
         self.db.add(article)
@@ -384,6 +415,8 @@ class ArticleService:
                 PURCHASE_PRICE: format(article.purchase_price, "f"),
                 "stock_managed": article.stock_managed,
                 "decimal_quantity_allowed": article.decimal_quantity_allowed,
+                "lot_tracked": article.lot_tracked,
+                "expiry_tracked": article.expiry_tracked,
             },
         )
         return article
@@ -401,6 +434,8 @@ class ArticleService:
             "min_stock",
             "stock_managed",
             "decimal_quantity_allowed",
+            "lot_tracked",
+            "expiry_tracked",
         )
         missing = [field for field in required if field in updates and updates[field] is None]
         if missing:
@@ -421,6 +456,14 @@ class ArticleService:
             ARTICLE_UPDATE
         ):
             raise ForbiddenError("Permission insuffisante", code="permission_denied")
+        if (LOT_FLAGS | {"stock_managed"}) & updates.keys():
+            _check_lot_flags(
+                updates.get("stock_managed", article.stock_managed),
+                updates.get("lot_tracked", article.lot_tracked),
+                updates.get("expiry_tracked", article.expiry_tracked),
+            )
+        if LOT_FLAGS & updates.keys():
+            self._ensure_lot_flags_change(article, updates)
         if updates.get("stock_managed") is False:
             self._ensure_no_stock(article)
         if updates.get("decimal_quantity_allowed") is False:
@@ -453,6 +496,25 @@ class ArticleService:
             )
         self.db.refresh(article)
         return article
+
+    def _ensure_lot_flags_change(self, article: Article, updates: dict[str, Any]) -> None:
+        """Lot 3-G (ADR-0045) : suivi par lot / de péremption modifiés seulement à stock nul sur
+        TOUS les sites (D6) et soldes de lots tous nuls (D7) ; activation du suivi par lot
+        fermée tant que le Lot 3-H n'est pas livré (P1-b). Verrou exclusif de l'article d'abord :
+        une réception en cours de validation (verrou partagé) se termine avant la vérification."""
+        if updates.get("lot_tracked", article.lot_tracked) and not article.lot_tracked:
+            _ensure_lot_tracking_available()
+        self.db.execute(select(Article.id).where(Article.id == article.id).with_for_update()).one()
+        sites = sorted(
+            set(sites_with_stock(self.db, self.ctx.tenant_id, article.id))
+            | set(sites_with_lot_stock(self.db, self.ctx.tenant_id, article.id))
+        )
+        if sites:
+            raise ConflictError(
+                "Le suivi par lot ou de péremption ne se modifie qu'à stock nul sur tous les sites",
+                code="article_has_stock",
+                extra={"sites": sites},
+            )
 
     def _ensure_no_stock(self, article: Article) -> None:
         """« Géré » → « non géré » : stock nul sur TOUS les sites du tenant. Verrou exclusif de

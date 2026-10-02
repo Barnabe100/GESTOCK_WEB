@@ -53,24 +53,29 @@ def _packaging_fk() -> ForeignKeyConstraint:
     )
 
 
-def _presentation_args(table: str, document_column: str) -> tuple[Any, ...]:
+def _presentation_args(
+    table: str, document_column: str, *distinct_by: Any, suffix: str = ""
+) -> tuple[Any, ...]:
     """Lot 3-C (ADR-0041) : ligne d'un document de stock saisie dans une PRÉSENTATION (unité
     de base ou conditionnement de l'article). Une ligne par présentation ; instantané du
     conditionnement complet ou absent ; quantité de base = quantité × conversion (unité de
-    base : 1), sans arrondi."""
+    base : 1), sans arrondi. ``distinct_by`` (Lot 3-G, entrées) : une ligne par présentation ET
+    par lot."""
     return (
         _packaging_fk(),
         Index(
-            f"uq_{table}_article_base",
+            f"uq_{table}_article_base{suffix}",
             document_column,
             "article_id",
+            *distinct_by,
             unique=True,
             postgresql_where=text("packaging_id IS NULL"),
         ),
         Index(
-            f"uq_{table}_packaging",
+            f"uq_{table}_packaging{suffix}",
             document_column,
             "packaging_id",
+            *distinct_by,
             unique=True,
             postgresql_where=text("packaging_id IS NOT NULL"),
         ),
@@ -185,6 +190,87 @@ class StockArticleLocation(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     location_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
 
 
+# --- Lots (Lot 3-G, ADR-0045) -----------------------------------------------------------------
+
+
+def _lot_fk() -> ForeignKeyConstraint:
+    """Lot DU MÊME article (et du même tenant) : un lot d'un autre article est inaffectable."""
+    return ForeignKeyConstraint(
+        ["tenant_id", "article_id", "lot_id"],
+        ["stock_lots.tenant_id", "stock_lots.article_id", "stock_lots.id"],
+        ondelete="RESTRICT",
+    )
+
+
+class StockLot(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Lot d'un article (référentiel du tenant). Identité : (article, numéro sans distinction de
+    casse) — le fournisseur n'en fait pas partie (D3). Créé à la validation d'une réception ;
+    numéro et dates figés ensuite (D11) ; jamais supprimé. Aucun coût (D12, C1)."""
+
+    __tablename__ = "stock_lots"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        # Cible des FK composites (lignes, soldes, mouvements) : lot du même article garanti.
+        UniqueConstraint("tenant_id", "article_id", "id"),
+        _article_fk(),
+        Index(
+            "uq_stock_lots_article_number",
+            "tenant_id",
+            "article_id",
+            func.lower(text("number")),
+            unique=True,
+        ),
+        CheckConstraint("btrim(number) = number AND number <> ''", name="number_trimmed"),
+        CheckConstraint(
+            "manufacturing_date IS NULL OR expiry_date IS NULL "
+            "OR manufacturing_date <= expiry_date",
+            name="dates_ordered",
+        ),
+    )
+
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    number: Mapped[str] = mapped_column(String(50), nullable=False)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    manufacturing_date: Mapped[date | None] = mapped_column(Date)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+
+
+class StockLotLevel(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Solde d'un lot sur un site (D1, variante B) : ventilation du stock (site, article) —
+    Σ soldes des lots = stock du site pour un article suivi. Modifié UNIQUEMENT par
+    ``StockService``, sous les verrous du niveau (ordre global site, article, lot)."""
+
+    __tablename__ = "stock_lot_levels"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "site_id", "lot_id"),
+        _site_fk(),
+        _lot_fk(),
+        CheckConstraint("quantity >= 0", name="quantity_non_negative"),
+        Index("ix_stock_lot_levels_tenant_lot", "tenant_id", "lot_id"),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    lot_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QUANTITY, default=Decimal("0"), nullable=False)
+
+
+class StockSettings(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Réglages du module Stock pour le tenant (Lot 3-G, D16) : seuil « bientôt périmé » en
+    jours. Ligne absente = valeurs par défaut."""
+
+    __tablename__ = "stock_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id"),
+        CheckConstraint(
+            "expiry_warning_days >= 0 AND expiry_warning_days <= 365",
+            name="expiry_warning_days_range",
+        ),
+    )
+
+    expiry_warning_days: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 # --- Journal des mouvements --------------------------------------------------------------------
 
 
@@ -232,6 +318,9 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
             name="packaging_quantity_consistent",
         ),
         CheckConstraint("quantity_after >= 0", name="never_negative"),
+        # Lot 3-G : lot du mouvement (réception, annulation de réception) — du même article.
+        _lot_fk(),
+        Index("ix_stock_movements_tenant_lot", "tenant_id", "lot_id"),
         Index("ix_stock_movements_tenant_site_occurred", "tenant_id", "site_id", "occurred_at"),
         Index("ix_stock_movements_source", "tenant_id", "source_id"),
     )
@@ -270,6 +359,8 @@ class StockMovement(IdMixin, TenantScopedMixin, Base):
     packaging_name: Mapped[str | None] = mapped_column(String(50))
     packaging_conversion: Mapped[Decimal | None] = mapped_column(QUANTITY)
     packaging_quantity: Mapped[Decimal | None] = mapped_column(QUANTITY)
+    # Lot 3-G (ADR-0045) : lot reçu (ou dont la réception est annulée) ; nul sinon.
+    lot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
 
 # --- Motifs de sortie --------------------------------------------------------------------------
@@ -366,9 +457,31 @@ class StockEntryLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
             ondelete="CASCADE",
         ),
         _article_fk(),
-        *_presentation_args("stock_entry_lines", "entry_id"),
+        # Lot 3-G : une ligne par présentation ET par lot (numéro sans distinction de casse).
+        *_presentation_args(
+            "stock_entry_lines",
+            "entry_id",
+            func.coalesce(func.lower(text("lot_number")), ""),
+            suffix="_lot",
+        ),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("unit_cost >= 0", name="unit_cost_non_negative"),
+        _lot_fk(),
+        CheckConstraint(
+            "lot_number IS NULL OR (btrim(lot_number) = lot_number AND lot_number <> '')",
+            name="lot_number_trimmed",
+        ),
+        CheckConstraint("lot_id IS NULL OR lot_number IS NOT NULL", name="lot_has_number"),
+        CheckConstraint(
+            "lot_number IS NOT NULL OR (lot_expiry_date IS NULL "
+            "AND lot_manufacturing_date IS NULL)",
+            name="lot_dates_need_number",
+        ),
+        CheckConstraint(
+            "lot_manufacturing_date IS NULL OR lot_expiry_date IS NULL "
+            "OR lot_manufacturing_date <= lot_expiry_date",
+            name="lot_dates_ordered",
+        ),
     )
 
     entry_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
@@ -377,6 +490,12 @@ class StockEntryLine(_PresentationMixin, IdMixin, TenantScopedMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(QUANTITY, nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Lot 3-G (ADR-0045) : lot saisi dans le brouillon (article suivi par lot) ; le lot du
+    # référentiel est résolu ou créé à la validation (``lot_id``).
+    lot_number: Mapped[str | None] = mapped_column(String(50))
+    lot_expiry_date: Mapped[date | None] = mapped_column(Date)
+    lot_manufacturing_date: Mapped[date | None] = mapped_column(Date)
+    lot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
 
 class StockExit(_DocumentMixin, Base):
