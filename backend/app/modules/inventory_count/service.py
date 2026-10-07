@@ -61,9 +61,11 @@ from app.modules.catalog.api import (
     RemovalBlockerKind,
     active_packagings,
     articles_view,
+    assortment_view,
     barcode_search,
     check_packagings,
     ensure_conversion_unchanged,
+    ensure_in_assortment,
     ensure_whole,
     get_article_refs,
     lock_lot_flags,
@@ -525,11 +527,13 @@ class InventoryService:
         search: str | None = None,
         stocked_only: bool = False,
     ) -> tuple[list[CandidateOut], int]:
-        """Articles actifs proposables pour un inventaire du site, avec leur stock courant.
-        Recherche et pagination serveur : jamais tout le catalogue d'un coup."""
+        """Articles actifs proposables pour un inventaire du site, avec leur stock courant :
+        l'assortiment ACTIF du site seulement (Recette, étape 1, ADR-0046). Recherche et
+        pagination serveur : jamais tout le catalogue d'un coup."""
         site = operation_site(self.ctx, site_id)
         articles = articles_view()
         levels = levels_view()
+        assortment = assortment_view()
         stmt = (
             select(
                 articles.c.id,
@@ -541,6 +545,14 @@ class InventoryService:
                 func.coalesce(levels.c.quantity, literal(ZERO_QTY)).label("quantity"),
             )
             .select_from(articles)
+            .join(
+                assortment,
+                and_(
+                    assortment.c.tenant_id == articles.c.tenant_id,
+                    assortment.c.article_id == articles.c.id,
+                    assortment.c.site_id == site,
+                ),
+            )
             .outerjoin(
                 levels,
                 and_(
@@ -632,8 +644,9 @@ class InventoryService:
                 },
             )
 
-    def _active_articles(self, article_ids: list[uuid.UUID]) -> set[uuid.UUID]:
-        """Articles du tenant (RLS), existants, actifs, chacun une seule fois."""
+    def _active_articles(self, site_id: uuid.UUID, article_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+        """Articles du tenant (RLS), existants, actifs, gérés en stock, de l'assortiment ACTIF
+        du site (Recette, étape 1, ADR-0046, D3), chacun une seule fois."""
         if not article_ids:
             raise BusinessRuleError("Choisissez au moins un article", code="inventory_empty")
         if len(set(article_ids)) != len(article_ids):
@@ -653,25 +666,39 @@ class InventoryService:
             )
         # Lot 3-A : un article non géré en stock ne s'inventorie pas.
         refuse_unmanaged(self.db, [a for a in article_ids if not refs[a].stock_managed])
+        ensure_in_assortment(self.db, site_id, set(article_ids))
         return set(article_ids)
 
     def _stocked_articles(self, site_id: uuid.UUID) -> dict[uuid.UUID, Decimal]:
-        """Inventaire complet : articles actifs gérés sur le site (niveau de stock existant),
-        avec leur stock courant. Une seule requête."""
+        """Inventaire complet : assortiment ACTIF du site × articles actifs gérés en stock
+        (Recette, étape 1, ADR-0046) — y compris un article jamais reçu (stock 0) —, avec leur
+        stock courant. Une seule requête."""
         articles = articles_view()
         levels = levels_view()
+        assortment = assortment_view()
         rows = self.db.execute(
-            select(levels.c.article_id, levels.c.quantity)
+            select(
+                assortment.c.article_id,
+                func.coalesce(levels.c.quantity, literal(ZERO_QTY)),
+            )
             .join(
                 articles,
                 and_(
-                    articles.c.id == levels.c.article_id,
-                    articles.c.tenant_id == levels.c.tenant_id,
+                    articles.c.id == assortment.c.article_id,
+                    articles.c.tenant_id == assortment.c.tenant_id,
+                ),
+            )
+            .outerjoin(
+                levels,
+                and_(
+                    levels.c.tenant_id == assortment.c.tenant_id,
+                    levels.c.article_id == assortment.c.article_id,
+                    levels.c.site_id == assortment.c.site_id,
                 ),
             )
             .where(
-                levels.c.tenant_id == self.ctx.tenant_id,
-                levels.c.site_id == site_id,
+                assortment.c.tenant_id == self.ctx.tenant_id,
+                assortment.c.site_id == site_id,
                 articles.c.is_active.is_(True),
                 articles.c.stock_managed.is_(True),
             )
@@ -771,7 +798,7 @@ class InventoryService:
             if not quantities:
                 raise BusinessRuleError("Aucun article géré sur ce site", code="inventory_empty")
         else:
-            wanted = self._active_articles(data.article_ids)
+            wanted = self._active_articles(site_id, data.article_ids)
             self._lock_site(site_id)
             quantities = self._quantities(site_id, wanted)
         self._ensure_not_in_open_inventory(site_id, set(quantities), None)
@@ -810,7 +837,7 @@ class InventoryService:
             current = set(self._line_articles(inventory))
             removed = set(data.remove_article_ids) & current
             added = (
-                self._active_articles(data.add_article_ids) - current
+                self._active_articles(inventory.site_id, data.add_article_ids) - current
                 if data.add_article_ids
                 else set()
             )
@@ -829,8 +856,9 @@ class InventoryService:
         return inventory
 
     def start(self, inventory_id: uuid.UUID) -> Inventory:
-        """Début du comptage. Inventaire complet : liste recalée sur les articles actifs gérés
-        sur le site à cet instant. Stock théorique initial de chaque ligne = stock courant."""
+        """Début du comptage. Inventaire complet : liste recalée sur l'assortiment ACTIF du
+        site (articles actifs gérés en stock) à cet instant (ADR-0046). Stock théorique
+        initial de chaque ligne = stock courant."""
         inventory = self.get(inventory_id, lock=True)
         target = next_status(inventory.status, "start")
         self._lock_site(inventory.site_id)

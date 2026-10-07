@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
-from app.modules.catalog.api import get_article_refs
+from app.modules.catalog.api import ensure_in_assortment, get_article_refs
 from app.modules.stock.models import StockArticleLocation, StockLocation
 from app.modules.stock.sites import filter_site_ids, operation_site, visible_site_ids
 from app.platform.audit.service import audit_action
@@ -239,6 +239,10 @@ class LocationService:
                 code="article_not_stock_managed",
                 extra={"articles": [ref.reference]},
             )
+        # Recette, étape 1 (ADR-0046) : affectation réservée à l'assortiment ACTIF du site
+        # (verrou partagé : un retrait concurrent attend) ; hors assortiment, l'emplacement
+        # existant est conservé mais inerte.
+        ensure_in_assortment(self.db, site, {article_id}, lock=True)
         after: StockLocation | None = None
         if location_id is not None:
             # Verrou partagé : une désactivation concurrente attend la fin de l'affectation.

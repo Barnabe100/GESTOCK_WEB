@@ -39,6 +39,7 @@ from app.modules.catalog.api import (
     QUANTITY_STEP,
     ArticleRef,
     LotFlags,
+    ensure_in_assortment,
     get_article_refs,
     is_whole,
     lock_lot_flags,
@@ -262,14 +263,22 @@ class StockService:
         locked = self._lock({(site_id, article_id) for article_id in article_ids})
         return {article_id: level for (_, article_id), level in locked.items()}
 
-    def _lock(self, keys: set[tuple[uuid.UUID, uuid.UUID]]) -> dict[Key, StockLevel]:
+    def _lock(
+        self,
+        keys: set[tuple[uuid.UUID, uuid.UUID]],
+        assorted: set[tuple[uuid.UUID, uuid.UUID]] | None = None,
+    ) -> dict[Key, StockLevel]:
         """Crée au besoin puis verrouille les niveaux (site, article) dans UN ordre global
         (site, article) : deux opérations touchant les mêmes niveaux, même sur plusieurs sites
-        (transferts A → B et B → A), les verrouillent dans le même ordre, sans interblocage."""
+        (transferts A → B et B → A), les verrouillent dans le même ordre, sans interblocage.
+
+        ``assorted`` : couples (site, article) devant figurer dans l'assortiment ACTIF du site
+        (ADR-0046) — par défaut tous ; une annulation n'en exige aucun (D3-7)."""
         ordered = sorted(keys)
         if not ordered:
             return {}
         self._ensure_stock_managed({article_id for _, article_id in ordered})
+        self._ensure_in_assortment(set(ordered) if assorted is None else assorted)
         self.db.execute(
             insert(StockLevel)
             .values(
@@ -296,6 +305,20 @@ class StockService:
         ).all()
         return {(level.site_id, level.article_id): level for level in levels}
 
+    def _ensure_in_assortment(self, keys: set[tuple[uuid.UUID, uuid.UUID]]) -> None:
+        """Garde centrale de l'assortiment (Recette, étape 1, ADR-0046, D3) : tout mouvement sur
+        (site, article) — réception, sortie, vente, transfert (source ET destination),
+        ajustement d'inventaire — exige l'article ACTIF dans l'assortiment du site, sinon
+        ``422 article_not_in_site_assortment`` ; aucun ajout automatique. Lignes d'assortiment
+        lues sous verrou PARTAGÉ, après les articles et avant les niveaux (ordre global article
+        → assortiment → niveaux → lots, D4) : un retrait concurrent attend la fin de
+        l'opération, ou l'opération voit le retrait. Les annulations ne passent pas ici."""
+        by_site: dict[uuid.UUID, set[uuid.UUID]] = {}
+        for site_id, article_id in keys:
+            by_site.setdefault(site_id, set()).add(article_id)
+        for site_id in sorted(by_site):
+            ensure_in_assortment(self.db, site_id, by_site[site_id], lock=True)
+
     def _ensure_stock_managed(self, article_ids: set[uuid.UUID]) -> None:
         """Garde centrale (Lot 3-A, ADR-0039) : aucun niveau ni mouvement pour un article non
         géré en stock. Lecture sous verrou partagé de l'article (``lock_stock_managed``) : le
@@ -311,7 +334,15 @@ class StockService:
     def apply_many(self, requests: list[tuple[uuid.UUID, MovementRequest]]) -> list[StockMovement]:
         """Applique des mouvements sur un ou plusieurs sites, tout ou rien : verrouillage de tous
         les niveaux concernés, contrôle global du stock, puis écritures."""
-        levels = self._lock({(site_id, r.article_id) for site_id, r in requests})
+        levels = self._lock(
+            {(site_id, r.article_id) for site_id, r in requests},
+            # Une annulation restaure l'historique même hors assortiment (D3-7, D4).
+            {
+                (site_id, r.article_id)
+                for site_id, r in requests
+                if r.movement_type is not MovementType.CANCELLATION
+            },
+        )
         requests = self._restore_without_lot(requests)
         lots = self._lock_lots(
             {(site_id, r.article_id, r.lot_id) for site_id, r in requests if r.lot_id is not None}

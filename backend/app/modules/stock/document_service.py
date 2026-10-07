@@ -24,6 +24,7 @@ from app.modules.catalog.api import (
     base_quantity,
     check_packagings,
     ensure_conversion_unchanged,
+    ensure_in_assortment,
     ensure_whole,
     get_article_refs,
     lock_lot_flags,
@@ -599,6 +600,9 @@ class EntryService(_DocumentService[StockEntry]):
     def _apply_input(self, entry: StockEntry, data: EntryInput) -> None:
         self._check_supplier(data.kind, data.supplier_id)
         presented = present_lines(self.db, data.lines, with_lots=True)
+        # Recette, étape 1 (ADR-0046, D3) : article de l'assortiment ACTIF du site, dès le
+        # brouillon ; la validation revérifie sous verrou (``StockService``).
+        ensure_in_assortment(self.db, entry.site_id, {line.article_id for line in data.lines})
         # Lot 3-G (D5, D8, D17, D4) : lots contrôlés dès le brouillon (revérifiés à la
         # validation) — obligatoires pour un article suivi, interdits sinon.
         lots = self._lot_inputs(data.lines)
@@ -771,6 +775,9 @@ class ExitService(_DocumentService[StockExit]):
     def _apply_input(self, document: StockExit, data: ExitInput) -> None:
         self._check_reason(data.reason_id)
         presented = present_lines(self.db, data.lines)
+        # Recette, étape 1 (ADR-0046, D3) : article de l'assortiment ACTIF du site, dès le
+        # brouillon ; la validation revérifie sous verrou (``StockService``).
+        ensure_in_assortment(self.db, document.site_id, {line.article_id for line in data.lines})
         check_lot_choices(self.db, data.lines, presented)
         document.operation_date = self._operation_date(data.operation_date)
         document.reason_id = data.reason_id

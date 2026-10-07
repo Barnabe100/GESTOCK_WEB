@@ -35,6 +35,7 @@ from app.modules.catalog.api import (
     barcode_search,
     base_quantity,
     check_packagings,
+    ensure_in_assortment,
     ensure_whole,
     get_article_refs,
     lock_lot_flags,
@@ -364,6 +365,9 @@ class SaleService:
         """Lignes au prix du catalogue (jamais au prix du client) — prix de l'article ou du
         conditionnement vendu ; quantité de base et montants recalculés."""
         refs = self._articles([(line.article_id, line.packaging_id) for line in data.lines])
+        # Recette, étape 1 (ADR-0046, D3) : contrôle de saisie — article de l'assortiment ACTIF
+        # du site de la vente, sans ajout automatique ; la validation revérifie sous verrou.
+        ensure_in_assortment(self.db, sale.site_id, {line.article_id for line in data.lines})
         packagings = self._packagings(data.lines)
         self._customer(data.customer_id)
         sale.customer_id = data.customer_id
@@ -638,6 +642,12 @@ class SaleService:
         # Lot 3-A (ADR-0039) : « géré en stock » relu par le serveur, sous verrou partagé de
         # l'article ; un article non géré (service) se vend sans mouvement ni contrôle de stock.
         managed = lock_stock_managed(self.db, {line.article_id for line in sale.lines})
+        # Recette, étape 1 (ADR-0046, D3) : contrôle FAISANT FOI, sous verrou partagé de
+        # l'assortiment (article → assortiment → niveaux → lots) — y compris pour un article non
+        # géré en stock, qui ne passe pas par ``StockService`` (point de vente compris).
+        ensure_in_assortment(
+            self.db, sale.site_id, {line.article_id for line in sale.lines}, lock=True
+        )
         stocked = [line for line in sale.lines if managed.get(line.article_id, True)]
         picks = self._expired_lot_picks(sale, stocked, expired_lot_override)
         # Sortie de stock : exclusivement via le moteur central (verrous, lots, tout ou rien).

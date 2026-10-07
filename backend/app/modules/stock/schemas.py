@@ -303,6 +303,9 @@ class LevelOut(BaseModel):
     location_id: uuid.UUID | None = None
     location_name: str | None = None
     location_active: bool | None = None
+    # Recette, étape 1 (ADR-0046) : faux = stock résiduel d'un article retiré de l'assortiment
+    # du site (« Hors assortiment ») ; aucune opération possible sans réactivation.
+    in_assortment: bool = True
 
 
 class ThresholdInput(BaseModel):

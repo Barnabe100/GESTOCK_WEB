@@ -4,7 +4,8 @@ Le POS n'a AUCUNE logique de vente propre : il orchestre les services existants.
 
 - Recherche d'articles : niveaux de stock du site (``stock.api.list_levels``, recherche
   serveur sur référence / désignation / code-barres, limitée) + prix du catalogue
-  (``catalog.api``).
+  (``catalog.api``) — l'assortiment ACTIF du site seulement (Recette, étape 1, ADR-0046) : un
+  article hors assortiment n'est jamais proposé à la caisse.
 - Encaissement : ``SaleService.checkout`` (module Ventes) — création, validation (StockService,
   limite de crédit), paiements immédiats (PaymentService ; caisse pour les espèces seulement),
   audit, dans une seule transaction, idempotent.
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, NotFoundError
 from app.modules.catalog.api import (
     active_packagings,
+    ensure_in_assortment,
     get_article_refs,
     resolve_barcode,
 )
@@ -33,8 +35,9 @@ def search_articles(
     search: str | None,
     limit: int,
 ) -> list[PosArticleOut]:
-    """Articles du site de vente (site sélectionné, ou site demandé et accessible), actifs
-    d'abord ; un article inactif est renvoyé (information) mais ne peut pas être vendu."""
+    """Articles de l'assortiment ACTIF du site de vente (site sélectionné, ou site demandé et
+    accessible), actifs d'abord ; un article inactif est renvoyé (information) mais ne peut pas
+    être vendu. Hors assortiment : jamais proposé, même avec du stock résiduel (ADR-0046)."""
     site = operation_site(ctx, site_id)
     rows, _ = list_levels(
         db,
@@ -44,6 +47,7 @@ def search_articles(
         search=search,
         include_inactive=True,
         include_unmanaged=True,
+        assortment_only=True,
     )
     return _to_out(db, sorted(rows, key=lambda r: not r.article_active))
 
@@ -56,9 +60,13 @@ def article_by_barcode(
     recherche partielle, ni sur la référence ou la désignation. Inconnu : ``404
     barcode_unknown`` (rien n'est ajouté au panier). Code d'un conditionnement :
     ``scanned_packaging_id`` — le panier ajoute 1 conditionnement (jamais N unités de base) ;
-    prix non configuré : ``422 packaging_price_not_set`` (invendable, Lot 3-B)."""
+    prix non configuré : ``422 packaging_price_not_set`` (invendable, Lot 3-B). Article
+    connu hors de l'assortiment ACTIF du site : ``422 article_not_in_site_assortment``
+    (ADR-0046, D3) — rien n'est ajouté au panier."""
     site = operation_site(ctx, site_id)
     match = resolve_barcode(db, barcode)
+    if match is not None:
+        ensure_in_assortment(db, site, {match.article_id})
     rows = (
         list_levels(
             db,
@@ -67,6 +75,7 @@ def article_by_barcode(
             PageParams(limit=1, offset=0, sort="designation"),
             article_ids={match.article_id},
             include_unmanaged=True,
+            assortment_only=True,
         )[0]
         if match is not None
         else []

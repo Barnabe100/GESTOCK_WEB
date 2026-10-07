@@ -298,6 +298,14 @@ def world(provision: Any, api_for: Any) -> Any:
     return make_world(provision, api_for)
 
 
+@pytest.fixture
+def bare_world(provision: Any, api_for: Any) -> Any:
+    """Même monde, articles au catalogue SEULEMENT : aucun site ne les propose (ADR-0046)."""
+    from tests.stock_helpers import make_world
+
+    return make_world(provision, api_for, assorted=False)
+
+
 # --- Console TechNova (ADR-0031) : processus et rôle SQL distincts -----------------------------
 
 PLATFORM_ADMIN_EMAIL = "admin@technova.example"

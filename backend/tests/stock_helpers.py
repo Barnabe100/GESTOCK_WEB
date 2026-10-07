@@ -22,13 +22,18 @@ class World:
     customer: str | None = None
 
 
-def make_world(provision: Any, api_for: Any) -> World:
+def make_world(provision: Any, api_for: Any, *, assorted: bool = True) -> World:
+    """``assorted`` (Recette, étape 1, ADR-0046) : les articles sont ajoutés EXPLICITEMENT à
+    l'assortiment des deux sites dès leur création (``site_ids``) — catalogue ≠ assortiment ≠
+    stock ; ``False`` : catalogue seul (tests de l'assortiment lui-même)."""
     t = provision("alpha", profile="retail.quincaillerie", plan="ENTREPRISE")
     owner: Api = api_for("owner@alpha.example.com")
-    site2 = add_site(owner, "Dépôt", "DEPOT", "warehouse")
+    site2 = add_site(owner, "Dépôt", "DEPOT", "warehouse").json()["id"]
     category = owner.post("/catalog/categories", json={"name": "Divers"}).json()
-    articles = [
-        owner.post(
+    sites = [str(t.site_id), site2] if assorted else []
+    articles = []
+    for i in range(3):
+        response = owner.post(
             "/catalog/articles",
             json={
                 "reference": f"A-{i}",
@@ -37,16 +42,23 @@ def make_world(provision: Any, api_for: Any) -> World:
                 "unit": "u",
                 "purchase_price": "100",
                 "sale_price": "150",
+                "site_ids": sites,
             },
-        ).json()["id"]
-        for i in range(3)
-    ]
+        )
+        assert response.status_code == 201, response.text
+        articles.append(response.json()["id"])
     supplier = owner.post("/suppliers", json={"name": "Faso Import"}).json()["id"]
     reasons = {
         r["code"] or r["label"]: r["id"]
         for r in owner.get("/stock/exit-reasons?limit=50").json()["items"]
     }
-    return World(owner, str(t.site_id), site2.json()["id"], articles, supplier, reasons)
+    return World(owner, str(t.site_id), site2, articles, supplier, reasons)
+
+
+def assort(api: Api, site: str, *article_ids: str) -> None:
+    """Ajout explicite à l'assortiment d'un site (ADR-0046) : préalable à toute opération."""
+    response = api.post(f"/catalog/sites/{site}/articles", json={"article_ids": list(article_ids)})
+    assert response.status_code == 200, response.text
 
 
 def allow_decimals(w: World, *indexes: int) -> None:

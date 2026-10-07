@@ -338,16 +338,20 @@ def resolve_barcode_route(
     ctx: ArticleView,
     db: DbSession,
     code: Annotated[str, Query(min_length=1, max_length=50)],
+    site_id: uuid.UUID | None = None,
 ) -> ScanOut:
     """Scan des écrans opérationnels : égalité EXACTE parmi les présentations actives, sinon
-    ``404 barcode_unknown`` — jamais de recherche partielle ni de premier résultat."""
+    ``404 barcode_unknown`` — jamais de recherche partielle ni de premier résultat.
+    ``site_id`` (ADR-0046) : état de l'article dans l'assortiment de ce site
+    (``article.site_assortment``) ; l'enregistrement du document refuse un article hors
+    assortiment (``422 article_not_in_site_assortment``)."""
     match = resolve_barcode(db, code)
     if match is None:
         raise NotFoundError("Code-barres inconnu", code="barcode_unknown")
     articles = ArticleService(db, ctx)
     packagings = PackagingService(db, ctx)
     return ScanOut(
-        article=articles.to_out([articles.get(match.article_id)])[0],
+        article=articles.to_out([articles.get(match.article_id)], site_id)[0],
         packaging=(
             packagings.to_out([packagings.get(match.packaging_id)])[0]
             if match.packaging_id

@@ -32,6 +32,12 @@ from tests.stock_helpers import World
 MANAGE = "catalog.assortment.manage"
 
 
+@pytest.fixture
+def world(bare_world: World) -> World:
+    """Articles au catalogue seulement : chaque test construit l'assortiment qu'il vérifie."""
+    return bare_world
+
+
 def _ok(response: Any, status: int = 200) -> Any:
     assert response.status_code == status, response.text
     return response.json()

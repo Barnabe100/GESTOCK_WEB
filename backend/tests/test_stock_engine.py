@@ -68,6 +68,8 @@ def setup(provision: Any, api_for: Any) -> dict[str, Any]:
                 "unit": "u",
                 "purchase_price": "100",
                 "sale_price": "150",
+                # Assortiment du site (ADR-0046) : préalable à tout mouvement.
+                "site_ids": [str(t.site_id)],
             },
         ).json()["id"]
         for i in range(2)

@@ -7,6 +7,11 @@ défaut de l'article. États :
 - ``low``  : 0 < stock ≤ minimum effectif (stock faible) ;
 - ``ok``   : au-dessus du minimum ;
 - ``not_stocked`` : jamais géré sur ce site (aucun niveau) — jamais une alerte.
+
+Recette, étape 1 (ADR-0046) — catalogue ≠ assortiment ≠ stock : un site ne présente que les
+articles de son assortiment ACTIF, plus ceux qui y ont encore du stock (stock recréé par une
+annulation après un retrait : visible « hors assortiment », ``in_assortment = false``, jamais
+une alerte). Fini le produit cartésien catalogue × sites.
 """
 
 import uuid
@@ -19,7 +24,12 @@ from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, NotFoundError
-from app.modules.catalog.api import articles_view, barcode_search, get_article_refs
+from app.modules.catalog.api import (
+    articles_view,
+    assortment_view,
+    barcode_search,
+    get_article_refs,
+)
 from app.modules.stock.location_service import locations_view
 from app.modules.stock.models import StockLevel
 from app.modules.stock.stock_service import StockService, round_money
@@ -69,6 +79,8 @@ class LevelRow:
     location_id: uuid.UUID | None = None
     location_name: str | None = None
     location_active: bool | None = None
+    # Recette, étape 1 : article actif dans l'assortiment du site (sinon : stock résiduel).
+    in_assortment: bool = True
 
 
 def levels_view() -> Any:
@@ -88,12 +100,28 @@ def levels_view() -> Any:
 def _levels_query(
     site_ids: set[uuid.UUID], tenant_id: uuid.UUID, *, include_unmanaged: bool = False
 ) -> tuple[Any, dict[str, Any]]:
-    """Niveaux (site × article). Les articles non gérés en stock (Lot 3-A) n'ont ni niveau, ni
-    seuil, ni alerte : exclus, sauf demande explicite (recherche du point de vente)."""
+    """Niveaux (site × article) des couples présentés par le site : assortiment ACTIF du site
+    ∪ niveaux de stock non nuls (ADR-0046). Les articles non gérés en stock (Lot 3-A) n'ont ni
+    niveau, ni seuil, ni alerte : exclus, sauf demande explicite (recherche du point de vente)."""
     articles = articles_view()
     sites = select(Site.id, Site.name).where(Site.id.in_(site_ids)).subquery("s")
     level = StockLevel.__table__
+    assortment = assortment_view()
+    pairs = (
+        select(assortment.c.tenant_id, assortment.c.site_id, assortment.c.article_id)
+        .where(assortment.c.tenant_id == tenant_id, assortment.c.site_id.in_(site_ids))
+        .union(
+            select(level.c.tenant_id, level.c.site_id, level.c.article_id).where(
+                level.c.tenant_id == tenant_id,
+                level.c.site_id.in_(site_ids),
+                level.c.quantity != 0,
+            )
+        )
+        .subquery("site_articles")
+    )
+    in_site = assortment_view()
     locations = locations_view()
+    in_assortment = in_site.c.article_id.is_not(None)
     quantity = func.coalesce(level.c.quantity, literal(Decimal("0")))
     min_eff = func.coalesce(level.c.min_stock, articles.c.min_stock)
     max_eff = func.coalesce(level.c.max_stock, articles.c.max_stock)
@@ -123,14 +151,28 @@ def _levels_query(
             locations.c.location_id,
             locations.c.location_name,
             locations.c.location_active,
+            in_assortment.label("in_assortment"),
         )
-        .select_from(articles.join(sites, literal(True)))
+        .select_from(pairs)
+        .join(sites, sites.c.id == pairs.c.site_id)
+        .join(
+            articles,
+            and_(articles.c.tenant_id == pairs.c.tenant_id, articles.c.id == pairs.c.article_id),
+        )
         .outerjoin(
             level,
             and_(
                 level.c.tenant_id == articles.c.tenant_id,
                 level.c.article_id == articles.c.id,
                 level.c.site_id == sites.c.id,
+            ),
+        )
+        .outerjoin(
+            in_site,
+            and_(
+                in_site.c.tenant_id == articles.c.tenant_id,
+                in_site.c.article_id == articles.c.id,
+                in_site.c.site_id == sites.c.id,
             ),
         )
         # Lot 3-F : emplacement COURANT (indépendant de l'existence d'un niveau de stock).
@@ -152,15 +194,24 @@ def _levels_query(
         "state": state,
         "category_id": articles.c.category_id,
         "locations": locations,
+        "in_assortment": in_assortment,
     }
     return stmt, columns
 
 
-def _state_condition(state: ColumnElement[Any], wanted: StateFilter) -> ColumnElement[bool] | None:
+def _state_condition(
+    state: ColumnElement[Any], in_assortment: ColumnElement[bool], wanted: StateFilter
+) -> ColumnElement[bool] | None:
+    """Une alerte (rupture, stock faible) ne concerne que l'assortiment ACTIF du site : un
+    article retiré n'est plus réapprovisionné (ADR-0046)."""
     if wanted is StateFilter.ALL:
         return None
     if wanted is StateFilter.ALERTS:
-        return or_(state == LevelState.OUT.value, state == LevelState.LOW.value)
+        return and_(
+            in_assortment, or_(state == LevelState.OUT.value, state == LevelState.LOW.value)
+        )
+    if wanted in (StateFilter.OUT, StateFilter.LOW):
+        return and_(in_assortment, state == wanted.value)
     return state == wanted.value
 
 
@@ -185,6 +236,7 @@ def _to_row(row: Any) -> LevelRow:
         location_id=row.location_id,
         location_name=row.location_name,
         location_active=row.location_active,
+        in_assortment=row.in_assortment,
     )
 
 
@@ -202,7 +254,10 @@ def list_levels(
     include_unmanaged: bool = False,
     location_id: uuid.UUID | None = None,
     unlocated: bool = False,
+    assortment_only: bool = False,
 ) -> tuple[list[LevelRow], int]:
+    """``assortment_only`` : seulement l'assortiment ACTIF du site, sans le stock résiduel
+    hors assortiment (point de vente : rien d'autre n'est proposé à la caisse)."""
     stmt, cols = _levels_query(site_ids, tenant_id, include_unmanaged=include_unmanaged)
     articles = cols["articles"]
     locations = cols["locations"]
@@ -227,7 +282,8 @@ def list_levels(
         articles.c.id.in_(article_ids) if article_ids else None,
         articles.c.category_id == category_id if category_id else None,
         None if include_inactive else articles.c.is_active.is_(True),
-        _state_condition(cols["state"], state),
+        _state_condition(cols["state"], cols["in_assortment"], state),
+        cols["in_assortment"] if assortment_only else None,
     ]
     for condition in conditions:
         if condition is not None:
@@ -275,7 +331,7 @@ def stocked_sites(db: Session, tenant_id: uuid.UUID, article_id: uuid.UUID) -> l
 
 def count_alerts(db: Session, tenant_id: uuid.UUID, site_ids: set[uuid.UUID]) -> dict[str, int]:
     stmt, cols = _levels_query(site_ids, tenant_id)
-    stmt = stmt.where(cols["articles"].c.is_active.is_(True))
+    stmt = stmt.where(cols["articles"].c.is_active.is_(True), cols["in_assortment"])
     sub = stmt.subquery()
     counts: dict[str, int] = {
         state: count
@@ -319,6 +375,8 @@ class ThresholdService:
                 "Le stock maximum doit être supérieur ou égal au stock minimum",
                 code="invalid_stock_thresholds",
             )
+        # ``lock_levels`` exige l'article dans l'assortiment ACTIF du site (ADR-0046) : aucun
+        # seuil hors assortiment (les seuils existants restent conservés mais inertes).
         level = self.stock.lock_levels(site_id, {article_id})[article_id]
         before = {"min_stock": level.min_stock, "max_stock": level.max_stock}
         level.min_stock = min_stock

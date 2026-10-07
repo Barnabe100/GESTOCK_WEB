@@ -24,7 +24,12 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
-from app.modules.catalog.api import QUANTITY_STEP, ArticleRef, get_article_refs
+from app.modules.catalog.api import (
+    QUANTITY_STEP,
+    ArticleRef,
+    ensure_in_assortment,
+    get_article_refs,
+)
 from app.modules.stock.api import available_lots_out
 from app.modules.stock.document_service import (
     check_lot_choices,
@@ -276,6 +281,12 @@ class TransferService:
 
     def _apply_input(self, transfer: StockTransfer, data: TransferInput) -> None:
         presented = present_lines(self.db, data.lines)
+        # Recette, étape 1 (ADR-0046, D3) : article de l'assortiment ACTIF du site source ET du
+        # site destination, dès le brouillon (aucun ajout automatique) ; la validation revérifie
+        # sous verrou (``StockService``).
+        article_ids = {line.article_id for line in data.lines}
+        ensure_in_assortment(self.db, transfer.source_site_id, article_ids)
+        ensure_in_assortment(self.db, data.destination_site_id, article_ids)
         # Lot 3-H-B1 : choix des lots contrôlés dès le brouillon (mêmes règles que les sorties).
         check_lot_choices(self.db, data.lines, presented)
         transfer.destination_site_id = data.destination_site_id
