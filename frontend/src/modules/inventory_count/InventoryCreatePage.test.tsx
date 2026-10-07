@@ -37,7 +37,9 @@ describe('nouvel inventaire', () => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockImplementation(async (url, init) => {
       if (init?.method === 'POST') return jsonResponse(inventory({ status: 'DRAFT' }), 201);
-      if (String(url).includes('stocked_only=true')) {
+      // Aperçu d'un inventaire complet : assortiment ACTIF du site (Recette, étape 1), y
+      // compris les articles jamais reçus — plus de filtre « stockés seulement ».
+      if (String(url).includes('limit=1') && !String(url).includes('search=')) {
         return jsonResponse({ items: [candidate], total: 125, limit: 1, offset: 0 });
       }
       return pageOf([candidate]);
@@ -66,7 +68,12 @@ describe('nouvel inventaire', () => {
     expect(posts(fetchMock)).toHaveLength(0);
     fireEvent.click(document.querySelector('#inventory-site')?.closest('.p-dropdown') as Element);
     fireEvent.click(await screen.findByRole('option', { name: 'Boutique', hidden: true }, SLOW));
-    expect(await screen.findByText(/125 article\(s\) actif\(s\)/)).toBeTruthy();
+    expect(await screen.findByText(/125 article\(s\) de l'assortiment du site/)).toBeTruthy();
+    const preview = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .find((u) => u.includes('limit=1'));
+    expect(preview).toContain('site_id=s1');
+    expect(preview).not.toContain('stocked_only');
     fireEvent.click(screen.getByRole('button', { name: "Créer l'inventaire" }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(JSON.parse(String(posts(fetchMock)[0]?.[1]?.body))).toEqual({

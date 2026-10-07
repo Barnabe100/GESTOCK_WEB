@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { type ScanResult } from '@/modules/catalog/api';
+import { AssortmentNotice } from '@/modules/catalog/assortment';
 import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 import { ArticlePicker, toArticleOption, type ArticleOption } from '@/modules/stock/ArticlePicker';
 import { expiredShortages, LineLotsList, type ExpiredShortage } from '@/modules/stock/ui';
@@ -170,6 +171,9 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
   });
   const lines = useFieldArray({ control: form.control, name: 'lines' });
   const watched = useWatch({ control: form.control, name: 'lines' });
+  const watchedSite = useWatch({ control: form.control, name: 'site_id' });
+  // Recette, étape 1 : site de la vente (assortiment proposé par ce site).
+  const saleSite = sale?.site_id ?? watchedSite ?? null;
   const errors = form.formState.errors;
   const { currency, locale } = capabilities.tenant;
   const totals = watched.map((line) => lineTotal(line));
@@ -349,6 +353,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
                   render={({ field: f }) => (
                     <ArticlePicker
                       id={`line-${index}-article`}
+                      siteId={saleSite}
                       value={f.value}
                       onChange={(value) => {
                         f.onChange(value);
@@ -360,6 +365,9 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
                   )}
                 />
               </FormField>
+              {article && saleSite && (
+                <AssortmentNotice articleId={article.id} siteIds={[saleSite]} />
+              )}
               {article && (
                 <FormField id={`line-${index}-packaging`} label={t('sales.presentation')}>
                   <Controller

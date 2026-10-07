@@ -95,7 +95,8 @@
     "onboarding": "Installation",
     "paymentMethods": "Moyens de paiement",
     "stockLocations": "Emplacements",
-    "stockLots": "Lots"
+    "stockLots": "Lots",
+    "assortment": "Assortiment des sites"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -1066,7 +1067,7 @@
       "TARGETED": "Ciblé"
     },
     "typeHelp": {
-      "FULL": "tous les articles actifs gérés sur le site",
+      "FULL": "tous les articles actifs gérés en stock de l'assortiment du site, y compris ceux jamais reçus",
       "TARGETED": "articles choisis"
     },
     "statuses": {
@@ -1083,8 +1084,8 @@
     "removeArticle": "Retirer l'article",
     "articlesRequired": "Choisissez au moins un article",
     "noArticleSelected": "Aucun article choisi.",
-    "targetedHelp": "Recherchez les articles à compter ; le stock indiqué est celui du site.",
-    "fullPreview": "{{count}} article(s) actif(s) géré(s) sur ce site seront comptés (liste recalée au démarrage du comptage).",
+    "targetedHelp": "Recherchez parmi les articles de l'assortiment du site ; le stock indiqué est celui du site.",
+    "fullPreview": "{{count}} article(s) de l'assortiment du site seront comptés, y compris ceux jamais reçus (liste recalée au démarrage du comptage).",
     "stockShort": "stock : {{quantity}} {{unit}}",
     "createDraft": "Créer l'inventaire",
     "created": "Inventaire {{number}} créé",
@@ -1430,7 +1431,10 @@
     "presentationOf": "Présentation de {{name}}",
     "baseQuantity": "Soit {{quantity}} {{unit}}",
     "wholeQuantityOnly": "Quantité entière uniquement pour cet article",
-    "stockShort": "Stock du site insuffisant (indicatif)"
+    "stockShort": "Stock du site insuffisant (indicatif)",
+    "emptyAssortment": "Aucun article dans l'assortiment de ce site",
+    "emptyAssortmentHelp": "La caisse ne propose que les articles de l'assortiment du site. Demandez à un responsable d'y ajouter les articles à vendre.",
+    "searchAssortmentOnly": "La recherche porte sur l'assortiment de ce site seulement."
   },
   "sectors": {
     "retail": "Commerce de détail",
@@ -1925,5 +1929,72 @@
     "sell": "Vendre avec dérogation",
     "override": "Dérogation lot périmé",
     "overrideDetail": "par {{name}} le {{date}} — motif : {{reason}}"
+  },
+  "assortment": {
+    "title": "Assortiment des sites",
+    "subtitle": "Articles du catalogue proposés par chaque site. Le catalogue est commun à l'entreprise ; chaque site choisit ce qu'il vend, reçoit et stocke.",
+    "stateLabel": "Assortiment",
+    "state": {
+      "active": "Proposé",
+      "removed": "Retiré",
+      "none": "Non proposé"
+    },
+    "filter": {
+      "active": "Proposés",
+      "removed": "Retirés",
+      "all": "Tous"
+    },
+    "outOfAssortment": "Hors assortiment",
+    "noSite": "Aucun site accessible",
+    "empty": "Aucun article dans l'assortiment de ce site",
+    "add": "Ajouter des articles",
+    "addHere": "Ajouter à l'assortiment",
+    "addTitle": "Ajouter à l'assortiment — {{site}}",
+    "addHelp": "Articles actifs du catalogue que ce site ne propose pas encore (jamais associés ou retirés). L'ajout ne crée aucun stock.",
+    "addEmpty": "Tous les articles actifs sont déjà proposés par ce site",
+    "addSelected_one": "Ajouter {{count}} article",
+    "addSelected_other": "Ajouter {{count}} articles",
+    "changeSummary": "{{added}} ajouté(s), {{reactivated}} réactivé(s), {{unchanged}} déjà présent(s)",
+    "copy": "Copier depuis un site",
+    "copyTitle": "Copier un assortiment vers {{site}}",
+    "copyHelp": "Ajoute à ce site les articles proposés par le site source (ajout seulement : rien n'est retiré). Ni stock, ni seuils, ni lots ne sont copiés.",
+    "copySource": "Site source",
+    "copyCategory": "Catégorie (facultatif)",
+    "remove": "Retirer de l'assortiment",
+    "removeSelected": "Retirer la sélection",
+    "removeTitle": "Retrait de l'assortiment",
+    "removeConfirmOne": "Retirer « {{name}} » de l'assortiment de {{site}} ? Le site ne pourra plus le vendre, le recevoir ni le transférer ; l'historique est conservé et l'article reste réactivable.",
+    "removeConfirmMany": "Retirer {{count}} articles de l'assortiment de {{site}} ? Le site ne pourra plus les vendre, les recevoir ni les transférer ; l'historique est conservé et les articles restent réactivables.",
+    "removed_one": "{{count}} article retiré de l'assortiment",
+    "removed_other": "{{count}} articles retirés de l'assortiment",
+    "reactivate": "Réactiver",
+    "reactivated": "« {{name}} » est de nouveau proposé par ce site",
+    "bulk": "Actions sur la sélection",
+    "selectedCount_one": "{{count}} article sélectionné",
+    "selectedCount_other": "{{count}} articles sélectionnés",
+    "articleInactive": "Article désactivé",
+    "lastChange": "Dernière modification",
+    "addedOn": "Ajouté le {{date}} ({{user}})",
+    "removedOn": "Retiré le {{date}} ({{user}})",
+    "initial": "reprise initiale",
+    "removal": {
+      "refused_one": "Retrait impossible : l'article ci-dessous est encore utilisé sur ce site. Aucun article n'a été retiré.",
+      "refused_other": "Retrait impossible : les articles ci-dessous sont encore utilisés sur ce site. Aucun article n'a été retiré.",
+      "stock": "du stock (ou un solde de lot) reste sur ce site : ramenez-le à zéro (sortie, transfert ou inventaire).",
+      "documents_one": "figure dans un document ouvert de ce site : {{documents}}. Validez-le, annulez-le ou retirez-en l'article.",
+      "documents_other": "figure dans des documents ouverts de ce site : {{documents}}. Validez-les, annulez-les ou retirez-en l'article.",
+      "help": "Le retrait est tout ou rien : retirez les autres articles séparément, ou réessayez une fois ces points réglés."
+    },
+    "sitesTitle": "Sites",
+    "sitesHelp": "Sites qui proposent cet article (assortiment). Un site ne vend, ne reçoit et ne transfère que les articles de son assortiment.",
+    "createSites": "Proposer sur les sites",
+    "createSitesHelp": "Facultatif : ajoute l'article à l'assortiment de ces sites dès sa création. Sinon, ajoutez-le plus tard depuis la page Assortiment.",
+    "createSitesNone": "Aucun site pour le moment",
+    "notice": {
+      "notOffered": "Hors assortiment : cet article n'est pas proposé par le site « {{site}} ». Le document ne pourra pas être enregistré.",
+      "add": "Ajouter à l'assortiment du site",
+      "added": "Article ajouté à l'assortiment de « {{site}} »",
+      "askManager": "Demandez à un responsable d'ajouter cet article à l'assortiment du site."
+    }
   }
 }

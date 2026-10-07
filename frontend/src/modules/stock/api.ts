@@ -30,6 +30,11 @@ export interface StockLevel {
   location_id?: string | null;
   location_name?: string | null;
   location_active?: boolean | null;
+  /**
+   * Recette, étape 1 (ADR-0046) : `false` = stock restant d'un article retiré de l'assortiment
+   * du site (« Hors assortiment ») — aucune opération sans réactivation, jamais une alerte.
+   */
+  in_assortment?: boolean;
 }
 
 export type MovementType =

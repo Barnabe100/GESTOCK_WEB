@@ -147,12 +147,21 @@ def list_articles(
     supplier_id: uuid.UUID | None = None,
     stock_managed: bool | None = None,
     site_id: uuid.UUID | None = None,
+    in_site_assortment: bool | None = None,
 ) -> Page[ArticleOut]:
     """``site_id`` (ADR-0046) : chaque article indique son état dans l'assortiment de ce site
-    (``site_assortment``) — le catalogue reste global au tenant."""
+    (``site_assortment``) — le catalogue reste global au tenant. ``in_site_assortment`` : filtre
+    sur cet état (ajout à l'assortiment : ``false``)."""
     service = ArticleService(db, ctx)
     items, total = service.search(
-        paging, search, status_filter, category_id, supplier_id, stock_managed
+        paging,
+        search,
+        status_filter,
+        category_id,
+        supplier_id,
+        stock_managed,
+        site_id=site_id,
+        in_site_assortment=in_site_assortment,
     )
     return Page(
         items=service.to_out(items, site_id), total=total, limit=paging.limit, offset=paging.offset

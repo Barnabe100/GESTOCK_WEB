@@ -29,6 +29,8 @@ export function ServerTable<T extends object>({
   onRowClick,
   expandedRows,
   rowExpansionTemplate,
+  selection,
+  onSelectionChange,
   children,
 }: {
   query: UseQueryResult<Page<T>>;
@@ -43,12 +45,23 @@ export function ServerTable<T extends object>({
   /** Lignes dépliées (clé = `dataKey`) et contenu affiché sous chacune (ex. lots d'un article). */
   expandedRows?: DataTableExpandedRows;
   rowExpansionTemplate?: (row: T) => ReactNode;
+  /** Sélection multiple (actions groupées) : ajouter une colonne `selectionMode="multiple"`. */
+  selection?: T[];
+  onSelectionChange?: (rows: T[]) => void;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
   if (query.isError) {
     return <ErrorMessage error={query.error} onRetry={() => void query.refetch()} />;
   }
+  // Sélection multiple facultative (cases à cocher) : propriétés passées seulement si demandée.
+  const selectionProps = onSelectionChange
+    ? {
+        selectionMode: 'checkbox',
+        selection: selection ?? [],
+        onSelectionChange: (e: { value: T[] }) => onSelectionChange(e.value),
+      }
+    : {};
   const onChange = (e: DataTableStateEvent) =>
     onTableChange({ first: e.first, rows: e.rows, sortField: e.sortField, sortOrder: e.sortOrder });
   return (
@@ -77,6 +90,7 @@ export function ServerTable<T extends object>({
       rowExpansionTemplate={
         rowExpansionTemplate ? (row: T) => rowExpansionTemplate(row) : undefined
       }
+      {...(selectionProps as object)}
       paginatorTemplate="RowsPerPageDropdown CurrentPageReport PrevPageLink PageLinks NextPageLink"
       currentPageReportTemplate={t('table.pageReport')}
       emptyMessage={empty ?? <EmptyState />}

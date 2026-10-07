@@ -326,7 +326,20 @@ export default function PosPage() {
               ) : articles.isError ? (
                 <ErrorMessage error={articles.error} onRetry={() => void articles.refetch()} />
               ) : articles.data.length === 0 ? (
-                <EmptyState icon="pi pi-search" title={t('common.noResults')} />
+                // Recette, étape 1 : la caisse ne propose que l'assortiment ACTIF du site.
+                search.trim() === '' ? (
+                  <EmptyState
+                    icon="pi pi-th-large"
+                    title={t('pos.emptyAssortment')}
+                    description={t('pos.emptyAssortmentHelp')}
+                  />
+                ) : (
+                  <EmptyState
+                    icon="pi pi-search"
+                    title={t('common.noResults')}
+                    description={t('pos.searchAssortmentOnly')}
+                  />
+                )
               ) : (
                 <ul className="sm-pos-tiles" aria-label={t('pos.results')}>
                   {articles.data.map((a) => {

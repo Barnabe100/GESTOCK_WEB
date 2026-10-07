@@ -42,6 +42,7 @@ import {
   type StockEntry,
   type StockExit,
 } from './api';
+import { AssortmentNotice } from '@/modules/catalog/assortment';
 import { PresentationField } from '@/modules/catalog/PresentationField';
 import { formatPresented, type PresentationPackaging } from '@/shared/lib/presentation';
 
@@ -659,6 +660,7 @@ function DocumentForm({
                     <ArticlePicker
                       id={`line-${index}-article`}
                       stockManagedOnly
+                      siteId={hintSite}
                       value={f.value}
                       onChange={(value) => {
                         f.onChange(value);
@@ -678,6 +680,9 @@ function DocumentForm({
               </FormField>
               {article && hintSite && (
                 <ArticleLocationHint siteId={hintSite} articleId={article.id} />
+              )}
+              {article && hintSite && (
+                <AssortmentNotice articleId={article.id} siteIds={[hintSite]} />
               )}
               {article && (
                 <FormField id={`line-${index}-packaging`} label={t('presentation.label')}>

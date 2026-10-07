@@ -239,10 +239,12 @@ class LocationService:
                 code="article_not_stock_managed",
                 extra={"articles": [ref.reference]},
             )
-        # Recette, étape 1 (ADR-0046) : affectation réservée à l'assortiment ACTIF du site
+        # Recette, étape 1 (ADR-0046) : AFFECTER est réservé à l'assortiment ACTIF du site
         # (verrou partagé : un retrait concurrent attend) ; hors assortiment, l'emplacement
-        # existant est conservé mais inerte.
-        ensure_in_assortment(self.db, site, {article_id}, lock=True)
+        # existant est conservé mais inerte. DÉSAFFECTER (``None``) reste permis : nettoyage de
+        # configuration, sans effet sur le stock (décision du palier 2).
+        if location_id is not None:
+            ensure_in_assortment(self.db, site, {article_id}, lock=True)
         after: StockLocation | None = None
         if location_id is not None:
             # Verrou partagé : une désactivation concurrente attend la fin de l'affectation.

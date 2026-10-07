@@ -5,6 +5,7 @@ import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
+import { MultiSelect } from 'primereact/multiselect';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -18,6 +19,7 @@ import { useToast } from '@/shared/ui/toast';
 
 import {
   ARTICLE_UPDATE,
+  ASSORTMENT_MANAGE,
   COST_VIEW,
   PRICE_UPDATE,
   useCategories,
@@ -52,6 +54,7 @@ const schema = z.object({
   decimal_quantity_allowed: z.boolean(),
   lot_tracked: z.boolean(),
   expiry_tracked: z.boolean(),
+  site_ids: z.array(z.string()),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -70,8 +73,11 @@ export function ArticleDialog({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { hasModule, can } = useCapabilities();
+  const { hasModule, can, capabilities } = useCapabilities();
   const creating = article === null;
+  // Recette, étape 1 (D6) : sites dont l'assortiment reçoit l'article dès sa création —
+  // facultatif, vide par défaut ; permission revérifiée par le serveur pour chaque site.
+  const chooseSites = creating && can(ASSORTMENT_MANAGE) && capabilities.sites.length > 0;
   const canGeneral = creating || can(ARTICLE_UPDATE);
   const canPrices = can(PRICE_UPDATE);
   const canCosts = can(COST_VIEW);
@@ -101,6 +107,7 @@ export function ArticleDialog({
       decimal_quantity_allowed: article?.decimal_quantity_allowed ?? false,
       lot_tracked: article?.lot_tracked ?? false,
       expiry_tracked: article?.expiry_tracked ?? false,
+      site_ids: [],
     },
   });
   const errors = form.formState.errors;
@@ -154,6 +161,7 @@ export function ArticleDialog({
       // Sans accès aux fournisseurs, le lien existant n'est pas modifié.
       if (showSupplier) input.main_supplier_id = values.main_supplier_id;
     }
+    if (chooseSites && values.site_ids.length > 0) input.site_ids = values.site_ids;
     if (canPrices) {
       input.sale_price = normalizeDecimal(values.sale_price, 2) ?? '0';
       // Prix d'achat : jamais envoyé par qui ne peut pas le voir.
@@ -353,6 +361,29 @@ export function ArticleDialog({
             </div>
             <small className="sm-help">{t('articles.thresholdsHelp')}</small>
           </>
+        )}
+        {chooseSites && (
+          <FormField
+            id="article-sites"
+            label={t('assortment.createSites')}
+            help={t('assortment.createSitesHelp')}
+          >
+            <Controller
+              control={form.control}
+              name="site_ids"
+              render={({ field }) => (
+                <MultiSelect
+                  inputId="article-sites"
+                  value={field.value}
+                  onChange={(e) => field.onChange(e.value as string[])}
+                  options={capabilities.sites.map((s) => ({ value: s.id, label: s.name }))}
+                  placeholder={t('assortment.createSitesNone')}
+                  display="chip"
+                  showClear
+                />
+              )}
+            />
+          </FormField>
         )}
         <FormField id="article-description" label={t('articles.description')}>
           <InputTextarea

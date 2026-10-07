@@ -25,6 +25,7 @@ import {
   type Article,
   type PriceChange,
 } from './api';
+import { ArticleAssortmentSection } from './ArticleAssortmentSection';
 import { ArticleDialog } from './ArticleDialog';
 import { BarcodesSection } from './BarcodesSection';
 import { PackagingsSection } from './PackagingsSection';
@@ -179,6 +180,8 @@ export default function ArticleDetailPage() {
           </p>
         </Card>
       </div>
+      {/* Recette, étape 1 : sites qui proposent l'article (catalogue ≠ assortiment ≠ stock). */}
+      <ArticleAssortmentSection article={a} />
       {a.stock_managed && hasModule('stock') && can('stock.level.view') && (
         <Suspense fallback={<LoadingState />}>
           <ArticleSitesPanel articleId={a.id} reference={a.reference} />

@@ -5,7 +5,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,14 @@ from app.modules.catalog.api import barcode_search, resolve_barcode
 from app.modules.catalog.assortment_service import AssortmentService
 from app.modules.catalog.lot_flags_port import BlockerKind, lot_flags_blockers
 from app.modules.catalog.lot_tracking import lot_tracking_available
-from app.modules.catalog.models import Article, Barcode, BarcodeKind, Category, Packaging
+from app.modules.catalog.models import (
+    Article,
+    Barcode,
+    BarcodeKind,
+    Category,
+    Packaging,
+    SiteArticle,
+)
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
@@ -224,7 +231,16 @@ class ArticleService:
         category_id: uuid.UUID | None = None,
         supplier_id: uuid.UUID | None = None,
         stock_managed: bool | None = None,
+        site_id: uuid.UUID | None = None,
+        in_site_assortment: bool | None = None,
     ) -> tuple[list[Article], int]:
+        """``in_site_assortment`` (avec ``site_id``, ADR-0046) : articles ACTIFS dans
+        l'assortiment du site (``True``) ou non — jamais associés ou retirés (``False``) ; site
+        contrôlé (accès et ``catalog.article.view``)."""
+        if in_site_assortment is not None and site_id is None:
+            raise BusinessRuleError("Choisissez le site", code="site_required")
+        if site_id is not None and in_site_assortment is not None:
+            AssortmentService(self.db, self.ctx).require_view(site_id)
         stmt = select(Article).join(
             Category,
             (Category.id == Article.category_id) & (Category.tenant_id == Article.tenant_id),
@@ -242,6 +258,7 @@ class ArticleService:
             Article.category_id == category_id if category_id else None,
             Article.main_supplier_id == supplier_id if supplier_id else None,
             Article.stock_managed.is_(stock_managed) if stock_managed is not None else None,
+            _assortment_condition(site_id, in_site_assortment),
         ]
         for condition in conditions:
             if condition is not None:
@@ -982,3 +999,16 @@ def _price_change(action: str, value: Any) -> tuple[Any, Any]:
     if action == "article.created":
         return None, value
     return value.get("before"), value.get("after")
+
+
+def _assortment_condition(
+    site_id: uuid.UUID | None, in_assortment: bool | None
+) -> ColumnElement[bool] | None:
+    if site_id is None or in_assortment is None:
+        return None
+    active = exists().where(
+        SiteArticle.site_id == site_id,
+        SiteArticle.article_id == Article.id,
+        SiteArticle.is_active.is_(True),
+    )
+    return active if in_assortment else ~active

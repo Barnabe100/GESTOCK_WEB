@@ -21,6 +21,15 @@ export const catalogModule: FrontendModule = {
       path: '/catalog/categories',
       permission: 'catalog.category.view',
     },
+    {
+      // Recette, étape 1 (ADR-0046) : articles proposés par chaque site.
+      key: 'assortment',
+      labelKey: 'nav.assortment',
+      group: 'catalog',
+      icon: 'pi pi-th-large',
+      path: '/catalog/assortment',
+      permission: 'catalog.article.view',
+    },
   ],
   routes: [
     {
@@ -31,6 +40,11 @@ export const catalogModule: FrontendModule = {
     {
       path: 'catalog/articles/:id',
       component: lazy(() => import('./ArticleDetailPage')),
+      permission: 'catalog.article.view',
+    },
+    {
+      path: 'catalog/assortment',
+      component: lazy(() => import('./AssortmentPage')),
       permission: 'catalog.article.view',
     },
     {

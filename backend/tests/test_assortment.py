@@ -582,3 +582,24 @@ def test_concurrent_adds_never_duplicate(world: World, app: Any, owner_db: Sessi
         )
         == 1
     )
+
+
+def test_catalog_filter_on_site_assortment(world: World) -> None:
+    """Palier 3 : la liste du catalogue filtre sur l'état d'assortiment d'un site (dialogue
+    « Ajouter à l'assortiment » : articles pas encore actifs sur le site)."""
+    _ok(_add(world, world.site, [0, 1]))
+    _ok(_remove(world, world.site, [1]))
+
+    def refs(**params: Any) -> list[str]:
+        page = _ok(world.owner.get("/catalog/articles", params={"limit": 50, **params}))
+        return sorted(a["reference"] for a in page["items"])
+
+    assert refs(site_id=world.site, in_site_assortment="true") == ["A-0"]
+    assert refs(site_id=world.site, in_site_assortment="false") == ["A-1", "A-2"]
+    assert refs(site_id=world.site2, in_site_assortment="false") == ["A-0", "A-1", "A-2"]
+    missing = world.owner.get("/catalog/articles", params={"in_site_assortment": "true"})
+    assert _code(missing) == (422, "site_required")
+    foreign = world.owner.get(
+        "/catalog/articles", params={"site_id": str(uuid.uuid4()), "in_site_assortment": "true"}
+    )
+    assert foreign.status_code in (403, 404)

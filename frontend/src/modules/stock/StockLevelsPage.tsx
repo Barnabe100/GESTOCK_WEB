@@ -30,6 +30,7 @@ import { FilterBar } from '@/shared/ui/FilterBar';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { RowActions } from '@/shared/ui/RowActions';
 import { COST_VIEW } from '@/modules/catalog/api';
+import { OutOfAssortmentBadge } from '@/modules/catalog/assortment';
 
 import {
   LOCATION_MANAGE,
@@ -310,7 +311,13 @@ export default function StockLevelsPage() {
         />
         <Column
           header={t('stock.state')}
-          body={(l: StockLevel) => <LevelStateTag state={l.state} />}
+          body={(l: StockLevel) => (
+            <div className="sm-tags">
+              <LevelStateTag state={l.state} />
+              {/* Recette, étape 1 : stock restant d'un article retiré de l'assortiment. */}
+              {l.in_assortment === false && <OutOfAssortmentBadge />}
+            </div>
+          )}
         />
         {(canManage || canLocate) && (
           <Column
@@ -323,14 +330,15 @@ export default function StockLevelsPage() {
                     label: t('locations.assign'),
                     icon: 'pi pi-map-marker',
                     onClick: () => setLocating(l),
-                    hidden: !canLocate,
+                    // Hors assortiment : seulement désaffecter un emplacement existant.
+                    hidden: !canLocate || (l.in_assortment === false && !l.location_id),
                   },
                   {
                     key: 'thresholds',
                     label: t('stock.editThresholds'),
                     icon: 'pi pi-sliders-h',
                     onClick: () => setEditing(l),
-                    hidden: !canManage,
+                    hidden: !canManage || l.in_assortment === false,
                   },
                 ]}
               />

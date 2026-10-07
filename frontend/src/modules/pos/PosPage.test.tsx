@@ -183,6 +183,34 @@ describe('point de vente', () => {
     expect(document.body.textContent).not.toMatch(/MOBILE_MONEY|VALIDATED|CASH\b/);
   });
 
+  it('assortiment du site seulement (Recette, étape 1) : vide, hors assortiment au scan', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes('/pos/articles/by-barcode')) {
+        return jsonResponse(
+          {
+            code: 'article_not_in_site_assortment',
+            detail: "Article hors de l'assortiment de ce site",
+            site_id: 's1',
+            articles: ['CIM-50'],
+          },
+          422,
+        );
+      }
+      if (u.includes('/pos/articles')) return jsonResponse([]);
+      if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
+      return pageOf([]);
+    });
+    render();
+    expect(await screen.findByText("Aucun article dans l'assortiment de ce site")).toBeTruthy();
+    const search = screen.getByLabelText('Rechercher un article (F2)');
+    fireEvent.change(search, { target: { value: '3017620422003' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    const alert = await screen.findByRole('alert');
+    expect(text(alert)).toContain("Article hors de l'assortiment de ce site (CIM-50)");
+    expect(screen.queryByRole('list', { name: 'Panier' })).toBeNull();
+  });
+
   it('panier : ajout, un article une fois, quantités, suppression, total', async () => {
     render();
     fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));

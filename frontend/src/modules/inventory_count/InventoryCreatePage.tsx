@@ -46,9 +46,10 @@ export default function InventoryCreatePage() {
   const [submitted, setSubmitted] = useState(false);
   const locale = capabilities.tenant.locale;
 
-  // Inventaire complet : nombre d'articles gérés sur le site (aperçu, une seule ligne lue).
+  // Inventaire complet : assortiment ACTIF du site (articles actifs gérés en stock, y compris
+  // jamais reçus — Recette, étape 1) ; aperçu, une seule ligne lue.
   const stocked = useCandidates(
-    new URLSearchParams({ site_id: siteId ?? '', stocked_only: 'true', limit: '1' }).toString(),
+    new URLSearchParams({ site_id: siteId ?? '', limit: '1' }).toString(),
     type === 'FULL' && siteId !== null,
   );
   const siteError = submitted && !siteId;

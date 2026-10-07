@@ -395,9 +395,17 @@ def test_thresholds_and_locations_refused_outside_assortment(
     _refused(
         w.owner.put(f"/stock/levels/{w.site}/{w.articles[1]}/thresholds", json={"min_stock": "1"})
     )
+    # Affecter : refusé ; désaffecter (nettoyage de configuration) : permis hors assortiment.
     _refused(
+        w.owner.put(
+            f"/stock/levels/{w.site}/{w.articles[1]}/location",
+            json={"location_id": location["id"]},
+        )
+    )
+    cleared = _ok(
         w.owner.put(f"/stock/levels/{w.site}/{w.articles[1]}/location", json={"location_id": None})
     )
+    assert cleared["location_id"] is None and cleared["in_assortment"] is False
 
 
 # --- Inventaires -----------------------------------------------------------------------------

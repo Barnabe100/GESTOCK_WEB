@@ -2307,3 +2307,63 @@ a {
     border-radius: 0;
   }
 }
+
+/* --- Assortiment par site (Recette, étape 1, ADR-0046) ------------------------------------ */
+
+/* Avertissement « Hors assortiment » d'une ligne de document : toute la largeur de la ligne. */
+.sm-line-notice {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--sm-space-2);
+}
+
+.sm-line-notice .p-message {
+  margin: 0;
+  justify-content: flex-start;
+}
+
+.sm-assortment-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-2) var(--sm-space-3);
+}
+
+.sm-article-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+  width: 100%;
+}
+
+.sm-removal-blockers ul {
+  margin: var(--sm-space-2) 0;
+  padding-left: var(--sm-space-4);
+  display: grid;
+  gap: var(--sm-space-2);
+}
+
+/* Barre d'actions sur la sélection (retrait groupé). */
+.sm-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-3);
+  margin-bottom: var(--sm-space-3);
+  padding: var(--sm-space-2) var(--sm-space-3);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+  background: var(--sm-surface-subtle);
+}
+
+@media (max-width: 640px) {
+  .sm-bulk-bar {
+    justify-content: space-between;
+  }
+
+  .sm-assortment-notice .p-button {
+    width: 100%;
+  }
+}

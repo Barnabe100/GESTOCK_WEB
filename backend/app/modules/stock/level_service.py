@@ -20,7 +20,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select
+from sqlalchemy import ColumnElement, Uuid, and_, case, func, literal, or_, select, union
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, NotFoundError
@@ -98,27 +98,38 @@ def levels_view() -> Any:
 
 
 def _levels_query(
-    site_ids: set[uuid.UUID], tenant_id: uuid.UUID, *, include_unmanaged: bool = False
+    site_ids: set[uuid.UUID],
+    tenant_id: uuid.UUID,
+    *,
+    include_unmanaged: bool = False,
+    also_article: uuid.UUID | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Niveaux (site × article) des couples présentés par le site : assortiment ACTIF du site
     ∪ niveaux de stock non nuls (ADR-0046). Les articles non gérés en stock (Lot 3-A) n'ont ni
-    niveau, ni seuil, ni alerte : exclus, sauf demande explicite (recherche du point de vente)."""
+    niveau, ni seuil, ni alerte : exclus, sauf demande explicite (recherche du point de vente).
+    ``also_article`` : cet article est présenté sur les sites demandés même hors assortiment et
+    sans stock (lecture d'UN niveau, ex. après la désaffectation d'un emplacement)."""
     articles = articles_view()
     sites = select(Site.id, Site.name).where(Site.id.in_(site_ids)).subquery("s")
     level = StockLevel.__table__
     assortment = assortment_view()
-    pairs = (
-        select(assortment.c.tenant_id, assortment.c.site_id, assortment.c.article_id)
-        .where(assortment.c.tenant_id == tenant_id, assortment.c.site_id.in_(site_ids))
-        .union(
-            select(level.c.tenant_id, level.c.site_id, level.c.article_id).where(
-                level.c.tenant_id == tenant_id,
-                level.c.site_id.in_(site_ids),
-                level.c.quantity != 0,
+    branches: list[Any] = [
+        select(assortment.c.tenant_id, assortment.c.site_id, assortment.c.article_id).where(
+            assortment.c.tenant_id == tenant_id, assortment.c.site_id.in_(site_ids)
+        ),
+        select(level.c.tenant_id, level.c.site_id, level.c.article_id).where(
+            level.c.tenant_id == tenant_id,
+            level.c.site_id.in_(site_ids),
+            level.c.quantity != 0,
+        ),
+    ]
+    if also_article is not None:
+        branches.append(
+            select(Site.tenant_id, Site.id, literal(also_article, Uuid)).where(
+                Site.tenant_id == tenant_id, Site.id.in_(site_ids)
             )
         )
-        .subquery("site_articles")
-    )
+    pairs = union(*branches).subquery("site_articles")
     in_site = assortment_view()
     locations = locations_view()
     in_assortment = in_site.c.article_id.is_not(None)
@@ -305,7 +316,7 @@ def list_levels(
 def get_level(
     db: Session, tenant_id: uuid.UUID, site_id: uuid.UUID, article_id: uuid.UUID
 ) -> LevelRow:
-    stmt, cols = _levels_query({site_id}, tenant_id)
+    stmt, cols = _levels_query({site_id}, tenant_id, also_article=article_id)
     row = db.execute(stmt.where(cols["articles"].c.id == article_id)).one_or_none()
     if row is None:
         raise NotFoundError("Article introuvable", code="article_not_found")

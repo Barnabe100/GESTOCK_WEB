@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { OutOfAssortmentBadge } from '@/modules/catalog/assortment';
 import { formatQuantity } from '@/shared/lib/decimal';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
@@ -69,7 +70,12 @@ export default function ArticleSitesPanel({
             />
             <Column
               header={t('stock.state')}
-              body={(l: StockLevel) => <LevelStateTag state={l.state} />}
+              body={(l: StockLevel) => (
+                <div className="sm-tags">
+                  <LevelStateTag state={l.state} />
+                  {l.in_assortment === false && <OutOfAssortmentBadge />}
+                </div>
+              )}
             />
             <Column
               header={t('locations.location')}
@@ -88,6 +94,7 @@ export default function ArticleSitesPanel({
                         label: t('locations.assign'),
                         icon: 'pi pi-map-marker',
                         onClick: () => setLocating(l),
+                        hidden: l.in_assortment === false && !l.location_id,
                       },
                     ]}
                   />

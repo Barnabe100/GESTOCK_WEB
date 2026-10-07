@@ -24,6 +24,7 @@ import {
   normalizeDecimal,
 } from '@/shared/lib/decimal';
 import { formatPresented, toBase, type PresentationPackaging } from '@/shared/lib/presentation';
+import { AssortmentNotice } from '@/modules/catalog/assortment';
 import { PresentationField } from '@/modules/catalog/PresentationField';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
@@ -188,6 +189,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
   const lines = useFieldArray({ control: form.control, name: 'lines' });
   const watched = useWatch({ control: form.control, name: 'lines' });
   const source = useWatch({ control: form.control, name: 'source_site_id' });
+  const destination = useWatch({ control: form.control, name: 'destination_site_id' });
   const errors = form.formState.errors;
   const { locale } = capabilities.tenant;
   const available = useAvailableStock(
@@ -349,6 +351,7 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
                     <ArticlePicker
                       id={`line-${index}-article`}
                       stockManagedOnly
+                      siteId={source}
                       value={f.value}
                       onChange={(value) => {
                         f.onChange(value);
@@ -361,6 +364,10 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
                   )}
                 />
               </FormField>
+              {/* Recette, étape 1 : l'article doit être proposé par la source ET la destination. */}
+              {article && (
+                <AssortmentNotice articleId={article.id} siteIds={[source, destination]} />
+              )}
               {article && (
                 <FormField id={`line-${index}-packaging`} label={t('presentation.label')}>
                   <Controller

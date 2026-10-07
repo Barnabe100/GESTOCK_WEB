@@ -42,6 +42,8 @@ export interface Article {
   lot_tracked: boolean;
   /** Lot 3-G : date de péremption obligatoire sur le lot (suppose le suivi par lot). */
   expiry_tracked: boolean;
+  /** Recette, étape 1 : état dans l'assortiment du site demandé (`site_id`), sinon absent. */
+  site_assortment?: AssortmentState;
   created_at: string;
   updated_at: string;
 }
@@ -63,6 +65,8 @@ export interface ArticleInput {
   decimal_quantity_allowed?: boolean;
   lot_tracked?: boolean;
   expiry_tracked?: boolean;
+  /** Création seulement : sites dont l'assortiment reçoit l'article (facultatif, D6). */
+  site_ids?: string[];
 }
 
 /**
@@ -302,4 +306,127 @@ export function useRemoveBarcode() {
     mutationFn: (id: string) => api.delete<void>(`/catalog/barcodes/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: catalogKeys.barcodes }),
   });
+}
+
+// --- Assortiment par site (Recette, étape 1, ADR-0046) -----------------------------------------
+// CATALOGUE TENANT ≠ ASSORTIMENT SITE ≠ STOCK SITE. Le serveur décide (permission par site,
+// abonnement du site, blocages du retrait) ; l'interface ne fait que guider.
+
+export const ASSORTMENT_MANAGE = 'catalog.assortment.manage';
+
+/** `active` : proposé par le site ; `removed` : retiré (réactivable) ; `none` : jamais associé. */
+export type AssortmentState = 'active' | 'removed' | 'none';
+export type AssortmentStatusFilter = 'active' | 'removed' | 'all';
+
+export interface SiteArticle {
+  article_id: string;
+  reference: string;
+  designation: string;
+  category_id: string;
+  category_name: string;
+  unit: string;
+  article_active: boolean;
+  stock_managed: boolean;
+  state: AssortmentState;
+  added_at: string;
+  added_by_name: string | null;
+  removed_at: string | null;
+  removed_by_name: string | null;
+}
+
+export interface ArticleSite {
+  site_id: string;
+  site_name: string;
+  state: AssortmentState;
+  added_at: string | null;
+  removed_at: string | null;
+}
+
+export interface AssortmentChange {
+  added: number;
+  reactivated: number;
+  unchanged: number;
+}
+
+export interface AssortmentRemoval {
+  removed: number;
+  unchanged: number;
+}
+
+/** Détail d'un retrait refusé (`409 article_has_stock` / `article_in_open_documents`). */
+export interface RemovalBlocked {
+  reference: string;
+  reason: 'stock' | 'open_document';
+  documents: string[];
+}
+
+export const assortmentKeys = {
+  all: ['catalog', 'assortment'] as const,
+};
+
+export function useSiteArticles(siteId: string | null, query: string) {
+  return useQuery({
+    queryKey: [...assortmentKeys.all, 'site', siteId, query],
+    queryFn: ({ signal }) =>
+      api.get<Page<SiteArticle>>(`/catalog/sites/${siteId}/articles?${query}`, signal),
+    placeholderData: keepPreviousData,
+    enabled: siteId !== null,
+  });
+}
+
+export function useArticleSites(articleId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: [...assortmentKeys.all, 'article', articleId],
+    queryFn: ({ signal }) => api.get<ArticleSite[]>(`/catalog/articles/${articleId}/sites`, signal),
+    enabled: enabled && articleId !== undefined,
+  });
+}
+
+/** Toute modification de l'assortiment change ce que les sites proposent : tout est relu. */
+function useAssortmentInvalidation() {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: assortmentKeys.all });
+    void qc.invalidateQueries({ queryKey: catalogKeys.articles });
+    void qc.invalidateQueries({ queryKey: ['stock'] });
+    void qc.invalidateQueries({ queryKey: ['pos'] });
+    void qc.invalidateQueries({ queryKey: ['inventories'] });
+    void qc.invalidateQueries({ queryKey: ['alerts'] });
+  };
+}
+
+export function useAssortmentMutations() {
+  const invalidate = useAssortmentInvalidation();
+  return {
+    add: useMutation({
+      mutationFn: ({ siteId, articleIds }: { siteId: string; articleIds: string[] }) =>
+        api.post<AssortmentChange>(`/catalog/sites/${siteId}/articles`, {
+          article_ids: articleIds,
+        }),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: ({ siteId, articleIds }: { siteId: string; articleIds: string[] }) =>
+        api.post<AssortmentRemoval>(`/catalog/sites/${siteId}/articles/remove`, {
+          article_ids: articleIds,
+        }),
+      onSuccess: invalidate,
+    }),
+    copy: useMutation({
+      mutationFn: ({
+        siteId,
+        sourceSiteId,
+        categoryId,
+      }: {
+        siteId: string;
+        sourceSiteId: string;
+        categoryId: string | null;
+      }) =>
+        api.post<AssortmentChange>(`/catalog/sites/${siteId}/articles/copy`, {
+          source_site_id: sourceSiteId,
+          category_id: categoryId,
+        }),
+      onSuccess: invalidate,
+    }),
+  };
 }
