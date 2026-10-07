@@ -40,6 +40,7 @@ import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 import { transferLotsPath, type DocumentLine } from './api';
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
 import { LotAllocationEditor } from './LotAllocationEditor';
+import { useDraftSubmission } from './useDraftSubmission';
 import {
   TRANSFERS_FEATURE,
   useAvailableStock,
@@ -220,38 +221,49 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
     );
   };
 
-  const persist = async (values: FormValues): Promise<StockTransfer> => {
-    const saved = await save.mutateAsync({ id: transfer?.id, input: toInput(values, isNew) });
-    form.reset(defaults(saved, defaultSource));
-    if (isNew) void navigate(`/stock/transfers/${saved.id}`, { replace: true });
-    return saved;
-  };
-
-  const onSave = form.handleSubmit(async (values) => {
-    try {
-      await persist(values);
-      toast.success(t('stock.draftSaved'));
-    } catch (error) {
-      toast.error(stockError(t, error, locale));
-    }
+  // Brouillon : un seul créé (identifiant conservé dès la création), modification détectée sur
+  // la saisie elle-même, une seule soumission à la fois.
+  const draft = useDraftSubmission({
+    initial: transfer,
+    valuesOf: (saved: StockTransfer) => defaults(saved, defaultSource),
+    toInput,
+    save: (id, input) => save.mutateAsync({ id, input }),
+    onSaved: (saved, created) => {
+      form.reset(defaults(saved, defaultSource));
+      if (created) void navigate(`/stock/transfers/${saved.id}`, { replace: true });
+    },
   });
+
+  const onSave = form.handleSubmit((values) =>
+    draft.exclusive(async () => {
+      try {
+        await draft.persist(values);
+        toast.success(t('stock.draftSaved'));
+      } catch (error) {
+        toast.error(stockError(t, error, locale));
+      }
+    }),
+  );
 
   const onValidate = form.handleSubmit((values) =>
     confirmAction(t, {
       header: t('transfers.validate'),
       message: t('transfers.confirmValidate'),
       acceptLabel: t('transfers.validate'),
-      onAccept: async () => {
-        try {
-          const saved = form.formState.isDirty || !transfer ? await persist(values) : transfer;
-          const validated = await validate.mutateAsync(saved.id);
-          toast.success(t('transfers.validated', { number: validated.number }));
-        } catch (error) {
-          toast.error(stockError(t, error, locale));
-        }
-      },
+      onAccept: () =>
+        draft.exclusive(async () => {
+          try {
+            // Version validée = version enregistrée de la saisie courante.
+            const saved = await draft.ensureSaved(values);
+            const validated = await validate.mutateAsync(saved.id);
+            toast.success(t('transfers.validated', { number: validated.number }));
+          } catch (error) {
+            toast.error(stockError(t, error, locale));
+          }
+        }),
     }),
   );
+  const busy = draft.pending || save.isPending || validate.isPending;
 
   const destinationError = errors.destination_site_id?.message;
   return (
@@ -474,13 +486,19 @@ function TransferForm({ transfer }: { transfer: StockTransfer | undefined }) {
           text
           onClick={() => void navigate('/stock/transfers')}
         />
-        <Button type="submit" label={t('stock.saveDraft')} outlined loading={save.isPending} />
+        <Button
+          type="submit"
+          label={t('stock.saveDraft')}
+          outlined
+          disabled={busy}
+          loading={save.isPending}
+        />
         {can('stock.transfer.validate') && (
           <Button
             type="button"
             icon="pi pi-check"
             label={t('transfers.validate')}
-            disabled={save.isPending || validate.isPending}
+            disabled={busy}
             loading={validate.isPending}
             onClick={() => void onValidate()}
           />

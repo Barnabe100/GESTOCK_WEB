@@ -48,6 +48,7 @@ import { formatPresented, type PresentationPackaging } from '@/shared/lib/presen
 
 import { ArticlePicker, toArticleOption, type ArticleOption } from './ArticlePicker';
 import { LotAllocationEditor } from './LotAllocationEditor';
+import { useDraftSubmission } from './useDraftSubmission';
 import { ArticleLocationHint, LocationLabel } from './LocationAssignDialog';
 import { LineLotsList, LotLabel, stockError } from './ui';
 
@@ -457,40 +458,50 @@ function DocumentForm({
     reasonOptions.push({ value: exit.reason_id, label: exit.reason_label });
   }
 
-  const persist = async (values: FormValues): Promise<StockDocument> => {
-    const saved = await save.mutateAsync({ id: document?.id, input: toInput(kind, values, isNew) });
-    form.reset(defaults(saved, defaultSite));
-    if (isNew) void navigate(`/stock/${kind}/${saved.id}`, { replace: true });
-    return saved;
-  };
-
-  const onSave = form.handleSubmit(async (values) => {
-    try {
-      await persist(values);
-      toast.success(t('stock.draftSaved'));
-    } catch (error) {
-      toast.error(stockError(t, error, locale));
-    }
+  // Brouillon : un seul créé (identifiant conservé dès la création), modification détectée sur
+  // la saisie elle-même, une seule soumission à la fois.
+  const draft = useDraftSubmission({
+    initial: document,
+    valuesOf: (saved: StockDocument) => defaults(saved, defaultSite),
+    toInput: (values: FormValues, create: boolean) => toInput(kind, values, create),
+    save: (id, input) => save.mutateAsync({ id, input }),
+    onSaved: (saved, created) => {
+      form.reset(defaults(saved, defaultSite));
+      if (created) void navigate(`/stock/${kind}/${saved.id}`, { replace: true });
+    },
   });
+
+  const onSave = form.handleSubmit((values) =>
+    draft.exclusive(async () => {
+      try {
+        await draft.persist(values);
+        toast.success(t('stock.draftSaved'));
+      } catch (error) {
+        toast.error(stockError(t, error, locale));
+      }
+    }),
+  );
 
   const onValidate = form.handleSubmit((values) =>
     confirmAction(t, {
       header: t('stock.validate'),
       message: t(`${config.i18n}.confirmValidate`),
       acceptLabel: t('stock.validate'),
-      onAccept: async () => {
-        try {
-          const saved = form.formState.isDirty || !document ? await persist(values) : document;
-          const validated = await validate.mutateAsync(saved.id);
-          toast.success(t('stock.validated', { number: validated.number }));
-        } catch (error) {
-          toast.error(stockError(t, error, locale));
-        }
-      },
+      onAccept: () =>
+        draft.exclusive(async () => {
+          try {
+            // Version validée = version enregistrée de la saisie courante.
+            const saved = await draft.ensureSaved(values);
+            const validated = await validate.mutateAsync(saved.id);
+            toast.success(t('stock.validated', { number: validated.number }));
+          } catch (error) {
+            toast.error(stockError(t, error, locale));
+          }
+        }),
     }),
   );
 
-  const busy = save.isPending || validate.isPending;
+  const busy = draft.pending || save.isPending || validate.isPending;
   // Lot 3-H-A : lots déjà enregistrés sur les lignes (libellé d'un lot sans solde restant).
   const knownLots = (document?.lines ?? []).flatMap((l) => l.lots ?? []);
   const siteOptions = capabilities.sites.map((s) => ({ value: s.id, label: s.name }));
@@ -833,7 +844,13 @@ function DocumentForm({
           text
           onClick={() => void navigate(`/stock/${kind}`)}
         />
-        <Button type="submit" label={t('stock.saveDraft')} outlined loading={save.isPending} />
+        <Button
+          type="submit"
+          label={t('stock.saveDraft')}
+          outlined
+          disabled={busy}
+          loading={save.isPending}
+        />
         {can(`${config.permission}.validate`) && (
           <Button
             type="button"
