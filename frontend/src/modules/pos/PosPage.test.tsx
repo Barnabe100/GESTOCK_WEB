@@ -271,7 +271,11 @@ describe('point de vente', () => {
     ) as HTMLInputElement;
     expect(received.value).toBe('6000');
     fireEvent.change(received, { target: { value: '10000' } });
+    // Indicatif : 15 000 remis pour 11 000 → reste dû 0, monnaie rendue 4 000.
+    expect(text(within(dialog).getByTestId('pos-received'))).toBe(money('15000'));
     expect(text(within(dialog).getByTestId('pos-remaining'))).toBe(money('0'));
+    expect(text(within(dialog).getByTestId('pos-change'))).toBe(money('4000'));
+    expect(within(dialog).getByText('Monnaie rendue')).toBeTruthy();
     // Référence obligatoire pour Orange Money : refus avant envoi.
     fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
     expect(within(dialog).getByText('Référence de la transaction obligatoire')).toBeTruthy();
@@ -281,7 +285,8 @@ describe('point de vente', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
     fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
     const confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });
-    expect(text(within(confirm).getByTestId('confirm-remaining'))).toBe(money('0'));
+    expect(text(within(confirm).getByTestId('pos-remaining'))).toBe(money('0'));
+    expect(text(within(confirm).getByTestId('pos-change'))).toBe(money('4000'));
     await act(async () => {
       within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }).click();
     });
@@ -321,7 +326,9 @@ describe('point de vente', () => {
     ).toBeTruthy();
     expect(text(receipt)).toContain('Espèces');
     expect(text(receipt)).toContain('Orange Money');
-    expect(text(receipt)).toContain(`Espèces reçues ${money('10000')} — monnaie rendue`);
+    // Valeurs du SERVEUR : montant reçu (espèces remises + autres moyens), monnaie rendue.
+    expect(text(within(receipt).getByTestId('receipt-received'))).toBe(money('15000'));
+    expect(within(receipt).getByText('Monnaie rendue')).toBeTruthy();
     expect(text(within(receipt).getByTestId('receipt-change'))).toBe(money('4000'));
     expect(text(within(receipt).getByTestId('receipt-remaining'))).toBe(money('0'));
     // Nouvelle vente : panier vidé, nouvelle clé.
@@ -344,6 +351,157 @@ describe('point de vente', () => {
       await within(confirm).findByText(/Aucune session de caisse ouverte à votre nom/),
     ).toBeTruthy();
     expect(screen.getByLabelText('Quantité de Ciment 50 kg')).toBeTruthy();
+  });
+
+  it.each([
+    ['stock', { code: 'insufficient_stock', status: 422, details: [] }, /Stock insuffisant/],
+    [
+      'assortiment',
+      { code: 'article_not_in_site_assortment', status: 422, articles: ['CIM-50'] },
+      /hors de l'assortiment de ce site/,
+    ],
+    ['paiement', { code: 'cash_session_required', status: 422 }, /Aucune session de caisse/],
+  ])(
+    'erreur de %s, correction du panier, nouvelle validation réussie : ancienne erreur effacée',
+    async (_kind, problem, message) => {
+      let attempts = 0;
+      checkoutResponse = () => {
+        attempts += 1;
+        return attempts === 1 ? jsonResponse(problem, 422) : jsonResponse(RESULT, 201);
+      };
+      render();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }),
+      );
+      fireEvent.click(tile('Ciment 50 kg'));
+      fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
+      let confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });
+      await act(async () => {
+        within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }).click();
+      });
+      expect(await within(confirm).findByText(message)).toBeTruthy();
+      // Correction : retour au panier, quantité réduite.
+      fireEvent.click(within(confirm).getByRole('button', { name: 'Annuler' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Diminuer la quantité de Ciment 50 kg' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
+      confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });
+      // L'erreur de la tentative précédente ne vaut plus pour le panier corrigé.
+      expect(within(confirm).queryByText(message)).toBeNull();
+      await act(async () => {
+        within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }).click();
+      });
+      expect(await screen.findByTestId('pos-receipt')).toBeTruthy();
+      expect(screen.queryByText(message)).toBeNull();
+      expect(posts()).toHaveLength(2);
+    },
+  );
+
+  it('nouvelle tentative sans correction : l’erreur disparaît dès la réussite', async () => {
+    let attempts = 0;
+    checkoutResponse = () => {
+      attempts += 1;
+      return attempts === 1
+        ? jsonResponse({ code: 'cash_session_required', status: 422 }, 422)
+        : jsonResponse(RESULT, 201);
+    };
+    render();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });
+    await act(async () => {
+      within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }).click();
+    });
+    expect(await within(confirm).findByText(/Aucune session de caisse/)).toBeTruthy();
+    await act(async () => {
+      within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }).click();
+    });
+    expect(await screen.findByTestId('pos-receipt')).toBeTruthy();
+    expect(screen.queryByText(/Aucune session de caisse/)).toBeNull();
+  });
+
+  it('paiement inférieur au total : reste dû, monnaie rendue nulle ; paiement exact : 0 / 0', async () => {
+    render();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Paiement (F8)' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Paiements (F8)' }, SLOW);
+    const methods = await within(dialog).findByRole('group', {
+      name: 'Ajouter un moyen de paiement',
+    });
+    fireEvent.click(within(methods).getByRole('button', { name: 'Espèces' }));
+    const received = within(dialog).getByLabelText('Montant reçu du paiement 1');
+    fireEvent.change(received, { target: { value: '5000' } });
+    expect(text(within(dialog).getByTestId('pos-received'))).toBe(money('5000'));
+    expect(text(within(dialog).getByTestId('pos-remaining'))).toBe(money('500'));
+    expect(text(within(dialog).getByTestId('pos-change'))).toBe(money('0'));
+    fireEvent.change(received, { target: { value: '5500' } });
+    expect(text(within(dialog).getByTestId('pos-remaining'))).toBe(money('0'));
+    expect(text(within(dialog).getByTestId('pos-change'))).toBe(money('0'));
+  });
+
+  it('après la vente : « Voir le reçu » et « Imprimer » relisent la vente persistée', async () => {
+    const persisted = {
+      sale_id: 'v9',
+      number: 'VENT-BOU-2026-000042',
+      site_name: 'Boutique',
+      issued_at: '2026-10-07T14:30:00Z',
+      cashier_name: 'Moi',
+      customer_name: null,
+      issuer: {
+        name: 'Quincaillerie',
+        trade_name: null,
+        logo_url: null,
+        contact: [],
+        identifiers: [],
+      },
+      lines: [
+        {
+          designation: 'Ciment 50 kg',
+          unit: 'sac',
+          quantity: '2.000',
+          packaging_name: null,
+          packaging_conversion: null,
+          unit_price: '5500.00',
+          line_total: '11000.00',
+        },
+      ],
+      total: '11000.00',
+      paid_amount: '11000.00',
+      remaining_amount: '0.00',
+      payment_status: 'PAID',
+      is_credit: false,
+      payments: [],
+      amount_received: '15000.00',
+      change_given: '4000.00',
+      print_count: 0,
+    };
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    fetchMock.mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith('/sales/v9/receipt/print'))
+        return jsonResponse({ ...persisted, print_count: 1 });
+      if (u.endsWith('/sales/v9/receipt')) return jsonResponse(persisted);
+      if (init?.method === 'POST') return checkoutResponse();
+      if (u.includes('/pos/articles')) return jsonResponse(ARTICLES);
+      return pageOf([]);
+    });
+    render([...SELLER, 'sales.sale.receipt_print', 'sales.sale.reprint']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });
+    await act(async () => {
+      within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }).click();
+    });
+    const result = await screen.findByTestId('pos-receipt');
+    await act(async () => {
+      fireEvent.click(within(result).getByRole('button', { name: 'Imprimer' }));
+    });
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(calls('/sales/v9/receipt/print')).toHaveLength(1);
+    fireEvent.click(within(result).getByRole('button', { name: 'Voir le reçu' }));
+    const preview = await screen.findByRole('dialog', { name: 'Reçu de vente' });
+    expect(text(await within(preview).findByTestId('receipt-change'))).toBe(money('4000'));
+    expect(within(preview).getByText('Monnaie rendue')).toBeTruthy();
   });
 
   it('limite de crédit : dépassement proposé si le serveur le permet, justification envoyée', async () => {

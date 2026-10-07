@@ -11,6 +11,7 @@ from app.modules.sales.export import (
 )
 from app.modules.sales.filters import SaleFilters, sale_filters
 from app.modules.sales.payment_router import router as payment_router
+from app.modules.sales.receipt import router as receipt_router
 from app.modules.sales.schemas import (
     SaleCancel,
     SaleCreate,
@@ -189,3 +190,4 @@ def cancel_sale(
 
 # Paiements : sous-ressource de la vente (/sales/{sale_id}/payments).
 router.include_router(payment_router)
+router.include_router(receipt_router)

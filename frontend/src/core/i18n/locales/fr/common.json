@@ -433,6 +433,8 @@
     "sales.sale.update": "Modifier une vente en brouillon",
     "sales.sale.validate": "Valider une vente (sortie de stock)",
     "sales.sale.cancel": "Annuler une vente",
+    "sales.sale.receipt_print": "Imprimer le reçu d'une vente (première impression, journalisée)",
+    "sales.sale.reprint": "Réimprimer le reçu d'une vente (journalisé)",
     "sales.sale.credit_create": "Vendre à crédit (client identifié obligatoire)",
     "sales.sale.credit_override": "Autoriser le dépassement de la limite de crédit (justifié, audité)",
     "sales.sale.expired_lot_override": "Vendre un lot périmé par dérogation explicite (motif, audité)",
@@ -1008,7 +1010,8 @@
         "sale.credit_limit_overridden": "Dépassement de la limite de crédit autorisé",
         "payment.created": "Paiement enregistré",
         "payment.completed": "Paiement encaissé",
-        "payment.cancelled": "Paiement annulé"
+        "payment.cancelled": "Paiement annulé",
+        "sale.receipt_printed": "Reçu imprimé"
       }
     },
     "presentation": "Présentation",
@@ -1422,8 +1425,7 @@
     "newSale": "Nouvelle vente",
     "receivedAmountN": "Montant reçu du paiement {{n}}",
     "paymentReferenceN": "Référence du paiement {{n}}",
-    "changeByServer": "Espèces : saisissez le montant reçu ; la monnaie est calculée par le serveur.",
-    "receivedAndChange": "Espèces reçues {{received}} — monnaie rendue",
+    "changeByServer": "Espèces : saisissez le montant reçu ; la monnaie rendue est calculée par le serveur.",
     "barcodeUnknown": "Code-barres inconnu",
     "notStockManaged": "Non géré en stock",
     "packagingsAvailable_one": "+ {{count}} conditionnement",
@@ -1434,7 +1436,9 @@
     "stockShort": "Stock du site insuffisant (indicatif)",
     "emptyAssortment": "Aucun article dans l'assortiment de ce site",
     "emptyAssortmentHelp": "La caisse ne propose que les articles de l'assortiment du site. Demandez à un responsable d'y ajouter les articles à vendre.",
-    "searchAssortmentOnly": "La recherche porte sur l'assortiment de ce site seulement."
+    "searchAssortmentOnly": "La recherche porte sur l'assortiment de ce site seulement.",
+    "amountReceived": "Montant reçu",
+    "change": "Monnaie rendue"
   },
   "sectors": {
     "retail": "Commerce de détail",
@@ -1996,5 +2000,27 @@
       "added": "Article ajouté à l'assortiment de « {{site}} »",
       "askManager": "Demandez à un responsable d'ajouter cet article à l'assortiment du site."
     }
+  },
+  "receipt": {
+    "title": "Reçu de la vente {{number}}",
+    "dialogTitle": "Reçu de vente",
+    "view": "Voir le reçu",
+    "print": "Imprimer",
+    "reprint": "Réimprimer",
+    "site": "Site",
+    "saleNumber": "N° de vente",
+    "date": "Date",
+    "cashier": "Caissier",
+    "customer": "Client",
+    "lines": "Articles vendus",
+    "total": "TOTAL",
+    "amountReceived": "Montant reçu",
+    "change": "Monnaie rendue",
+    "remaining": "Reste dû",
+    "credit": "Vente à crédit — reste dû : {{amount}}",
+    "thanks": "Merci pour votre confiance. À très bientôt !",
+    "neverPrinted": "Reçu jamais imprimé.",
+    "printedCount_one": "Reçu imprimé {{count}} fois.",
+    "printedCount_other": "Reçu imprimé {{count}} fois."
   }
 }

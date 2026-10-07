@@ -421,6 +421,59 @@ describe('saisie et consultation d’une vente', () => {
     expect((confirm as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('vente validée : « Voir le reçu » et « Réimprimer » depuis la fiche (historique)', async () => {
+    const receipt = {
+      sale_id: 'v1',
+      number: 'VENT-BOU-2026-000001',
+      site_name: 'Boutique',
+      issued_at: '2026-09-24T08:05:00Z',
+      cashier_name: 'Moussa',
+      customer_name: 'Awa Ouédraogo',
+      issuer: {
+        name: 'Quincaillerie',
+        trade_name: null,
+        logo_url: null,
+        contact: [],
+        identifiers: [],
+      },
+      lines: [],
+      total: '3000.00',
+      paid_amount: '3000.00',
+      remaining_amount: '0.00',
+      payment_status: 'PAID',
+      is_credit: false,
+      payments: null,
+      amount_received: null,
+      change_given: null,
+      print_count: 1,
+    };
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    fetchMock.mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/sales/v1/receipt/print'))
+        return jsonResponse({ ...receipt, print_count: 2 });
+      if (u.endsWith('/sales/v1/receipt')) return jsonResponse(receipt);
+      return jsonResponse(validated);
+    });
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: [...SELLER, 'sales.sale.receipt_print', 'sales.sale.reprint'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    const reprint = await screen.findByRole('button', { name: 'Réimprimer' });
+    await act(async () => {
+      fireEvent.click(reprint);
+    });
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(methodCalls(fetchMock, 'POST').map(([u]) => String(u))).toEqual([
+      expect.stringContaining('/sales/v1/receipt/print'),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Voir le reçu' }));
+    const preview = await screen.findByRole('dialog', { name: 'Reçu de vente' });
+    expect(await within(preview).findByTestId('sale-receipt')).toBeTruthy();
+  });
+
   it('mouvements de stock et chronologie : seulement avec la permission correspondante', async () => {
     const movement = {
       id: 'm1',

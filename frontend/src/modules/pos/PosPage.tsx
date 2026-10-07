@@ -17,7 +17,7 @@ import { useCashSessions, useCashSites } from '@/modules/cash_register/api';
 import type { Customer } from '@/modules/customers/api';
 import { paymentError } from '@/modules/sales/ui';
 import { translateError } from '@/shared/lib/errors';
-import { formatMoney, formatQuantity, subtractMoney, sumMoney } from '@/shared/lib/decimal';
+import { formatMoney, formatQuantity } from '@/shared/lib/decimal';
 import { useDebouncedValue } from '@/shared/lib/serverTable';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { FormField } from '@/shared/ui/FormField';
@@ -42,9 +42,16 @@ import {
   lineQuantity,
   lineTotal,
   unitPrice,
+  type CartAction,
 } from './cart';
 import { PosCustomerDialog } from './PosCustomerDialog';
-import { PosPaymentDialog, toCheckoutPayment, type PosPayment } from './PosPaymentDialog';
+import { cashSummary } from './change';
+import {
+  CashSummaryList,
+  PosPaymentDialog,
+  toCheckoutPayment,
+  type PosPayment,
+} from './PosPaymentDialog';
 import { PosReceipt } from './PosReceipt';
 import { ExpiredLotOverridePanel } from '@/modules/sales/ExpiredLotOverridePanel';
 import type { ExpiredLotOverride } from '@/modules/sales/api';
@@ -114,8 +121,11 @@ export default function PosPage() {
 
   const money = (v: string) => formatMoney(v, currency, locale);
   const total = cartTotal(lines);
-  const paid = sumMoney(payments.map((p) => p.amount));
-  const remaining = subtractMoney(total, paid);
+  // Indicatif : montant reçu, reste dû, monnaie rendue (le serveur recalcule à la validation).
+  const summary = cashSummary(
+    total,
+    payments.map((p) => p.amount),
+  );
   const canSell = can('sales.sale.create') && can('sales.sale.validate');
   const canPay = can('sales.payment.create');
   const invalidLines = lines.some((l) => lineQuantity(l) === null);
@@ -136,11 +146,29 @@ export default function PosPage() {
     document.getElementById('pos-search')?.focus();
   }, []);
 
+  /**
+   * Résultat de la dernière tentative d'encaissement (erreur, dérogations proposées) : il ne vaut
+   * que pour CE panier. Toute modification du panier, du client ou des paiements l'efface, de
+   * même qu'une réussite — jamais une ancienne erreur affichée après une correction.
+   */
+  const clearAttempt = () => {
+    setError(null);
+    setOverrideAllowed(false);
+    setOverrideReason('');
+    setExpired([]);
+  };
+
+  /** Le panier a changé : les paiements saisis sont à revoir, l'ancienne erreur est caduque. */
+  const changeCart = (action: CartAction) => {
+    dispatch(action);
+    setPayments([]);
+    clearAttempt();
+  };
+
   const add = (article: PosArticle, packaging: PosPackaging | null = null) => {
     if (!article.is_active) return;
-    dispatch({ type: 'add', article, packaging });
-    // Le panier a changé : les paiements saisis sont à revoir.
-    setPayments([]);
+    changeCart({ type: 'add', article, packaging });
+    setScanError(null);
   };
 
   /** Entrée dans la recherche = scan : seule une correspondance exacte du serveur est ajoutée. */
@@ -204,6 +232,7 @@ export default function PosPage() {
       },
       {
         onSuccess: (data) => {
+          clearAttempt();
           setDialog(null);
           setResult(data);
         },
@@ -447,7 +476,6 @@ export default function PosPage() {
                                   key,
                                   packagingId: value === BASE_UNIT ? null : value,
                                 });
-                                setPayments([]);
                               }}
                             />
                           ) : null}
@@ -476,8 +504,7 @@ export default function PosPage() {
                             outlined
                             aria-label={t('pos.decrease', { name })}
                             onClick={() => {
-                              dispatch({ type: 'step', key, delta: -1 });
-                              setPayments([]);
+                              changeCart({ type: 'step', key, delta: -1 });
                             }}
                           />
                           <InputText
@@ -488,8 +515,7 @@ export default function PosPage() {
                             })}
                             invalid={!quantityOk}
                             onChange={(e) => {
-                              dispatch({ type: 'set', key, quantity: e.target.value });
-                              setPayments([]);
+                              changeCart({ type: 'set', key, quantity: e.target.value });
                             }}
                           />
                           <Button
@@ -498,8 +524,7 @@ export default function PosPage() {
                             outlined
                             aria-label={t('pos.increase', { name })}
                             onClick={() => {
-                              dispatch({ type: 'step', key, delta: 1 });
-                              setPayments([]);
+                              changeCart({ type: 'step', key, delta: 1 });
                             }}
                           />
                         </div>
@@ -510,8 +535,7 @@ export default function PosPage() {
                           severity="danger"
                           aria-label={t('pos.removeLine', { name })}
                           onClick={() => {
-                            dispatch({ type: 'remove', key });
-                            setPayments([]);
+                            changeCart({ type: 'remove', key });
                           }}
                         />
                       </li>
@@ -535,10 +559,16 @@ export default function PosPage() {
                   </div>
                 ))}
                 {payments.length > 0 && (
-                  <div>
-                    <dt>{t('pos.remaining')}</dt>
-                    <dd>{money(remaining.startsWith('-') ? '0' : remaining)}</dd>
-                  </div>
+                  <>
+                    <div>
+                      <dt>{t('pos.remaining')}</dt>
+                      <dd>{money(summary.remaining)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('pos.change')}</dt>
+                      <dd data-testid="cart-change">{money(summary.change)}</dd>
+                    </div>
+                  </>
                 )}
               </dl>
               <p className="sm-help">{t('pos.indicative')}</p>
@@ -571,6 +601,7 @@ export default function PosPage() {
         <PosCustomerDialog
           onSelect={(c) => {
             setCustomer(c);
+            clearAttempt();
             setDialog(null);
           }}
           onClose={() => setDialog(null)}
@@ -585,6 +616,7 @@ export default function PosPage() {
           onSave={(saved, register) => {
             setPayments(saved);
             setCashRegisterId(register);
+            clearAttempt();
             setDialog(null);
           }}
           onClose={() => setDialog(null)}
@@ -601,7 +633,7 @@ export default function PosPage() {
           className="sm-dialog"
         >
           <div className="sm-form">
-            <dl className="sm-pos-summary" aria-label={t('pos.confirmSummary')}>
+            <CashSummaryList summary={summary} label={t('pos.confirmSummary')}>
               <div>
                 <dt>{t('pos.customer')}</dt>
                 <dd>{customer ? customer.name : t('sales.anonymousShort')}</dd>
@@ -610,22 +642,8 @@ export default function PosPage() {
                 <dt>{t('pos.articleCount')}</dt>
                 <dd>{lines.length}</dd>
               </div>
-              <div className="sm-pos-grand-total">
-                <dt>{t('pos.total')}</dt>
-                <dd>{money(total)}</dd>
-              </div>
-              <div>
-                <dt>{t('pos.paid')}</dt>
-                <dd>{money(paid)}</dd>
-              </div>
-              <div>
-                <dt>{t('pos.remaining')}</dt>
-                <dd data-testid="confirm-remaining">
-                  {money(remaining.startsWith('-') ? '0' : remaining)}
-                </dd>
-              </div>
-            </dl>
-            {/[1-9]/.test(remaining) && !remaining.startsWith('-') && (
+            </CashSummaryList>
+            {/[1-9]/.test(summary.remaining) && (
               <Message
                 severity="warn"
                 text={t(customer ? 'pos.creditNotice' : 'pos.unpaidWithoutCustomer')}

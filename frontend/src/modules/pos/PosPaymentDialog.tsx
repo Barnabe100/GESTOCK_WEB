@@ -2,7 +2,7 @@ import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
@@ -14,6 +14,48 @@ import {
 } from '@/modules/sales/api';
 import { formatMoney, normalizeDecimal, subtractMoney, sumMoney } from '@/shared/lib/decimal';
 import { LoadingState } from '@/shared/ui/LoadingState';
+
+import { cashSummary, type CashSummary } from './change';
+
+/**
+ * Total, montant reçu, reste dû et monnaie rendue INDICATIFS (le serveur recalcule à la
+ * validation) : jamais un reste dû et une monnaie rendue positifs à la fois.
+ */
+export function CashSummaryList({
+  summary,
+  label,
+  children,
+}: {
+  summary: CashSummary;
+  label: string;
+  children?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const { capabilities } = useCapabilities();
+  const { currency, locale } = capabilities.tenant;
+  const money = (v: string) => formatMoney(v, currency, locale);
+  return (
+    <dl className="sm-pos-summary" aria-label={label}>
+      {children}
+      <div className="sm-pos-grand-total">
+        <dt>{t('pos.total')}</dt>
+        <dd>{money(summary.total)}</dd>
+      </div>
+      <div>
+        <dt>{t('pos.amountReceived')}</dt>
+        <dd data-testid="pos-received">{money(summary.received)}</dd>
+      </div>
+      <div>
+        <dt>{t('pos.remaining')}</dt>
+        <dd data-testid="pos-remaining">{money(summary.remaining)}</dd>
+      </div>
+      <div>
+        <dt>{t('pos.change')}</dt>
+        <dd data-testid="pos-change">{money(summary.change)}</dd>
+      </div>
+    </dl>
+  );
+}
 
 /**
  * Paiement saisi au point de vente : moyen configuré (instantané du libellé et du type pour
@@ -64,13 +106,10 @@ export function PosPaymentDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
-  const { currency, locale } = capabilities.tenant;
   const { methods, isPending } = useAvailablePaymentMethods(siteId);
   const [lines, setLines] = useState<PosPayment[]>(initial);
   const [register, setRegister] = useState<string | null>(cashRegisterId);
   const [error, setError] = useState<string | null>(null);
-  const money = (v: string) => formatMoney(v, currency, locale);
   const amounts = lines.map((l) => normalizeDecimal(l.amount, 2) ?? '0');
   const paid = sumMoney(amounts);
   const remaining = subtractMoney(total, paid);
@@ -122,20 +161,7 @@ export function PosPaymentDialog({
   return (
     <Dialog header={t('pos.payments')} visible onHide={onClose} className="sm-dialog">
       <div className="sm-form">
-        <dl className="sm-pos-summary" aria-label={t('pos.paymentSummary')}>
-          <div>
-            <dt>{t('pos.total')}</dt>
-            <dd>{money(total)}</dd>
-          </div>
-          <div>
-            <dt>{t('pos.paid')}</dt>
-            <dd>{money(paid)}</dd>
-          </div>
-          <div>
-            <dt>{t('pos.remaining')}</dt>
-            <dd data-testid="pos-remaining">{money(positiveRemaining)}</dd>
-          </div>
-        </dl>
+        <CashSummaryList summary={cashSummary(total, amounts)} label={t('pos.paymentSummary')} />
         {lines.length === 0 && <Message severity="info" text={t('pos.noPaymentHelp')} />}
         {lines.map((line, index) => (
           <div key={line.key} className="sm-pos-payment">

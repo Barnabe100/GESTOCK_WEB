@@ -2378,3 +2378,151 @@ a {
     width: 100%;
   }
 }
+
+/* --- Reçu de vente (palier POS) ----------------------------------------------------------------
+ * Contenu commun à tous les formats (`.sm-receipt`) ; le format ne fixe que la largeur et la
+ * page (`.sm-receipt--thermal-80` en V1, règle `@page` injectée pendant l'impression). Noir sur
+ * blanc, sans fond ni ombre : lisible sur papier thermique. */
+
+.sm-receipt {
+  box-sizing: border-box;
+  color: #000;
+  background: #fff;
+  font-family: var(--sm-font, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.sm-receipt p {
+  margin: 0;
+}
+
+.sm-receipt-header {
+  text-align: center;
+  padding-bottom: 2mm;
+  border-bottom: 1px dashed #000;
+}
+
+.sm-receipt-logo {
+  display: block;
+  max-width: 40mm;
+  max-height: 18mm;
+  margin: 0 auto 1mm;
+  object-fit: contain;
+}
+
+.sm-receipt-issuer {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sm-receipt-meta,
+.sm-receipt-totals {
+  margin: 0;
+  padding: 2mm 0;
+}
+
+.sm-receipt-meta div,
+.sm-receipt-totals div,
+.sm-receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+}
+
+.sm-receipt-meta dt,
+.sm-receipt-totals dt {
+  font-weight: 400;
+}
+
+.sm-receipt-meta dd,
+.sm-receipt-totals dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.sm-receipt-lines {
+  list-style: none;
+  margin: 0;
+  padding: 2mm 0;
+  border-top: 1px dashed #000;
+  border-bottom: 1px dashed #000;
+}
+
+.sm-receipt-lines li + li {
+  margin-top: 1mm;
+}
+
+.sm-receipt-designation {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.sm-receipt-row .sm-num {
+  white-space: nowrap;
+}
+
+.sm-receipt-total {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sm-receipt-credit {
+  padding: 1mm 0;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid #000;
+}
+
+.sm-receipt-thanks {
+  padding-top: 2mm;
+  border-top: 1px dashed #000;
+  text-align: center;
+}
+
+/* Format V1 : ticket thermique 80 mm (zone imprimable usuelle ~72 mm). */
+.sm-receipt--thermal-80 {
+  width: 72mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 3mm 0;
+}
+
+/* Aperçu à l'écran : le ticket tel qu'imprimé, consultable aussi sur mobile. */
+.sm-receipt-preview {
+  display: flex;
+  justify-content: center;
+  padding: var(--sm-space-3);
+  background: var(--sm-surface-subtle);
+  border-radius: var(--sm-radius);
+  overflow-x: auto;
+}
+
+.sm-receipt-preview .sm-receipt {
+  padding: 3mm;
+  box-shadow: var(--sm-shadow-sm, 0 1px 3px rgb(0 0 0 / 15%));
+}
+
+/* Racine d'impression : invisible à l'écran, seule imprimée pendant l'impression du reçu. */
+#sm-print-root {
+  display: none;
+}
+
+@media print {
+  body.sm-printing > *:not(#sm-print-root) {
+    display: none !important;
+  }
+
+  body.sm-printing #sm-print-root {
+    display: block;
+  }
+
+  body.sm-printing {
+    margin: 0;
+    background: #fff;
+  }
+}

@@ -52,6 +52,7 @@ import { PaymentsPanel } from './PaymentsPanel';
 import { SaleHistoryPanel, SaleMovementsPanel } from './SaleActivity';
 import { PackagingSelect, type SalePackaging } from './PackagingSelect';
 import { SalePaymentBadge, saleError, soldQuantity } from './ui';
+import { SaleReceiptActions } from './receipt/ReceiptDialog';
 import { ValidateSaleDialog } from './ValidateSaleDialog';
 
 const quantity = z.string().refine((v) => {
@@ -663,6 +664,8 @@ export default function SalePage() {
           <div className="sm-tags">
             {sale && <DocumentStatusBadge labels="sales.statuses" status={sale.status} />}
             {sale?.payment_status && <SalePaymentBadge status={sale.payment_status} />}
+            {/* Reçu 80 mm (palier POS) : relu depuis la vente persistée ; portée de la vente. */}
+            {sale?.status === 'VALIDATED' && <SaleReceiptActions saleId={sale.id} />}
             {canCancel && (
               <Button
                 icon="pi pi-undo"

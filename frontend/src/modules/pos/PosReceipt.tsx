@@ -1,20 +1,24 @@
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
+import { Message } from 'primereact/message';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { RECEIPT_PRINT } from '@/modules/sales/receipt/api';
+import { ReceiptDialog, useReceiptPrinting } from '@/modules/sales/receipt/ReceiptDialog';
 import { SalePaymentBadge, soldQuantity } from '@/modules/sales/ui';
 import { LineLotsList } from '@/modules/stock/ui';
-import { formatMoney } from '@/shared/lib/decimal';
+import { formatMoney, sumMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 
 import type { CheckoutResult } from './api';
 
 /**
  * Confirmation après encaissement : données renvoyées par le serveur (numéro, lignes, total,
- * paiements, reste dû). Lot 3-H-A (O-2) : lots consommés et péremption sous chaque ligne. Aucun
- * ticket imprimé 80 mm ici : point d'extension du futur ticket / reçu (impression, PDF), qui
- * consommera le même `CheckoutResult`.
+ * paiements, montant reçu, reste dû, monnaie rendue). Lot 3-H-A (O-2) : lots consommés et
+ * péremption sous chaque ligne. Reçu 80 mm (palier POS) : « Voir le reçu » et « Imprimer »
+ * relisent la vente PERSISTÉE (`/sales/{id}/receipt`), jamais le panier.
  */
 export function PosReceipt({
   result,
@@ -26,10 +30,17 @@ export function PosReceipt({
   onOpenSale?: () => void;
 }) {
   const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
+  const { can, capabilities } = useCapabilities();
   const { currency, locale, timezone } = capabilities.tenant;
   const { sale, payments } = result;
   const money = (v: string) => formatMoney(v, currency, locale);
+  const printing = useReceiptPrinting();
+  const [viewing, setViewing] = useState(false);
+  const completed = payments.filter((p) => p.status === 'COMPLETED');
+  // Montant reçu : espèces remises (avant monnaie) + autres moyens ; monnaie rendue : calculée
+  // par le serveur sur la seule partie espèces.
+  const received = sumMoney(completed.map((p) => p.amount_received ?? p.amount));
+  const change = sumMoney(completed.map((p) => p.change_given ?? '0'));
 
   return (
     <Dialog
@@ -66,35 +77,55 @@ export function PosReceipt({
               <td>{t('pos.total')}</td>
               <td className="sm-num">{money(sale.total)}</td>
             </tr>
-            {payments.map((p) => (
+            {completed.map((p) => (
               <tr key={p.id}>
                 <td>{p.method_label}</td>
                 <td className="sm-num">{money(p.amount)}</td>
               </tr>
             ))}
-            {payments
-              .filter((p) => p.amount_received !== null)
-              .map((p) => (
-                <tr key={`${p.id}-cash`}>
-                  <td>
-                    {t('pos.receivedAndChange', { received: money(p.amount_received ?? '0') })}
-                  </td>
-                  <td className="sm-num" data-testid="receipt-change">
-                    {money(p.change_given ?? '0')}
-                  </td>
-                </tr>
-              ))}
+            <tr>
+              <td>{t('pos.amountReceived')}</td>
+              <td className="sm-num" data-testid="receipt-received">
+                {money(received)}
+              </td>
+            </tr>
             <tr>
               <td>{t('pos.remaining')}</td>
               <td className="sm-num" data-testid="receipt-remaining">
                 {money(sale.remaining_amount ?? '0')}
               </td>
             </tr>
+            <tr className="sm-strong">
+              <td>{t('pos.change')}</td>
+              <td className="sm-num" data-testid="receipt-change">
+                {money(change)}
+              </td>
+            </tr>
           </tbody>
         </table>
         {sale.payment_status && <SalePaymentBadge status={sale.payment_status} />}
+        {printing.error && <Message severity="error" text={printing.error} />}
         <div className="sm-dialog-actions">
           {onOpenSale && <Button type="button" label={t('sales.open')} text onClick={onOpenSale} />}
+          {can('sales.sale.view') && (
+            <Button
+              type="button"
+              icon="pi pi-receipt"
+              label={t('receipt.view')}
+              outlined
+              onClick={() => setViewing(true)}
+            />
+          )}
+          {can(RECEIPT_PRINT) && (
+            <Button
+              type="button"
+              icon="pi pi-print"
+              label={t('receipt.print')}
+              outlined
+              loading={printing.pending}
+              onClick={() => printing.print(sale.id)}
+            />
+          )}
           <Button
             type="button"
             icon="pi pi-plus"
@@ -104,6 +135,8 @@ export function PosReceipt({
           />
         </div>
       </div>
+      {viewing && <ReceiptDialog saleId={sale.id} onClose={() => setViewing(false)} />}
+      {printing.printer}
     </Dialog>
   );
 }

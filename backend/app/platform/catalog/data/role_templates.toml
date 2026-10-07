@@ -15,13 +15,14 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
   "customers.*",
   "sales.sale.view", "sales.sale.view_all", "sales.sale.export", "sales.sale.create",
   "sales.sale.update", "sales.sale.validate", "sales.sale.credit_create",
+  "sales.sale.receipt_print", "sales.sale.reprint",
   "sales.payment.view", "sales.payment.create",
   "receivables.receivable.view",
   "cash_register.*",
@@ -46,12 +47,13 @@ exclude = [
 
 [roles.seller]
 name = "Vendeur"
-description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients et des créances ; sans annulation."
+description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients et des créances ; sans annulation."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
   "customers.customer.view",
   "sales.sale.view", "sales.sale.create", "sales.sale.update", "sales.sale.validate",
+  "sales.sale.receipt_print", "sales.sale.reprint",
   "sales.payment.view", "sales.payment.create",
   "receivables.receivable.view",
   "cash_register.register.view", "cash_register.session.view",

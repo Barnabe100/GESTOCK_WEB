@@ -249,5 +249,8 @@
   "lot_expired_not_transferable": "Un lot périmé ne peut pas être transféré ({{lots}}).",
   "lot_invariant_broken": "Les soldes des lots ne correspondent pas au stock de l'article ({{articles}}) : opération refusée.",
   "article_not_in_site_assortment": "Article hors de l'assortiment de ce site ({{articles}}) : ajoutez-le d'abord à l'assortiment du site, ou demandez-le à un responsable.",
-  "assortment_copy_same_site": "Choisissez un autre site source que le site à compléter."
+  "assortment_copy_same_site": "Choisissez un autre site source que le site à compléter.",
+  "receipt_unavailable": "Le reçu n'est disponible que pour une vente validée.",
+  "receipt_print_denied": "Vous n'avez pas le droit d'imprimer le reçu de cette vente.",
+  "receipt_reprint_denied": "Ce reçu a déjà été imprimé : vous n'avez pas le droit de le réimprimer."
 }
