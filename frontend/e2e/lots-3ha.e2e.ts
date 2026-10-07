@@ -364,6 +364,8 @@ test.describe('Consommation des lots — Lot 3-H-A', () => {
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Valider' }).click();
     await expect(page.getByText(/La répartition par lot ne correspond pas/)).toBeVisible();
+    // Confirmation refermée (animation de sortie) avant la nouvelle validation.
+    await expect(page.getByRole('dialog')).toBeHidden();
     await page
       .getByRole('group', { name: 'Lots' })
       .getByLabel(`Quantité du lot ${lotName(article, 'Y')}`)
