@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.shared.schemas import Money, PositiveQuantity, Quantity
 from app.shared.text import (
@@ -27,6 +28,13 @@ class CategoryOut(BaseModel):
 
 class CategoryInput(BaseModel):
     name: Required100
+
+
+# Assortiment par site (ADR-0046).
+class AssortmentState(StrEnum):
+    ACTIVE = "active"  # dans l'assortiment du site
+    REMOVED = "removed"  # retiré (ligne conservée, réactivable)
+    NONE = "none"  # jamais associé au site
 
 
 class ArticleOut(BaseModel):
@@ -54,6 +62,9 @@ class ArticleOut(BaseModel):
     # Coût interne (Lot 3-A) : présent SEULEMENT avec ``catalog.article.cost_view`` — sinon le
     # champ est absent de la réponse (jamais remplacé par une valeur fictive).
     purchase_price: Money | None = None
+    # Assortiment (ADR-0046) : présent seulement si la liste est demandée pour un site
+    # (``site_id``) — ``active``, ``removed`` ou ``none`` (jamais associé à ce site).
+    site_assortment: AssortmentState | None = None
 
 
 class ArticleCreate(BaseModel):
@@ -72,9 +83,13 @@ class ArticleCreate(BaseModel):
     stock_managed: bool = True
     # Lot 3-B : quantités vendues décimales (kg, m, L) ; défaut : entières seulement.
     decimal_quantity_allowed: bool = False
-    # Lot 3-G : activation refusée tant que le Lot 3-H n'est pas livré (P1-b).
+    # Lot 3-G : suivi par lot et de péremption.
     lot_tracked: bool = False
     expiry_tracked: bool = False
+    # Assortiment (ADR-0046, D6) : sites où l'article est ajouté dès sa création. Vide par
+    # défaut : un nouvel article n'est associé à AUCUN site ; ``catalog.assortment.manage``
+    # exigée sur chaque site choisi, tout ou rien.
+    site_ids: list[uuid.UUID] = Field(default_factory=list, max_length=100)
 
 
 class ArticleUpdate(BaseModel):
@@ -182,3 +197,64 @@ class ScanOut(BaseModel):
 
     article: ArticleOut
     packaging: PackagingOut | None
+
+
+# --- Assortiment par site (Recette, étape 1, ADR-0046) ------------------------------------------
+
+
+class AssortmentStatusFilter(StrEnum):
+    ACTIVE = "active"
+    REMOVED = "removed"
+    ALL = "all"
+
+
+class SiteArticleOut(BaseModel):
+    """Article de l'assortiment d'un site (catalogue ≠ assortiment ≠ stock : aucun stock ici)."""
+
+    article_id: uuid.UUID
+    reference: str
+    designation: str
+    category_id: uuid.UUID
+    category_name: str
+    unit: str
+    article_active: bool
+    stock_managed: bool
+    state: AssortmentState
+    added_at: datetime
+    added_by_name: str | None
+    removed_at: datetime | None
+    removed_by_name: str | None
+
+
+class AssortmentArticlesInput(BaseModel):
+    article_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class AssortmentCopyInput(BaseModel):
+    """Copie d'assortiment (D6) : ajout seulement, depuis un autre site ; catégorie facultative."""
+
+    source_site_id: uuid.UUID
+    category_id: uuid.UUID | None = None
+
+
+class AssortmentChangeOut(BaseModel):
+    """Résultat d'un ajout ou d'une copie : ajoutés, réactivés, déjà présents."""
+
+    added: int
+    reactivated: int
+    unchanged: int
+
+
+class AssortmentRemovalOut(BaseModel):
+    removed: int
+    unchanged: int
+
+
+class ArticleSiteOut(BaseModel):
+    """Situation d'un article dans l'assortiment d'un site visible du membre."""
+
+    site_id: uuid.UUID
+    site_name: str
+    state: AssortmentState
+    added_at: datetime | None
+    removed_at: datetime | None

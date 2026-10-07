@@ -1,9 +1,11 @@
 from app.modules.catalog.api import (
+    register_assortment_removal_check,
     register_lot_flags_check,
     register_lot_stocked_sites,
     register_packaging_usage,
     register_stocked_sites,
 )
+from app.modules.stock.assortment_checks import assortment_removal_check
 from app.modules.stock.document_service import packagings_used
 from app.modules.stock.level_service import stocked_sites
 from app.modules.stock.lot_flags_checks import lot_flags_check
@@ -24,6 +26,8 @@ register_lot_stocked_sites(lot_stocked_sites)
 register_packaging_usage("stock", packagings_used)
 # Lot 3-H : changement de suivi par lot refusé s'il rendait un document incohérent.
 register_lot_flags_check("stock", lot_flags_check)
+# Assortiment (ADR-0046, D4) : retrait refusé si stock / lots non nuls ou brouillons du site.
+register_assortment_removal_check("stock", assortment_removal_check)
 
 MANIFEST = ModuleManifest(
     code="stock",

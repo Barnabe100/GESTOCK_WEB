@@ -1,6 +1,14 @@
-from app.modules.catalog.api import register_lot_flags_check, register_packaging_usage
+from app.modules.catalog.api import (
+    register_assortment_removal_check,
+    register_lot_flags_check,
+    register_packaging_usage,
+)
 from app.modules.inventory_count.router import router
-from app.modules.inventory_count.service import lot_flags_check, packagings_used
+from app.modules.inventory_count.service import (
+    assortment_removal_check,
+    lot_flags_check,
+    packagings_used,
+)
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, W = AccessKind.READ, AccessKind.WRITE
@@ -10,6 +18,8 @@ P = "inventory_count.inventory"
 register_packaging_usage("inventory_count", packagings_used)
 # Lot 3-H : le suivi par lot d'un article en cours d'inventaire (mode figé) ne change pas.
 register_lot_flags_check("inventory_count", lot_flags_check)
+# Assortiment (ADR-0046, D4) : retrait refusé si un inventaire ouvert du site contient l'article.
+register_assortment_removal_check("inventory_count", assortment_removal_check)
 
 MANIFEST = ModuleManifest(
     code="inventory_count",

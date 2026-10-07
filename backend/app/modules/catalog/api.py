@@ -24,18 +24,24 @@ from sqlalchemy import ColumnElement, Subquery, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.core.errors import BusinessRuleError, ConflictError
+from app.modules.catalog.assortment_port import (
+    RemovalBlocker,
+    RemovalBlockerKind,
+    register_assortment_removal_check,
+)
 from app.modules.catalog.lot_flags_port import (
     BlockerKind,
     LotFlagsBlocker,
     register_lot_flags_check,
 )
 from app.modules.catalog.lot_tracking import lot_tracking_available
-from app.modules.catalog.models import Article, Barcode, Category, Packaging
+from app.modules.catalog.models import Article, Barcode, Category, Packaging, SiteArticle
 from app.modules.catalog.stock_port import register_lot_stocked_sites, register_stocked_sites
 from app.modules.catalog.usage_port import register_packaging_usage
 from app.shared.pagination import escape_like
 
 __all__ = [
+    "NOT_IN_ASSORTMENT",
     "QUANTITY_STEP",
     "ArticleRef",
     "BarcodeMatch",
@@ -61,6 +67,12 @@ __all__ = [
     "register_packaging_usage",
     "register_stocked_sites",
     "resolve_barcode",
+    "RemovalBlocker",
+    "RemovalBlockerKind",
+    "assortment_view",
+    "ensure_in_assortment",
+    "lock_site_assortment",
+    "register_assortment_removal_check",
 ]
 
 
@@ -280,6 +292,74 @@ def articles_view() -> Subquery:
         )
         .subquery("articles_view")
     )
+
+
+# --- Assortiment par site (Recette, étape 1, ADR-0046) ------------------------------------------
+
+NOT_IN_ASSORTMENT = "article_not_in_site_assortment"
+
+
+def assortment_view() -> Subquery:
+    """Vue en lecture de l'assortiment ACTIF des sites (site, article) pour les jointures
+    d'autres modules (niveaux, POS, inventaires). Catalogue ≠ assortiment ≠ stock : un article
+    du catalogue n'est proposé sur un site que s'il figure ici. Filtrage par tenant : RLS et
+    condition ``tenant_id`` de l'appelant."""
+    return (
+        select(SiteArticle.tenant_id, SiteArticle.site_id, SiteArticle.article_id)
+        .where(SiteArticle.is_active.is_(True))
+        .subquery("site_assortment_view")
+    )
+
+
+def lock_site_assortment(
+    db: Session, site_id: uuid.UUID, article_ids: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Articles de ``article_ids`` ACTIFS dans l'assortiment du site, lus sous verrou PARTAGÉ
+    (``FOR SHARE``, ordre des identifiants) jusqu'à la fin de la transaction. Ordre global des
+    verrous : article → assortiment → niveaux → lots (D4) ; le retrait prend le verrou
+    exclusif de la ligne : une opération et un retrait s'exécutent l'un après l'autre."""
+    if not article_ids:
+        return set()
+    rows = db.scalars(
+        select(SiteArticle.article_id)
+        .where(SiteArticle.site_id == site_id, SiteArticle.article_id.in_(article_ids))
+        .where(SiteArticle.is_active.is_(True))
+        .order_by(SiteArticle.article_id)
+        .with_for_update(read=True)
+    ).all()
+    return set(rows)
+
+
+def ensure_in_assortment(
+    db: Session, site_id: uuid.UUID, article_ids: set[uuid.UUID], *, lock: bool = False
+) -> None:
+    """Refus ``422 article_not_in_site_assortment`` si un article n'est pas dans l'assortiment
+    ACTIF du site (D3) — aucun ajout automatique. ``lock`` : contrôle faisant foi d'une
+    validation (verrou partagé) ; sinon contrôle de saisie (brouillon)."""
+    if not article_ids:
+        return
+    if lock:
+        present = lock_site_assortment(db, site_id, article_ids)
+    else:
+        present = set(
+            db.scalars(
+                select(SiteArticle.article_id).where(
+                    SiteArticle.site_id == site_id,
+                    SiteArticle.article_id.in_(article_ids),
+                    SiteArticle.is_active.is_(True),
+                )
+            )
+        )
+    missing = article_ids - present
+    if missing:
+        references = sorted(
+            db.scalars(select(Article.reference).where(Article.id.in_(missing))).all()
+        )
+        raise BusinessRuleError(
+            "Article hors de l'assortiment de ce site : ajoutez-le d'abord à l'assortiment",
+            code=NOT_IN_ASSORTMENT,
+            extra={"site_id": str(site_id), "articles": references},
+        )
 
 
 # --- Présentations : unité de base ou conditionnement (Lot 3-B, Lot 3-C) -------------------------

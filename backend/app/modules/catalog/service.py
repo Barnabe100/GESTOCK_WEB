@@ -17,6 +17,7 @@ from app.core.errors import (
     NotFoundError,
 )
 from app.modules.catalog.api import barcode_search, resolve_barcode
+from app.modules.catalog.assortment_service import AssortmentService
 from app.modules.catalog.lot_flags_port import BlockerKind, lot_flags_blockers
 from app.modules.catalog.lot_tracking import lot_tracking_available
 from app.modules.catalog.models import Article, Barcode, BarcodeKind, Category, Packaging
@@ -272,11 +273,18 @@ class ArticleService:
             raise NotFoundError("Aucun article actif pour ce code-barres", code="article_not_found")
         return self.get(match.article_id)
 
-    def to_out(self, articles: list[Article]) -> list[ArticleOut]:
+    def to_out(self, articles: list[Article], site_id: uuid.UUID | None = None) -> list[ArticleOut]:
+        """``site_id`` : état d'assortiment de chaque article sur ce site (ADR-0046) — champ
+        ``site_assortment`` absent sinon."""
         names = supplier_names(
             self.db, {a.main_supplier_id for a in articles if a.main_supplier_id}
         )
         costs = self.can_view_costs
+        states = (
+            AssortmentService(self.db, self.ctx).states(site_id, {a.id for a in articles})
+            if site_id is not None
+            else {}
+        )
         return [
             ArticleOut(
                 id=a.id,
@@ -302,6 +310,7 @@ class ArticleService:
                 # Coût interne : champ ABSENT de la réponse sans ``cost_view`` (les routes
                 # sérialisent avec ``response_model_exclude_unset``).
                 **({PURCHASE_PRICE: a.purchase_price} if costs else {}),
+                **({"site_assortment": states[a.id]} if site_id is not None else {}),
             )
             for a in articles
         ]
@@ -389,6 +398,12 @@ class ArticleService:
         # sans elle, l'article est créé aux prix par défaut (0), à compléter par un habilité.
         if any(getattr(data, field) != 0 for field in PRICE_FIELDS):
             self._ensure_price_allowed()
+        # Assortiment (ADR-0046, D6) : sites choisis à la création, ``catalog.assortment.manage``
+        # contrôlée sur CHAQUE site avant toute écriture (tout ou rien) ; aucun par défaut.
+        site_ids = set(data.site_ids)
+        assortment = AssortmentService(self.db, self.ctx)
+        for site_id in sorted(site_ids):
+            assortment.require_manage(site_id)
         self._ensure_active_category(data.category_id)
         if data.main_supplier_id is not None:
             self._ensure_active_supplier(data.main_supplier_id)
@@ -397,7 +412,7 @@ class ArticleService:
         _check_lot_flags(data.stock_managed, data.lot_tracked, data.expiry_tracked)
         if data.lot_tracked:
             _ensure_lot_tracking_available()
-        article = Article(tenant_id=self.ctx.tenant_id, **data.model_dump())
+        article = Article(tenant_id=self.ctx.tenant_id, **data.model_dump(exclude={"site_ids"}))
         self._check_thresholds(article)
         self.db.add(article)
         _flush(self.db)
@@ -420,6 +435,7 @@ class ArticleService:
                 "expiry_tracked": article.expiry_tracked,
             },
         )
+        assortment.add_new_article(article, site_ids)
         return article
 
     def update(self, article_id: uuid.UUID, data: ArticleUpdate) -> Article:

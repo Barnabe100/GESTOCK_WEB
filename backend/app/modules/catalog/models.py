@@ -1,9 +1,12 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Numeric,
@@ -221,3 +224,39 @@ class Barcode(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class SiteArticle(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Assortiment d'un site (Recette, étape 1, ADR-0046) : article du catalogue GLOBAL du tenant
+    proposé sur ce site (vente, POS, réception, sortie, transfert, inventaire). Distinct du
+    catalogue (ce que l'entreprise connaît) et du stock (``stock_levels``, quantité par site,
+    créé seulement par un mouvement réel). Jamais supprimé : retrait = ``is_active`` faux
+    (historique conservé, réactivation sur la même ligne). ``added_by`` nul = association reprise
+    par la migration 0038 (usage réel existant)."""
+
+    __tablename__ = "catalog_site_articles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "site_id", "article_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "article_id"],
+            ["catalog_articles.tenant_id", "catalog_articles.id"],
+            ondelete="RESTRICT",
+        ),
+        Index("ix_catalog_site_articles_tenant_article", "tenant_id", "article_id"),
+        # Actif ⇔ aucun retrait en cours ; un auteur de retrait seulement avec une date.
+        CheckConstraint("is_active = (removed_at IS NULL)", name="active_not_removed"),
+        CheckConstraint("removed_at IS NOT NULL OR removed_by IS NULL", name="removed_by_dated"),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    article_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    added_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    removed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))

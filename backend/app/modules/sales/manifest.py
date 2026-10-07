@@ -1,4 +1,5 @@
-from app.modules.catalog.api import register_packaging_usage
+from app.modules.catalog.api import register_assortment_removal_check, register_packaging_usage
+from app.modules.sales.assortment_checks import assortment_removal_check
 from app.modules.sales.payment_method_router import router as payment_method_router
 from app.modules.sales.payment_methods import ensure_default_payment_methods
 from app.modules.sales.router import router
@@ -9,6 +10,8 @@ R, W, A, E = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN, AccessKind.EXP
 
 # Port du catalogue (Lot 3-B) : conditionnements utilisés par une vente (conversion figée).
 register_packaging_usage("sales", packagings_used)
+# Assortiment (ADR-0046, D4) : retrait refusé si un brouillon de vente du site contient l'article.
+register_assortment_removal_check("sales", assortment_removal_check)
 
 MANIFEST = ModuleManifest(
     code="sales",

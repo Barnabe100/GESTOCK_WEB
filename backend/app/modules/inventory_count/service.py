@@ -57,6 +57,8 @@ from app.modules.catalog.api import (
     BlockerKind,
     LotFlagsBlocker,
     PackagingRef,
+    RemovalBlocker,
+    RemovalBlockerKind,
     active_packagings,
     articles_view,
     barcode_search,
@@ -1821,5 +1823,26 @@ def lot_flags_check(
             .where(Inventory.status.in_(OPEN_STATUSES), InventoryLine.article_id == article_id)
             .distinct()
             .limit(20)
+        )
+    ]
+
+
+def assortment_removal_check(
+    db: Session, tenant_id: uuid.UUID, site_id: uuid.UUID, article_ids: set[uuid.UUID]
+) -> list[RemovalBlocker]:
+    """Port du catalogue (ADR-0046, D4) : un article d'un inventaire OUVERT de ce site ne quitte
+    pas l'assortiment (l'inventaire ne pourrait plus être validé)."""
+    return [
+        RemovalBlocker(RemovalBlockerKind.OPEN_DOCUMENT, article_id, number)
+        for article_id, number in db.execute(
+            select(InventoryLine.article_id, Inventory.number)
+            .join(Inventory, Inventory.id == InventoryLine.inventory_id)
+            .where(
+                Inventory.tenant_id == tenant_id,
+                Inventory.site_id == site_id,
+                Inventory.status.in_(OPEN_STATUSES),
+                InventoryLine.article_id.in_(article_ids),
+            )
+            .distinct()
         )
     ]

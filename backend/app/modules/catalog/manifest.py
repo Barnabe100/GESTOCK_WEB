@@ -2,7 +2,7 @@ from app.modules.catalog.onboarding import CATALOG_STEPS
 from app.modules.catalog.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
-R, W = AccessKind.READ, AccessKind.WRITE
+R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
 
 MANIFEST = ModuleManifest(
     code="catalog",
@@ -20,6 +20,10 @@ MANIFEST = ModuleManifest(
         # coût moyen pondéré), contrôlés par le serveur dans chaque réponse.
         PermissionDef("catalog.article.price_update", W),
         PermissionDef("catalog.article.cost_view", R),
+        # Recette, étape 1 (ADR-0046, D5) : assortiment des sites — configuration du site
+        # (nature ``admin`` : préparation possible d'un site en attente d'activation, sans
+        # permettre aucune opération métier), contrôlée sur le site visé.
+        PermissionDef("catalog.assortment.manage", A),
     ),
     router=router,
     onboarding=CATALOG_STEPS,
