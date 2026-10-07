@@ -201,7 +201,9 @@ test.describe('Encaissement (Lot 1)', () => {
     // Premier numéro du site pour l'année : VENT-{CODE_SITE}-{ANNÉE}-000001.
     expect(number).toBe(`VENT-${world.main.code.toUpperCase()}-${YEAR}-000001`);
     const receipt = page.getByTestId('pos-receipt');
-    await expect(receipt).toContainText(amount('Espèces reçues 10 000'));
+    // Libellés explicites (palier POS) : « Montant reçu », « Monnaie rendue ».
+    await expect(receipt.getByTestId('receipt-received')).toHaveText(amount('10 000'));
+    await expect(receipt.getByText('Monnaie rendue', { exact: true })).toBeVisible();
     await expect(receipt.getByTestId('receipt-change')).toHaveText(amount('2 500'));
     const { sale, payments } = await saleByNumber(request, number);
     expect([sale.payment_status, sale.is_credit, sale.customer_id]).toEqual(['PAID', false, null]);
@@ -253,7 +255,8 @@ test.describe('Encaissement (Lot 1)', () => {
     // Séquence propre au site : premier numéro de Bobo.
     expect(number).toBe(`VENT-BOBO-${YEAR}-000001`);
     await expect(page.getByTestId('pos-receipt')).toContainText('Orange Money');
-    await expect(page.getByTestId('receipt-change')).toHaveCount(0);
+    // Aucune espèce : monnaie rendue nulle (calculée par le serveur sur la seule partie espèces).
+    await expect(page.getByTestId('receipt-change')).toHaveText(amount('0'));
     const { payments: recorded } = await saleByNumber(request, number);
     expect(recorded.map((p) => [p.method, p.method_label, p.reference, p.change_given])).toEqual([
       ['MOBILE_MONEY', 'Orange Money', 'OM-778899', null],

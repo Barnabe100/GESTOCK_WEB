@@ -56,9 +56,14 @@ la caisse (`insufficient_stock`, `article_inactive`, `customer_inactive`,
   total **indicatifs** (décimal exact), client (F4), paiements (F8), validation (F10).
 - **Paiements** : aucun, partiel ou plusieurs moyens configurés ; reste proposé ; surpaiement
   hors espèces signalé ; espèces : montant reçu (monnaie calculée par le serveur) ; site avec
-  caisse : session de l'utilisateur indiquée, poste à choisir s'il en a plusieurs.
-- **Confirmation** : récapitulatif, avertissement de créance ; après validation, reçu affiché
-  à partir de la réponse du serveur (point d'extension du futur ticket).
+  caisse : session de l'utilisateur indiquée, poste à choisir s'il en a plusieurs. Résumé
+  indicatif (palier POS, [ADR-0047](../adr/0047-recu-de-vente-pos.md)) : Total, Montant reçu,
+  Reste dû, **« Monnaie rendue »** — jamais un reste dû et une monnaie rendue positifs ensemble.
+- **Confirmation** : récapitulatif (même résumé), avertissement de créance ; une erreur ne vaut
+  que pour son panier (effacée à toute modification du panier, du client ou des paiements, et à
+  la réussite) ; après validation, résultat du serveur (montant reçu, reste dû, monnaie rendue)
+  et actions **« Voir le reçu »** / **« Imprimer »** (reçu 80 mm relu depuis la vente
+  persistée, jamais le panier).
 - **Raccourcis** : F2 recherche, Entrée = **scan** (Lot 3-A, ADR-0039 : correspondance EXACTE du
   code-barres demandée au serveur avec la valeur saisie, `GET /pos/articles/by-barcode` ; code
   inconnu → « Code-barres inconnu », rien n'est ajouté ; jamais le premier résultat affiché), F4 client,
@@ -74,8 +79,9 @@ suspendu (`403`). Le frontend ne fait que masquer ; le serveur décide.
 
 ## 5. Hors périmètre (V1)
 
-Restauration (tables, cuisine, QR), garage, fidélité, remboursements, impression / PDF du
-ticket, création rapide de client, remises, mode hors ligne et synchronisation, intégrations
+Restauration (tables, cuisine, QR), garage, fidélité, remboursements, reçu PDF et formats
+d'impression autres que le ticket 80 mm (58 mm, A4 : prévus, non implémentés), création rapide
+de client, remises, mode hors ligne et synchronisation, intégrations
 Mobile Money / TPE / banques, reporting, profils métier spécialisés.
 
 ## Lot 3-A — articles non gérés en stock et scan exact (ADR-0039)

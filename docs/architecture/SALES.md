@@ -157,10 +157,18 @@ de vente du site ne peut pas être retiré (`409 article_in_open_documents`).
 | `sales.sale.credit_create` | write (vente à crédit) | ✓ | ✓ | — | — |
 | `sales.sale.credit_override` | write (dépassement de limite justifié) | ✓ | — | — | — |
 | `sales.sale.export` | export (historique, Lot 2) | ✓ | ✓ | — | — |
+| `sales.sale.receipt_print` | read (première impression du reçu) | ✓ | ✓ | ✓ | — |
+| `sales.sale.reprint` | read (réimpression du reçu) | ✓ | ✓ | ✓ | — |
 
 `sales.sale.export` (ADR-0038) s'ajoute à `sales.sale.view` (exigée aussi) et ne remplace
 aucun contrôle : tenant, sites visibles, portée `view` / `view_all` ; un site où le membre ne
 détient pas l'export n'est jamais exporté.
+
+Reçu (palier POS, [ADR-0047](../adr/0047-recu-de-vente-pos.md)) : construit par le serveur
+depuis la vente validée (`GET /sales/{id}/receipt`, portée de `sales.sale.view`) ; première
+impression avec `receipt_print`, impressions suivantes avec `reprint`, sur le site de la vente
+(`POST /sales/{id}/receipt/print`, journalisé) ; un vendeur réimprime lui-même les reçus de
+ses ventes.
 
 L'annulation d'une vente validée modifie le stock après coup : réservée par défaut à
 l'Administrateur ; un rôle personnalisé peut l'accorder. Aucun test sur un nom de rôle ;
@@ -177,7 +185,8 @@ d'isolation API et SQL (rôle applicatif sans `BYPASSRLS`).
 
 `sale.created` (numéro, statut, site, client, lignes, totaux) · `sale.updated` (avant /
 après) · `sale.validated` (statut précédent / nouveau, total, nombre de lignes, client) ·
-`sale.cancelled` (statut précédent, motif, `stock_restored`, total). L'utilisateur, le site
+`sale.cancelled` (statut précédent, motif, `stock_restored`, total) · `sale.receipt_printed`
+(numéro, rang d'impression, réimpression ou non — palier POS). L'utilisateur, le site
 et la vente (`entity_type="sale"`, `entity_id`) sont portés par l'entrée d'audit, écrite dans
 la transaction de l'opération.
 

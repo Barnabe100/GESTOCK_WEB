@@ -264,7 +264,11 @@ jeton, choix explicite de la suite). Jamais d'ajout implicite ni de contournemen
   au besoin ; vente comptant en espèces (stock 48, vente POS payée, mouvement de caisse), vente
   Mobile Money (aucun mouvement de caisse), vente à crédit (client choisi par F4, créance,
   seconde vente refusée par la limite), paiement mixte 40 000 espèces + 60 000 Mobile Money,
-  mobile (onglets Articles / Panier).
+  mobile (onglets Articles / Panier) ; palier POS ([ADR-0047](../../docs/adr/0047-recu-de-vente-pos.md)) :
+  15 000 reçus pour 10 000 → « Monnaie rendue » 5 000 (paiement, confirmation, résultat du
+  serveur), « Voir le reçu » (vente persistée, format 80 mm), « Imprimer » (impression du
+  navigateur simulée : reçu et `@page` 80 mm relevés, impression journalisée), panier vidé puis
+  « Réimprimer » depuis la fiche de la vente ; reçu consultable sur mobile sans débordement.
 - `ui.e2e.ts` (Phase 2.5-B, Design System) : navigation groupée, tableau de bord (indicateurs,
   actions rapides), liste standard (recherche, « Aucun résultat », réinitialisation),
   désactivation confirmée (annuler puis confirmer), entrée de stock saisie et validée par

@@ -269,7 +269,19 @@ assortiment actif (jamais reçus compris) ; seuils et affectation d'emplacement 
 assortiment (désaffecter permis), lots consultables ; site principal calculé par le serveur
 (`main_site_id` des capacités, aucun indicateur en base) ; page « Assortiment des sites »
 juste après « Articles ». **Les tests et les données de démonstration ajoutent explicitement
-les articles à l'assortiment des sites.** Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+les articles à l'assortiment des sites.** **Palier POS — encaissement, monnaie rendue et reçu**
+([ADR-0047](docs/adr/0047-recu-de-vente-pos.md), aucune migration) : résumé indicatif Total /
+Montant reçu / Reste dû / **« Monnaie rendue »** (libellé exact ; jamais un reste dû et une
+monnaie rendue positifs ensemble ; valeurs du serveur après la vente) ; une erreur
+d'encaissement ne vaut que pour son panier (effacée à toute modification et à la réussite) ;
+reçu construit **par le serveur depuis la vente persistée** (`GET /sales/{id}/receipt`, jamais le
+panier ; aucune donnée interne ; paiements avec `sales.payment.view`) ; impression
+`POST /sales/{id}/receipt/print` : première `sales.sale.receipt_print`, suivantes
+`sales.sale.reprint` (nature `read` ; Administrateur, Gestionnaire, Vendeur ; portée des ventes),
+journalisée `sale.receipt_printed` ; format V1 **ticket thermique 80 mm** (impression
+navigateur, `@page` injectée le temps de l'impression ; 58 mm / A4 prévus par `RECEIPT_FORMATS`,
+non implémentés) ; « Voir le reçu » / « Imprimer » après la vente, « Voir le reçu » /
+« Réimprimer » sur la fiche d'une vente validée. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

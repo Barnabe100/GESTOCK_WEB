@@ -2435,6 +2435,7 @@ a {
 .sm-receipt-meta dt,
 .sm-receipt-totals dt {
   font-weight: 400;
+  white-space: nowrap;
 }
 
 .sm-receipt-meta dd,

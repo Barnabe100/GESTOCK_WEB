@@ -7,6 +7,7 @@ import {
   ensureCashOpen,
   loginUi,
   OWNER,
+  paymentMethodId,
   SALE_NUMBER,
 } from './support';
 
@@ -29,6 +30,7 @@ interface Setup {
   articleId: string;
   shop: Site;
   sessionId: string;
+  cashRegisterId: string;
 }
 
 async function post(request: APIRequestContext, token: string, path: string, data: unknown) {
@@ -65,7 +67,15 @@ async function setup(request: APIRequestContext): Promise<Setup> {
   });
   await post(request, token, `/stock/entries/${entry.id}/validate`, {});
   const session = await ensureCashOpen(request, token, shop.id);
-  return { token, suffix, designation, articleId: article.id, shop, sessionId: session.id };
+  return {
+    token,
+    suffix,
+    designation,
+    articleId: article.id,
+    shop,
+    sessionId: session.id,
+    cashRegisterId: session.cash_register_id,
+  };
 }
 
 async function stockOf(request: APIRequestContext, s: Setup) {
@@ -296,5 +306,133 @@ test.describe('Point de vente', () => {
       .click();
     await expect(page.getByRole('dialog', { name: RECORDED })).toBeVisible();
     expect(await overflow()).toBe(false);
+  });
+  test('espèces supérieures au total : monnaie rendue, reçu 80 mm, impression puis réimpression', async ({
+    page,
+    request,
+  }) => {
+    const s = await setup(request);
+    // Impression navigateur simulée : on relève ce qui part à l'imprimante (reçu, page 80 mm).
+    await page.addInitScript(() => {
+      const w = window as unknown as { prints: { text: string; page: string }[] };
+      w.prints = [];
+      window.print = () => {
+        w.prints.push({
+          text: document.getElementById('sm-print-root')?.textContent ?? '',
+          page: document.head.querySelector('style[data-receipt-format]')?.textContent ?? '',
+        });
+      };
+    });
+    const prints = () =>
+      page.evaluate(
+        () => (window as unknown as { prints: { text: string; page: string }[] }).prints,
+      );
+    await openPos(page, s);
+    await tile(page, s).click();
+    await expect(page.getByTestId('pos-total')).toHaveText(amount('10 000'));
+    // Montant reçu 15 000 pour 10 000 : reste dû 0, monnaie rendue 5 000 (indicatif).
+    await page.keyboard.press('F8');
+    const dialog = page.getByRole('dialog', { name: 'Paiements (F8)' });
+    await dialog
+      .getByRole('group', { name: 'Ajouter un moyen de paiement' })
+      .getByRole('button', { name: 'Espèces' })
+      .click();
+    await dialog.getByLabel('Montant reçu du paiement 1').fill('15000');
+    await expect(dialog.getByTestId('pos-received')).toHaveText(amount('15 000'));
+    await expect(dialog.getByTestId('pos-remaining')).toHaveText(amount('0'));
+    await expect(dialog.getByTestId('pos-change')).toHaveText(amount('5 000'));
+    await expect(dialog.getByText('Monnaie rendue', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Appliquer' }).click();
+    await validate(page);
+    // Résultat : valeurs du serveur.
+    const result = page.getByTestId('pos-receipt');
+    await expect(result.getByTestId('receipt-received')).toHaveText(amount('15 000'));
+    await expect(result.getByTestId('receipt-remaining')).toHaveText(amount('0'));
+    await expect(result.getByTestId('receipt-change')).toHaveText(amount('5 000'));
+    const sale = await lastPosSale(request, s);
+
+    // Reçu de la vente persistée.
+    await result.getByRole('button', { name: 'Voir le reçu' }).click();
+    const preview = page.getByRole('dialog', { name: 'Reçu de vente' });
+    const receipt = preview.getByTestId('sale-receipt');
+    await expect(receipt).toHaveAttribute('data-format', 'THERMAL_80');
+    await expect(receipt.getByTestId('receipt-number')).toHaveText(sale.number);
+    await expect(receipt).toContainText(s.designation);
+    await expect(receipt.getByTestId('receipt-total')).toHaveText(amount('10 000'));
+    await expect(receipt.getByTestId('receipt-received')).toHaveText(amount('15 000'));
+    await expect(receipt.getByText('Monnaie rendue', { exact: true })).toBeVisible();
+    await expect(receipt.getByTestId('receipt-change')).toHaveText(amount('5 000'));
+    await expect(receipt).toContainText('Merci pour votre confiance. À très bientôt !');
+    await expect(preview.getByText('Reçu jamais imprimé.')).toBeVisible();
+    await preview.getByRole('button', { name: 'Fermer' }).click();
+
+    // Impression : autorisée et journalisée par le serveur, page 80 mm.
+    await result.getByRole('button', { name: 'Imprimer' }).click();
+    await expect.poll(async () => (await prints()).length).toBe(1);
+    const [first] = await prints();
+    expect(first?.page).toContain('size: 80mm auto');
+    expect(first?.text).toContain(sale.number);
+    expect(first?.text).toContain('Monnaie rendue');
+    const printed = await get<{ print_count: number; change_given: string }>(
+      request,
+      s.token,
+      `/sales/${sale.id}/receipt`,
+    );
+    expect([printed.print_count, printed.change_given]).toEqual([1, '5000.00']);
+
+    // Panier réinitialisé : le reçu reste celui de la vente persistée ; réimpression (historique).
+    await page.getByRole('button', { name: 'Nouvelle vente' }).click();
+    await expect(page.getByText('Panier vide : ajoutez des articles.')).toBeVisible();
+    await page.goto(`/sales/${sale.id}`);
+    await page.getByRole('button', { name: 'Réimprimer' }).click();
+    await expect.poll(async () => (await prints()).length).toBe(1);
+    await expect
+      .poll(
+        async () =>
+          (await get<{ print_count: number }>(request, s.token, `/sales/${sale.id}/receipt`))
+            .print_count,
+      )
+      .toBe(2);
+    const reprinted = (
+      await page.evaluate(() => (window as unknown as { prints: { text: string }[] }).prints)
+    )[0];
+    expect(reprinted?.text).toContain('Monnaie rendue');
+    await page.getByRole('button', { name: 'Voir le reçu' }).click();
+    await expect(
+      page.getByRole('dialog', { name: 'Reçu de vente' }).getByTestId('receipt-change'),
+    ).toHaveText(amount('5 000'));
+  });
+
+  test('reçu consultable sur mobile, sans débordement @mobile', async ({ page, request }) => {
+    const s = await setup(request);
+    const paid = await request.post('/api/v1/pos/checkout', {
+      headers: bearer(s.token),
+      data: {
+        site_id: s.shop.id,
+        customer_id: null,
+        lines: [{ article_id: s.articleId, packaging_id: null, quantity: '1' }],
+        payments: [
+          {
+            payment_method_id: await paymentMethodId(request, s.token, 'Espèces'),
+            amount: null,
+            amount_received: '20000',
+            reference: null,
+            cash_register_id: s.cashRegisterId,
+          },
+        ],
+        idempotency_key: crypto.randomUUID(),
+      },
+    });
+    expect(paid.status(), await paid.text()).toBe(201);
+    const { sale: created } = (await paid.json()) as { sale: { id: string } };
+    await loginUi(page, OWNER.email, OWNER.password);
+    await page.goto(`/sales/${created.id}`);
+    await page.getByRole('button', { name: 'Voir le reçu' }).click();
+    const preview = page.getByRole('dialog', { name: 'Reçu de vente' });
+    await expect(preview.getByTestId('receipt-change')).toHaveText(amount('10 000'));
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
   });
 });
