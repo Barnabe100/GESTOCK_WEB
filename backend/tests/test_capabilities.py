@@ -201,3 +201,43 @@ def test_suspended_tenant_is_refused(provision: Any, api_for: Any, owner_db: Ses
     owner_db.execute(text("UPDATE tenants SET status = 'suspended'"))
     owner_db.commit()
     assert api.get("/me/capabilities").json()["code"] == "tenant_suspended"
+
+
+def test_main_site_is_the_oldest_active_accessible_site(
+    provision: Any, api_for: Any, owner_db: Session
+) -> None:
+    """Recette, étape 1 (palier 4) : site principal calculé par le serveur — le plus ancien
+    site actif du tenant s'il est accessible au membre, sinon le premier site accessible
+    (ordre de la liste ``sites``) ; aucun indicateur en base."""
+    t = provision("alpha", plan="ENTREPRISE")
+    owner = api_for("owner@alpha.example.com")
+    # « Aaa » est trié avant le site initial : le site principal reste le plus ancien.
+    aaa = add_site(owner, "Aaa entrepôt", "AAA", "warehouse").json()["id"]
+    caps = _caps(owner)
+    assert caps["sites"][0]["id"] == aaa
+    assert caps["main_site_id"] == str(t.site_id)
+
+    # Membre sans accès au plus ancien site : premier site accessible.
+    bbb = add_site(owner, "Bbb boutique", "BBB").json()["id"]
+    roles = {r["template_code"]: r["id"] for r in owner.get("/roles").json()}
+    created = owner.post(
+        "/members",
+        json={
+            "email": "vendeur@example.com",
+            "full_name": "Vendeur",
+            "password": "Provisoire-123",
+            "roles": [{"role_id": roles["viewer"]}],
+            "site_ids": [bbb, aaa],
+        },
+    )
+    assert created.status_code == 201, created.text
+    member = api_for("vendeur@example.com", password="Provisoire-123")
+    member.post(
+        "/me/password", json={"current_password": "Provisoire-123", "new_password": "Definitif-456"}
+    )
+    assert _caps(member)["main_site_id"] == aaa
+
+    # Le plus ancien site désactivé : le suivant par ancienneté, s'il est accessible.
+    owner_db.execute(text("UPDATE sites SET is_active = false WHERE id = :s"), {"s": t.site_id})
+    owner_db.commit()
+    assert _caps(owner)["main_site_id"] == aaa

@@ -114,6 +114,11 @@ export interface Capabilities {
   };
   site: SiteInfo | null;
   sites: SiteInfo[];
+  /**
+   * Site principal calculé par le serveur : le plus ancien site actif du tenant s'il est
+   * accessible au membre, sinon le premier site accessible (`null` : aucun site).
+   */
+  main_site_id?: string | null;
   modules: { code: string; status: 'available' | 'planned'; core: boolean }[];
   permissions: string[];
   restricted_permissions: string[];

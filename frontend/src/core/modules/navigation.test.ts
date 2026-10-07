@@ -115,7 +115,8 @@ describe('navigation pilotée par le profil UX', () => {
   it('Restauration : aucune rubrique planifiée, produits dans « Stock »', () => {
     const sections = outline(caps(LAYOUTS.restaurant));
     expect(sections.map(([group]) => group)).toEqual(['home', 'sales', 'cash', 'stock', 'admin']);
-    expect(sections[3]?.[1]?.slice(0, 2)).toEqual(['articles', 'categories']);
+    // Recette, étape 1 : « Assortiment des sites » juste après les articles.
+    expect(sections[3]?.[1]?.slice(0, 3)).toEqual(['articles', 'assortment', 'categories']);
     expect(sections.flatMap(([, keys]) => keys).join(' ')).not.toMatch(/restaurant|table/);
   });
 

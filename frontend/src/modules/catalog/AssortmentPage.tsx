@@ -239,8 +239,9 @@ export default function AssortmentPage() {
   const { locale, timezone } = capabilities.tenant;
   const canManage = can(ASSORTMENT_MANAGE);
   // Site sélectionné dans l'en-tête : la page le suit (le serveur refuse un autre site).
+  // Sinon, le site principal calculé par le serveur, à défaut le premier site accessible.
   const [chosenSite, setChosenSite] = useState<string | null>(
-    selectedSite ?? capabilities.sites[0]?.id ?? null,
+    selectedSite ?? capabilities.main_site_id ?? capabilities.sites[0]?.id ?? null,
   );
   const siteId = selectedSite ?? chosenSite;
   const site = capabilities.sites.find((s) => s.id === siteId);

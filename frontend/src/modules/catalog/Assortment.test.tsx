@@ -429,4 +429,16 @@ describe('assortiment par site (palier 3)', () => {
     expect(options[1]?.textContent).toContain('CLOU-2');
     expect(options[1]?.textContent).toContain('Hors assortiment');
   });
+
+  it('site par défaut : site principal du serveur, sinon premier site accessible', async () => {
+    fetchMock.mockImplementation(async () => pageOf([siteArticle()]));
+    renderWithCapabilities(withToast(<AssortmentPage />), { permissions: VIEW, mainSiteId: 's2' });
+    await screen.findByText('VIS-001');
+    expect(gets('/catalog/sites/')[0]).toContain('/catalog/sites/s2/articles');
+    cleanup();
+    fetchMock.mockClear();
+    renderWithCapabilities(withToast(<AssortmentPage />), { permissions: VIEW });
+    await screen.findByText('VIS-001');
+    expect(gets('/catalog/sites/')[0]).toContain('/catalog/sites/s1/articles');
+  });
 });

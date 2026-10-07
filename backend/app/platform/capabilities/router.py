@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, Plan
@@ -81,6 +82,10 @@ class CapabilitiesOut(BaseModel):
     subscription: SubscriptionInfo
     site: SiteInfo | None
     sites: list[SiteInfo]
+    # Site principal (Recette, étape 1, décision du palier 4) : le plus ancien site actif du
+    # tenant s'il est accessible au membre, sinon le premier site accessible ; ``None`` sans
+    # site accessible. Calculé par le serveur : l'interface ne le devine jamais.
+    main_site_id: uuid.UUID | None = None
     modules: list[ModuleInfo]
     permissions: list[str]
     restricted_permissions: list[str]
@@ -152,6 +157,7 @@ def get_capabilities(
         ),
         site=site_info(ctx.site) if ctx.site else None,
         sites=[site_info(s) for s in sites],
+        main_site_id=_main_site_id(db, ctx.tenant.id, [s.id for s in sites]),
         modules=[
             ModuleInfo(code=m.code, status=m.status.value, core=m.core)
             for m in registry.all()
@@ -170,3 +176,20 @@ def get_capabilities(
             .items()
         },
     )
+
+
+def _main_site_id(
+    db: Session, tenant_id: uuid.UUID, accessible: list[uuid.UUID]
+) -> uuid.UUID | None:
+    """Site principal : le plus ancien site ACTIF du tenant (création), s'il est accessible au
+    membre ; sinon le premier site accessible (ordre de la liste ``sites``). Aucun indicateur
+    en base : une règle de calcul, pas une donnée."""
+    oldest = db.scalar(
+        select(Site.id)
+        .where(Site.tenant_id == tenant_id, Site.is_active.is_(True))
+        .order_by(Site.created_at, Site.id)
+        .limit(1)
+    )
+    if oldest is not None and oldest in accessible:
+        return oldest
+    return accessible[0] if accessible else None

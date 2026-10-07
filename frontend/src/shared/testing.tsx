@@ -38,6 +38,7 @@ export function renderWithCapabilities(
     modules = [],
     subscriptionStatus = 'active',
     extraRoutes = [],
+    mainSiteId = null,
   }: {
     permissions: string[];
     sites?: typeof SITES;
@@ -52,6 +53,8 @@ export function renderWithCapabilities(
     subscriptionStatus?: Capabilities['subscription']['status'];
     /** Autres écrans atteignables (vérifier une navigation). */
     extraRoutes?: { path: string; element: ReactNode }[];
+    /** Site principal calculé par le serveur (`main_site_id`). */
+    mainSiteId?: string | null;
   },
 ) {
   const caps = {
@@ -74,6 +77,7 @@ export function renderWithCapabilities(
     restricted_permissions: [],
     site: null,
     sites,
+    main_site_id: mainSiteId,
     modules,
     features,
     ux,

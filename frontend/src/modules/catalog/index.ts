@@ -14,14 +14,6 @@ export const catalogModule: FrontendModule = {
       permission: 'catalog.article.view',
     },
     {
-      key: 'categories',
-      labelKey: 'nav.categories',
-      group: 'catalog',
-      icon: 'pi pi-tags',
-      path: '/catalog/categories',
-      permission: 'catalog.category.view',
-    },
-    {
       // Recette, étape 1 (ADR-0046) : articles proposés par chaque site.
       key: 'assortment',
       labelKey: 'nav.assortment',
@@ -29,6 +21,14 @@ export const catalogModule: FrontendModule = {
       icon: 'pi pi-th-large',
       path: '/catalog/assortment',
       permission: 'catalog.article.view',
+    },
+    {
+      key: 'categories',
+      labelKey: 'nav.categories',
+      group: 'catalog',
+      icon: 'pi pi-tags',
+      path: '/catalog/categories',
+      permission: 'catalog.category.view',
     },
   ],
   routes: [
