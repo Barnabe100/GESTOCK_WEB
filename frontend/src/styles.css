@@ -2069,6 +2069,13 @@ a {
   min-width: 0;
 }
 
+/* Le champ de scan occupe la largeur de son conteneur (jamais sa largeur intrinsèque, qui
+   débordait d'une barre de filtres étroite sur mobile). */
+.sm-scan .p-icon-field,
+.sm-scan .p-inputtext {
+  width: 100%;
+}
+
 /* Lot 3-G : lot d'une ligne de réception (pleine largeur sous la ligne), libellé de lot. */
 .sm-line-lot {
   grid-column: 1 / -1;

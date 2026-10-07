@@ -395,6 +395,9 @@ test.describe('Conditionnements — Lot 3-B', () => {
     const sites = (await (
       await request.get('/api/v1/sites', { headers: bearer(other) })
     ).json()) as Site[];
+    // Son propre article est proposé par son site (ADR-0046) : seul le conditionnement d'une
+    // autre entreprise est en cause.
+    await assortArticles(request, other, [own.id], [sites[0]?.id ?? '']);
     const sale = await request.post('/api/v1/sales', {
       headers: bearer(other),
       data: {

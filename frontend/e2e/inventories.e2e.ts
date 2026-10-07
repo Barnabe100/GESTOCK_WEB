@@ -290,7 +290,9 @@ test.describe('Inventaires', () => {
     expect(await overflow()).toBe(false);
     await page.goto(`/inventories/${draft.id}`);
     const input = page.getByLabel(`Quantité physique de ${s.reference}`);
-    // Saisie du comptage utilisable sans défilement horizontal du tableau.
+    // Saisie du comptage utilisable sans défilement horizontal du tableau (le défilement
+    // vertical de la page est normal : barre de recherche pleine largeur sur mobile).
+    await input.scrollIntoViewIfNeeded();
     await expect(input).toBeInViewport();
     const tableFits = await page
       .locator('.sm-count-table .p-datatable-wrapper')

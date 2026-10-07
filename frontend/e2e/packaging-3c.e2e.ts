@@ -363,6 +363,9 @@ test.describe('Stock conditionné — Lot 3-C', () => {
         other,
       )
     ).id;
+    // Son propre article est proposé par son site (ADR-0046) : seul le conditionnement d'une
+    // autre entreprise est en cause.
+    await assortArticles(request, other, [article], [sites[0]?.id ?? '']);
     const response = await request.post('/api/v1/stock/entries', {
       headers: bearer(other),
       data: {
