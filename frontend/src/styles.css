@@ -627,12 +627,15 @@ a {
   margin-bottom: var(--sm-gap);
 }
 
-.sm-filterbar > .p-iconfield {
+/* PrimeReact 10 : la classe générée est `p-icon-field` (`p-iconfield` conservée). */
+.sm-filterbar > .p-iconfield,
+.sm-filterbar > .p-icon-field {
   flex: 1 1 16rem;
   max-width: 24rem;
 }
 
-.sm-filterbar > .p-iconfield .p-inputtext {
+.sm-filterbar > .p-iconfield .p-inputtext,
+.sm-filterbar > .p-icon-field .p-inputtext {
   width: 100%;
 }
 
@@ -1161,6 +1164,7 @@ a {
   }
 
   .sm-filterbar > .p-iconfield,
+  .sm-filterbar > .p-icon-field,
   .sm-filterbar > .sm-daterange {
     flex-basis: 100%;
     max-width: none;
