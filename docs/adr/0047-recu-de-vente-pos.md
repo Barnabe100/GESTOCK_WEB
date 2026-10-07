@@ -58,6 +58,11 @@ La recette du POS Web a relevé trois manques :
   Le contenu (`SaleReceipt`) ne dépend pas du format ; un format (`RECEIPT_FORMATS`) = une
   largeur, une classe CSS et une règle `@page`. 58 mm et A4 : simples entrées futures,
   **non implémentées**, aucune interface de choix en V1.
+- **Logo du tenant** (`logo_url` de l'identité documentaire, ADR-0027) : en haut du reçu, avant
+  les informations de vente, nom de l'entreprise conservé ; aucun logo = aucune image. L'impression
+  attend le chargement des images du reçu (chargées ou en erreur, au plus 3 s) : un logo tout juste
+  inséré n'est pas encore chargé et manquerait au ticket ; une image lente ou cassée ne bloque
+  jamais l'impression.
 - **Interface** : après la vente au POS, « Voir le reçu » et « Imprimer » ; sur la fiche d'une
   vente validée (historique), « Voir le reçu » et « Imprimer » / « Réimprimer » selon les
   impressions déjà journalisées et les permissions (le serveur refait le contrôle).

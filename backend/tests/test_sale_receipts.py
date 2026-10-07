@@ -144,6 +144,21 @@ def test_receipt_of_cash_sale_with_change_and_packaging(shop: World) -> None:
         assert forbidden not in response.text
 
 
+def test_receipt_header_carries_the_tenant_logo_when_configured(shop: World) -> None:
+    """Logo : ``logo_url`` existant du tenant (identité documentaire), aucun autre stockage."""
+    sale = _sale(shop, payments=[_cash("1500")])
+    issuer = shop.owner.get(f"/sales/{sale['id']}/receipt").json()["issuer"]
+    assert (issuer["name"], issuer["logo_url"]) == ("Entreprise alpha", None)
+    updated = shop.owner.patch("/tenant", json={"logo_url": "https://cdn.example.com/logo.png"})
+    assert updated.status_code == 200, updated.text
+    issuer = shop.owner.get(f"/sales/{sale['id']}/receipt").json()["issuer"]
+    # Nom de l'entreprise conservé à côté du logo.
+    assert (issuer["name"], issuer["logo_url"]) == (
+        "Entreprise alpha",
+        "https://cdn.example.com/logo.png",
+    )
+
+
 def test_exact_cash_payment_gives_no_change(shop: World) -> None:
     sale = _sale(shop, payments=[_cash("1500")])
     receipt = shop.owner.get(f"/sales/{sale['id']}/receipt").json()

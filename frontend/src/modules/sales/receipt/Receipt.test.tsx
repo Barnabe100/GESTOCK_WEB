@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  configure,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { formatMoney } from '@/shared/lib/decimal';
@@ -8,6 +16,7 @@ import { jsonResponse, renderWithCapabilities } from '@/shared/testing';
 import type { Receipt } from './api';
 import { DEFAULT_RECEIPT_FORMAT, RECEIPT_FORMATS } from './formats';
 import { ReceiptDialog, SaleReceiptActions } from './ReceiptDialog';
+import { ReceiptPrinter } from './ReceiptPrinter';
 import { SaleReceipt } from './SaleReceipt';
 
 const money = (v: string) => formatMoney(v, 'XOF', 'fr').replace(/\s+/g, ' ');
@@ -156,6 +165,88 @@ describe('reçu de vente (80 mm)', () => {
     expect(screen.queryByTestId('receipt-received')).toBeNull();
     expect(screen.queryByTestId('receipt-change')).toBeNull();
     expect(text(screen.getByTestId('receipt-remaining'))).toBe(money('0'));
+  });
+
+  it('logo du tenant : en haut du reçu, avant les informations de vente, nom conservé', () => {
+    const withLogo = receipt();
+    withLogo.issuer = { ...withLogo.issuer, logo_url: 'https://cdn.example.com/logo.png' };
+    renderWithCapabilities(<SaleReceipt receipt={withLogo} />, { permissions: VIEW });
+    const article = screen.getByTestId('sale-receipt');
+    const logo = article.querySelector('img.sm-receipt-logo') as HTMLImageElement;
+    expect(logo.getAttribute('src')).toBe('https://cdn.example.com/logo.png');
+    // Premier élément de l'en-tête, avant le nom et avant le numéro de vente.
+    expect(article.querySelector('header')?.firstElementChild).toBe(logo);
+    const number = screen.getByTestId('receipt-number');
+    expect(logo.compareDocumentPosition(number) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(text(article.querySelector('.sm-receipt-issuer'))).toBe('Quincaillerie du Centre');
+  });
+
+  it('sans logo : aucune image, reçu complet', () => {
+    renderWithCapabilities(<SaleReceipt receipt={receipt()} />, { permissions: VIEW });
+    const article = screen.getByTestId('sale-receipt');
+    expect(article.querySelector('img')).toBeNull();
+    expect(text(article.querySelector('.sm-receipt-issuer'))).toBe('Quincaillerie du Centre');
+    expect(text(screen.getByTestId('receipt-total'))).toBe(money('22500'));
+  });
+
+  it.each([
+    ['chargé', 'load'],
+    ['introuvable', 'error'],
+  ])(
+    'impression avec logo %s : attendue jusqu’à la fin du chargement, jamais bloquée',
+    async (_label, event) => {
+      const withLogo = receipt();
+      withLogo.issuer = { ...withLogo.issuer, logo_url: 'https://cdn.example.com/logo.png' };
+      fetchMock.mockImplementation(async (_url, init) =>
+        jsonResponse(init?.method === 'POST' ? { ...withLogo, print_count: 1 } : withLogo),
+      );
+      let printedWithLogo: boolean | null = null;
+      printMock.mockImplementation(() => {
+        printedWithLogo = Boolean(document.querySelector('#sm-print-root img.sm-receipt-logo'));
+      });
+      renderWithCapabilities(<ReceiptDialog saleId="v1" onClose={() => undefined} />, {
+        permissions: [...VIEW, 'sales.sale.receipt_print'],
+      });
+      const dialog = await screen.findByRole('dialog', { name: 'Reçu de vente' });
+      await act(async () => {
+        fireEvent.click(await within(dialog).findByRole('button', { name: 'Imprimer' }));
+      });
+      const logo = await waitFor(() => {
+        const img = document.querySelector('#sm-print-root img.sm-receipt-logo');
+        expect(img).not.toBeNull();
+        return img as HTMLImageElement;
+      });
+      // Logo pas encore chargé : rien n'est envoyé à l'imprimante.
+      expect(printMock).not.toHaveBeenCalled();
+      await act(async () => {
+        logo.dispatchEvent(new Event(event));
+      });
+      await waitFor(() => expect(printMock).toHaveBeenCalledTimes(1));
+      expect(printedWithLogo).toBe(true);
+    },
+  );
+
+  it('mode strict (double exécution des effets) : une seule impression, logo chargé', async () => {
+    const withLogo = receipt();
+    withLogo.issuer = { ...withLogo.issuer, logo_url: 'https://cdn.example.com/logo.png' };
+    const onDone = vi.fn();
+    // Comme `main.tsx` : racine en mode strict (effets exécutés, annulés puis ré-exécutés).
+    configure({ reactStrictMode: true });
+    try {
+      renderWithCapabilities(<ReceiptPrinter receipt={withLogo} onDone={onDone} />, {
+        permissions: VIEW,
+      });
+    } finally {
+      configure({ reactStrictMode: false });
+    }
+    const logo = document.querySelector('#sm-print-root img.sm-receipt-logo') as HTMLImageElement;
+    expect(logo).not.toBeNull();
+    expect(printMock).not.toHaveBeenCalled();
+    await act(async () => {
+      logo.dispatchEvent(new Event('load'));
+    });
+    await waitFor(() => expect(printMock).toHaveBeenCalledTimes(1));
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it('format V1 : ticket thermique 80 mm seulement (58 mm, A4 non implémentés)', () => {
