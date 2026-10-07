@@ -199,6 +199,12 @@ test.describe('Conditionnements — Lot 3-B', () => {
     await dialog.getByLabel(/^Prix de vente/).fill('500');
     // Quantités entières par défaut.
     await expect(dialog.getByLabel('Quantités décimales autorisées')).not.toBeChecked();
+    // Assortiment (ADR-0046) : site choisi EXPLICITEMENT à la création (« Proposer sur les
+    // sites »), sinon l'article n'est proposé par aucun site.
+    const sites = dialog.locator('.p-multiselect', { has: page.locator('#article-sites') });
+    await sites.click();
+    await page.locator('.p-multiselect-panel .p-multiselect-item').first().click();
+    await sites.click();
     await dialog.getByRole('button', { name: 'Enregistrer' }).click();
     await expect(dialog).toBeHidden();
     const found = (await (
