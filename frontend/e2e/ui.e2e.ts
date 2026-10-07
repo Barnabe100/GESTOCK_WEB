@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { apiToken, bearer, loginUi, OWNER } from './support';
+import { apiToken, assortArticles, bearer, loginUi, OWNER } from './support';
 
 /**
  * Phase 2.5-B — Design System : navigation groupée, tableau de bord, conventions de liste
@@ -32,7 +32,7 @@ test.describe('Design System', () => {
     };
     const category = await post('/catalog/categories', { name: `UI E2E ${suffix}` });
     const reference = `E2E-UI${suffix}`;
-    await post('/catalog/articles', {
+    const article = await post('/catalog/articles', {
       reference,
       designation: `Tournevis UI ${suffix}`,
       category_id: category.id,
@@ -40,6 +40,8 @@ test.describe('Design System', () => {
       purchase_price: '800',
       sale_price: '1200',
     });
+    // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+    await assortArticles(request, token, [article.id]);
     const spare = `UI Libre ${suffix}`;
     await post('/catalog/categories', { name: spare });
     const sites = (await (await request.get('/api/v1/sites', { headers })).json()) as {

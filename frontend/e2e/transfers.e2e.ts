@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  assortArticles,
   apiToken,
   bearer,
   changePlanOfSites,
@@ -60,6 +61,8 @@ async function setup(request: APIRequestContext, account = OWNER): Promise<Setup
     purchase_price: '1000',
     sale_price: '1500',
   });
+  // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [article.id]);
   for (const [siteId, quantity, cost] of [
     [source.id, '100', '1000'],
     [destination.id, '20', '2000'],

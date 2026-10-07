@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  assortArticles,
   bearer,
   createActiveSite,
   loginUi,
@@ -90,6 +91,8 @@ test.beforeAll(async ({ request }) => {
       purchase_price: '1000',
       sale_price: price,
     });
+    // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux deux sites.
+    await assortArticles(request, token, [article.id], [main.id, bobo.id]);
     for (const site of [main, bobo]) {
       const entry = await post(request, '/stock/entries', {
         site_id: site.id,

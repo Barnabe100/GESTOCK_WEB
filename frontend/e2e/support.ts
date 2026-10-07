@@ -380,3 +380,30 @@ export async function declareSubscriptionPayment(
   expect(response.status(), await response.text()).toBe(201);
   return (await response.json()) as { id: string; status: string; amount: string };
 }
+
+/** Sites accessibles à un jeton (`GET /sites`) : identifiants, dans l'ordre du serveur. */
+export async function siteIdsOf(request: APIRequestContext, token: string): Promise<string[]> {
+  const response = await request.get('/api/v1/sites', { headers: bearer(token) });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  return ((await response.json()) as { id: string }[]).map((s) => s.id);
+}
+
+/**
+ * Ajout EXPLICITE d'articles à l'assortiment de sites (Recette, étape 1, ADR-0046) :
+ * CATALOGUE ≠ ASSORTIMENT SITE ≠ STOCK SITE, aucun article n'est proposé par un site sans ce
+ * choix. Sans `siteIds`, tous les sites accessibles au jeton (choix explicite du test).
+ */
+export async function assortArticles(
+  request: APIRequestContext,
+  token: string,
+  articleIds: string[],
+  siteIds?: string[],
+): Promise<void> {
+  for (const siteId of siteIds ?? (await siteIdsOf(request, token))) {
+    const response = await request.post(`/api/v1/catalog/sites/${siteId}/articles`, {
+      headers: bearer(token),
+      data: { article_ids: articleIds },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+  }
+}

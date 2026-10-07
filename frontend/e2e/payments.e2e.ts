@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, ensureCashOpen, loginUi, OWNER, SALE_NUMBER } from './support';
+import {
+  assortArticles,
+  apiToken,
+  bearer,
+  ensureCashOpen,
+  loginUi,
+  OWNER,
+  SALE_NUMBER,
+} from './support';
 
 /**
  * Phase 2.7 — Paiements des ventes : la validation d'une vente est indépendante de son
@@ -42,6 +50,8 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     purchase_price: '6000',
     sale_price: '10000',
   });
+  // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [article.id]);
   const entry = await post('/stock/entries', {
     site_id: site.id,
     kind: 'INITIAL_STOCK',

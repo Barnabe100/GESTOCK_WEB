@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, loginUi, OWNER, provisionTenant, SALE_NUMBER, tokenFor } from './support';
+import {
+  assortArticles,
+  bearer,
+  loginUi,
+  OWNER,
+  provisionTenant,
+  SALE_NUMBER,
+  tokenFor,
+} from './support';
 
 /**
  * Phase 3.1 — Profils d'activité et profils UX. Chaque exécution crée, par la CLI TechNova,
@@ -82,6 +90,8 @@ test.describe('Profils d’activité', () => {
       purchase_price: '9000',
       sale_price: '12000',
     });
+    // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+    await assortArticles(request, token, [article.id]);
     const entry = await post('/stock/entries', {
       site_id: sites[0]?.id,
       kind: 'INITIAL_STOCK',

@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  assortArticles,
   bearer,
   createActiveSite,
   enableLotTracking,
@@ -92,6 +93,8 @@ async function trackedArticle(
     unit: 'bouteille',
     sale_price: '500',
   });
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites qui les proposent.
+  await assortArticles(request, world.token, [article.id]);
   await enableLotTracking(request, world.token, article.id);
   for (const [number, quantity, offset] of lots) {
     const entry = await api(request, 'post', '/stock/entries', {

@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, enableLotTracking, loginUi, ownerSql, provisionTenant, tokenFor } from './support';
+import {
+  assortArticles,
+  bearer,
+  enableLotTracking,
+  loginUi,
+  ownerSql,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-H (ADR-0045) — inventaires par lot, sur une entreprise créée pour l'exécution : comptage
@@ -102,6 +110,8 @@ async function trackedArticle(
     unit: 'brique',
     sale_price: '500',
   });
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites qui les proposent.
+  await assortArticles(request, world.token, [article.id], [world.site.id]);
   await enableLotTracking(request, world.token, article.id);
   const created = { id: article.id, reference, suffix };
   for (const lot of lots) await receive(request, created, lot);

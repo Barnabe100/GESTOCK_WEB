@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  assortArticles,
   bearer,
   createActiveSite,
   createMember,
@@ -120,6 +121,8 @@ test.beforeAll(async ({ request }) => {
       sale_price: price,
     });
     world.articles[key] = article.id;
+    // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux deux sites.
+    await assortArticles(request, token, [article.id], [main.id, bobo.id]);
     for (const site of [main, bobo]) {
       const entry = await post(request, '/stock/entries', {
         site_id: site.id,

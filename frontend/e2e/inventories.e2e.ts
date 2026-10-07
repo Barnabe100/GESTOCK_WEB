@@ -1,6 +1,15 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, createMember, loginUi, OWNER, STANDARD_OWNER, unique } from './support';
+import {
+  assortArticles,
+  apiToken,
+  bearer,
+  createMember,
+  loginUi,
+  OWNER,
+  STANDARD_OWNER,
+  unique,
+} from './support';
 
 const PASSWORD_MEMBER = 'Membre-Inventaire-2026';
 
@@ -44,6 +53,8 @@ async function setup(request: APIRequestContext, account = OWNER): Promise<Setup
     purchase_price: '500',
     sale_price: '700',
   });
+  // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [article.id]);
   const entry = await post('/stock/entries', {
     site_id: site.id,
     kind: 'INITIAL_STOCK',

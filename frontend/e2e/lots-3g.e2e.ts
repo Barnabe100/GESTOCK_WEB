@@ -1,6 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, enableLotTracking, loginUi, provisionTenant, tokenFor } from './support';
+import {
+  assortArticles,
+  bearer,
+  enableLotTracking,
+  loginUi,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-G (ADR-0045), sur une entreprise créée pour l'exécution :
@@ -110,6 +117,8 @@ test.beforeAll(async ({ request }) => {
   world.milk = await article(MILK, `Lait UHT 3G ${RUN}`);
   world.sugar = await article(SUGAR, `Sucre 3G ${RUN}`);
   world.yogurt = await article(YOGURT, `Yaourt 3G ${RUN}`);
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites qui les proposent.
+  await assortArticles(request, token, [world.milk, world.sugar, world.yogurt]);
   // P1-b levée : activation réelle par l'API (article géré en stock, stock nul).
   await enableLotTracking(request, world.token, world.milk);
 });

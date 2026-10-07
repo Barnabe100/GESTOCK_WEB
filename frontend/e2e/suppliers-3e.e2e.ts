@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, loginUi, provisionTenant, tokenFor } from './support';
+import { apiToken, assortArticles, bearer, loginUi, provisionTenant, tokenFor } from './support';
 
 /**
  * Lot 3-E (ADR-0043), sur une entreprise créée pour l'exécution : fiche fournisseur ouverte
@@ -103,6 +103,8 @@ test.beforeAll(async ({ request }) => {
   const soda = await article(SODA, `SODA3E-${RUN}`);
   const rice = await article(RICE, `RIZ3E-${RUN}`);
   const oil = await article(MAIN_ONLY, `HUILE3E-${RUN}`);
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [soda, rice, oil]);
   const carton = (
     await post(request, `/catalog/articles/${soda}/packagings`, {
       name: 'Carton 24',

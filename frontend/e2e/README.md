@@ -84,6 +84,24 @@ la suite peut être rejouée sur la même base.
 
 ## Suites
 
+**Assortiment par site** (Recette, étape 1, [ADR-0046](../../docs/adr/0046-assortiment-par-site.md)) :
+CATALOGUE ≠ ASSORTIMENT SITE ≠ STOCK SITE. Un article créé n'est proposé par aucun site : chaque
+suite qui crée des articles par l'API les ajoute **explicitement** à l'assortiment des sites
+concernés (`assortArticles` de `support.ts` ; sans liste de sites : tous les sites accessibles au
+jeton, choix explicite de la suite). Jamais d'ajout implicite ni de contournement de la règle.
+
+- `assortment.e2e.ts` (Recette, étape 1, ADR-0046) : article du catalogue seulement — aucun
+  site, réception / vente / seuils refusés (`422 article_not_in_site_assortment`) sans ajout
+  automatique, ni niveau ni caisse ; `main_site_id` (site le plus ancien) ; menu Articles →
+  Assortiment des sites → Catégories ; page Assortiment ouverte sur le site principal, ajout
+  depuis le catalogue ; dépôt toujours refusé (isolation des sites) ; retrait refusé avec du stock
+  puis avec un brouillon du site (numéro affiché), retrait accepté, filtre « Retirés »,
+  historique conservé, annulation recréant du stock « Hors assortiment » (seuils masqués,
+  sortie refusée), réactivation (même ligne) ; transfert vers un dépôt sans l'article refusé,
+  avis du document et « Ajouter à l'assortiment du site », transfert accepté ensuite ; POS
+  (recherche limitée, encaissement refusé hors assortiment), vente avec un article non géré en
+  stock, inventaires (article jamais reçu proposé à 0, ciblé hors assortiment refusé) ; Vendeur :
+  `403` sur la composition de l'assortiment ; page sur mobile sans débordement.
 - `console-licenses.e2e.ts` (Phase 3.3-B2) : paiement confirmé → génération de la licence dans
   la console (postes proposés puis ajustés, raison, confirmation), téléchargement du `.lic`
   signé, licence et postes autorisés visibles par l'entreprise (site actif), révocation

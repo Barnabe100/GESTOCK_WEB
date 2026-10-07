@@ -1,6 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, createActiveSite, loginUi, provisionTenant, tokenFor } from './support';
+import {
+  assortArticles,
+  bearer,
+  createActiveSite,
+  loginUi,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-D (ADR-0042), sur une entreprise créée pour l'exécution : codes-barres multiples d'un
@@ -123,6 +130,8 @@ test.beforeAll(async ({ request }) => {
       barcode: PRIMARY,
     })
   ).id;
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites qui les proposent.
+  await assortArticles(request, token, [world.coca], [world.main.id, world.depot.id]);
   world.carton = (
     await post(request, `/catalog/articles/${world.coca}/packagings`, {
       name: 'Carton 24',

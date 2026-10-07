@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  assortArticles,
   bearer,
   createActiveSite,
   createMember,
@@ -81,7 +82,11 @@ async function article(
       ...extra,
     },
     token,
-  );
+  ).then(async (created) => {
+    // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+    await assortArticles(request, token, [created.id]);
+    return created;
+  });
 }
 
 test.describe.configure({ mode: 'serial' });

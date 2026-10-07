@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
-import { apiToken, bearer, createActiveSite, loginUi, provisionTenant, tokenFor } from './support';
+import {
+  apiToken,
+  assortArticles,
+  bearer,
+  createActiveSite,
+  loginUi,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-F (ADR-0044), sur une entreprise créée pour l'exécution (boutique + dépôt) : emplacements
@@ -109,6 +117,8 @@ test.beforeAll(async ({ request }) => {
   world.soda = await article(SODA, `Soda 3F ${RUN}`);
   world.rice = await article(RICE, `Riz 3F ${RUN}`);
   world.oil = await article(OIL, `Huile 3F ${RUN}`);
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites qui les proposent.
+  await assortArticles(request, token, [world.soda, world.rice, world.oil]);
   const entry = await post(request, '/stock/entries', {
     site_id: world.main.id,
     kind: 'INITIAL_STOCK',

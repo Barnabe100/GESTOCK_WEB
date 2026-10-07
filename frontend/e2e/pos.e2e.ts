@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, ensureCashOpen, loginUi, OWNER, SALE_NUMBER } from './support';
+import {
+  assortArticles,
+  apiToken,
+  bearer,
+  ensureCashOpen,
+  loginUi,
+  OWNER,
+  SALE_NUMBER,
+} from './support';
 
 /**
  * Phase 3.0 — Point de vente. Chaque test prépare par l'API un article vendu 10 000 (50 u en
@@ -48,6 +56,8 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     purchase_price: '6000',
     sale_price: '10000',
   });
+  // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [article.id]);
   const entry = await post(request, token, '/stock/entries', {
     site_id: shop.id,
     kind: 'INITIAL_STOCK',

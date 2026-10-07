@@ -1,6 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, createActiveSite, loginUi, provisionTenant, tokenFor } from './support';
+import {
+  assortArticles,
+  bearer,
+  createActiveSite,
+  loginUi,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-C (ADR-0041), sur une entreprise créée pour l'exécution : opérations de stock dans
@@ -102,6 +109,8 @@ test.beforeAll(async ({ request }) => {
       sale_price: '500',
     })
   ).id;
+  // Assortiment (ADR-0046) : articles ajoutés EXPLICITEMENT aux sites qui les proposent.
+  await assortArticles(request, token, [world.coca]);
   // Conditionnements sans prix : la présentation des opérations de stock ne dépend pas du prix.
   world.pack = (
     await post(request, `/catalog/articles/${world.coca}/packagings`, {

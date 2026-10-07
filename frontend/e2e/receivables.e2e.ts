@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  assortArticles,
   apiToken,
   bearer,
   createActiveSite,
@@ -70,6 +71,8 @@ async function setup(request: APIRequestContext): Promise<Setup> {
     purchase_price: '6000',
     sale_price: '10000',
   });
+  // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [article.id]);
   for (const [siteId, quantity] of [
     [shop.id, '100'],
     [depot.id, '20'],

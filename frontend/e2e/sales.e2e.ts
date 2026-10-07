@@ -1,6 +1,15 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { apiToken, bearer, createMember, loginUi, OWNER, SALE_NUMBER, unique } from './support';
+import {
+  assortArticles,
+  apiToken,
+  bearer,
+  createMember,
+  loginUi,
+  OWNER,
+  SALE_NUMBER,
+  unique,
+} from './support';
 
 /**
  * Phase 2.4 — Ventes simples : parcours complet avec le vrai backend (StockService, RLS,
@@ -35,6 +44,8 @@ async function stockedArticle(request: APIRequestContext): Promise<Stocked> {
     purchase_price: '1000',
     sale_price: '1500',
   });
+  // Assortiment (ADR-0046) : article ajouté EXPLICITEMENT aux sites de l'entreprise.
+  await assortArticles(request, token, [article.id]);
   const sites = (await (await request.get('/api/v1/sites', { headers })).json()) as {
     id: string;
     name: string;

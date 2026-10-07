@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, createMember, loginUi, provisionTenant, SALE_NUMBER, tokenFor } from './support';
+import {
+  assortArticles,
+  bearer,
+  createMember,
+  loginUi,
+  provisionTenant,
+  SALE_NUMBER,
+  tokenFor,
+} from './support';
 
 /**
  * Lot 3-B (ADR-0040), sur une entreprise créée pour l'exécution : article sans conditionnement
@@ -140,6 +148,7 @@ test.beforeAll(async ({ request }) => {
       decimal_quantity_allowed: true,
     })
   ).id;
+  await assortArticles(request, token, [world.rice]);
   world.bag = (
     await post(request, `/catalog/articles/${world.rice}/packagings`, {
       name: 'Sac 25,5 kg',
@@ -158,6 +167,7 @@ test.beforeAll(async ({ request }) => {
       sale_price: '650',
     })
   ).id;
+  await assortArticles(request, token, [world.beer]);
   world.beerCarton = (
     await post(request, `/catalog/articles/${world.beer}/packagings`, {
       name: 'Carton 24',

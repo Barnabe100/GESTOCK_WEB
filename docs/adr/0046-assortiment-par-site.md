@@ -1,7 +1,7 @@
 # ADR-0046 — Assortiment par site
 
-- **Statut** : Acceptée (Recette, étape 1 — paliers 1 à 3 livrés et validés, palier 4 :
-  documentation ; E2E et CI au palier 5)
+- **Statut** : Acceptée (Recette, étape 1 — paliers 1 à 4 livrés et validés ; palier 5 :
+  validation globale, E2E et CI)
 - **Date** : 2026-10-07
 - **Prolonge** : [ADR-0033](0033-abonnement-par-site.md) (site = périmètre d'écriture),
   [ADR-0039](0039-catalogue-stock-gere-prix-couts.md) (`stock_managed`, garde centrale),
@@ -145,8 +145,12 @@ Règle retenue : **CATALOGUE TENANT ≠ ASSORTIMENT SITE ≠ STOCK SITE.**
 - Les tests et les données de démonstration doivent ajouter explicitement les articles à
   l'assortiment des sites (`site_ids` à la création ou ajout explicite).
 - Limites connues : les libellés d'accessibilité des cases à cocher de PrimeReact sont en
-  anglais (« Row Selected ») — configuration globale de PrimeReact prévue plus tard ; les tests
-  E2E sont adaptés au palier 5.
+  anglais (« Row Selected ») — configuration globale de PrimeReact prévue plus tard.
+- Palier 5 (validation globale) : les suites E2E ajoutent explicitement leurs articles à
+  l'assortiment (`assortArticles`, `frontend/e2e/support.ts`) et `assortment.e2e.ts` couvre les
+  parcours critiques ; la base de test est vidée en fin de session pytest, car le retour arrière
+  de la migration 0038 (étape « migrations réversibles » de la CI) refuse, à juste titre, de
+  perdre des choix d'assortiment faits par des utilisateurs.
 
 ## Alternatives écartées
 
