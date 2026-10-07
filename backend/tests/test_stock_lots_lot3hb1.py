@@ -348,6 +348,7 @@ def test_lot_of_another_tenant_refused(
                 "category_id": category["id"],
                 "unit": "u",
                 "sale_price": "10",
+                "site_ids": [str(beta.site_id), depot["id"]],
             },
         ),
         201,

@@ -418,7 +418,13 @@ def test_tenant_isolation_rls_and_composite_fk(
     own = _ok(
         other.post(
             "/catalog/articles",
-            json={"reference": "B-1", "designation": "B", "category_id": category, "unit": "u"},
+            json={
+                "reference": "B-1",
+                "designation": "B",
+                "category_id": category,
+                "unit": "u",
+                "site_ids": [str(beta.site_id)],
+            },
         ),
         201,
     )["id"]

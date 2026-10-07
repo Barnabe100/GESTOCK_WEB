@@ -53,6 +53,7 @@ def _article(
             "sale_price": price,
             "decimal_quantity_allowed": decimal,
             "stock_managed": managed,
+            "site_ids": [w.site, w.site2],  # assortiment des deux sites (ADR-0046)
         },
     )
     assert response.status_code == 201, response.text
@@ -587,7 +588,13 @@ def test_packaging_isolation_api_and_sql(
     category = other.post("/catalog/categories", json={"name": "Divers"}).json()["id"]
     own = other.post(
         "/catalog/articles",
-        json={"reference": "B-1", "designation": "B", "category_id": category, "unit": "u"},
+        json={
+            "reference": "B-1",
+            "designation": "B",
+            "category_id": category,
+            "unit": "u",
+            "site_ids": [str(beta.site_id)],
+        },
     ).json()["id"]
     assert other.patch(f"/catalog/packagings/{carton['id']}", json={"name": "X"}).status_code == 404
     assert other.post(f"/catalog/packagings/{carton['id']}/deactivate").status_code == 404

@@ -41,9 +41,12 @@ def _subscription_of(owner_db: Session, site_id: str | uuid.UUID) -> Any:
     ).one()
 
 
-def _article(api: Api) -> Any:
+def _article(api: Api, site_ids: list[str] | None = None) -> Any:
     category = api.post("/catalog/categories", json={"name": "Céréales"}).json()["id"]
-    return api.post("/catalog/articles", json=ARTICLE | {"category_id": category})
+    return api.post(
+        "/catalog/articles",
+        json=ARTICLE | {"category_id": category, "site_ids": site_ids or []},
+    )
 
 
 def _on_site(api: Api, site_id: str) -> Api:
@@ -151,7 +154,9 @@ def test_writes_follow_the_subscription_of_each_site(
     owner = api_for("owner@alpha.example.com")
     main = str(tenant.site_id)
     depot = add_site(owner, "Dépôt", "DEP", "warehouse", active=False).json()["id"]
-    article = _article(owner)  # données de l'entreprise
+    # Données de l'entreprise ; assortiment des deux sites (ADR-0046 : préparable même sur un
+    # site en attente d'activation, permission de nature ``admin``).
+    article = _article(owner, [main, depot])
     assert article.status_code == 201, article.text
     supplier = owner.post("/suppliers", json={"name": "Faso Import"}).json()["id"]
     body = {

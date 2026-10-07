@@ -627,3 +627,19 @@ def test_removal_waits_for_a_running_validation(
     assert results[0].status_code == 409, results[0].text
     assert results[0].json()["code"] == "article_has_stock"
     assert _levels(w, w.site)["A-1"]["in_assortment"] is True
+
+
+def test_static_every_stock_entry_point_goes_through_the_guard() -> None:
+    """Test statique : chaque point d'entrée de ``StockService`` qui verrouille ou écrit des
+    niveaux passe par ``_lock``, qui applique la garde de l'assortiment ; seules les
+    annulations en sont exemptées (``apply_many``)."""
+    import inspect
+
+    from app.modules.stock.stock_service import StockService
+
+    assert "self._ensure_in_assortment(" in inspect.getsource(StockService._lock)
+    for name in ("lock_levels", "apply_many", "transfer", "transfer_lots", "lock_site_lots"):
+        assert "self._lock(" in inspect.getsource(getattr(StockService, name)), name
+    assert "self.lock_levels(" in inspect.getsource(StockService.consume)
+    exempt = inspect.getsource(StockService.apply_many)
+    assert "MovementType.CANCELLATION" in exempt

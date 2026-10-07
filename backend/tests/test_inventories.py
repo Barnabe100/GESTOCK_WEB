@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import create_session_factory, set_db_context
 from tests import stock_helpers as sh
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, add_site, login
 from tests.stock_helpers import World
 
 BASE = "/inventories"
@@ -145,12 +145,14 @@ def test_full_inventory_takes_active_articles_managed_on_site(
     inventory = _create(world, "FULL")
     assert inventory["number"] == "INV-000001"
     assert inventory["status"] == "DRAFT" and inventory["inventory_type"] == "FULL"
-    assert inventory["line_count"] == 2 and inventory["counted_count"] == 0
+    assert inventory["line_count"] == 3 and inventory["counted_count"] == 0
     lines = {line["reference"]: line for line in _lines(world, inventory)["items"]}
-    # Article 2 jamais géré sur le site : absent d'un inventaire complet.
-    assert set(lines) == {"A-0", "A-1"}
+    # Recette, étape 1 (ADR-0046) : l'assortiment ACTIF du site, y compris l'article 2 jamais
+    # reçu (stock 0).
+    assert set(lines) == {"A-0", "A-1", "A-2"}
     assert lines["A-0"]["stock_theoretical_initial"] == "10.000"
     assert lines["A-1"]["stock_theoretical_initial"] == "4.000"
+    assert lines["A-2"]["stock_theoretical_initial"] == "0.000"
     assert lines["A-0"]["quantity_physical"] is None
     # Aucun effet sur le stock.
     assert sh.level(owner_db, world, 0)[0] == "10.000"
@@ -162,7 +164,9 @@ def test_full_inventory_takes_active_articles_managed_on_site(
 
 
 def test_full_inventory_rules(world: World) -> None:
-    empty = world.owner.post(BASE, json={"site_id": world.site, "inventory_type": "FULL"})
+    # Site sans assortiment : rien à inventorier (ADR-0046).
+    kiosk = add_site(world.owner, "Kiosque", "KIOSQUE").json()["id"]
+    empty = world.owner.post(BASE, json={"site_id": kiosk, "inventory_type": "FULL"})
     assert empty.status_code == 422 and empty.json()["code"] == "inventory_empty"
     sh.validated_entry(world, [(0, "5", "100")])
     fixed = world.owner.post(
@@ -178,7 +182,7 @@ def test_full_inventory_rules(world: World) -> None:
     sh.validated_entry(world, [(1, "5", "100")])
     world.owner.post(f"/catalog/articles/{world.articles[1]}/deactivate")
     inventory = _create(world, "FULL")
-    assert [line["reference"] for line in _lines(world, inventory)["items"]] == ["A-0"]
+    assert [line["reference"] for line in _lines(world, inventory)["items"]] == ["A-0", "A-2"]
 
 
 def test_targeted_inventory_accepts_article_never_stocked_on_site(world: World) -> None:
@@ -309,8 +313,15 @@ def test_update_draft_articles_and_comment(world: World, owner_db: Session) -> N
 
 def test_start_refreshes_snapshot_and_full_list(world: World) -> None:
     sh.validated_entry(world, [(0, "10", "100")])
+    removed = world.owner.post(
+        f"/catalog/sites/{world.site}/articles/remove",
+        json={"article_ids": [world.articles[1], world.articles[2]]},
+    )
+    assert removed.status_code == 200, removed.text
     inventory = _create(world, "FULL")
-    # Entre la création et le début du comptage : entrée et nouvel article géré sur le site.
+    assert [line["reference"] for line in _lines(world, inventory)["items"]] == ["A-0"]
+    # Entre la création et le début du comptage : entrée et article ajouté à l'assortiment.
+    sh.assort(world.owner, world.site, world.articles[1])
     sh.validated_entry(world, [(0, "5", "100"), (1, "2", "100")])
     started = _action(world.owner, inventory, "start")
     assert started.status_code == 200, started.text
@@ -777,6 +788,7 @@ def test_standard_plan_includes_inventories(provision: Any, api_for: Any) -> Non
     # Un seul site (plan STANDARD) : site obligatoire faute de site sélectionné.
     assert created.status_code == 422 and created.json()["code"] == "site_required"
     site = api.get("/sites").json()[0]["id"]
+    sh.assort(api, site, article["id"])
     assert (
         api.post(
             BASE,

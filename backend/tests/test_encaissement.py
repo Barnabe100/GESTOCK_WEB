@@ -1010,6 +1010,7 @@ def test_isolation_between_sites_and_tenants(
             "unit": "u",
             "purchase_price": "1",
             "sale_price": "1",
+            "site_ids": [beta.get("/sites").json()[0]["id"]],
         },
     )
     assert article.status_code == 201, article.text

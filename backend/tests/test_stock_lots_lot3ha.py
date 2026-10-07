@@ -934,6 +934,7 @@ def test_tenant_isolation(
                 "category_id": category["id"],
                 "unit": "u",
                 "sale_price": "10",
+                "site_ids": [str(beta.site_id)],
             },
         ),
         201,

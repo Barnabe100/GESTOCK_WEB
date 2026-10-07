@@ -583,6 +583,7 @@ def test_isolation_between_tenants_api(world: World, provision: Any, api_for: An
             "unit": "u",
             "purchase_price": "1",
             "sale_price": "2",
+            "site_ids": [beta_site],
         },
     ).json()["id"]
     line = [{"article_id": beta_article, "quantity": "1"}]

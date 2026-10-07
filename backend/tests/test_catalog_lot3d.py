@@ -223,6 +223,7 @@ def test_same_code_in_two_tenants(
             "category_id": category,
             "unit": "u",
             "barcode": "111",
+            "site_ids": [str(beta.site_id)],
         },
     )
     assert created.status_code == 201, created.text

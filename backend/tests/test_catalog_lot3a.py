@@ -81,6 +81,7 @@ def _service(w: World, reference: str = "SRV-1", price: str = "5000") -> dict[st
             "unit": "forfait",
             "sale_price": price,
             "stock_managed": False,
+            "site_ids": [w.site, w.site2],  # assortiment des deux sites (ADR-0046)
         },
     )
     assert response.status_code == 201, response.text
@@ -607,6 +608,7 @@ def test_concurrent_unmanage_and_stock_entry_never_both_succeed(
                 "designation": "Concurrence",
                 "category_id": category,
                 "unit": "u",
+                "site_ids": [priced.site],
             },
         ).json()
         entry = priced.owner.post(
