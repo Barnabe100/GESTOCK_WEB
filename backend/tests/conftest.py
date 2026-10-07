@@ -80,6 +80,7 @@ DATA_TABLES = (
     "stock_exits",
     "stock_exit_reasons",
     "document_sequences",
+    "catalog_site_articles",
     "catalog_articles",
     "catalog_categories",
     "suppliers",
@@ -123,7 +124,7 @@ def owner_engine() -> Iterator[Engine]:
 
 
 @pytest.fixture(scope="session")
-def migrated(owner_engine: Engine) -> None:
+def migrated(owner_engine: Engine) -> Iterator[None]:
     with owner_engine.begin() as conn:
         conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
@@ -133,6 +134,13 @@ def migrated(owner_engine: Engine) -> None:
     with Session(owner_engine) as session:
         sync_catalog(session, load_catalog(get_registry()))
         session.commit()
+    yield
+    # Base laissée vide de données métier en fin de session : l'étape « migrations
+    # réversibles » de la CI (``alembic downgrade base``) s'exécute ensuite sur cette base, et
+    # le retour arrière de la migration 0038 refuse — à juste titre — de perdre des choix
+    # d'assortiment faits par des utilisateurs (ici, ceux du dernier test).
+    with owner_engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {', '.join(DATA_TABLES)} CASCADE"))
 
 
 @pytest.fixture(scope="session")
