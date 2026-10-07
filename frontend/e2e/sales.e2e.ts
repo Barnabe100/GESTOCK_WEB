@@ -236,6 +236,122 @@ test.describe('Ventes', () => {
     expect(await stockOf(request, stocked)).toBe('10.000');
   });
 
+  /**
+   * Brouillon de vente (stabilisation) : un seul brouillon créé, modification enregistrée avant
+   * la validation, refus puis correction et nouvelle validation de la version corrigée.
+   */
+  test('brouillon : création, modification, validation refusée, correction, nouvelle validation', async ({
+    page,
+    request,
+  }) => {
+    const stocked = await stockedArticle(request);
+    const { reference, customer, token } = stocked;
+    await loginUi(page, OWNER.email, OWNER.password);
+    await page.goto('/sales/new');
+    await expect(page.getByRole('heading', { name: 'Nouvelle vente' })).toBeVisible();
+    if (await page.locator('#sale-site').count()) {
+      await page.locator('.p-dropdown', { has: page.locator('#sale-site') }).click();
+      await page
+        .locator('.p-dropdown-panel')
+        .last()
+        .locator('.p-dropdown-item', { hasText: stocked.siteName })
+        .click();
+    }
+    await pick(page, 'sale-customer', customer);
+    await page.getByRole('button', { name: 'Ajouter une ligne' }).click();
+    await pick(page, 'line-0-article', reference);
+    await page.locator('#line-0-quantity').fill('3');
+    // Création : double clic, un seul brouillon.
+    await page.getByRole('button', { name: 'Enregistrer le brouillon' }).dblclick();
+    await expect(page.getByRole('heading', { name: 'Vente non numérotée' })).toBeVisible();
+
+    // Modification puis validation : la quantité modifiée (12 > 10 en stock) est enregistrée
+    // avant la validation, que le serveur refuse.
+    await page.locator('#line-0-quantity').fill('12');
+    await page.getByRole('button', { name: 'Valider la vente' }).click();
+    let dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Valider la vente' }).click();
+    await expect(
+      dialog.getByText(`Stock insuffisant : ${reference} (disponible : 10).`),
+    ).toBeVisible();
+    const id = page.url().split('/').at(-1) ?? '';
+    const persisted = (await (
+      await request.get(`/api/v1/sales/${id}`, { headers: bearer(token) })
+    ).json()) as { status: string; lines: { quantity: string }[] };
+    expect(persisted.status).toBe('DRAFT');
+    expect(persisted.lines.map((l) => l.quantity)).toEqual(['12.000']);
+
+    // Correction puis nouvelle validation : la version corrigée est enregistrée et validée.
+    await dialog.getByRole('button', { name: 'Annuler' }).click();
+    await expect(dialog).toHaveCount(0);
+    await page.locator('#line-0-quantity').fill('4');
+    await page.getByRole('button', { name: 'Valider la vente' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Valider la vente' }).click();
+    await expect(page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`))).toBeVisible();
+    await expect(page.getByText('Validée', { exact: true })).toBeVisible();
+
+    const sales = (await (
+      await request.get(`/api/v1/sales?search=${encodeURIComponent(customer)}`, {
+        headers: bearer(token),
+      })
+    ).json()) as { total: number; items: { id: string; status: string }[] };
+    expect(sales.total).toBe(1);
+    expect(sales.items[0]).toMatchObject({ id, status: 'VALIDATED' });
+    const sold = (await (
+      await request.get(`/api/v1/sales/${id}`, { headers: bearer(token) })
+    ).json()) as { lines: { quantity: string }[] };
+    expect(sold.lines.map((l) => l.quantity)).toEqual(['4.000']);
+    expect(await stockOf(request, stocked)).toBe('6.000');
+  });
+
+  test('nouvelle vente validée sans enregistrement préalable : refus conservé, correction, validation', async ({
+    page,
+    request,
+  }) => {
+    const stocked = await stockedArticle(request);
+    const { reference, customer, token } = stocked;
+    await loginUi(page, OWNER.email, OWNER.password);
+    await page.goto('/sales/new');
+    await expect(page.getByRole('heading', { name: 'Nouvelle vente' })).toBeVisible();
+    if (await page.locator('#sale-site').count()) {
+      await page.locator('.p-dropdown', { has: page.locator('#sale-site') }).click();
+      await page
+        .locator('.p-dropdown-panel')
+        .last()
+        .locator('.p-dropdown-item', { hasText: stocked.siteName })
+        .click();
+    }
+    await pick(page, 'sale-customer', customer);
+    await page.getByRole('button', { name: 'Ajouter une ligne' }).click();
+    await pick(page, 'line-0-article', reference);
+    await page.locator('#line-0-quantity').fill('12');
+    // Validation directe : brouillon créé puis validation refusée ; le refus reste affiché.
+    await page.getByRole('button', { name: 'Valider la vente' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Valider la vente' }).click();
+    await expect(
+      dialog.getByText(`Stock insuffisant : ${reference} (disponible : 10).`),
+    ).toBeVisible();
+    // Dialogue fermé : fiche du brouillon créé.
+    await dialog.getByRole('button', { name: 'Annuler' }).click();
+    await expect(page.getByRole('heading', { name: 'Vente non numérotée' })).toBeVisible();
+    await expect(page).toHaveURL(/\/sales\/[0-9a-f-]{36}$/);
+    await page.locator('#line-0-quantity').fill('2');
+    await page.getByRole('button', { name: 'Valider la vente' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Valider la vente' }).click();
+    await expect(page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`))).toBeVisible();
+
+    const sales = (await (
+      await request.get(`/api/v1/sales?search=${encodeURIComponent(customer)}`, {
+        headers: bearer(token),
+      })
+    ).json()) as { total: number; items: { status: string }[] };
+    expect(sales.total).toBe(1);
+    expect(sales.items[0]?.status).toBe('VALIDATED');
+    expect(await stockOf(request, stocked)).toBe('8.000');
+  });
+
   test('affichage mobile sans débordement @mobile', async ({ page, request }) => {
     const { reference } = await stockedArticle(request);
     await loginUi(page, OWNER.email, OWNER.password);

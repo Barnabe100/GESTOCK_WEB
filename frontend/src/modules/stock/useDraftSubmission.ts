@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 
 /**
- * Enregistrement puis validation d'un brouillon de document de stock (entrée, sortie,
- * transfert), sans double création ni perte de modification.
+ * Enregistrement puis validation d'un brouillon de document (entrée, sortie, transfert de
+ * stock ; vente au back-office), sans double création ni perte de modification.
  *
  * - L'identifiant du brouillon est conservé dès sa création (référence, indépendante du rendu
  *   et de la navigation) : tant que le formulaire « nouveau » reste affiché après la création,

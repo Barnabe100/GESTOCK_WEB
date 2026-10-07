@@ -8,7 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
@@ -21,6 +21,7 @@ import { AssortmentNotice } from '@/modules/catalog/assortment';
 import { BarcodeScanField } from '@/modules/catalog/BarcodeScanField';
 import { ArticlePicker, toArticleOption, type ArticleOption } from '@/modules/stock/ArticlePicker';
 import { expiredShortages, LineLotsList, type ExpiredShortage } from '@/modules/stock/ui';
+import { useDraftSubmission } from '@/modules/stock/useDraftSubmission';
 import {
   addQuantity,
   formatMoney,
@@ -209,22 +210,6 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
     lines.append({ article: toArticleOption(scan.article), packaging, quantity: '1' });
   };
 
-  const persist = async (values: FormValues): Promise<Sale> => {
-    const saved = await save.mutateAsync({ id: sale?.id, input: toInput(values, isNew) });
-    form.reset(defaults(saved, defaultSite));
-    if (isNew) void navigate(`/sales/${saved.id}`, { replace: true });
-    return saved;
-  };
-
-  const onSave = form.handleSubmit(async (values) => {
-    try {
-      await persist(values);
-      toast.success(t('sales.draftSaved'));
-    } catch (error) {
-      toast.error(saleError(t, error, locale));
-    }
-  });
-
   // Validation : confirmation, encaissement immédiat facultatif (le reste dû est une créance).
   const [validating, setValidating] = useState<FormValues | null>(null);
   const [validationError, setValidationError] = useState<{
@@ -232,40 +217,79 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
     overrideAllowed: boolean;
     expiredShortages: ExpiredShortage[];
   } | null>(null);
+  // Brouillon créé depuis « /sales/new » : l'adresse de la vente n'est prise qu'une fois le
+  // dialogue de validation fermé (« /sales/new » et « /sales/:id » sont deux pages : naviguer
+  // remonterait le formulaire et perdrait le dialogue, son refus et ses saisies).
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (createdId !== null && validating === null) {
+      void navigate(`/sales/${createdId}`, { replace: true });
+    }
+  }, [createdId, validating, navigate]);
+
+  // Brouillon : un seul créé (identifiant conservé dès la création), modification détectée sur
+  // la saisie elle-même, une seule soumission à la fois (mécanisme des documents de stock).
+  const draft = useDraftSubmission({
+    initial: sale,
+    valuesOf: (saved: Sale) => defaults(saved, defaultSite),
+    toInput,
+    save: (id, input) => save.mutateAsync({ id, input }),
+    onSaved: (saved, created) => {
+      form.reset(defaults(saved, defaultSite));
+      if (created) setCreatedId(saved.id);
+    },
+  });
+
+  const onSave = form.handleSubmit((values) =>
+    draft.exclusive(async () => {
+      try {
+        await draft.persist(values);
+        toast.success(t('sales.draftSaved'));
+      } catch (error) {
+        toast.error(saleError(t, error, locale));
+      }
+    }),
+  );
+
   const onValidate = form.handleSubmit((values) => {
     setValidationError(null);
     setValidating(values);
   });
-  const confirmValidation = async (
-    values: FormValues,
+  const confirmValidation = (
     payments: ImmediatePayment[],
     creditOverride: CreditOverride | null,
     expiredLotOverride: ExpiredLotOverride | null = null,
-  ) => {
-    try {
-      const saved = form.formState.isDirty || !sale ? await persist(values) : sale;
-      const validated = await validate.mutateAsync({
-        id: saved.id,
-        payments,
-        creditOverride,
-        expiredLotOverride,
-      });
-      setValidating(null);
-      toast.success(t('sales.validated', { number: validated.number ?? '' }));
-    } catch (error) {
-      // Refus (stock, prix, crédit…) : dialogue conservé pour corriger, encaisser ou, si le
-      // serveur le permet à cet utilisateur, autoriser le dépassement de la limite de crédit.
-      setValidationError({
-        message: saleError(t, error, locale, currency),
-        overrideAllowed:
-          error instanceof ApiError &&
-          error.code === 'credit_limit_exceeded' &&
-          error.extra.override_allowed === true,
-        // Lot 3-H-A (O-1) : lots périmés disponibles, dérogation explicite seulement.
-        expiredShortages: expiredShortages(error),
-      });
-    }
-  };
+  ) =>
+    draft.exclusive(async () => {
+      try {
+        // Version validée = version enregistrée de la saisie (enregistrée d'abord si besoin).
+        // Saisie lue à la confirmation (dialogue modal : celle affichée), et non à l'ouverture :
+        // un enregistrement terminé entre-temps l'a remise à la version du serveur.
+        const saved = await draft.ensureSaved(form.getValues());
+        const validated = await validate.mutateAsync({
+          id: saved.id,
+          payments,
+          creditOverride,
+          expiredLotOverride,
+        });
+        setValidating(null);
+        toast.success(t('sales.validated', { number: validated.number ?? '' }));
+      } catch (error) {
+        // Refus (stock, prix, crédit…) : dialogue conservé pour corriger, encaisser ou, si le
+        // serveur le permet à cet utilisateur, autoriser le dépassement de la limite de crédit.
+        setValidationError({
+          message: saleError(t, error, locale, currency),
+          overrideAllowed:
+            error instanceof ApiError &&
+            error.code === 'credit_limit_exceeded' &&
+            error.extra.override_allowed === true,
+          // Lot 3-H-A (O-1) : lots périmés disponibles, dérogation explicite seulement.
+          expiredShortages: expiredShortages(error),
+        });
+      }
+    });
+
+  const busy = draft.pending || save.isPending || validate.isPending;
 
   return (
     <form onSubmit={onSave} className="sm-form" noValidate>
@@ -448,13 +472,19 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
           text
           onClick={() => void navigate('/sales')}
         />
-        <Button type="submit" label={t('stock.saveDraft')} outlined loading={save.isPending} />
+        <Button
+          type="submit"
+          label={t('stock.saveDraft')}
+          outlined
+          disabled={busy}
+          loading={save.isPending}
+        />
         {can('sales.sale.validate') && (
           <Button
             type="button"
             icon="pi pi-check"
             label={t('sales.validate')}
-            disabled={save.isPending || validate.isPending}
+            disabled={busy}
             loading={validate.isPending}
             onClick={() => void onValidate()}
           />
@@ -465,12 +495,12 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
           total={displayTotal}
           siteId={validating.site_id ?? sale?.site_id ?? null}
           hasCustomer={validating.customer !== null}
-          pending={save.isPending || validate.isPending}
+          pending={busy}
           error={validationError?.message ?? null}
           overrideAllowed={validationError?.overrideAllowed ?? false}
           expiredShortages={validationError?.expiredShortages ?? []}
           onConfirm={(payments, creditOverride, expiredLotOverride) =>
-            void confirmValidation(validating, payments, creditOverride, expiredLotOverride)
+            void confirmValidation(payments, creditOverride, expiredLotOverride)
           }
           onClose={() => setValidating(null)}
         />
