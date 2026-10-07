@@ -47,7 +47,7 @@ Règle : **aucune valeur visuelle en dur** dans un composant ; ajouter un jeton 
 | `PageHeader` | Titre (h1), `description`, `breadcrumbs` (fil d'Ariane des fiches), `actions` principales. |
 | `FilterBar` | `[Recherche] [Filtres] [Réinitialiser]` (`role="search"`, réinitialisation désactivée sans filtre actif). `DateRangeFilter` : période avec libellés visibles « Du / Au ». |
 | `SearchInput`, `StatusFilter` | Recherche serveur (anti-rebond) ; filtre Actifs / Inactifs / Tous. |
-| `ServerTable` | Tableau paginé côté serveur : tri, pagination (10/25/50/100), survol, rapport « 1–25 sur 120 », défilement horizontal, erreur traduite, état vide. |
+| `ServerTable` | Tableau paginé côté serveur : tri, pagination (10/25/50/100), survol, rapport « 1–25 sur 120 », défilement horizontal, erreur traduite, état vide. Sélection multiple facultative (`selection`, `onSelectionChange` + colonne `selectionMode="multiple"`) pour les actions groupées (retrait d'assortiment, ADR-0046). |
 | `RowActions` | Actions de ligne : boutons icône (infobulle + `aria-label`) jusqu'à 3, au-delà menu « Plus d'actions » ; action destructive en rouge. |
 | `ExportMenu` | UNE action « Exporter » par fonctionnalité (bouton contour, icône de téléchargement) ouvrant le menu des formats proposés (`formats` : Excel, CSV, PDF) ; transmet les filtres affichés ; affichée seulement avec la permission d'export (ADR-0038). |
 | `StatusBadge` et dérivés | `DocumentStatusBadge`, `ActiveBadge`, `SubscriptionStatusBadge` — voir §4. |
@@ -58,6 +58,7 @@ Règle : **aucune valeur visuelle en dur** dans un composant ; ajouter un jeton 
 | `confirmAction` | Confirmation standard des actions sensibles (validation, annulation, désactivation). `danger` → bouton rouge, icône d'alerte, focus par défaut sur « Annuler ». |
 | `MetricCard` | Indicateur du tableau de bord (valeur, libellé, tonalité, lien éventuel). |
 | `NotFound` | Page introuvable avec retour au tableau de bord. |
+| Assortiment (`modules/catalog/assortment.tsx`) | `AssortmentStateBadge`, `OutOfAssortmentBadge`, `RemovalBlockers` (retrait refusé détaillé par article à partir de `blocked`), `AssortmentNotice` (écrans opérationnels : « Hors assortiment » + ajout explicite selon la permission) — ADR-0046. |
 
 ## 4. Statuts (identiques partout)
 
@@ -71,6 +72,8 @@ Règle : **aucune valeur visuelle en dur** dans un composant ; ajouter un jeton 
 | `LOW` (niveau de stock) | Stock faible | warning |
 | `OUT` (niveau de stock) | Rupture | danger |
 | `OK` / `NOT_STOCKED` | Normal / Non stocké | success / neutral |
+| Assortiment `active` / `removed` / `none` | Proposé / Retiré / Non proposé | success / warning / neutral |
+| Hors assortiment (stock restant, suggestion, document) | Hors assortiment | warning (`OutOfAssortmentBadge`) |
 | Marqueurs (rôle de base, propriétaire…) | — | info |
 | Avertissements (protégé, mot de passe à changer) | — | warning |
 
@@ -146,7 +149,10 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
 | ≤ 800 px (mobile) | Filtres deux par ligne (recherche et période pleine largeur), lignes de documents empilées, indicateurs deux par ligne, actions rapides avant les listes, pagination simplifiée. |
 
 Garantie testée (Playwright, 390 px) : **aucun débordement horizontal de la page** ; les
-tableaux défilent dans leur cadre.
+tableaux défilent dans leur cadre. Les règles de la barre de filtres ciblent la classe générée
+par PrimeReact 10, `.p-icon-field` (l'ancienne `.p-iconfield` est conservée) : sans cela, la
+recherche ne prenait pas la pleine largeur sur mobile et débordait (corrigé lors de l'étape 1
+de la recette).
 
 ## 10. Accessibilité
 
@@ -156,6 +162,8 @@ tableaux défilent dans leur cadre.
 - Erreurs annoncées (`role="alert"`), chargements (`role="status"`), groupes de navigation
   étiquetés (`aria-labelledby`), fil d'Ariane (`nav` + `aria-label`).
 - Statuts : texte + couleur (jamais la couleur seule), contraste AA.
+- Limite connue : les cases de sélection des tableaux PrimeReact annoncent un libellé anglais
+  (« Row Selected ») ; la traduction globale de PrimeReact est prévue dans un palier ultérieur.
 
 ## 11. Règles d'usage
 

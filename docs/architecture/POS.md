@@ -120,3 +120,17 @@ recherche textuelle (différée de 250 ms) : la valeur saisie est envoyée telle
 - **Recherche** : la recherche « contient » des tuiles trouve aussi les codes supplémentaires et
   ceux des conditionnements.
 
+
+## Recette, étape 1 — assortiment par site (ADR-0046)
+
+- **Recherche** : la caisse ne propose que l'**assortiment ACTIF** du site de vente
+  ([ADR-0046](../adr/0046-assortiment-par-site.md)) ; un article hors assortiment n'est jamais
+  proposé, même s'il reste du stock sur le site (stock recréé par une annulation après un
+  retrait). Site sans assortiment : « Aucun article dans l'assortiment de ce site ».
+- **Scan** : un article connu mais hors assortiment est refusé
+  (`422 article_not_in_site_assortment`, message traduit) ; rien n'est ajouté au panier. Code
+  inconnu : `404 barcode_unknown` (inchangé).
+- **Encaissement** : `SaleService.checkout` revérifie l'assortiment sous verrou partagé pour
+  toutes les lignes (article non géré en stock compris) ; refus total, rien n'est enregistré.
+- **Lots disponibles** (`/pos/articles/{id}/lots`) : lecture conservée hors assortiment (la
+  consultation n'ouvre aucune opération).

@@ -252,7 +252,24 @@ sans lot encore annulable (`article_has_untracked_history`) ; aucune permission 
 **P1-b LEVÉE — suivi par lot officiellement disponible** (`LOT_TRACKING_AVAILABLE = True`,
 accord de TechNova ; règles inchangées : stock nul, péremption ⇒ lot ⇒ géré en stock, documents
 ouverts, historique sans lot) ; **Lot 3-H CLÔTURÉ**. 3-I (alertes et tableau de bord de
-péremption) non commencé. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+péremption) non commencé. **Recette, étape 1 — assortiment par site**
+([ADR-0046](docs/adr/0046-assortiment-par-site.md), migration 0038), paliers 1 à 4 livrés,
+palier 5 (E2E, CI) à venir : **CATALOGUE TENANT ≠ ASSORTIMENT SITE ≠ STOCK SITE** ;
+`catalog_site_articles` (module Catalogue ; retrait = désactivation, réactivation = même
+ligne, reprise par usage réel) ; toute opération sur un article hors assortiment ACTIF du site
+refusée `422 article_not_in_site_assortment` au brouillon puis à la validation (contrôle
+faisant foi ; transferts source ET destination ; **jamais d'ajout automatique** ; annulations
+exemptées) ; **garde centrale dans `StockService._lock`** (ordre des verrous article →
+assortiment → niveaux → lots) ; retrait refusé avec stock / solde de lot ou document ouvert du
+site (port `catalog.assortment_port`, tout ou rien, détail `blocked`, messages génériques
+inchangés) ; `catalog.assortment.manage` (nature `admin`, par site ; Administrateur,
+Gestionnaire) ; copie d'assortiment et `site_ids` à la création ; niveaux = assortiment ∪ stock
+non nul (`in_assortment`), POS et alertes limités à l'assortiment, inventaire complet =
+assortiment actif (jamais reçus compris) ; seuils et affectation d'emplacement refusés hors
+assortiment (désaffecter permis), lots consultables ; site principal calculé par le serveur
+(`main_site_id` des capacités, aucun indicateur en base) ; page « Assortiment des sites »
+juste après « Articles ». **Les tests et les données de démonstration ajoutent explicitement
+les articles à l'assortiment des sites.** Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

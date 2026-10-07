@@ -473,3 +473,27 @@ Hors périmètre : état « en transit » (expédition puis réception), inventa
 | Changement de suivi | Stock nul sur tous les sites, aucun document ouvert (`article_in_open_documents`) et, à l'activation, aucun historique sans lot annulable (`article_has_untracked_history`). |
 | P1-b | **Levée** (accord de TechNova) : suivi par lot officiellement disponible ; Lot 3-H clôturé. |
 
+
+## 19. Recette, étape 1 — assortiment par site (ADR-0046)
+
+**CATALOGUE TENANT ≠ ASSORTIMENT SITE ≠ STOCK SITE.** Le catalogue est commun à l'entreprise ;
+l'assortiment dit ce que chaque site propose (vend, reçoit, transfère, inventorie) ; le stock
+reste tenu par (site, article). Décisions D1 à D6 et décisions des paliers 1 à 4 :
+[ADR-0046](../adr/0046-assortiment-par-site.md).
+
+| Règle | Web |
+|---|---|
+| Desktop | Mono-site : tout le catalogue est « proposé » ; aucune notion d'assortiment. |
+| Modèle (D1) | `catalog_site_articles` (module Catalogue) : une ligne par (site, article) ; retrait = désactivation, jamais supprimée ; réactivation = même ligne ; ajouter ne crée aucun niveau de stock. Nouveau site : assortiment vide ; nouvel article : aucun site (sauf `site_ids` à la création, D6). |
+| Reprise (D2) | Migration 0038 : usage réel seulement (niveaux, mouvements, ventes, brouillons, inventaires ouverts, emplacements) ; « reprise initiale » (`added_by` nul). |
+| Hors assortiment (D3) | `422 article_not_in_site_assortment` au brouillon (vente, entrée, sortie, transfert source ET destination, inventaire ciblé) et à la validation (contrôle faisant foi, sous verrou partagé) ; jamais d'ajout automatique ; annulations toujours possibles. |
+| Garde centrale | `StockService._lock` exige l'assortiment actif pour tout mouvement (réception, sortie, vente, transfert, ajustement, seuils) ; seules les `CANCELLATION` en sont exemptées. Vente : l'article non géré en stock est contrôlé par la vente elle-même. |
+| Retrait (D4) | Refusé avec du stock ou un solde de lot sur CE site (`article_has_stock`) ou un document ouvert du site (`article_in_open_documents`, port `catalog.assortment_port`) ; tout ou rien ; audité ; détail `blocked` par article. Seuils et emplacements conservés mais inertes ; stock recréé par une annulation : « Hors assortiment », inutilisable sans réactivation. |
+| Verrous | Ordre global : article → assortiment → niveaux → lots ; retrait = verrou exclusif de la ligne, opérations = verrou partagé. |
+| Niveaux | Assortiment actif ∪ niveaux non nuls (`in_assortment`) ; plus de produit cartésien catalogue × sites. |
+| Alertes | Assortiment actif seulement ; l'état réel du stock hors assortiment reste affiché, jamais une alerte. |
+| Seuils, emplacements | Seuils refusés hors assortiment ; emplacement : affecter refusé, désaffecter permis (nettoyage). |
+| Lots | Lots disponibles d'un article hors assortiment : lecture conservée. |
+| Permission (D5) | `catalog.assortment.manage` (nature `admin`, par site) : Administrateur, Gestionnaire. |
+| Outils (D6) | Copie depuis un autre site (ajout seulement, catégorie facultative) ; sites à la création d'un article. |
+| Interface | Page « Assortiment des sites » (juste après « Articles » ; site par défaut : site principal `main_site_id` calculé par le serveur), section « Sites » de la fiche article, « Hors assortiment » dans le sélecteur d'article, les documents et les niveaux. |

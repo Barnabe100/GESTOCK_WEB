@@ -37,13 +37,17 @@ selon le statut ; motif obligatoire pour une annulation.
 
 ## 3. Types
 
-- **Complet (`FULL`)** : tous les articles **actifs gérés sur le site** (niveau de stock
-  existant, règle des niveaux de la Phase 2.2). La liste est générée par le serveur à la
-  création, puis **recalée au démarrage du comptage** (nouveaux articles gérés ajoutés,
-  articles désactivés retirés). Elle n'est pas modifiable à la main.
-- **Ciblé (`TARGETED`)** : articles choisis (recherche serveur `GET /inventories/candidates`,
-  jamais tout le catalogue). Un article actif jamais géré sur le site est accepté (stock
-  théorique 0) : un excédent constaté crée alors son niveau de stock.
+- **Complet (`FULL`)** : tous les articles actifs gérés en stock de l'**assortiment ACTIF du
+  site**, **y compris ceux jamais reçus** (stock théorique 0) — Recette, étape 1
+  ([ADR-0046](../adr/0046-assortiment-par-site.md)) ; avant, un niveau de stock existant
+  était exigé. La liste est générée par le serveur à la création, puis **recalée au démarrage
+  du comptage** (articles ajoutés à l'assortiment ajoutés, articles désactivés ou retirés
+  enlevés). Elle n'est pas modifiable à la main ; site sans assortiment : `inventory_empty`.
+- **Ciblé (`TARGETED`)** : articles choisis parmi l'assortiment actif du site (recherche
+  serveur `GET /inventories/candidates`, jamais tout le catalogue) ; un article hors
+  assortiment est refusé à la création comme à l'ajout (`422 article_not_in_site_assortment`).
+  Un article de l'assortiment jamais reçu est accepté (stock théorique 0) : un excédent
+  constaté crée alors son niveau de stock.
 
 Règles communes : article actif, du tenant, une seule fois par inventaire ; un article ne
 figure que dans **un seul inventaire en cours par site** (`article_in_open_inventory`).
@@ -190,7 +194,16 @@ l'emplacement n'influence ni le stock théorique, ni l'écart, ni la validation.
   écran), encadré des lots apparus ; une colonne sur mobile, aucun débordement horizontal.
 - Aucune permission nouvelle (`count`, `validate`, `view`).
 
-## 14. Hors périmètre (V1)
+## 14. Assortiment par site (Recette, étape 1, [ADR-0046](../adr/0046-assortiment-par-site.md))
+
+- Articles proposés (`candidates`) et inventaire complet : assortiment actif du site (§3).
+- Validation : les ajustements passent par la garde centrale de `StockService` (article dans
+  l'assortiment actif, sous verrou partagé). Un article figurant dans un inventaire non clôturé
+  ne peut pas être retiré de l'assortiment du site (`409 article_in_open_documents`) : les
+  deux ne se contredisent pas.
+- Interface : l'aperçu d'un inventaire complet compte l'assortiment actif du site.
+
+## 15. Hors périmètre (V1)
 
 Application mobile native (scan : §11), import / export Excel, comptage multi-équipe,
 double comptage, circuit d'approbation, sessions de comptage simultanées sur un même article,

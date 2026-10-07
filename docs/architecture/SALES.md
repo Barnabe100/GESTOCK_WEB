@@ -133,6 +133,17 @@ visibles (`visible_site_ids`) ; une vente d'un autre site répond 404 `sale_not_
 une vente d'un autre utilisateur hors portée répond 404). Évaluée par site (permissions du
 membre sur ce site), jamais par nom de rôle.
 
+**Assortiment (Recette, étape 1, [ADR-0046](../adr/0046-assortiment-par-site.md))** : une
+vente ne porte que sur des articles de l'**assortiment ACTIF** de son site.
+`422 article_not_in_site_assortment` à l'enregistrement du brouillon (création et
+modification), puis contrôle **faisant foi** à la validation, sous verrou partagé de
+l'assortiment (ordre article → assortiment → niveaux → lots), pour TOUTES les lignes — y
+compris un article non géré en stock, qui ne passe pas par `StockService`. Jamais d'ajout
+automatique ; l'interface propose « Ajouter à l'assortiment du site » à qui détient
+`catalog.assortment.manage`. **L'annulation** d'une vente validée reste possible après un
+retrait (mouvements `CANCELLATION` exemptés) ; un article retiré qui figure dans un brouillon
+de vente du site ne peut pas être retiré (`409 article_in_open_documents`).
+
 ## 6. Permissions et rôles de base
 
 | Permission | Nature | Administrateur | Gestionnaire | Vendeur | Consultant |
