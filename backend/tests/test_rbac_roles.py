@@ -82,6 +82,9 @@ def test_base_roles(owner: Api) -> None:
         "sales.sale.create",
         "sales.sale.update",
         "sales.sale.validate",
+        # Reçu (palier POS, ADR-0047) : impression et réimpression de ses ventes.
+        "sales.sale.receipt_print",
+        "sales.sale.reprint",
         "stock.level.view",
         "alerts.stock.view",
         "inventory_count.inventory.view",  # inventaires : consultation seule (Phase 2.6)
@@ -100,6 +103,7 @@ def test_base_roles(owner: Api) -> None:
     assert not any(p.startswith(("users.", "audit.", "organization.module.")) for p in viewer)
     # Consultation seulement (dont la consultation de toutes les ventes du site, Lot 1).
     assert all(p.endswith((".view", ".view_all")) for p in viewer)
+    assert not viewer & {"sales.sale.receipt_print", "sales.sale.reprint"}
 
     assert set(_roles(owner, kind="system")) == {"administrator", "manager", "seller", "viewer"}
 
