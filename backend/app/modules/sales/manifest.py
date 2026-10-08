@@ -1,5 +1,6 @@
 from app.modules.catalog.api import register_assortment_removal_check, register_packaging_usage
 from app.modules.sales.assortment_checks import assortment_removal_check
+from app.modules.sales.footprint import sales_footprint
 from app.modules.sales.payment_method_router import router as payment_method_router
 from app.modules.sales.payment_methods import ensure_default_payment_methods
 from app.modules.sales.router import router
@@ -51,4 +52,5 @@ MANIFEST = ModuleManifest(
     router=router,
     extra_routers=(("/payment-methods", payment_method_router),),
     tenant_setup=ensure_default_payment_methods,
+    site_footprint=sales_footprint,
 )

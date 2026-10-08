@@ -7,6 +7,7 @@ from app.modules.catalog.api import (
 )
 from app.modules.stock.assortment_checks import assortment_removal_check
 from app.modules.stock.document_service import packagings_used
+from app.modules.stock.footprint import stock_footprint
 from app.modules.stock.level_service import stocked_sites
 from app.modules.stock.lot_flags_checks import lot_flags_check
 from app.modules.stock.lot_service import lot_stocked_sites
@@ -64,4 +65,5 @@ MANIFEST = ModuleManifest(
     features=(TRANSFERS,),
     tenant_setup=ensure_system_exit_reasons,
     router=router,
+    site_footprint=stock_footprint,
 )

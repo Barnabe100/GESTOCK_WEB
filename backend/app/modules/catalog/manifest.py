@@ -1,3 +1,4 @@
+from app.modules.catalog.footprint import catalog_footprint
 from app.modules.catalog.onboarding import CATALOG_STEPS
 from app.modules.catalog.router import router
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
@@ -27,4 +28,5 @@ MANIFEST = ModuleManifest(
     ),
     router=router,
     onboarding=CATALOG_STEPS,
+    site_footprint=catalog_footprint,
 )

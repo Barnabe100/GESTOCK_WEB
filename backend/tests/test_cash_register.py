@@ -801,7 +801,15 @@ def test_sales_do_not_depend_on_the_cash_module(priced: World, owner_db: Session
     session = _opened(priced.owner, _register(priced), "1000")
     cash_sale = _sale(priced, 10000)
     _paid(priced.owner, cash_sale, "10000")
-    set_module_everywhere(priced.owner, "cash_register", False)
+    # Palier D : désactiver la caisse d'un site où une session est ouverte est refusé.
+    refused = set_site_module(priced.owner, priced.site, "cash_register", False)
+    assert refused.status_code == 409 and refused.json()["code"] == "module_has_open_operations"
+    # État hérité (avant ce correctif) ou retrait par l'abonnement : module non effectif avec
+    # une session ouverte — reproduit en base pour vérifier que la vente n'en dépend pas.
+    owner_db.execute(
+        text("UPDATE site_modules SET enabled = false WHERE module_code = 'cash_register'")
+    )
+    owner_db.commit()
     for path in ("/cash/registers", "/cash/sessions", "/cash/movements"):
         denied = priced.owner.get(path)
         assert denied.status_code == 403 and denied.json()["code"] == "module_unavailable"

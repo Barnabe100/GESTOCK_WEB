@@ -290,8 +290,23 @@ site ∩ abonnement du site ∩ activé sur le site, dépendances résolues, auc
 implicite), nouveau site = modules par défaut de SON profil ∩ SON abonnement (rien copié d'un
 autre site), `tenant_modules` = **legacy gelé** (ni lu ni écrit ; tenant sans site : défauts
 calculés), `GET`/`PUT /sites/{site_id}/modules[/{code}]` (portée dans l'URL, jamais
-`X-Site-Id`), `PUT /modules/{code}` → `409 module_is_per_site`, `GET /modules` = synthèse. Palier D
-(changement de profil d'un site) non commencé. Non implémentés (feuille de route §13) :
+`X-Site-Id`), `PUT /modules/{code}` → `409 module_is_per_site`, `GET /modules` = synthèse (palier C
+validé). **Palier D — changement de profil d'UN site**
+([ADR-0048](docs/adr/0048-changement-profil-site.md), aucune migration) : reconfiguration,
+**jamais réinitialisation** (seuls le profil du site et ses `site_modules` changent ; aucune
+donnée supprimée ; profil d'origine et autres sites inchangés) ; aperçu
+`GET /sites/{id}/business-profile/preview` sans écriture, changement
+`PUT /sites/{id}/business-profile` (`organization.profile.manage` sur ce site, empreinte
+recalculée sous verrou site → `site_modules` → verrous des modules, `409
+profile_preview_outdated`) ; niveaux calculés depuis l'empreinte déclarée par chaque module
+(`site_footprint`, lecture seule, `app/platform/footprint.py`) : **BLOCKED** si un travail en
+cours devient impossible (session de caisse ouverte vers un profil sans caisse), **STRONG** si
+historique ou documents ouverts (texte exact `CHANGER DE PROFIL` ; **l'historique seul ne bloque
+jamais**), **SIMPLE** sinon ; activations au plus petit changement, plan jamais contourné (hors
+plan signalé) ; désactivation manuelle d'un module refusée avec des opérations en cours
+(`409 module_has_open_operations`) ; `POST /sites` accepte `business_profile_code` (autre que
+le profil d'origine : `organization.profile.manage` en plus) ; audit `site.profile_changed` /
+`site.profile_change_refused`. Ne pas passer au palier E sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

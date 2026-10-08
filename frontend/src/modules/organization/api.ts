@@ -64,6 +64,8 @@ export interface Site {
   phone: string | null;
   is_active: boolean;
   created_at: string;
+  /** Profil d'activité du site (palier D : changé par `PUT /sites/{id}/business-profile`). */
+  business_profile_code: string;
 }
 
 export interface SiteInput {
@@ -78,6 +80,8 @@ export interface SiteInput {
   plan_code?: string;
   billing_period?: 'monthly' | 'annual';
   requested_activations?: number;
+  /** Création : profil du site (absent → profil d'origine de l'entreprise). */
+  business_profile_code?: string;
 }
 
 /** État d'un module sur UN site (palier C) : effectif = profil ∩ plan ∩ activation du site. */
@@ -195,3 +199,94 @@ export function useBusinessProfiles(enabled: boolean) {
 }
 
 /** Changement de profil : le serveur contrôle, audite et ne supprime aucune donnée. */
+
+/** Aperçu du changement de profil d'UN site (palier D) : tout est calculé par le serveur. */
+export type ProfileChangeLevel = 'SIMPLE' | 'STRONG' | 'BLOCKED';
+
+export interface ProfileModuleState {
+  in_profile: boolean;
+  in_plan: boolean;
+  activated: boolean;
+  effective: boolean;
+}
+
+export interface ProfileModuleChange {
+  code: string;
+  status: 'available' | 'planned';
+  change: 'added' | 'removed' | 'kept';
+  action: 'enable' | 'disable' | 'none';
+  reason: string | null;
+  before: ProfileModuleState;
+  after: ProfileModuleState;
+}
+
+export interface FootprintItem {
+  kind: string;
+  module: string;
+  count: number;
+  capped: boolean;
+  blocking: boolean;
+}
+
+export interface SiteProfilePreview {
+  site_id: string;
+  site_name: string;
+  current_profile: { code: string; name: string; sector: string | null };
+  target_profile: { code: string; name: string; sector: string | null };
+  level: ProfileChangeLevel;
+  fingerprint: string;
+  confirmation_text: string | null;
+  plan: { code: string; compatibility: 'FULL' | 'PARTIAL'; modules_not_in_plan: string[] };
+  modules: ProfileModuleChange[];
+  summary: {
+    added: string[];
+    removed: string[];
+    kept: string[];
+    not_in_plan: string[];
+    activated: string[];
+    deactivated: string[];
+  };
+  history: FootprintItem[];
+  open_operations: FootprintItem[];
+  blockers: FootprintItem[];
+  configuration: FootprintItem[];
+  assortment_unchanged: boolean;
+}
+
+export function useSiteProfilePreview(siteId: string, profileCode: string | null) {
+  return useQuery({
+    queryKey: [...orgKeys.sites, siteId, 'profile-preview', profileCode],
+    queryFn: ({ signal }) =>
+      api.get<SiteProfilePreview>(
+        `/sites/${siteId}/business-profile/preview?${new URLSearchParams({
+          profile_code: profileCode ?? '',
+        }).toString()}`,
+        signal,
+      ),
+    enabled: profileCode !== null,
+    // Toujours l'état courant : l'aperçu n'est jamais servi depuis le cache.
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+/** Changement réel : le serveur recalcule l'aperçu sous verrou et compare l'empreinte. */
+export function useChangeSiteProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      siteId,
+      ...body
+    }: {
+      siteId: string;
+      profile_code: string;
+      preview_fingerprint: string;
+      confirmation?: string;
+    }) => api.put<unknown>(`/sites/${siteId}/business-profile`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: orgKeys.sites });
+      void qc.invalidateQueries({ queryKey: orgKeys.modules });
+      void qc.invalidateQueries({ queryKey: ['capabilities'] });
+    },
+  });
+}

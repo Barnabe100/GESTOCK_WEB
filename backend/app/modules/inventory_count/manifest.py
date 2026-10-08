@@ -3,6 +3,7 @@ from app.modules.catalog.api import (
     register_lot_flags_check,
     register_packaging_usage,
 )
+from app.modules.inventory_count.footprint import inventory_footprint
 from app.modules.inventory_count.router import router
 from app.modules.inventory_count.service import (
     assortment_removal_check,
@@ -36,4 +37,5 @@ MANIFEST = ModuleManifest(
     # Inventaire : fonctionnalité cœur du stock, incluse dans tous les plans (aucune feature).
     router=router,
     route_prefix="/inventories",
+    site_footprint=inventory_footprint,
 )

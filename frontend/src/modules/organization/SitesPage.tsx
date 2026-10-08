@@ -26,7 +26,10 @@ import { RowActions } from '@/shared/ui/RowActions';
 import { useSubscriptions } from '@/modules/subscription/api';
 import { usePublicPlans } from '@/pages/signup/api';
 
-import { useSaveSite, useSites, type Site } from './api';
+import { profileLabel, sectorLabel } from '@/core/capabilities/profile';
+
+import { useBusinessProfiles, useSaveSite, useSites, type Site } from './api';
+import { SiteProfileDialog } from './SiteProfileDialog';
 
 const KINDS: SiteKind[] = ['store', 'warehouse', 'restaurant', 'other'];
 
@@ -43,6 +46,7 @@ const schema = z.object({
   address: z.string().max(255),
   phone: z.string().max(50),
   is_active: z.boolean(),
+  business_profile_code: z.string(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -55,13 +59,17 @@ type FormValues = z.infer<typeof schema>;
 function SiteDialog({
   site,
   choosePlan,
+  initialProfile,
   onClose,
 }: {
   site: Site | null;
   choosePlan: boolean;
+  /** Profil proposé à la création (ex. « Créer un nouveau site avec ce profil »). */
+  initialProfile?: string;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const { can } = useCapabilities();
   const toast = useToast();
   const save = useSaveSite();
   const plans = usePublicPlans();
@@ -80,15 +88,35 @@ function SiteDialog({
       address: site?.address ?? '',
       phone: site?.phone ?? '',
       is_active: site?.is_active ?? true,
+      business_profile_code: initialProfile ?? '',
     },
   });
   const errors = form.formState.errors;
   const [planError, setPlanError] = useState(false);
   const planCode = useWatch({ control: form.control, name: 'plan_code' });
   const chosenPlan = offers.find((p) => p.code === planCode);
+  // Profil du nouveau site (palier D) : absent → profil d'origine de l'entreprise ; un autre
+  // profil exige ``organization.profile.manage`` (revérifié par le serveur).
+  const chooseProfile = creating && can('organization.profile.manage');
+  const catalog = useBusinessProfiles(chooseProfile);
+  const profileGroups = (catalog.data?.sectors ?? [])
+    .map((sector) => ({
+      label: sectorLabel(t, sector),
+      items: (catalog.data?.profiles ?? [])
+        .filter((p) => p.sector === sector.code)
+        .map((p) => ({ value: p.code, label: profileLabel(t, p) })),
+    }))
+    .filter((g) => g.items.length > 0);
 
   const onSubmit = form.handleSubmit(
-    ({ is_active, plan_code, billing_period, requested_activations, ...values }) => {
+    ({
+      is_active,
+      plan_code,
+      billing_period,
+      requested_activations,
+      business_profile_code,
+      ...values
+    }) => {
       if (withPlan && !plan_code) {
         setPlanError(true);
         return;
@@ -100,6 +128,7 @@ function SiteDialog({
         ...(site ? { is_active } : {}),
         ...(creating ? { requested_activations } : {}),
         ...(withPlan ? { plan_code, billing_period } : {}),
+        ...(chooseProfile && business_profile_code ? { business_profile_code } : {}),
       };
       save.mutate(
         { id: site?.id, input },
@@ -158,6 +187,27 @@ function SiteDialog({
         <FormField id="site-phone" label={t('sites.phone')}>
           <InputText id="site-phone" {...form.register('phone')} />
         </FormField>
+        {chooseProfile && (
+          <FormField id="site-profile" label={t('sites.profile')} help={t('sites.profileHelp')}>
+            <Controller
+              control={form.control}
+              name="business_profile_code"
+              render={({ field }) => (
+                <Dropdown
+                  inputId="site-profile"
+                  value={field.value || null}
+                  placeholder={t('sites.originProfile')}
+                  showClear
+                  filter
+                  onChange={(e) => field.onChange((e.value as string | undefined) ?? '')}
+                  options={profileGroups}
+                  optionGroupLabel="label"
+                  optionGroupChildren="items"
+                />
+              )}
+            />
+          </FormField>
+        )}
         {creating && (
           <fieldset className="sm-fieldset" data-testid="site-subscription">
             <legend>{t('sites.subscription')}</legend>
@@ -262,6 +312,10 @@ export default function SitesPage() {
   const preselected = (subscriptions.data ?? []).some((s) => s.site === null);
   const siteStatus = new Map(capabilities.sites.map((s) => [s.id, s.subscription_status]));
   const canManage = can('organization.site.manage');
+  const canProfile = can('organization.profile.manage');
+  const siteProfile = new Map(capabilities.sites.map((s) => [s.id, s.profile]));
+  const [profileSite, setProfileSite] = useState<Site | null>(null);
+  const [newSiteProfile, setNewSiteProfile] = useState<string | undefined>(undefined);
   // Action « Créer mon premier site » de l'onboarding : formulaire ouvert d'emblée.
   const [createRequested, clearCreate] = useCreateRequest(canManage);
   const [editing, setEditing] = useState<Site | null | undefined>(
@@ -295,6 +349,13 @@ export default function SitesPage() {
           <Column field="code" header={t('sites.code')} />
           <Column header={t('sites.kind')} body={(s: Site) => t(`sites.kinds.${s.kind}`)} />
           <Column
+            header={t('sites.profile')}
+            body={(s: Site) => {
+              const profile = siteProfile.get(s.id);
+              return profile ? profileLabel(t, profile) : s.business_profile_code;
+            }}
+          />
+          <Column
             header={t('sites.status')}
             body={(s: Site) => <ActiveBadge active={s.is_active} />}
           />
@@ -305,18 +366,32 @@ export default function SitesPage() {
               return status ? <SubscriptionStatusBadge status={status} /> : '—';
             }}
           />
-          {canManage && (
+          {(canManage || canProfile) && (
             <Column
               header={t('common.actions')}
               body={(s: Site) => (
                 <RowActions
                   actions={[
-                    {
-                      key: 'edit',
-                      label: t('actions.edit'),
-                      icon: 'pi pi-pencil',
-                      onClick: () => setEditing(s),
-                    },
+                    ...(canManage
+                      ? [
+                          {
+                            key: 'edit',
+                            label: t('actions.edit'),
+                            icon: 'pi pi-pencil',
+                            onClick: () => setEditing(s),
+                          },
+                        ]
+                      : []),
+                    ...(canProfile && s.is_active
+                      ? [
+                          {
+                            key: 'profile',
+                            label: t('siteProfile.action'),
+                            icon: 'pi pi-sync',
+                            onClick: () => setProfileSite(s),
+                          },
+                        ]
+                      : []),
                   ]}
                 />
               )}
@@ -328,10 +403,28 @@ export default function SitesPage() {
         <SiteDialog
           site={editing}
           choosePlan={!preselected}
+          initialProfile={newSiteProfile}
           onClose={() => {
             setEditing(undefined);
+            setNewSiteProfile(undefined);
             clearCreate();
           }}
+        />
+      )}
+      {profileSite && (
+        <SiteProfileDialog
+          site={profileSite}
+          onClose={() => setProfileSite(null)}
+          onCreateSite={
+            canManage
+              ? (code) => {
+                  // Opération séparée : un nouveau site avec ce profil, rien n'est copié.
+                  setProfileSite(null);
+                  setNewSiteProfile(code);
+                  setEditing(null);
+                }
+              : undefined
+          }
         />
       )}
     </>

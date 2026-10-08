@@ -10,10 +10,11 @@ création.
 import uuid
 from collections.abc import Iterable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.platform.catalog.models import BusinessProfile
-from app.platform.tenancy.models import SiteModule
+from app.platform.tenancy.models import Site, SiteModule
 
 
 def init_site_modules(
@@ -40,3 +41,16 @@ def init_site_modules(
         if link.default_enabled:
             enabled.add(link.module_code)
     return enabled
+
+
+def lock_site(session: Session, site_id: uuid.UUID) -> Site | None:
+    """Verrou exclusif du site pour une reconfiguration (changement de profil, activation d'un
+    module ; palier D). Premier verrou pris : site → ``site_modules`` → verrous des modules
+    (``site_footprint``). Il attend les écritures en cours qui référencent le site (clés
+    étrangères) et les suspend jusqu'à la fin de la transaction."""
+    return session.scalars(
+        select(Site)
+        .where(Site.id == site_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()

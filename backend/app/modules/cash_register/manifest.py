@@ -1,3 +1,4 @@
+from app.modules.cash_register.footprint import cash_footprint
 from app.modules.cash_register.router import router
 from app.modules.cash_register.service import CashService
 from app.modules.sales.api import register_cash_ledger
@@ -24,4 +25,5 @@ MANIFEST = ModuleManifest(
     ),
     router=router,
     route_prefix="/cash",
+    site_footprint=cash_footprint,
 )

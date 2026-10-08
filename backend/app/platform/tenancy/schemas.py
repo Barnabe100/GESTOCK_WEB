@@ -86,7 +86,8 @@ class SiteOut(BaseModel):
     phone: str | None
     is_active: bool
     created_at: datetime
-    # Profil d'activité du site (profils par site) : lecture seule à ce stade.
+    # Profil d'activité du site : choisi à la création, changé par
+    # ``PUT /sites/{id}/business-profile`` (palier D).
     business_profile_code: str
 
 
@@ -104,6 +105,9 @@ class SiteCreate(BaseModel):
     billing_period: BillingPeriod | None = None
     # Nombre de postes demandé (confirmé ou ajusté par TechNova à la génération de la licence).
     requested_activations: int = Field(default=1, ge=1, le=1000)
+    # Profil d'activité du site (palier D) : absent → profil d'origine de l'entreprise ; un
+    # autre profil exige aussi ``organization.profile.manage``.
+    business_profile_code: str | None = Field(default=None, min_length=1, max_length=50)
 
 
 class SiteUpdate(BaseModel):

@@ -165,16 +165,35 @@ la navigation, le tableau de bord et les capacités l'afficheront sans autre cha
 
 ## 9. Changement de profil
 
-`PUT /api/v1/tenant/business-profile {code}` (permission `organization.profile.manage`,
-nature `admin`) ou `stockmanager change-profile --tenant-id … --profile …` (TechNova) :
-profil actif requis ; **aucune donnée supprimée** ; audité (`tenant.profile_changed`). Pas
-d'assistant de migration. Depuis le palier B, le profil métier est porté par **chaque site** : le
-profil du tenant n'est plus que le profil d'origine, modifiable par le Web seulement tant
-qu'aucun site n'existe (`409 profile_is_per_site`). Depuis le palier C (migration 0040), ce
-changement n'écrit plus aucune activation et ne contrôle plus d'incompatibilité : les
-activations vivent dans `site_modules` (premier site initialisé avec les modules par défaut
-du profil du site ∩ abonnement du site) ; `tenant_modules` est un historique legacy, ni lu ni
-écrit.
+**Profil d'un site (palier D, [ADR-0048](../adr/0048-changement-profil-site.md))** : le profil
+d'activité est porté par chaque site. `GET /sites/{id}/business-profile/preview` (aperçu sans
+écriture) puis `PUT /sites/{id}/business-profile` (permission `organization.profile.manage`
+**sur ce site**). C'est une **reconfiguration du site, jamais une réinitialisation** : seuls
+changent le profil du site et ses `site_modules` ; ventes, stock, mouvements, lots,
+inventaires, caisse, assortiment et audit sont conservés ; le profil d'origine du tenant et les
+autres sites ne bougent pas.
+
+| Niveau | Condition (calculée par le serveur) | Changement |
+|---|---|---|
+| SIMPLE | site vide ou seulement configuré | confirmation normale |
+| STRONG | données commerciales (historique) ou documents ouverts | texte exact `CHANGER DE PROFIL` |
+| BLOCKED | une opération en cours deviendrait impossible (session de caisse ouverte vers un profil sans caisse) | refusé, aucune confirmation |
+
+L'historique seul ne bloque jamais. Activations : module conservé → choix du site conservé ;
+retiré → désactivé (ligne conservée) ; ajouté → défaut du nouveau profil s'il est dans
+l'abonnement du site ; hors abonnement → jamais actif (signalé, jamais contourné). Aperçu
+périmé → `409 profile_preview_outdated`. L'historique d'un module retiré reste en base ; il
+n'est lisible que là où le module est effectif (site sélectionné : non ; vue « Tous les
+sites » : si un autre site accessible a le module). « Créer un nouveau site avec ce profil »
+(`POST /sites` avec `business_profile_code`) reste une opération séparée.
+
+**Profil d'origine du tenant** : `PUT /api/v1/tenant/business-profile {code}` (permission
+`organization.profile.manage`, nature `admin`) ou `stockmanager change-profile --tenant-id …
+--profile …` (TechNova) : profil actif requis ; **aucune donnée supprimée** ; audité
+(`tenant.profile_changed`). Depuis le palier B, l'API le refuse dès qu'un site existe
+(`409 profile_is_per_site`). Depuis le palier C (migration 0040), ce changement n'écrit aucune
+activation : les activations vivent dans `site_modules` ; `tenant_modules` est un historique
+legacy, ni lu ni écrit.
 
 ## 10. Création d'un tenant
 

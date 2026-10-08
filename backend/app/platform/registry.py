@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from fastapi import APIRouter
     from sqlalchemy.orm import Session
 
+    from app.platform.footprint import SiteFootprintFn
+
 
 class AccessKind(StrEnum):
     """Nature d'une permission. La politique d'abonnement autorise ou non chaque nature
@@ -88,6 +90,9 @@ class ModuleManifest:
     )
     # Étapes d'onboarding portées par le module (proposées si le module est effectif).
     onboarding: tuple[OnboardingStepDef, ...] = field(default=(), compare=False, hash=False)
+    # Empreinte du module sur un site, en lecture seule (palier D, ``app.platform.footprint``) :
+    # qualifie un changement de profil du site et protège les opérations en cours.
+    site_footprint: "SiteFootprintFn | None" = field(default=None, compare=False, hash=False)
 
     @property
     def url_prefix(self) -> str:

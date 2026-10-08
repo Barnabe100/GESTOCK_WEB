@@ -167,7 +167,12 @@ Une ressource d'un autre tenant répond **404** (on ne révèle pas son existenc
 site**, licence en vigueur sinon plan) dit ce qui est autorisé ; le profil **du site** dit ce
 qui est proposé ; l'activation **du site** (`site_modules`, source de vérité) dit ce qui est
 choisi sur CE site. Aucun des trois ne remplace les autres, aucun site n'hérite de la
-configuration d'un autre ; `tenant_modules` est conservé comme historique legacy, jamais lu.
+configuration d'un autre ; `tenant_modules` est conservé comme historique legacy, jamais lu. Le profil
+d'un site se change par un aperçu puis un changement réel (palier D,
+[ADR-0048](../adr/0048-changement-profil-site.md)) : **reconfiguration, jamais
+réinitialisation** — niveaux SIMPLE / STRONG / BLOCKED calculés par le serveur à partir de
+l'empreinte que chaque module déclare (`site_footprint`, lecture seule), activations au plus
+petit changement, aucune donnée supprimée.
 
 ```text
 modules_effectifs(site) = profil(site).modules_disponibles

@@ -9,6 +9,7 @@ from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
+from app.platform.footprint import module_footprint
 from app.platform.licensing.service import current_terms
 from app.platform.registry import ModuleRegistry, get_registry
 from app.platform.sequences.service import site_has_numbers
@@ -31,7 +32,7 @@ from app.platform.tenancy.schemas import (
     SiteUpdate,
     TenantUpdate,
 )
-from app.platform.tenancy.site_modules import init_site_modules
+from app.platform.tenancy.site_modules import init_site_modules, lock_site
 from app.shared.clock import utcnow
 from app.shared.ids import new_id
 
@@ -80,6 +81,10 @@ class TenantService:
         return code
 
 
+MODULE_MANAGE = "organization.module.manage"
+PROFILE_MANAGE = "organization.profile.manage"
+
+
 class SiteService:
     def __init__(self, db: Session, ctx: RequestContext) -> None:
         self.db = db
@@ -105,6 +110,7 @@ class SiteService:
         d'une inscription reçoit l'abonnement choisi à l'inscription ; tout autre site, un
         abonnement « en attente d'activation » au plan publié choisi par l'administrateur (sans
         essai) : il n'est opérationnel qu'après paiement confirmé et licence."""
+        profile_code = self._new_site_profile(data.business_profile_code)
         pending = unattached_subscription(self.db, for_update=True)
         plan: Plan | None = None
         if pending is not None:
@@ -126,13 +132,18 @@ class SiteService:
                 or not period_enabled(plan, data.billing_period)
             ):
                 raise BusinessRuleError("Offre indisponible", code="plan_not_available")
-        fields = data.model_dump(exclude={"plan_code", "billing_period", "requested_activations"})
-        # Profil du site : celui de l'entreprise (profil par site, palier A ; le choix du
-        # profil à la création viendra avec le palier B).
+        fields = data.model_dump(
+            exclude={
+                "plan_code",
+                "billing_period",
+                "requested_activations",
+                "business_profile_code",
+            }
+        )
         site = Site(
             id=new_id(),
             tenant_id=self.ctx.tenant_id,
-            business_profile_code=self.ctx.tenant.business_profile_code,
+            business_profile_code=profile_code,
             **fields,
         )
         self.db.add(site)
@@ -204,6 +215,28 @@ class SiteService:
         )
         return site
 
+    def _new_site_profile(self, code: str | None) -> str:
+        """Profil d'un nouveau site (palier D) : le profil d'origine par défaut ; un autre
+        profil actif du catalogue, choisi avec ``organization.profile.manage`` (la même
+        permission que le changement de profil d'un site)."""
+        origin = self.ctx.tenant.business_profile_code
+        if code is None or code == origin:
+            return origin
+        profile = self.db.get(BusinessProfile, code)
+        if profile is None or not profile.is_active:
+            raise BusinessRuleError(f"Profil inconnu : {code}", code="unknown_profile")
+        if PROFILE_MANAGE not in self.ctx.capabilities.permissions:
+            if PROFILE_MANAGE in self.ctx.capabilities.restricted_permissions:
+                raise ForbiddenError(
+                    "Action indisponible avec le statut de l'abonnement",
+                    code="subscription_restricted",
+                )
+            raise ForbiddenError(
+                "Permission insuffisante pour choisir le profil du site",
+                code="permission_denied",
+            )
+        return profile.code
+
     def update(self, site_id: uuid.UUID, data: SiteUpdate) -> Site:
         site = self.get(site_id)
         changes = data.model_dump(exclude_unset=True)
@@ -232,9 +265,6 @@ class SiteService:
             meta=self.ctx.meta,
         )
         return site
-
-
-MODULE_MANAGE = "organization.module.manage"
 
 
 class ModuleService:
@@ -356,9 +386,13 @@ class ModuleService:
         )
 
     def set_enabled_for_site(self, site_id: uuid.UUID, code: str, enabled: bool) -> None:
-        """Active / désactive un module sur CE site seulement (aucun autre site touché)."""
+        """Active / désactive un module sur CE site seulement (aucun autre site touché). Verrou
+        du site d'abord (même ordre que le changement de profil : site → ``site_modules`` →
+        verrous du module) ; une désactivation est refusée tant qu'une opération en cours du
+        module deviendrait impossible (session de caisse ouverte… ; palier D)."""
         site, profile, terms = self._site_offer(site_id)
         self._ensure_manage(site.id)
+        lock_site(self.db, site.id)
         if code not in self.registry or self.registry.get(code).core:
             raise BusinessRuleError("Module non paramétrable", code="module_not_configurable")
         if enabled and code not in self.capabilities.offered_modules(profile, terms):
@@ -384,6 +418,14 @@ class ModuleService:
                     "D'autres modules activés sur ce site en dépendent",
                     code="module_has_dependents",
                     extra={"dependents": dependents},
+                )
+            active = module_footprint(self.registry, self.db, code, site.id, lock=True).active
+            if active:
+                raise ConflictError(
+                    "Des opérations de ce module sont en cours sur ce site : terminez-les avant "
+                    "de le désactiver",
+                    code="module_has_open_operations",
+                    extra={"module": code, "operations": dict(active)},
                 )
         row = self.db.scalars(
             select(SiteModule)

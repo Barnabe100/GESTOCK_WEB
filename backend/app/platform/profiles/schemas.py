@@ -108,3 +108,94 @@ class BusinessProfileCatalogOut(BaseModel):
 
 class BusinessProfileChange(BaseModel):
     code: str = Field(min_length=1, max_length=50)
+
+
+# --- Changement de profil d'un site (palier D, ADR-0048) -----------------------------------
+
+
+class ProfileRefOut(BaseModel):
+    code: str
+    name: str
+    sector: str | None
+
+
+class ModuleStateOut(BaseModel):
+    in_profile: bool
+    in_plan: bool
+    activated: bool
+    effective: bool
+
+
+class ProfileModuleChangeOut(BaseModel):
+    code: str
+    status: str
+    # added | removed | kept (appartenance au profil) ; action sur ``site_modules`` : enable |
+    # disable | none ; raison : removed_from_profile, default, optional, not_in_plan, dependency.
+    change: str
+    action: str
+    reason: str | None
+    before: ModuleStateOut
+    after: ModuleStateOut
+
+
+class FootprintItemOut(BaseModel):
+    kind: str
+    module: str
+    count: int
+    # Comptage plafonné (« 10 000+ ») : ``count`` vaut alors le plafond.
+    capped: bool
+    blocking: bool
+
+
+class PlanCompatibilityOut(BaseModel):
+    code: str
+    # FULL : tous les modules du nouveau profil sont dans l'abonnement du site ; PARTIAL :
+    # certains ne le sont pas — ils ne seront jamais effectifs (aucun contournement du plan).
+    compatibility: str
+    modules_not_in_plan: list[str]
+
+
+class ProfileChangeSummaryOut(BaseModel):
+    added: list[str]
+    removed: list[str]
+    kept: list[str]
+    not_in_plan: list[str]
+    activated: list[str]
+    deactivated: list[str]
+
+
+class SiteProfilePreviewOut(BaseModel):
+    site_id: str
+    site_name: str
+    current_profile: ProfileRefOut
+    target_profile: ProfileRefOut
+    level: str
+    fingerprint: str
+    # Texte exact à saisir pour un changement STRONG (sinon ``null``).
+    confirmation_text: str | None
+    plan: PlanCompatibilityOut
+    modules: list[ProfileModuleChangeOut]
+    summary: ProfileChangeSummaryOut
+    history: list[FootprintItemOut]
+    open_operations: list[FootprintItemOut]
+    blockers: list[FootprintItemOut]
+    configuration: list[FootprintItemOut]
+    # L'assortiment du site n'est jamais copié, retiré ni modifié par un changement de profil.
+    assortment_unchanged: bool = True
+
+
+class SiteProfileChangeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_code: str = Field(min_length=1, max_length=50)
+    preview_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    confirmation: str | None = Field(default=None, max_length=100)
+
+
+class SiteProfileChangeOut(BaseModel):
+    site_id: str
+    previous_profile: str
+    business_profile_code: str
+    level: str
+    activated: list[str]
+    deactivated: list[str]
