@@ -11,7 +11,7 @@ from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
 from app.platform.footprint import module_footprint
 from app.platform.licensing.service import current_terms
-from app.platform.registry import ModuleRegistry, get_registry
+from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
 from app.platform.sequences.service import site_has_numbers
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
 from app.platform.subscriptions.plan_policy import PlanTerms
@@ -386,10 +386,13 @@ class ModuleService:
         )
 
     def set_enabled_for_site(self, site_id: uuid.UUID, code: str, enabled: bool) -> None:
-        """Active / désactive un module sur CE site seulement (aucun autre site touché). Verrou
-        du site d'abord (même ordre que le changement de profil : site → ``site_modules`` →
-        verrous du module) ; une désactivation est refusée tant qu'une opération en cours du
-        module deviendrait impossible (session de caisse ouverte… ; palier D)."""
+        """Active / désactive un module sur CE site seulement (aucun autre site touché). Seul
+        point d'activation explicite d'un module (``PUT /sites/{id}/modules/{code}`` ; la route
+        de l'entreprise est retirée, la console n'active aucun module). Verrou du site d'abord
+        (même ordre que le changement de profil : site → ``site_modules`` → verrous du module) ;
+        un module « Bientôt disponible » n'est jamais activé (``module_not_implemented``,
+        palier E.1) ; une désactivation est refusée tant qu'une opération en cours du module
+        deviendrait impossible (session de caisse ouverte… ; palier D)."""
         site, profile, terms = self._site_offer(site_id)
         self._ensure_manage(site.id)
         lock_site(self.db, site.id)
@@ -401,6 +404,15 @@ class ModuleService:
             raise BusinessRuleError(
                 "Module non inclus dans le profil ou l'abonnement de ce site",
                 code="module_not_offered",
+            )
+        if enabled and self.registry.get(code).status is not ModuleStatus.AVAILABLE:
+            # Palier E.1 : un module déclaré mais non implémenté (« Bientôt disponible »,
+            # ``ModuleStatus.PLANNED``) reste visible au catalogue mais n'est jamais activé,
+            # même proposé par le profil et l'abonnement du site, quel que soit le client
+            # (l'interface n'est pas une frontière de sécurité). Contrôlé après l'offre : hors
+            # plan et non proposé gardent leur code (``module_not_offered``).
+            raise BusinessRuleError(
+                "Ce module n'est pas encore disponible", code="module_not_implemented"
             )
         currently = self.capabilities.site_module_codes(site.id) | self.registry.core_codes()
         if enabled:

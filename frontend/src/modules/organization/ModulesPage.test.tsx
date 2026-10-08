@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { Toast } from 'primereact/toast';
+import type { RefObject } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { jsonResponse, renderWithCapabilities } from '@/shared/testing';
+import { ToastContext } from '@/shared/ui/toast';
 
 import ModulesPage from './ModulesPage';
 
@@ -50,7 +53,11 @@ const TENANT_MODULES = [
   { ...MODULE, code: 'inventory_count', enabled: true },
 ];
 
+// Refus du serveur simulé pour la prochaine écriture (le serveur est la seule frontière).
+let refusal: { status: number; code: string } | null = null;
 const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+  if (init?.method === 'PUT' && refusal)
+    return jsonResponse({ code: refusal.code, detail: 'refus' }, refusal.status);
   if (init?.method === 'PUT') return new Response(null, { status: 204 });
   if (String(url).endsWith('/api/v1/modules')) return jsonResponse(TENANT_MODULES);
   return jsonResponse(SITE_MODULES);
@@ -62,6 +69,7 @@ describe('modules du site : états (paliers C et E)', () => {
   beforeEach(() => vi.stubGlobal('fetch', fetchMock));
   afterEach(() => {
     cleanup();
+    refusal = null;
     fetchMock.mockClear();
     vi.unstubAllGlobals();
   });
@@ -125,6 +133,43 @@ describe('modules du site : états (paliers C et E)', () => {
       expect(String(put?.[0])).toMatch(/\/sites\/s1\/modules\/alerts$/);
       expect(JSON.parse(String(put?.[1]?.body))).toEqual({ enabled: true });
     });
+  });
+
+  it('palier E.1 : module « Bientôt disponible » sans interrupteur, aucune écriture possible', async () => {
+    renderWithCapabilities(<ModulesPage />, {
+      permissions: MANAGE,
+      sites: SITES,
+      mainSiteId: 's1',
+    });
+    await screen.findByTestId('module-state-planned');
+    const row = stateOf('Tables');
+    expect(within(row).getByTestId('module-state-planned')).toBeTruthy();
+    expect(within(row).queryByRole('switch')).toBeNull();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false);
+  });
+
+  it('palier E.1 : refus du serveur (module non implémenté) affiché, état relu', async () => {
+    refusal = { status: 422, code: 'module_not_implemented' };
+    const show = vi.fn();
+    const toast = { current: { show } as unknown as Toast } as RefObject<Toast | null>;
+    renderWithCapabilities(
+      <ToastContext.Provider value={toast}>
+        <ModulesPage />
+      </ToastContext.Provider>,
+      { permissions: MANAGE, sites: SITES, mainSiteId: 's1' },
+    );
+    await screen.findByTestId('module-state-inactive');
+    fireEvent.click(within(stateOf('Alertes')).getByRole('switch'));
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'error',
+          summary: "Ce module n'est pas encore disponible : il ne peut pas être activé.",
+        }),
+      ),
+    );
+    // L'interface ne présume pas du succès : l'état affiché reste celui du serveur.
+    expect(within(stateOf('Alertes')).getByTestId('module-state-inactive')).toBeTruthy();
   });
 
   it('site demandé par la page Sites (?site=)', async () => {

@@ -141,6 +141,12 @@ module futur (`restaurant.tables:occupied`, `restaurant.kitchen:ready`,
 Les modules planifiés du profil apparaissent dans « À venir pour votre activité », avec le
 badge « Bientôt disponible », sans lien.
 
+Un module marqué Bientôt disponible peut être exposé dans le catalogue mais ne peut jamais être activé tant que son implémentation n'est pas disponible. Le contrôle est effectué côté serveur. Source de
+vérité : le statut du manifeste dans le registre (`planned`, `app/modules/planned.py`) ; seul
+point d'activation explicite, `ModuleService.set_enabled_for_site`
+(`PUT /sites/{id}/modules/{code}`), refuse `422 module_not_implemented` — requête directe
+comprise ; hors plan et non proposé gardent `422 module_not_offered` (palier E.1).
+
 ## 7. Terminologie et thème
 
 - Terminologie : profil UX puis surcharges du profil (fusion), appliquée à l'espace i18n

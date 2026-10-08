@@ -33,6 +33,7 @@
   "self_modification": "Vous ne pouvez pas modifier vos propres accès.",
   "site_not_assigned": "Un rôle limité à un site exige l'accès à ce site.",
   "module_not_offered": "Module non inclus dans le profil ou l'abonnement de ce site.",
+  "module_not_implemented": "Ce module n'est pas encore disponible : il ne peut pas être activé.",
   "module_is_per_site": "Les modules s'activent pour chaque site.",
   "module_has_open_operations": "Des opérations de ce module sont en cours sur ce site (par exemple une session de caisse ouverte) : terminez-les avant de le désactiver.",
   "profile_unchanged": "Le site a déjà ce profil d'activité.",

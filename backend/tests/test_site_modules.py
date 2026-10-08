@@ -147,14 +147,19 @@ def test_profile_plan_and_activation_are_all_required(
 def test_offered_but_not_activated_is_not_effective(provision: Any, api_for: Any) -> None:
     t = provision("resto-opt", profile="restaurant.restaurant", plan="ENTREPRISE")
     owner = api_for("owner@resto-opt.example.com")
-    # QR : optionnel du profil, inclus dans ENTREPRISE, non activé à la création du site.
+    # Alertes (disponible) : proposé par le profil et l'abonnement, désactivé → non effectif.
+    assert set_site_module(owner, t.site_id, "alerts", False).status_code == 204
+    assert _state(_site_modules(owner, t.site_id)["alerts"]) == (True, True, False, False)
+    assert "alerts" not in _modules(_caps(owner, t.site_id))
+    assert set_site_module(owner, t.site_id, "alerts", True).status_code == 204
+    assert _state(_site_modules(owner, t.site_id)["alerts"]) == (True, True, True, True)
+    assert "alerts" in _modules(_caps(owner, t.site_id))
+    # QR : optionnel du profil, inclus dans ENTREPRISE, non activé à la création du site ; module
+    # « Bientôt disponible » : son activation est refusée (palier E.1), il reste non activé.
     assert _state(_site_modules(owner, t.site_id)["restaurant.qr"]) == (True, True, False, False)
-    assert set_site_module(owner, t.site_id, "restaurant.qr", True).status_code == 204
-    qr = _site_modules(owner, t.site_id)["restaurant.qr"]
-    assert qr["activated_for_site"] is True
-    # Module planifié (non implémenté) : jamais exposé comme utilisable par l'interface, mais
-    # effectif au sens des capacités (comportement inchangé).
-    assert qr["effective"] is True
+    refused = set_site_module(owner, t.site_id, "restaurant.qr", True)
+    assert (refused.status_code, refused.json()["code"]) == (422, "module_not_implemented")
+    assert _state(_site_modules(owner, t.site_id)["restaurant.qr"]) == (True, True, False, False)
 
 
 def test_module_outside_the_plan_is_never_effective(

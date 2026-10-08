@@ -124,3 +124,19 @@ inactif (dépendance) / désactivé / hors abonnement / à venir / non proposé 
 sans interrupteur pour une activation impossible ; la page Sites montre site → profil → modules
 actifs → statut ; un changement de site vide le cache des requêtes ; une page d'un module absent
 du site actif l'explique. Voir [`DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) §8 bis.
+
+## Palier E.1 : modules « Bientôt disponible »
+
+Un module marqué Bientôt disponible peut être exposé dans le catalogue mais ne peut jamais être activé tant que son implémentation n'est pas disponible. Le contrôle est effectué côté serveur.
+
+- Source de vérité : `ModuleManifest.status` du registre (`planned`, déclaré dans
+  `app/modules/planned.py`) ; aucun champ nouveau, aucune migration.
+- Point central : `ModuleService.set_enabled_for_site` (seule activation explicite ; la route de
+  l'entreprise reste retirée, la console n'active aucun module). Une activation d'un module non
+  `available` est refusée `422 module_not_implemented`, après les contrôles de permission, de
+  site et d'offre (hors plan / non proposé : `422 module_not_offered`, inchangé). La
+  désactivation reste permise.
+- Inchangés : consultation (`GET /sites/{id}/modules`, `GET /modules`, statut `planned`),
+  capacités, initialisation d'un site et changement de profil (défauts du profil : lignes
+  `site_modules` éventuellement activées pour un module planifié, inertes car `require_module`
+  refuse tout module non `available`).

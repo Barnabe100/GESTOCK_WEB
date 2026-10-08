@@ -314,6 +314,11 @@ repli neutre si profil absent / inconnu ; changement de site = cache TanStack Qu
 `RouteFallback` (« Fonction non disponible sur ce site ») ; page Modules à états (activé,
 inactif par dépendance, désactivé, hors abonnement, à venir, non proposé) ; page Sites : profil
 et modules actifs par site ([`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md) §8 bis).
+**Palier E.1 — modules « Bientôt disponible »** (aucune migration) : un module marqué Bientôt
+disponible peut être exposé dans le catalogue mais ne peut jamais être activé tant que son
+implémentation n'est pas disponible ; le contrôle est effectué côté serveur (statut `planned`
+du registre, `ModuleService.set_enabled_for_site` → `422 module_not_implemented`, après
+l'offre : hors plan / non proposé restent `module_not_offered` ; désactivation permise).
 Ne pas passer au palier F sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et

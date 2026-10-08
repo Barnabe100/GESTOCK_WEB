@@ -28,12 +28,18 @@ def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) 
 def test_toggle_optional_module_on_a_site(provision: Any, api_for: Any) -> None:
     t = provision("resto", profile="restaurant.restaurant", plan="ENTREPRISE")
     api = api_for("owner@resto.example.com")
-    assert _by_code(api)["restaurant.qr"]["enabled"] is False
-    assert set_site_module(api, t.site_id, "restaurant.qr", True).status_code == 204
-    assert _by_code(api)["restaurant.qr"]["enabled"] is True
-    assert _by_code(api)["restaurant.qr"]["effective"] is True
+    assert set_site_module(api, t.site_id, "alerts", False).status_code == 204
+    assert _by_code(api)["alerts"]["enabled"] is False
+    assert set_site_module(api, t.site_id, "alerts", True).status_code == 204
+    assert _by_code(api)["alerts"]["enabled"] is True
+    assert _by_code(api)["alerts"]["effective"] is True
     caps = api.get("/me/capabilities").json()
-    assert "restaurant.qr" in {m["code"] for m in caps["modules"]}
+    assert "alerts" in {m["code"] for m in caps["modules"]}
+    # Module optionnel « Bientôt disponible » (palier E.1) : jamais activé.
+    assert _by_code(api)["restaurant.qr"]["enabled"] is False
+    refused = set_site_module(api, t.site_id, "restaurant.qr", True)
+    assert (refused.status_code, refused.json()["code"]) == (422, "module_not_implemented")
+    assert _by_code(api)["restaurant.qr"]["enabled"] is False
 
 
 def test_tenant_level_toggle_is_retired(provision: Any, api_for: Any) -> None:
