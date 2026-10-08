@@ -1,6 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { adminCliWithInput, bearer, ownerSql, provisionTenant, tokenFor } from './support';
+import {
+  adminCliWithInput,
+  bearer,
+  createActiveSite,
+  ownerSql,
+  provisionTenant,
+  tokenFor,
+} from './support';
 
 /**
  * Phase 3.2-G — Console TechNova : tenants et abonnements (ADR-0031). Chaque exécution crée
@@ -172,6 +179,48 @@ test.describe('Console TechNova : tenants et abonnements', () => {
     expect(suspension?.data.actor).toBe('technova');
     expect(suspension?.data.reason).toBe(`Suspension ${stamp}`);
     expect(JSON.stringify(mirrored)).not.toContain(admin);
+  });
+
+  test('palier F : profil de chaque site en lecture seule, profil d’origine distinct', async ({
+    page,
+    request,
+  }) => {
+    const stamp = `${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}f`;
+    const name = `Tenant Profils ${stamp}`;
+    const ownerEmail = `e2e-tenant-profils-${stamp}@example.com`;
+    await provisionTenant(request, {
+      name,
+      profile: 'retail.quincaillerie',
+      email: ownerEmail,
+      password: OWNER_PASSWORD,
+    });
+    const token = await tokenFor(request, ownerEmail, OWNER_PASSWORD, name);
+    await createActiveSite(request, token, {
+      name: 'Dépôt Profils',
+      code: 'DEPOT-PF',
+      kind: 'warehouse',
+      business_profile_code: 'distribution.entrepot',
+    });
+
+    const admin = createPlatformAdmin(stamp);
+    await consoleLogin(page, admin);
+    await page.goto('/tech-admin/tenants');
+    await page.getByPlaceholder(/Rechercher une entreprise/).fill(stamp);
+    const row = page.getByRole('row').filter({ hasText: name });
+    await expect(row.getByTestId('tenant-profile')).toHaveText('2 profils');
+    await expect(row.getByTestId('tenant-profile')).toHaveAttribute(
+      'title',
+      'Profils des sites : Entrepôt, Quincaillerie',
+    );
+    await row.getByRole('button', { name: new RegExp(`Ouvrir ${name}`) }).click();
+
+    const sites = page.getByTestId('tenant-sites');
+    await expect(sites.getByTestId('site-profile-PRINCIPAL')).toHaveText('Quincaillerie');
+    await expect(sites.getByTestId('site-profile-DEPOT-PF')).toHaveText('Entrepôt');
+    await expect(page.getByText("Profil d'origine (inscription)")).toBeVisible();
+    // Lecture seule : aucune commande de changement de profil dans la console.
+    await expect(sites.getByRole('button')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /profil/i })).toHaveCount(0);
   });
 
   test('liste des tenants sur mobile, sans débordement @mobile', async ({ page }) => {

@@ -52,6 +52,7 @@ from app.console.schemas import (
     TenantActions,
     TenantDetailOut,
     TenantListItem,
+    TenantSiteOut,
     TenantSubscriptionOut,
     TenantUsage,
 )
@@ -279,11 +280,23 @@ def list_tenants(
         ),
         params,
     )
+    service = TenantAdminService(db, registry, now)
+    profiles = service.site_profiles([row.id for row in rows])
     return Page(
-        items=[TenantListItem.model_validate(row, from_attributes=True) for row in rows],
+        items=[_tenant_item(row, profiles[row.id]) for row in rows],
         total=total,
         limit=params.limit,
         offset=params.offset,
+    )
+
+
+def _tenant_item(row: Any, site_profiles: list[Any]) -> TenantListItem:
+    """Métadonnées d'une entreprise et profils de ses sites (palier F, lecture seule)."""
+    return TenantListItem.model_validate(
+        {
+            **row._mapping,
+            "site_profiles": [{"code": p.code, "name": p.name} for p in site_profiles],
+        }
     )
 
 
@@ -348,12 +361,16 @@ def _tenant_detail(service: TenantAdminService, tenant_id: uuid.UUID) -> TenantD
     identity = service.identity(tenant_id)
     plans = [p for p in PlanCommercialService(service.db, service.registry).list() if p.is_active]
     return TenantDetailOut(
-        **TenantListItem.model_validate(row, from_attributes=True).model_dump(),
+        **_tenant_item(row, service.site_profiles([tenant_id])[tenant_id]).model_dump(),
         country_code=identity.country_code,
         country_name=identity.country_name,
         currency=identity.currency,
         locale=identity.locale,
         timezone=identity.timezone,
+        sites_detail=[
+            TenantSiteOut.model_validate(site, from_attributes=True)
+            for site in service.sites(tenant_id)
+        ],
         subscriptions=[
             _subscription_out(service, sub_row, identity.timezone, plans)
             for sub_row in service.subscriptions(tenant_id)

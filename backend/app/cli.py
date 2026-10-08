@@ -256,7 +256,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--business-profile",
         dest="profile",
         required=True,
-        help="Profil d'activité <secteur>.<activité> (ex. retail.alimentation)",
+        help=(
+            "Profil d'activité <secteur>.<activité> (ex. retail.alimentation) : profil d'origine "
+            "de l'entreprise et profil de son site initial"
+        ),
     )
     create.add_argument("--plan", required=True, choices=["STANDARD", "ENTREPRISE"])
     create.add_argument("--billing", default="monthly", choices=[p.value for p in BillingPeriod])
@@ -288,8 +291,15 @@ def build_parser() -> argparse.ArgumentParser:
     change.add_argument("--plan", required=True, choices=["STANDARD", "ENTREPRISE"])
     change.set_defaults(func=cmd_change_plan)
 
+    # D8 (palier F) : profil d'ORIGINE d'une entreprise encore sans site seulement ; refusé
+    # (profile_is_per_site) dès qu'un site existe — le profil d'un site ne se change que dans
+    # l'application de l'entreprise (ADR-0048), jamais par TechNova.
     profile = sub.add_parser(
-        "change-profile", help="Changer le profil d'activité d'une entreprise (données conservées)"
+        "change-profile",
+        help=(
+            "Changer le profil d'origine d'une entreprise sans site (refusé dès qu'un site "
+            "existe : le profil d'activité est alors propre à chaque site)"
+        ),
     )
     profile.add_argument("--tenant-id", required=True, type=uuid.UUID)
     profile.add_argument(

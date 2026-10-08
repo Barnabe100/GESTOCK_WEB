@@ -212,14 +212,18 @@
     "createdAt": "Création",
     "empty": "Aucune entreprise.",
     "open": "Ouvrir",
-    "subscriptions": "Abonnements"
+    "subscriptions": "Abonnements",
+    "profile": "Profil d'activité",
+    "originProfile": "{{name}} (inscription, aucun site)",
+    "profilesCount": "{{count}} profils",
+    "profilesList": "Profils des sites : {{names}}"
   },
   "tenant": {
     "breadcrumb": "Tenants",
     "identity": "Identité",
     "name": "Raison sociale",
     "tradeName": "Nom commercial",
-    "profile": "Profil d'activité",
+    "profile": "Profil d'origine (inscription)",
     "country": "Pays",
     "currency": "Devise",
     "timezone": "Fuseau horaire",
@@ -291,7 +295,16 @@
     "sitesCount": "Sites actifs",
     "usersCount": "Utilisateurs actifs",
     "subscriptionsTitle": "Abonnements par site",
-    "subscriptionsHelp": "1 site = 1 abonnement : chaque site a son offre, sa période, son statut et ses limites. Les actions portent sur l'abonnement d'un site."
+    "subscriptionsHelp": "1 site = 1 abonnement : chaque site a son offre, sa période, son statut et ses limites. Les actions portent sur l'abonnement d'un site.",
+    "sitesTitle": "Sites et profils d'activité",
+    "sitesHelp": "Profil d'activité de chaque site, en lecture seule : il est choisi et modifié par l'entreprise depuis son application (changement contrôlé). La console ne peut pas le modifier.",
+    "site": "Site",
+    "siteCode": "Code",
+    "siteProfile": "Profil d'activité",
+    "siteState": "État",
+    "siteActive": "Actif",
+    "siteInactive": "Inactif",
+    "noSite": "Aucun site : l'entreprise n'a pas encore créé son premier site."
   },
   "payments": {
     "title": "Paiements",

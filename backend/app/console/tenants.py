@@ -1,6 +1,7 @@
 """Tenants et abonnements vus par TechNova (Phase 3.2-G, ADR-0031).
 
-La console lit des **métadonnées plateforme** (identité, profil, statut, abonnement, compteurs)
+La console lit des **métadonnées plateforme** (identité, profil d'origine, profil de chaque site
+— lecture seule, palier F —, statut, abonnement, compteurs)
 et agit sur deux statuts **distincts** :
 
 - ``Tenant.status`` (``active`` / ``suspended``) : suspension administrative par TechNova ; un
@@ -226,6 +227,46 @@ class TenantAdminService:
         if found is None:
             raise NotFoundError("Entreprise introuvable", code="tenant_not_found")
         return found
+
+    def site_profiles(self, tenant_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[Any]]:
+        """Profils d'activité distincts des sites ACTIFS de chaque entreprise (palier F, lecture
+        seule : le profil d'un site ne se change que dans l'application de l'entreprise)."""
+        found: dict[uuid.UUID, list[Any]] = {tenant_id: [] for tenant_id in tenant_ids}
+        if not tenant_ids:
+            return found
+        rows = self.db.execute(
+            select(
+                Site.tenant_id,
+                Site.business_profile_code.label("code"),
+                BusinessProfile.name.label("name"),
+            )
+            .join(BusinessProfile, BusinessProfile.code == Site.business_profile_code)
+            .where(Site.tenant_id.in_(tenant_ids), Site.is_active.is_(True))
+            .distinct()
+            .order_by(Site.tenant_id, BusinessProfile.name, Site.business_profile_code)
+        ).all()
+        for row in rows:
+            found[row.tenant_id].append(row)
+        return found
+
+    def sites(self, tenant_id: uuid.UUID) -> list[Any]:
+        """Sites de l'entreprise et profil d'activité de chacun (colonnes autorisées au rôle de
+        la console : migrations 0018, 0020, 0039 ; lecture seule)."""
+        return list(
+            self.db.execute(
+                select(
+                    Site.id,
+                    Site.name,
+                    Site.code,
+                    Site.is_active,
+                    Site.business_profile_code,
+                    BusinessProfile.name.label("business_profile_name"),
+                )
+                .join(BusinessProfile, BusinessProfile.code == Site.business_profile_code)
+                .where(Site.tenant_id == tenant_id)
+                .order_by(Site.is_active.desc(), Site.name, Site.id)
+            ).all()
+        )
 
     def identity(self, tenant_id: uuid.UUID) -> Any:
         """Identité plateforme (colonnes autorisées au rôle de la console seulement)."""

@@ -78,8 +78,8 @@ Variables : `SM_PLATFORM_DATABASE_URL`, `SM_DB_PLATFORM_ROLE`, `SM_PLATFORM_API_
 | PATCH | `/plans/{code}/commercial` | paramètres commerciaux ; `reason` obligatoire |
 | GET | `/catalog` | modules, permissions, fonctionnalités, limites, profils, rôles de base, politiques, devises |
 | GET | `/audit` | journal de la plateforme (paginé ; filtres `action`, `target_type`, `target_id`, `tenant_id`) |
-| GET | `/tenants` | entreprises : métadonnées paginées (`limit`, `offset`, `sort` : `name`, `created_at`, `current_period_end`, `status`) ; filtres `search`, `status`, `plan_code`, `subscription_status` (statut **effectif**) |
-| GET | `/tenants/{id}` | identité plateforme, utilisation (sites, utilisateurs / limites du plan), abonnement (plan, statuts stocké et effectif, période, prix figé), actions possibles et propositions de dates |
+| GET | `/tenants` | entreprises : métadonnées paginées (`limit`, `offset`, `sort` : `name`, `created_at`, `current_period_end`, `status`) ; filtres `search`, `status`, `plan_code`, `subscription_status` (statut **effectif**) ; `business_profile_*` = profil d'**origine** (inscription), `site_profiles` = profils distincts des sites actifs (palier F, lecture seule) |
+| GET | `/tenants/{id}` | identité plateforme, utilisation (sites, utilisateurs / limites du plan), `sites_detail` (chaque site : nom, code, actif, **profil d'activité** — lecture seule, palier F), abonnement (plan, statuts stocké et effectif, période, prix figé), actions possibles et propositions de dates |
 | POST | `/tenants/{id}/suspend` · `/reactivate` | statut de l'entreprise ; `reason` obligatoire |
 | POST | `/tenants/{id}/subscriptions/{subscription_id}/activate` | activation manuelle transitoire (`period_start`, `period_end` facultatifs, `reason`) — abonnement d'un site |
 | POST | `/tenants/{id}/subscriptions/{subscription_id}/extend` | prolongation (`period_end`, `reason`) — abonnement d'un site |
@@ -165,6 +165,21 @@ jours), calculés par agrégats SQL.
 
 Droits SQL ajoutés (migration 0018) : voir [`DATA_MODEL.md`](DATA_MODEL.md) ; aucune table
 métier.
+
+## 6 ter. Profil d'activité de chaque site : lecture seule (palier F, ADR-0048, D8)
+
+La console **consulte** le profil d'activité de chaque site (fiche : section « Sites et profils
+d'activité », sites inactifs compris ; liste : profil des sites actifs — un nom, « N profils »
+avec les noms en infobulle, ou le profil d'inscription « aucun site »). Le profil de
+l'entreprise (`business_profile_*`) n'est que son profil d'**origine**. La console **ne change
+jamais** un profil : aucune route d'écriture (test statique sur les routes), et le rôle SQL
+`stockmanager_platform` n'a que `SELECT (business_profile_code)` sur `sites` (migration 0039),
+aucun droit d'écriture sur `sites`, `tenants.business_profile_code` ni `site_modules`. Le
+changement de profil d'un site reste celui de l'entreprise (`PUT /sites/{id}/business-profile`,
+aperçu, niveaux, confirmation). CLI (D8) : `create-tenant --business-profile` fixe le profil
+d'origine et celui du site initial ; `change-profile` ne change que le profil d'origine d'une
+entreprise **sans site** et répond, comme l'API, `profile_is_per_site` dès qu'un site existe
+(règle portée par le service `change_business_profile`, aucun contournement par TechNova).
 
 ## 6 bis. 1 site = 1 abonnement (Phase 3.3-B1, ADR-0033)
 
@@ -270,6 +285,7 @@ console ne voit jamais l'utilisateur de l'entreprise qui a activé le poste.
 | Licences : Signing Service séparé (clé privée hors StockManager), génération depuis un paiement confirmé, révocation, réémission, téléchargement `.lic`, double audit | **Implémenté** (3.3-B2, migration 0021, tests, ADR-0034) |
 | Postes : activation par l'installation, quota par site, contrôle, libération (entreprise, TechNova) | **Implémenté** (3.3-B3, migration 0022, tests, ADR-0035) |
 | Renouvellement par site (période, postes et montant calculés par le serveur ; continuité pendant la grâce), tarif par poste des plans, rappels d'échéance (job `stockmanager notifications run`, rôle SQL de la console) | **Implémenté** (3.3-B4, migration 0023, tests, ADR-0036) |
+| Profil d'activité de chaque site (fiche et liste des tenants), lecture seule ; CLI `change-profile` limitée aux entreprises sans site | **Implémenté** (palier F, aucune migration, tests, ADR-0048) |
 | Moyens de paiement configurables par TechNova, intégrations Orange Money / Moov / cartes | **Futur** (liste fixe, déclaration manuelle) |
 | Déploiement du Signing Service (hôte, secrets montés, réseau privé, clé de production) | **Infrastructure** : image fournie (`signing-service/Dockerfile`), hors Compose de l'application |
 | Catalogue technique éditable, limites modifiables, paramètres SaaS en base, support avec accès aux données métier | **Futur / réévaluation** (hors console en 3.2-F) |

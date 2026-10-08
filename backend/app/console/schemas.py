@@ -221,6 +221,11 @@ class PlatformAuditOut(BaseModel):
 # --- Tenants et abonnements (Phase 3.2-G) ------------------------------------------------------
 
 
+class ProfileRefOut(BaseModel):
+    code: str
+    name: str
+
+
 class TenantListItem(BaseModel):
     """Métadonnées plateforme d'une entreprise (aucune donnée métier). Abonnements : un par
     site (ADR-0033), résumés ici (plans, statuts effectifs, prochaine échéance)."""
@@ -230,8 +235,11 @@ class TenantListItem(BaseModel):
     trade_name: str | None
     slug: str
     status: str
+    # Profil d'ORIGINE (inscription) : le profil d'activité effectif est celui de chaque site.
     business_profile_code: str
     business_profile_name: str
+    # Profils distincts des sites actifs (palier F, lecture seule ; vide : aucun site).
+    site_profiles: list[ProfileRefOut]
     created_at: datetime
     subscription_count: int
     plan_codes: list[str]
@@ -309,12 +317,25 @@ class TenantActions(BaseModel):
     can_reactivate: bool
 
 
+class TenantSiteOut(BaseModel):
+    """Site et son profil d'activité, en lecture seule (palier F) : la console ne change jamais
+    le profil d'un site (D8 ; changement contrôlé dans l'application de l'entreprise)."""
+
+    id: uuid.UUID
+    name: str
+    code: str
+    is_active: bool
+    business_profile_code: str
+    business_profile_name: str
+
+
 class TenantDetailOut(TenantListItem):
     country_code: str | None
     country_name: str | None
     currency: str
     locale: str
     timezone: str
+    sites_detail: list[TenantSiteOut]
     subscriptions: list[TenantSubscriptionOut]
     actions: TenantActions
 

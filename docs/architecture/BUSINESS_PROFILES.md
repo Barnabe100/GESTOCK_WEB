@@ -197,7 +197,10 @@ sites » : si un autre site accessible a le module). « Créer un nouveau site a
 `organization.profile.manage`, nature `admin`) ou `stockmanager change-profile --tenant-id …
 --profile …` (TechNova) : profil actif requis ; **aucune donnée supprimée** ; audité
 (`tenant.profile_changed`). Depuis le palier B, l'API le refuse dès qu'un site existe
-(`409 profile_is_per_site`). Depuis le palier C (migration 0040), ce changement n'écrit aucune
+(`409 profile_is_per_site`) ; depuis le palier F, la règle est portée par le service
+(`change_business_profile`) et s'applique aussi à la CLI (D8 : TechNova ne contourne jamais le
+changement contrôlé du profil d'un site). La console TechNova affiche le profil de chaque site
+en lecture seule. Depuis le palier C (migration 0040), ce changement n'écrit aucune
 activation : les activations vivent dans `site_modules` ; `tenant_modules` est un historique
 legacy, ni lu ni écrit.
 

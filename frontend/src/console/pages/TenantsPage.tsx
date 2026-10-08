@@ -20,7 +20,7 @@ import { SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
 
 import { CONSOLE_BASE } from '../ConsoleLayout';
 import { usePlans, useTenants } from '../queries';
-import { TenantStatusBadge, tenantDate } from '../tenantDisplay';
+import { TenantStatusBadge, tenantDate, tenantProfileSummary } from '../tenantDisplay';
 import type { SubscriptionStatus, TenantListItem } from '../types';
 
 const SUBSCRIPTION_STATUSES: SubscriptionStatus[] = [
@@ -136,16 +136,19 @@ export function TenantsPage() {
           field="name"
           sortable
           header={t('console:tenants.company')}
-          body={(row: TenantListItem) => (
-            <span>
-              <span className="sm-strong">{row.name}</span>
-              <br />
-              <small className="sm-muted">
-                {row.trade_name ? `${row.trade_name} · ` : ''}
-                {row.business_profile_name}
-              </small>
-            </span>
-          )}
+          body={(row: TenantListItem) => {
+            const profile = tenantProfileSummary(t, row);
+            return (
+              <span>
+                <span className="sm-strong">{row.name}</span>
+                <br />
+                <small className="sm-muted" title={profile.title} data-testid="tenant-profile">
+                  {row.trade_name ? `${row.trade_name} · ` : ''}
+                  {profile.label}
+                </small>
+              </span>
+            );
+          }}
         />
         <Column
           header={t('console:tenants.plan')}

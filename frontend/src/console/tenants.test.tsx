@@ -24,6 +24,7 @@ const ROW: TenantListItem = {
   status: 'active',
   business_profile_code: 'retail.alimentation',
   business_profile_name: 'Alimentation',
+  site_profiles: [{ code: 'retail.alimentation', name: 'Alimentation' }],
   created_at: '2026-09-01T10:00:00Z',
   subscription_count: 1,
   plan_codes: ['STANDARD'],
@@ -40,6 +41,24 @@ const DETAIL: TenantDetail = {
   currency: 'XOF',
   locale: 'fr',
   timezone: 'Africa/Ouagadougou',
+  sites_detail: [
+    {
+      id: 'site-1',
+      name: 'Boutique',
+      code: 'BTQ',
+      is_active: true,
+      business_profile_code: 'retail.alimentation',
+      business_profile_name: 'Alimentation',
+    },
+    {
+      id: 'site-2',
+      name: 'Dépôt',
+      code: 'DEP',
+      is_active: false,
+      business_profile_code: 'distribution.entrepot',
+      business_profile_name: 'Entrepôt',
+    },
+  ],
   subscriptions: [
     {
       id: 's-1',
@@ -91,7 +110,10 @@ function renderConsole(path: string) {
   );
 }
 
-function consoleApi(action?: (url: string, body: unknown) => Response) {
+function consoleApi(
+  action?: (url: string, body: unknown) => Response,
+  rows: TenantListItem[] = [ROW],
+) {
   fetchMock.mockImplementation(async (url, init) => {
     const u = String(url);
     if (u.endsWith('/me')) return jsonResponse(ADMIN);
@@ -101,7 +123,7 @@ function consoleApi(action?: (url: string, body: unknown) => Response) {
     }
     if (u.endsWith('/tenants/t-1')) return jsonResponse(DETAIL);
     if (u.includes('/tenants?'))
-      return jsonResponse({ items: [ROW], total: 1, limit: 25, offset: 0 });
+      return jsonResponse({ items: rows, total: rows.length, limit: 25, offset: 0 });
     if (u.includes('/audit')) return jsonResponse({ items: [], total: 0, limit: 20, offset: 0 });
     return jsonResponse({ code: 'not_found' }, 404);
   });
@@ -164,6 +186,55 @@ describe('Console TechNova : tenants', () => {
     const actions = screen.getByTestId('tenant-actions');
     expect(within(actions).getByRole('button', { name: 'Suspendre' })).toBeTruthy();
     expect(within(actions).queryByRole('button', { name: 'Réactiver' })).toBeNull();
+  });
+
+  it('palier F — liste : profil des sites, « N profils » ou profil d’inscription', async () => {
+    consoleApi(undefined, [
+      ROW,
+      {
+        ...ROW,
+        id: 't-2',
+        name: 'Multi Sites',
+        trade_name: null,
+        site_profiles: [
+          { code: 'distribution.entrepot', name: 'Entrepôt' },
+          { code: 'retail.quincaillerie', name: 'Quincaillerie' },
+        ],
+      },
+      { ...ROW, id: 't-3', name: 'Sans Site', trade_name: null, site_profiles: [], sites: 0 },
+    ]);
+    renderConsole('/tech-admin/tenants');
+    const rowOf = async (name: string) =>
+      (await screen.findByText(name)).closest('tr') as HTMLElement;
+    expect(within(await rowOf('ABC Commerce')).getByTestId('tenant-profile').textContent).toBe(
+      'Chez ABC · Alimentation',
+    );
+    const multi = within(await rowOf('Multi Sites')).getByTestId('tenant-profile');
+    expect(multi.textContent).toBe('2 profils');
+    expect(multi.getAttribute('title')).toBe('Profils des sites : Entrepôt, Quincaillerie');
+    expect(within(await rowOf('Sans Site')).getByTestId('tenant-profile').textContent).toBe(
+      'Alimentation (inscription, aucun site)',
+    );
+  });
+
+  it('palier F — fiche : profil de chaque site en lecture seule, profil d’origine distinct', async () => {
+    consoleApi();
+    renderConsole('/tech-admin/tenants/t-1');
+    const sites = await screen.findByTestId('tenant-sites');
+    expect(screen.getByText("Profil d'origine (inscription)")).toBeTruthy();
+    expect(within(sites).getByTestId('site-profile-BTQ').textContent).toBe('Alimentation');
+    expect(within(sites).getByTestId('site-profile-DEP').textContent).toBe('Entrepôt');
+    const depot = within(sites).getByText('Dépôt').closest('tr') as HTMLElement;
+    expect(within(depot).getByText('Inactif')).toBeTruthy();
+    // Aucune commande de changement de profil : ni bouton, ni champ, ni écriture.
+    expect(within(sites).queryAllByRole('button')).toHaveLength(0);
+    expect(within(sites).queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /profil/i })).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(
+        ([u, init]) => init?.method && init.method !== 'GET' && /profile/.test(String(u)),
+      ),
+    ).toBe(false);
   });
 
   it('activation : dates proposées par le serveur, raison et confirmation exigées', async () => {

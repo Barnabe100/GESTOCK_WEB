@@ -125,6 +125,19 @@ sans interrupteur pour une activation impossible ; la page Sites montre site →
 actifs → statut ; un changement de site vide le cache des requêtes ; une page d'un module absent
 du site actif l'explique. Voir [`DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) §8 bis.
 
+## Palier F : console TechNova et CLI (D8, lecture seule)
+
+- **Console** : `GET /tenants` expose `site_profiles` (profils distincts des sites actifs) à côté
+  du profil d'origine ; `GET /tenants/{id}` expose `sites_detail` (chaque site, actif ou non,
+  et son profil). Lecture seule : aucune route d'écriture de profil, droits SQL inchangés
+  (`SELECT (business_profile_code) ON sites`, migration 0039) ; aucune migration.
+- **CLI** : `create-tenant --business-profile` conservé (profil d'origine et site initial) ;
+  `change-profile` ne vise que le profil d'origine d'une entreprise sans site. La règle D2
+  (`profile_is_per_site`) quitte le routeur de l'API pour le service
+  `change_business_profile` : API et CLI la partagent ; avant ce palier, la CLI pouvait encore
+  changer le profil d'origine d'une entreprise ayant des sites (profil par défaut des sites
+  créés ensuite). Aucune commande ne change le profil d'un site.
+
 ## Palier E.1 : modules « Bientôt disponible »
 
 Un module marqué Bientôt disponible peut être exposé dans le catalogue mais ne peut jamais être activé tant que son implémentation n'est pas disponible. Le contrôle est effectué côté serveur.

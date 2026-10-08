@@ -6,6 +6,7 @@ profil contrôlé, isolation des tenants (API et RLS), portée des sites, extens
 """
 
 import shutil
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -533,6 +534,8 @@ def test_origin_profile_change_before_the_first_site(
 
 
 def test_cli_change_profile(provision: Any, settings: Any, capsys: Any, owner_db: Session) -> None:
+    """D8 (palier F) : la CLI applique la même règle que l'API — une entreprise qui a un site
+    n'a plus de profil global à changer (succès sans site : test_console_site_profiles)."""
     from app.cli import main
 
     t = provision("alpha", profile="retail.quincaillerie")
@@ -541,17 +544,18 @@ def test_cli_change_profile(provision: Any, settings: Any, capsys: Any, owner_db
             ["change-profile", "--tenant-id", str(t.tenant_id), "--profile", "retail.sport"],
             settings,
         )
-        == 0
+        == 1
     )
-    assert "retail.quincaillerie → retail.sport" in capsys.readouterr().out
+    assert "défini par site" in capsys.readouterr().err
     code = owner_db.execute(
         text("SELECT business_profile_code FROM tenants WHERE id = :t"), {"t": t.tenant_id}
     ).scalar_one()
-    assert code == "retail.sport"
+    assert code == "retail.quincaillerie"
     assert (
-        main(["change-profile", "--tenant-id", str(t.tenant_id), "--profile", "x.y"], settings) == 1
+        main(["change-profile", "--tenant-id", str(uuid.uuid4()), "--profile", "x.y"], settings)
+        == 1
     )
-    assert "Profil inconnu" in capsys.readouterr().err
+    assert "introuvable" in capsys.readouterr().err
 
 
 # --- Isolation des tenants -----------------------------------------------------------------

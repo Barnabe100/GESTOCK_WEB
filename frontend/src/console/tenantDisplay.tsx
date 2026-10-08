@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 
-import type { LicenseProposal, TenantStatus } from './types';
+import type { LicenseProposal, TenantListItem, TenantStatus } from './types';
 
 /** Statut de l'entreprise (suspension TechNova), distinct du statut de l'abonnement. */
 export function TenantStatusBadge({ status }: { status: TenantStatus }) {
@@ -16,6 +16,28 @@ export function TenantStatusBadge({ status }: { status: TenantStatus }) {
       label={t(`console:tenantStatus.${status}`)}
     />
   );
+}
+
+/**
+ * Profil d'activité d'une entreprise dans la liste (palier F, lecture seule) : celui de ses sites
+ * actifs — un seul profil : son nom ; plusieurs : « N profils » (noms en infobulle) ; aucun
+ * site : le profil d'origine, marqué comme celui de l'inscription. Présentation seulement.
+ */
+export function tenantProfileSummary(
+  t: TFunction,
+  tenant: Pick<TenantListItem, 'business_profile_name' | 'site_profiles'>,
+): { label: string; title?: string } {
+  const [only, ...others] = tenant.site_profiles;
+  if (!only) {
+    return { label: t('console:tenants.originProfile', { name: tenant.business_profile_name }) };
+  }
+  if (others.length === 0) return { label: only.name };
+  const profiles = tenant.site_profiles;
+  const names = profiles.map((p) => p.name).join(', ');
+  return {
+    label: t('console:tenants.profilesCount', { count: profiles.length }),
+    title: t('console:tenants.profilesList', { names }),
+  };
 }
 
 /** Date du jour métier dans le fuseau de l'entreprise (ADR-0028). */

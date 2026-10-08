@@ -322,7 +322,13 @@ l'offre : hors plan / non proposé restent `module_not_offered` ; désactivation
 **validé**, référence `34924cd`). **Décision ouverte** : les activations de modules planifiés
 créées automatiquement (défauts du profil) sont conservées, inertes ; à trancher avant la
 livraison effective de chaque module concerné (ADR-0048, section E.1).
-Ne pas passer au palier F sans validation. Non implémentés (feuille de route §13) :
+**Palier F — console et CLI** (D8, aucune migration) : la console TechNova **consulte** le
+profil de chaque site (`sites_detail` de la fiche, `site_profiles` de la liste ; profil de
+l'entreprise = profil d'**origine**) et n'en change jamais (aucune route
+d'écriture, droits SQL inchangés) ; CLI : `create-tenant --business-profile` conservé,
+`change-profile` limité aux entreprises **sans site** (règle `profile_is_per_site` portée par le
+service `change_business_profile`, commune à l'API et à la CLI). Ne pas passer au palier G sans
+validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
@@ -478,7 +484,7 @@ uv run alembic upgrade head                 # rôle propriétaire (SM_MIGRATION_
 uv run stockmanager catalog sync            # secteurs, profils, plans, pays, politiques
 uv run stockmanager create-tenant --name "…" --slug … --business-profile restaurant.maquis \
     --country BF --plan STANDARD --owner-email … --owner-name "…"
-uv run stockmanager change-profile --tenant-id … --profile retail.alimentation  # audité
+uv run stockmanager change-profile --tenant-id … --profile retail.alimentation  # sans site seulement
 uv run stockmanager change-plan --tenant-id … --plan ENTREPRISE   # données conservées, audité
 uv run uvicorn app.main:app --reload --port 8000
 uv run stockmanager platform-admin create --email … --name "…"   # compte TechNova (CLI seule)

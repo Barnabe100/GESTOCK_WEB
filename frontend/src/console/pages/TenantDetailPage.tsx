@@ -11,7 +11,7 @@ import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
-import { LicenseStateBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
+import { LicenseStateBadge, StatusBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
 
 import { AuditChanges } from '../auditDisplay';
 import { CONSOLE_BASE } from '../ConsoleLayout';
@@ -19,7 +19,7 @@ import { planPrice } from '../planDisplay';
 import { useAudit, useTenant } from '../queries';
 import { TenantActionDialog, type ActionKind } from '../TenantActionDialog';
 import { Details, TenantStatusBadge, tenantDate } from '../tenantDisplay';
-import type { PlatformAuditEntry, TenantDetail, TenantSubscription } from '../types';
+import type { PlatformAuditEntry, TenantDetail, TenantSite, TenantSubscription } from '../types';
 
 function TenantHistory({ tenantId }: { tenantId: string }) {
   const { t } = useTranslation();
@@ -51,6 +51,46 @@ function TenantHistory({ tenantId }: { tenantId: string }) {
         <Column field="reason" header={t('console:audit.reason')} />
       </DataTable>
     </Card>
+  );
+}
+
+/** Sites de l'entreprise et profil d'activité de chacun : lecture seule (palier F, D8). */
+function TenantSites({ sites }: { sites: TenantSite[] }) {
+  const { t } = useTranslation();
+  return (
+    <section className="sm-block" aria-labelledby="sites-title">
+      <h2 id="sites-title">{t('console:tenant.sitesTitle')}</h2>
+      <p className="sm-help">{t('console:tenant.sitesHelp')}</p>
+      <DataTable
+        className="sm-table"
+        tableStyle={{ minWidth: '32rem' }}
+        value={sites}
+        dataKey="id"
+        data-testid="tenant-sites"
+        emptyMessage={<EmptyState icon="pi pi-map-marker" title={t('console:tenant.noSite')} />}
+      >
+        <Column field="name" header={t('console:tenant.site')} />
+        <Column
+          header={t('console:tenant.siteCode')}
+          body={(s: TenantSite) => <span className="sm-code">{s.code}</span>}
+        />
+        <Column
+          header={t('console:tenant.siteProfile')}
+          body={(s: TenantSite) => (
+            <span data-testid={`site-profile-${s.code}`}>{s.business_profile_name}</span>
+          )}
+        />
+        <Column
+          header={t('console:tenant.siteState')}
+          body={(s: TenantSite) => (
+            <StatusBadge
+              tone={s.is_active ? 'success' : 'neutral'}
+              label={t(s.is_active ? 'console:tenant.siteActive' : 'console:tenant.siteInactive')}
+            />
+          )}
+        />
+      </DataTable>
+    </section>
   );
 }
 
@@ -245,6 +285,7 @@ export function TenantDetailPage() {
           <TenantStatusBadge status={d.status} />
         </Card>
       </div>
+      <TenantSites sites={d.sites_detail} />
       <Actions tenant={d} onAction={(kind) => setAction({ kind })} />
       <section className="sm-block" aria-labelledby="subscriptions-title">
         <h2 id="subscriptions-title">{t('console:tenant.subscriptionsTitle')}</h2>

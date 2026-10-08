@@ -131,8 +131,11 @@ export interface TenantListItem {
   trade_name: string | null;
   slug: string;
   status: TenantStatus;
+  /** Profil d'ORIGINE (inscription) ; le profil d'activité effectif est celui de chaque site. */
   business_profile_code: string;
   business_profile_name: string;
+  /** Profils distincts des sites actifs (palier F, lecture seule ; vide : aucun site). */
+  site_profiles: { code: string; name: string }[];
   created_at: string;
   subscription_count: number;
   plan_codes: string[];
@@ -173,12 +176,23 @@ export interface TenantSubscription {
   };
 }
 
+/** Site d'une entreprise et son profil d'activité, en lecture seule (palier F, D8). */
+export interface TenantSite {
+  id: string;
+  name: string;
+  code: string;
+  is_active: boolean;
+  business_profile_code: string;
+  business_profile_name: string;
+}
+
 export interface TenantDetail extends TenantListItem {
   country_code: string | null;
   country_name: string | null;
   currency: string;
   locale: string;
   timezone: string;
+  sites_detail: TenantSite[];
   subscriptions: TenantSubscription[];
   actions: { can_suspend: boolean; can_reactivate: boolean };
 }
