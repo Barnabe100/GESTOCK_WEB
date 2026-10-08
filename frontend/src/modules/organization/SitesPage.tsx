@@ -313,7 +313,11 @@ export default function SitesPage() {
   const siteStatus = new Map(capabilities.sites.map((s) => [s.id, s.subscription_status]));
   const canManage = can('organization.site.manage');
   const canProfile = can('organization.profile.manage');
-  const siteProfile = new Map(capabilities.sites.map((s) => [s.id, s.profile]));
+  // Libellé du profil lu depuis la ligne (`business_profile_code` de `/sites`, qui fait foi) :
+  // les cellules du tableau ne se redessinent qu'au changement de leur ligne.
+  const profileNames = new Map(
+    capabilities.sites.flatMap((s) => (s.profile ? [[s.profile.code, s.profile.name]] : [])),
+  );
   const [profileSite, setProfileSite] = useState<Site | null>(null);
   const [newSiteProfile, setNewSiteProfile] = useState<string | undefined>(undefined);
   // Action « Créer mon premier site » de l'onboarding : formulaire ouvert d'emblée.
@@ -350,10 +354,12 @@ export default function SitesPage() {
           <Column header={t('sites.kind')} body={(s: Site) => t(`sites.kinds.${s.kind}`)} />
           <Column
             header={t('sites.profile')}
-            body={(s: Site) => {
-              const profile = siteProfile.get(s.id);
-              return profile ? profileLabel(t, profile) : s.business_profile_code;
-            }}
+            body={(s: Site) =>
+              profileLabel(t, {
+                code: s.business_profile_code,
+                name: profileNames.get(s.business_profile_code) ?? s.business_profile_code,
+              })
+            }
           />
           <Column
             header={t('sites.status')}

@@ -44,7 +44,7 @@ async function openProfileDialog(page: Page, siteName: string, target: string) {
   await row.getByRole('button', { name: 'Changer le profil' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await dialog.locator('#site-profile-target').click();
+  await dialog.locator('.p-dropdown', { has: page.locator('#site-profile-target') }).click();
   await page.getByRole('option', { name: target, exact: true }).click();
   await expect(dialog.getByTestId('profile-preview')).toBeVisible();
   return dialog;
