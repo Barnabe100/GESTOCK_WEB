@@ -52,9 +52,11 @@ export function CapabilitiesProvider({
     (next: string | null) => {
       tabStorage.setSiteId(tenantId, next);
       apiSession.setSiteId(next);
+      // Les données dépendent du site (profil, modules, navigation, tableau de bord, listes) :
+      // le cache est VIDÉ, pas seulement invalidé — aucune donnée du site précédent n'est
+      // réaffichée pendant le rechargement (palier E). Un seul cache : celui de TanStack Query.
+      queryClient.removeQueries();
       setSiteIdState(next);
-      // Les données dépendent du site : tout est rechargé.
-      void queryClient.invalidateQueries();
     },
     [queryClient, tenantId],
   );

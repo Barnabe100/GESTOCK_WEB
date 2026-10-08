@@ -4,6 +4,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputSwitch } from 'primereact/inputswitch';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { profileLabel } from '@/core/capabilities/profile';
@@ -14,27 +15,69 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
 
-import { useSiteModules, useToggleSiteModule, type SiteModule } from './api';
+import { useSiteModules, useTenantModules, useToggleSiteModule, type SiteModule } from './api';
+import {
+  canToggle,
+  MODULE_STATE_ORDER,
+  MODULE_STATE_TONES,
+  moduleState,
+  type ModuleState,
+} from './moduleState';
+
+interface Row {
+  module: SiteModule;
+  state: ModuleState;
+}
 
 /**
- * Modules d'UN site (palier C) : proposés par le profil DU SITE, inclus dans l'abonnement DU
- * SITE, activés sur CE site. Activer un module sur un site ne modifie jamais un autre site ; le
- * serveur revérifie permission, site, profil, abonnement et dépendances.
+ * Modules d'UN site (paliers C et E) : proposés par le profil DU SITE, inclus dans l'abonnement
+ * DU SITE, activés sur CE site. Six états lisibles, tous déduits des champs du serveur ; un
+ * interrupteur n'est proposé que si l'activation est possible (jamais pour un module hors
+ * abonnement, à venir ou non proposé par le profil). Le serveur revérifie tout.
  */
 export default function ModulesPage() {
   const { t } = useTranslation();
   const toast = useToast();
   const { can, capabilities, siteId: selectedSite } = useCapabilities();
-  // Site sélectionné dans l'en-tête, sinon le site principal calculé par le serveur.
+  const [params] = useSearchParams();
+  const requested = capabilities.sites.find((s) => s.id === params.get('site'))?.id;
+  // Site sélectionné dans l'en-tête, sinon celui demandé (lien de la page Sites), sinon le
+  // site principal calculé par le serveur.
   const [chosenSite, setChosenSite] = useState<string | null>(
-    selectedSite ?? capabilities.main_site_id ?? capabilities.sites[0]?.id ?? null,
+    requested ?? capabilities.main_site_id ?? capabilities.sites[0]?.id ?? null,
   );
   const siteId = selectedSite ?? chosenSite;
   const site = capabilities.sites.find((s) => s.id === siteId);
   const modules = useSiteModules(siteId);
+  // Synthèse de l'entreprise : modules proposés par le profil d'un AUTRE site seulement.
+  const summary = useTenantModules(siteId !== null);
   const toggle = useToggleSiteModule();
   const canManage = can('organization.module.manage');
-  const rows = (modules.data ?? []).filter((m) => !m.core);
+
+  const siteRows: Row[] = (modules.data ?? [])
+    .filter((m) => !m.core)
+    .map((module) => ({ module, state: moduleState(module) }));
+  const listed = new Set(siteRows.map((r) => r.module.code));
+  const elsewhere: Row[] = modules.data
+    ? (summary.data ?? [])
+        .filter((m) => !m.core && !listed.has(m.code))
+        .map((m) => ({
+          module: {
+            code: m.code,
+            status: m.status,
+            core: false,
+            depends_on: m.depends_on,
+            in_profile: false,
+            in_plan: m.in_plan,
+            activated_for_site: false,
+            effective: false,
+          },
+          state: 'notInProfile' as const,
+        }))
+    : [];
+  const rows = [...siteRows, ...elsewhere].sort(
+    (a, b) => MODULE_STATE_ORDER.indexOf(a.state) - MODULE_STATE_ORDER.indexOf(b.state),
+  );
 
   const onToggle = (module: SiteModule, enabled: boolean) => {
     if (!siteId) return;
@@ -64,19 +107,25 @@ export default function ModulesPage() {
                 aria-label={t('layout.site')}
               />
             )}
-            {site?.profile && (
-              <p data-testid="site-profile">
-                {t('moduleAdmin.siteProfile', { profile: profileLabel(t, site.profile) })}
-              </p>
-            )}
+            <p data-testid="site-profile">
+              {t('moduleAdmin.siteProfile', {
+                site: site?.name ?? '',
+                profile: site?.profile ? profileLabel(t, site.profile) : t('layout.unknownProfile'),
+              })}
+            </p>
           </div>
           {modules.isError ? (
             <ErrorMessage error={modules.error} onRetry={() => void modules.refetch()} />
           ) : (
-            <DataTable value={rows} loading={modules.isPending} dataKey="code">
+            <DataTable
+              value={rows}
+              loading={modules.isPending}
+              dataKey="module.code"
+              className="sm-table"
+            >
               <Column
                 header={t('moduleAdmin.module')}
-                body={(m: SiteModule) => (
+                body={({ module: m }: Row) => (
                   <div>
                     <div>{t(`modules.${m.code}`)}</div>
                     {m.depends_on.length > 0 && (
@@ -91,33 +140,32 @@ export default function ModulesPage() {
               />
               <Column
                 header={t('moduleAdmin.status')}
-                body={(m: SiteModule) => (
-                  <div className="sm-tags">
-                    {!m.in_plan && (
-                      <StatusBadge tone="warning" label={t('moduleAdmin.notInPlan')} />
-                    )}
-                    {m.status === 'planned' && (
-                      <StatusBadge tone="neutral" label={t('moduleAdmin.planned')} />
-                    )}
-                    {m.status === 'available' && m.effective && (
-                      <StatusBadge tone="success" label={t('moduleAdmin.effective')} />
-                    )}
-                    {m.status === 'available' && m.activated_for_site && !m.effective && (
-                      <StatusBadge tone="warning" label={t('moduleAdmin.notEffective')} />
-                    )}
+                body={({ state }: Row) => (
+                  <div data-testid={`module-state-${state}`}>
+                    <StatusBadge
+                      tone={MODULE_STATE_TONES[state]}
+                      label={t(`moduleAdmin.states.${state}`)}
+                    />
+                    <small className="sm-muted sm-module-state-help">
+                      {t(`moduleAdmin.stateHelp.${state}`)}
+                    </small>
                   </div>
                 )}
               />
               <Column
                 header={t('moduleAdmin.enabled')}
-                body={(m: SiteModule) => (
-                  <InputSwitch
-                    checked={m.activated_for_site && m.in_plan}
-                    disabled={!canManage || !m.in_plan || toggle.isPending}
-                    onChange={(e) => onToggle(m, Boolean(e.value))}
-                    aria-label={t(`modules.${m.code}`)}
-                  />
-                )}
+                body={({ module: m, state }: Row) =>
+                  canToggle(state) ? (
+                    <InputSwitch
+                      checked={m.activated_for_site}
+                      disabled={!canManage || toggle.isPending}
+                      onChange={(e) => onToggle(m, Boolean(e.value))}
+                      aria-label={t(`modules.${m.code}`)}
+                    />
+                  ) : (
+                    <span className="sm-muted">—</span>
+                  )
+                }
               />
             </DataTable>
           )}

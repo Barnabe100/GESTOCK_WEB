@@ -70,6 +70,8 @@
   --sm-accent-text: #fff;
   --sm-accent-soft: var(--sm-highlight-bg);
   --sm-accent-strong: var(--sm-highlight-text);
+  /* Accent secondaire du thème métier (palier E) : motifs et illustrations seulement. */
+  --sm-accent-2: #0891b2;
 
   /* Mise en page */
   --sm-sidebar-width: 16rem;
@@ -1672,24 +1674,28 @@ a {
   --sm-accent: #15803d;
   --sm-accent-soft: #e8f5ec;
   --sm-accent-strong: #14532d;
+  --sm-accent-2: #ca8a04;
 }
 
 .sm-shell[data-accent='orange'] {
   --sm-accent: #c2410c;
   --sm-accent-soft: #fff1e6;
   --sm-accent-strong: #7c2d12;
+  --sm-accent-2: #b45309;
 }
 
 .sm-shell[data-accent='teal'] {
   --sm-accent: #0f766e;
   --sm-accent-soft: #e6f6f4;
   --sm-accent-strong: #134e4a;
+  --sm-accent-2: #0369a1;
 }
 
 .sm-shell[data-accent='indigo'] {
   --sm-accent: #4338ca;
   --sm-accent-soft: #eef0fe;
   --sm-accent-strong: #312e81;
+  --sm-accent-2: #7c3aed;
 }
 
 .sm-shell[data-density='compact'] {
@@ -1708,6 +1714,103 @@ a {
 .sm-brand-profile .pi {
   color: var(--sm-accent);
   font-size: var(--sm-text-xs);
+}
+
+/* --- Thème métier du site (palier E) : illustration du profil -------------------------------- */
+
+.sm-profile-illustration {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--sm-radius-lg);
+  background: var(--sm-accent-soft);
+  color: var(--sm-accent-strong);
+}
+
+.sm-profile-illustration--sm {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--sm-radius-sm);
+}
+
+.sm-profile-illustration--md {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
+.sm-profile-illustration--sm .sm-profile-illustration-main {
+  font-size: var(--sm-text-xs);
+}
+
+.sm-profile-illustration--md .sm-profile-illustration-main {
+  font-size: 1.75rem;
+  color: var(--sm-accent);
+}
+
+.sm-profile-illustration-motif {
+  position: absolute;
+  font-size: 0.8rem;
+  color: var(--sm-accent-2);
+}
+
+.sm-profile-illustration--sm .sm-profile-illustration-motif {
+  display: none;
+}
+
+.sm-profile-illustration-motif:nth-of-type(2) {
+  top: 0.35rem;
+  right: 0.4rem;
+}
+
+.sm-profile-illustration-motif:nth-of-type(3) {
+  bottom: 0.35rem;
+  right: 0.4rem;
+}
+
+.sm-profile-illustration-motif:nth-of-type(4) {
+  bottom: 0.35rem;
+  left: 0.4rem;
+}
+
+.sm-site-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--sm-space-4);
+  min-width: 0;
+  padding: var(--sm-space-4);
+  margin-bottom: var(--sm-space-4);
+  border: 1px solid var(--sm-border);
+  border-left: 4px solid var(--sm-accent);
+  border-radius: var(--sm-radius-lg);
+  background: var(--sm-surface);
+}
+
+.sm-site-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-1);
+  min-width: 0;
+}
+
+.sm-site-hero-text strong {
+  overflow-wrap: anywhere;
+}
+
+.sm-stack-xs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-1);
+}
+
+.sm-site-option {
+  display: flex;
+  flex-direction: column;
+}
+
+.sm-module-state-help {
+  display: block;
+  margin-top: var(--sm-space-1);
 }
 
 .sm-upcoming {

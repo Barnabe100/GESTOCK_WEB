@@ -172,7 +172,11 @@ d'un site se change par un aperçu puis un changement réel (palier D,
 [ADR-0048](../adr/0048-changement-profil-site.md)) : **reconfiguration, jamais
 réinitialisation** — niveaux SIMPLE / STRONG / BLOCKED calculés par le serveur à partir de
 l'empreinte que chaque module déclare (`site_footprint`, lecture seule), activations au plus
-petit changement, aucune donnée supprimée.
+petit changement, aucune donnée supprimée. Côté interface (palier E) : **le profil métier et
+l'expérience fonctionnelle (menu, modules, tableau de bord, thème visuel) sont déterminés par le
+site actif, tandis que le plan commercial reste porté par l'abonnement du site** — thème métier
+`BusinessProfileTheme` dérivé des données du profil du site, cache vidé à chaque changement de
+site ; la navigation n'est jamais une preuve de droit.
 
 ```text
 modules_effectifs(site) = profil(site).modules_disponibles

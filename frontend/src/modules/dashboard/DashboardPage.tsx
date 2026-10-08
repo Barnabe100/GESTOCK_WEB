@@ -6,17 +6,17 @@ import { useNavigate } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { OnboardingBanner } from '@/modules/organization/OnboardingBanner';
-import { profileLabel, sectorLabel } from '@/core/capabilities/profile';
 import { formatDate } from '@/shared/lib/format';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatusBadge, SubscriptionStatusBadge } from '@/shared/ui/StatusBadge';
 
+import { SiteProfileHero } from './SiteProfileHero';
 import { DASHBOARD_SHORTCUTS, DASHBOARD_WIDGETS, selectDashboardItems } from './widgets';
 
 /**
- * Tableau de bord configurable : widgets et raccourcis déclarés par le profil UX du tenant
- * (`caps.ux.dashboard`), affichés selon les permissions et fonctionnalités effectives
- * (jamais selon le plan, le rôle ou le secteur).
+ * Tableau de bord configurable : widgets et raccourcis déclarés par le profil UX du SITE actif
+ * (`caps.ux.dashboard`, palier E), affichés selon les permissions et fonctionnalités effectives
+ * du site (jamais selon le plan, le rôle ou le secteur) ; un module planifié n'a aucun widget.
  */
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -58,6 +58,7 @@ export default function DashboardPage() {
           site: caps.site?.name ?? t('layout.allSites'),
         })}
       />
+      <SiteProfileHero />
       <OnboardingBanner />
       {caps.subscription.status === 'pending_activation' ? (
         <Message
@@ -139,22 +140,6 @@ export default function DashboardPage() {
               <div>
                 <dt>{t('dashboard.periodEnd')}</dt>
                 <dd>{formatDate(caps.subscription.current_period_end, locale)}</dd>
-              </div>
-              {caps.profile.sector && (
-                <div>
-                  <dt>{t('dashboard.sector')}</dt>
-                  <dd>{sectorLabel(t, caps.profile.sector)}</dd>
-                </div>
-              )}
-              <div>
-                <dt>
-                  {t(
-                    caps.profile_scope === 'reference'
-                      ? 'dashboard.referenceProfile'
-                      : 'dashboard.profile',
-                  )}
-                </dt>
-                <dd>{profileLabel(t, caps.profile)}</dd>
               </div>
             </dl>
           </Card>

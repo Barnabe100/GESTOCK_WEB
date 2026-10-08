@@ -6,9 +6,9 @@ import { CapabilitiesProvider } from '@/core/capabilities/CapabilitiesProvider';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { buildRoutes } from '@/core/modules/registry';
 import { AppLayout } from '@/layouts/AppLayout';
-import { NotFound } from '@/shared/ui/NotFound';
 
 import { FRONTEND_MODULES } from './modules';
+import { RouteFallback } from './RouteFallback';
 import { LoadingState } from '@/shared/ui/LoadingState';
 
 function Spinner() {
@@ -24,7 +24,8 @@ function ModuleRoutes() {
         path,
         element: <Page />,
       })),
-      { path: '*', element: <NotFound /> },
+      // Route d'un module indisponible sur le site actif : message explicite (palier E).
+      { path: '*', element: <RouteFallback modules={FRONTEND_MODULES} /> },
     ],
     [capabilities],
   );

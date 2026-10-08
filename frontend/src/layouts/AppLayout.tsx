@@ -10,6 +10,8 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { profileLabel } from '@/core/capabilities/profile';
 import { buildNavigationSections, buildTopbarItems } from '@/core/modules/registry';
 import type { FrontendModule } from '@/core/modules/types';
+import { resolveBusinessProfileTheme } from '@/core/theme/businessProfileTheme';
+import { ProfileIllustration } from '@/shared/ui/ProfileIllustration';
 
 const ALL_SITES = '__all__';
 
@@ -83,24 +85,33 @@ export function AppLayout({
     return () => window.removeEventListener('keydown', onKey);
   }, [menuOpen]);
 
-  // Thème du profil UX : accent (palette contrôlée) et densité ; présentation seulement.
-  const theme = capabilities.ux?.theme;
-  const sectorIcon = theme?.icon ?? capabilities.profile.sector?.icon ?? 'pi pi-briefcase';
+  // Thème métier du SITE actif (palier E) : accent, densité, icône, libellés — dérivés du profil
+  // du site par les capacités ; présentation seulement, jamais une preuve de droit.
+  const theme = useMemo(
+    () => resolveBusinessProfileTheme(capabilities, t, modules),
+    [capabilities, t, modules],
+  );
   const topbarItems = useMemo(
     () => buildTopbarItems(modules, capabilities),
     [modules, capabilities],
   );
 
+  // Chaque site avec SON profil : le profil n'est pas une propriété de l'entreprise.
   const siteOptions = [
-    { value: ALL_SITES, label: t('layout.allSites') },
-    ...capabilities.sites.map((s) => ({ value: s.id, label: s.name })),
+    { value: ALL_SITES, label: t('layout.allSites'), profile: null as string | null },
+    ...capabilities.sites.map((s) => ({
+      value: s.id,
+      label: s.name,
+      profile: s.profile ? profileLabel(t, s.profile) : t('layout.unknownProfile'),
+    })),
   ];
 
   return (
     <div
       className={`sm-shell${menuOpen ? ' sm-menu-open' : ''}`}
-      data-accent={theme?.accent ?? 'blue'}
-      data-density={theme?.density ?? 'comfortable'}
+      data-accent={theme.colors.accent}
+      data-density={theme.density}
+      data-profile-theme={theme.fallback ? 'neutral' : 'profile'}
     >
       <a className="sm-skip-link" href="#main-content">
         {t('layout.skipToContent')}
@@ -113,16 +124,16 @@ export function AppLayout({
           <div className="sm-brand-text">
             <span className="sm-brand-product">{t('app.name')}</span>
             <div className="sm-strong">{capabilities.tenant.name}</div>
-            {/* Vue « Tous les sites » : profil du site de référence, jamais présenté comme
-                celui de tous les sites (profils par site). */}
-            {capabilities.profile_scope === 'reference' && (
-              <small className="sm-muted" data-testid="business-profile-scope">
-                {t('layout.referenceProfile')}
-              </small>
-            )}
+            {/* Profil du SITE sélectionné ; vue « Tous les sites » : profil du site de
+                référence, jamais présenté comme celui de tous les sites (profils par site). */}
+            <small className="sm-muted" data-testid="business-profile-scope">
+              {theme.labels.scope === 'reference'
+                ? t('layout.referenceProfile')
+                : t('layout.siteProfile', { site: theme.labels.site ?? '' })}
+            </small>
             <small className="sm-muted sm-brand-profile" data-testid="business-profile">
-              <i className={sectorIcon} aria-hidden />
-              <span>{profileLabel(t, capabilities.profile)}</span>
+              <ProfileIllustration icon={theme.icons.profile} size="sm" />
+              <span>{theme.labels.profile ?? t('layout.unknownProfile')}</span>
             </small>
           </div>
         </div>
@@ -148,6 +159,12 @@ export function AppLayout({
               inputId="site-selector"
               value={siteId ?? ALL_SITES}
               options={siteOptions}
+              itemTemplate={(option: (typeof siteOptions)[number]) => (
+                <span className="sm-site-option">
+                  <span>{option.label}</span>
+                  {option.profile && <small className="sm-muted">{option.profile}</small>}
+                </span>
+              )}
               onChange={(e) => setSiteId(e.value === ALL_SITES ? null : (e.value as string))}
             />
           </div>

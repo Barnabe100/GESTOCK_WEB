@@ -41,7 +41,11 @@ export function renderWithCapabilities(
     mainSiteId = null,
   }: {
     permissions: string[];
-    sites?: typeof SITES;
+    /** Sites accessibles (profil du site facultatif : profils par site). */
+    sites?: (Omit<(typeof SITES)[number], 'kind'> & {
+      kind: string;
+      profile?: { code: string; name: string; sector: unknown } | null;
+    })[];
     path?: string;
     route?: string;
     isOwner?: boolean;

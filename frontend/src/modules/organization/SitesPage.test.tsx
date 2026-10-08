@@ -153,3 +153,96 @@ describe('sites : 1 site = 1 abonnement (ADR-0033)', () => {
     expect(document.querySelector('#site-plan')).toBeNull();
   });
 });
+
+describe('sites : profil et modules de chaque site (palier E)', () => {
+  const SITE_LIST = [
+    {
+      id: 's1',
+      name: 'Boutique Ouaga',
+      code: 'BTQ',
+      kind: 'store',
+      address: null,
+      phone: null,
+      is_active: true,
+      created_at: '2026-10-01T00:00:00Z',
+      business_profile_code: 'retail.alimentation',
+    },
+    {
+      id: 's2',
+      name: 'Dépôt Central',
+      code: 'DEP',
+      kind: 'warehouse',
+      address: null,
+      phone: null,
+      is_active: true,
+      created_at: '2026-10-01T00:00:00Z',
+      business_profile_code: 'distribution.entrepot',
+    },
+  ];
+  const module = (code: string, effective: boolean) => ({
+    code,
+    status: 'available',
+    core: false,
+    depends_on: [],
+    in_profile: true,
+    in_plan: true,
+    activated_for_site: effective,
+    effective,
+  });
+  beforeEach(() =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = String(url);
+        if (u.endsWith('/sites/s1/modules'))
+          return jsonResponse([
+            module('stock', true),
+            module('pos', true),
+            module('alerts', false),
+          ]);
+        if (u.endsWith('/sites/s2/modules')) return jsonResponse([module('stock', true)]);
+        if (u.endsWith('/sites')) return jsonResponse(SITE_LIST);
+        return jsonResponse([]);
+      }),
+    ),
+  );
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('SITE → PROFIL → MODULES → STATUT, profil présenté comme celui du site', async () => {
+    renderWithCapabilities(<SitesPage />, {
+      permissions: ['organization.site.view', 'organization.module.view'],
+      path: '/organization/sites',
+      route: '/organization/sites',
+    });
+    expect(await screen.findByRole('columnheader', { name: 'Profil du site' })).toBeTruthy();
+    const store = (await screen.findByText('Boutique Ouaga')).closest('tr') as HTMLElement;
+    const depot = screen.getByText('Dépôt Central').closest('tr') as HTMLElement;
+    expect(store.textContent).toContain('Alimentation / Supérette');
+    expect(depot.textContent).toContain('Entrepôt');
+    await waitFor(() =>
+      expect(within(store).getByTestId('site-modules-BTQ').textContent).toContain(
+        '2 modules actifs',
+      ),
+    );
+    expect(within(depot).getByTestId('site-modules-DEP').textContent).toContain('1 module actif');
+    expect(within(depot).getByRole('link', { name: 'Voir les modules' }).getAttribute('href')).toBe(
+      '/organization/modules?site=s2',
+    );
+  });
+
+  it('sans la permission de voir les modules : aucune colonne ni requête de modules', async () => {
+    renderWithCapabilities(<SitesPage />, {
+      permissions: ['organization.site.view'],
+      path: '/organization/sites',
+      route: '/organization/sites',
+    });
+    await screen.findByText('Boutique Ouaga');
+    expect(screen.queryByRole('columnheader', { name: 'Modules' })).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/modules'))).toBe(
+      false,
+    );
+  });
+});

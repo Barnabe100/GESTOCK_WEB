@@ -313,7 +313,7 @@ export function ownerSql(sql: string): void {
 export async function createActiveSite<T = { id: string }>(
   request: APIRequestContext,
   token: string,
-  site: { name: string; code: string; kind?: string },
+  site: { name: string; code: string; kind?: string; business_profile_code?: string },
 ): Promise<T> {
   ownerSql(
     'UPDATE plans SET listed = true, contact_required = false, monthly_price_enabled = true, ' +

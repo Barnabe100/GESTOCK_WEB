@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/core/api/client';
 import type { SiteKind } from '@/core/api/types';
@@ -96,6 +96,19 @@ export interface SiteModule {
   effective: boolean;
 }
 
+/** Synthèse de l'entreprise (`GET /modules`) : modules proposés par le profil d'au moins un
+ * site ; sert à montrer ce qu'un site ne propose PAS (palier E). Lecture seule. */
+export interface TenantModuleSummary {
+  code: string;
+  status: 'available' | 'planned';
+  core: boolean;
+  depends_on: string[];
+  in_profile: boolean;
+  in_plan: boolean;
+  enabled: boolean;
+  effective: boolean;
+}
+
 export const orgKeys = {
   tenant: ['organization', 'tenant'] as const,
   documentIdentity: ['organization', 'tenant', 'document-identity'] as const,
@@ -149,11 +162,31 @@ export function useSaveSite() {
   });
 }
 
+export function useTenantModules(enabled = true) {
+  return useQuery({
+    queryKey: [...orgKeys.modules, 'tenant'],
+    queryFn: ({ signal }) => api.get<TenantModuleSummary[]>('/modules', signal),
+    enabled,
+  });
+}
+
 export function useSiteModules(siteId: string | null) {
   return useQuery({
     queryKey: [...orgKeys.modules, siteId],
     queryFn: ({ signal }) => api.get<SiteModule[]>(`/sites/${siteId}/modules`, signal),
     enabled: siteId !== null,
+  });
+}
+
+/** Modules de plusieurs sites (page Sites, palier E) : même cache que `useSiteModules`. */
+export function useSitesModules(siteIds: string[], enabled: boolean) {
+  return useQueries({
+    queries: siteIds.map((siteId) => ({
+      queryKey: [...orgKeys.modules, siteId],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        api.get<SiteModule[]>(`/sites/${siteId}/modules`, signal),
+      enabled,
+    })),
   });
 }
 

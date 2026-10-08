@@ -7,6 +7,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputSwitch } from 'primereact/inputswitch';
 import { InputText } from 'primereact/inputtext';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -28,10 +29,20 @@ import { usePublicPlans } from '@/pages/signup/api';
 
 import { profileLabel, sectorLabel } from '@/core/capabilities/profile';
 
-import { useBusinessProfiles, useSaveSite, useSites, type Site } from './api';
+import {
+  useBusinessProfiles,
+  useSaveSite,
+  useSites,
+  useSitesModules,
+  type Site,
+  type SiteModule,
+} from './api';
+import { moduleState } from './moduleState';
 import { SiteProfileDialog } from './SiteProfileDialog';
 
 const KINDS: SiteKind[] = ['store', 'warehouse', 'restaurant', 'other'];
+
+type SiteRow = Site & { activeModules: SiteModule[] };
 
 const schema = z.object({
   plan_code: z.string(),
@@ -319,6 +330,21 @@ export default function SitesPage() {
     capabilities.sites.flatMap((s) => (s.profile ? [[s.profile.code, s.profile.name]] : [])),
   );
   const [profileSite, setProfileSite] = useState<Site | null>(null);
+  // Modules de chaque site (palier E) : SITE → PROFIL → MODULES → STATUT d'un coup d'œil.
+  const canSeeModules = can('organization.module.view');
+  const siteList = sites.data ?? [];
+  const sitesModules = useSitesModules(
+    siteList.map((s) => s.id),
+    canSeeModules,
+  );
+  // Les modules sont portés par la ligne : les cellules du tableau ne se redessinent qu'au
+  // changement de leur ligne (voir aussi la colonne Profil).
+  const rows: SiteRow[] = siteList.map((s, index) => ({
+    ...s,
+    activeModules: (sitesModules[index]?.data ?? []).filter(
+      (m) => !m.core && moduleState(m) === 'active',
+    ),
+  }));
   const [newSiteProfile, setNewSiteProfile] = useState<string | undefined>(undefined);
   // Action « Créer mon premier site » de l'onboarding : formulaire ouvert d'emblée.
   const [createRequested, clearCreate] = useCreateRequest(canManage);
@@ -342,7 +368,7 @@ export default function SitesPage() {
       ) : (
         <DataTable
           className="sm-table"
-          value={sites.data ?? []}
+          value={rows}
           loading={sites.isPending}
           dataKey="id"
           rowHover
@@ -361,6 +387,22 @@ export default function SitesPage() {
               })
             }
           />
+          {canSeeModules && (
+            <Column
+              header={t('sites.modules')}
+              body={(s: SiteRow) => {
+                const active = s.activeModules;
+                return (
+                  <span className="sm-stack-xs" data-testid={`site-modules-${s.code}`}>
+                    <span title={active.map((m) => t(`modules.${m.code}`)).join(', ')}>
+                      {t('sites.activeModules', { count: active.length })}
+                    </span>
+                    <Link to={`/organization/modules?site=${s.id}`}>{t('sites.seeModules')}</Link>
+                  </span>
+                );
+              }}
+            />
+          )}
           <Column
             header={t('sites.status')}
             body={(s: Site) => <ActiveBadge active={s.is_active} />}

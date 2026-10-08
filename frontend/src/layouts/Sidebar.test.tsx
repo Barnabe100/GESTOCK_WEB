@@ -194,12 +194,15 @@ describe('coquille selon le profil UX', () => {
       ux_profile: 'retail.default',
     };
     renderLayout(ux, profile, 'reference');
-    expect(screen.getByTestId('business-profile-scope').textContent).toBe('Profil de référence');
+    expect(screen.getByTestId('business-profile-scope').textContent).toBe(
+      'Profil de référence (tous les sites)',
+    );
     expect(screen.getByTestId('business-profile').textContent).toBe('Alimentation / Supérette');
     cleanup();
-    // Site sélectionné : son propre profil, sans mention de référence.
+    // Site sélectionné : SON profil, présenté comme profil du site (jamais de l'entreprise).
     renderLayout(ux, profile, 'site');
-    expect(screen.queryByTestId('business-profile-scope')).toBeNull();
+    expect(screen.getByTestId('business-profile-scope').textContent).toMatch(/^Profil du site/);
+    expect(screen.getByTestId('business-profile-scope').textContent).not.toMatch(/référence/);
   });
 
   it("un profil sans rubrique pour un module planifié n'affiche aucune entrée fictive", () => {

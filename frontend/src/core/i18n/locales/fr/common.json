@@ -60,7 +60,11 @@
   "layout": {
     "site": "Site",
     "allSites": "Tous les sites",
-    "referenceProfile": "Profil de référence",
+    "referenceProfile": "Profil de référence (tous les sites)",
+    "siteProfile": "Profil du site {{site}}",
+    "unknownProfile": "Profil non défini",
+    "unavailableHere": "Fonction non disponible sur ce site",
+    "unavailableHereHint": "Sur « {{site}} », cette page dépend d'un module qui n'est pas actif (profil du site, abonnement du site ou activation) ou d'un droit que vous n'avez pas. Changez de site ou revenez au tableau de bord.",
     "switchTenant": "Changer d'entreprise",
     "menu": "Menu",
     "skipToContent": "Aller au contenu",
@@ -139,9 +143,12 @@
   "dashboard": {
     "title": "Tableau de bord",
     "welcome": "Bonjour {{name}}",
-    "profile": "Profil d'activité",
+    "profile": "Profil du site",
     "referenceProfile": "Profil de référence",
-    "plan": "Offre",
+    "siteHero": "Site actif",
+    "allSitesHero": "Tous les sites",
+    "referenceHint": "Chaque site a son propre profil : sélectionnez un site pour voir son activité.",
+    "plan": "Offre du site",
     "subscription": "Abonnement",
     "validUntil": "Échéance : {{date}}",
     "currentSite": "Site actif",
@@ -216,7 +223,11 @@
     "billingPeriod": "Période de facturation",
     "requestedActivations": "Nombre de postes demandés",
     "requestedActivationsHelp": "Postes (installations) autorisés pour ce site ; confirmé par TechNova avec la licence.",
-    "profile": "Profil d'activité",
+    "profile": "Profil du site",
+    "modules": "Modules",
+    "activeModules_one": "{{count}} module actif",
+    "activeModules_other": "{{count}} modules actifs",
+    "seeModules": "Voir les modules",
     "profileHelp": "Adapte les modules proposés, le menu et le vocabulaire de ce site. Sans choix : profil d'origine de l'entreprise.",
     "originProfile": "Profil d'origine de l'entreprise"
   },
@@ -347,9 +358,23 @@
     "planned": "Bientôt",
     "dependsOn": "Nécessite : {{modules}}",
     "saved": "Modules du site mis à jour",
-    "siteProfile": "Profil du site : {{profile}}",
-    "effective": "Effectif",
-    "notEffective": "Non effectif (module requis désactivé)",
+    "siteProfile": "{{site}} — profil du site : {{profile}}",
+    "states": {
+      "active": "Activé",
+      "blocked": "Activé, inactif",
+      "inactive": "Désactivé",
+      "notInPlan": "Hors abonnement",
+      "planned": "Bientôt disponible",
+      "notInProfile": "Non proposé"
+    },
+    "stateHelp": {
+      "active": "Disponible et utilisé sur ce site.",
+      "blocked": "Un module requis est désactivé sur ce site.",
+      "inactive": "Disponible : activez-le pour l'utiliser sur ce site.",
+      "notInPlan": "Proposé par le profil, mais non inclus dans l'abonnement de ce site : une offre supérieure est nécessaire (voir Abonnement).",
+      "planned": "Fonctionnalité prévue, pas encore disponible.",
+      "notInProfile": "Le profil de ce site ne propose pas ce module (il l'est sur un autre site)."
+    },
     "noSite": "Créez d'abord un site : les modules s'activent pour chaque site."
   },
   "members": {

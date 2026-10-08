@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { jsonResponse, renderWithCapabilities } from '@/shared/testing';
@@ -24,7 +24,7 @@ const SITES = [
     name: 'Dépôt',
     code: 'DEP',
     kind: 'warehouse',
-    profile: PROFILE('retail.entrepot', 'Entrepôt'),
+    profile: PROFILE('distribution.entrepot', 'Entrepôt'),
   },
 ];
 const MODULE = {
@@ -36,69 +36,106 @@ const MODULE = {
   activated_for_site: true,
   effective: true,
 };
-const MODULES = [
+// Site s1 : un module de chaque état.
+const SITE_MODULES = [
   { ...MODULE, code: 'stock' },
-  { ...MODULE, code: 'pos', depends_on: ['sales'] },
+  { ...MODULE, code: 'pos', depends_on: ['sales'], effective: false },
+  { ...MODULE, code: 'alerts', activated_for_site: false, effective: false },
   { ...MODULE, code: 'restaurant.qr', in_plan: false, activated_for_site: false, effective: false },
+  { ...MODULE, code: 'restaurant.tables', status: 'planned' },
+];
+// Synthèse de l'entreprise : `inventory_count` n'est proposé que par le profil d'un autre site.
+const TENANT_MODULES = [
+  ...SITE_MODULES.map(({ activated_for_site, ...m }) => ({ ...m, enabled: activated_for_site })),
+  { ...MODULE, code: 'inventory_count', enabled: true },
 ];
 
-describe('modules : activation par site (palier C)', () => {
-  beforeEach(() =>
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url: string, init?: RequestInit) =>
-        init?.method === 'PUT' ? new Response(null, { status: 204 }) : jsonResponse(MODULES),
-      ),
-    ),
-  );
+const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+  if (init?.method === 'PUT') return new Response(null, { status: 204 });
+  if (String(url).endsWith('/api/v1/modules')) return jsonResponse(TENANT_MODULES);
+  return jsonResponse(SITE_MODULES);
+});
+
+const MANAGE = ['organization.module.view', 'organization.module.manage'];
+
+describe('modules du site : états (paliers C et E)', () => {
+  beforeEach(() => vi.stubGlobal('fetch', fetchMock));
   afterEach(() => {
     cleanup();
+    fetchMock.mockClear();
     vi.unstubAllGlobals();
   });
 
-  const urls = () => vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+  const urls = () => fetchMock.mock.calls.map(([url]) => String(url));
+  const stateOf = (label: string) =>
+    screen.getByText(label, { selector: 'td div' }).closest('tr') as HTMLElement;
 
-  it('lit les modules du site principal et affiche son profil', async () => {
+  it('lit les modules du site principal et affiche le profil DU site', async () => {
     renderWithCapabilities(<ModulesPage />, {
-      permissions: ['organization.module.view', 'organization.module.manage'],
+      permissions: MANAGE,
       sites: SITES,
       mainSiteId: 's2',
     });
-    expect(await screen.findByTestId('site-profile')).toHaveProperty(
-      'textContent',
-      expect.stringContaining('Entrepôt'),
+    expect((await screen.findByTestId('site-profile')).textContent).toBe(
+      'Dépôt — profil du site : Entrepôt',
     );
     await waitFor(() => expect(urls().some((u) => u.endsWith('/sites/s2/modules'))).toBe(true));
-    expect(urls().some((u) => u.endsWith('/api/v1/modules'))).toBe(false);
+    // La synthèse de l'entreprise est seulement lue ; aucune écriture au niveau de l'entreprise.
+    expect(
+      fetchMock.mock.calls.some(
+        ([u, i]) => /\/api\/v1\/modules\//.test(String(u)) && i?.method === 'PUT',
+      ),
+    ).toBe(false);
   });
 
-  it('écrit sur le site choisi, portée explicite dans l’URL', async () => {
+  it('distingue activé, inactif (dépendance), désactivé, hors abonnement, à venir, non proposé', async () => {
     renderWithCapabilities(<ModulesPage />, {
-      permissions: ['organization.module.view', 'organization.module.manage'],
+      permissions: MANAGE,
       sites: SITES,
       mainSiteId: 's1',
     });
-    const pos = await screen.findByRole('switch', { name: 'Point de vente' });
-    fireEvent.click(pos);
+    await screen.findByTestId('module-state-notInProfile');
+    for (const [label, state] of [
+      ['Stock', 'active'],
+      ['Point de vente', 'blocked'],
+      ['Alertes', 'inactive'],
+      ['Menu QR', 'notInPlan'],
+      ['Tables', 'planned'],
+      ['Inventaires', 'notInProfile'],
+    ] as const) {
+      const row = stateOf(label);
+      expect(within(row).getByTestId(`module-state-${state}`)).toBeTruthy();
+      const hasSwitch = within(row).queryByRole('switch') !== null;
+      // Jamais d'interrupteur pour une activation impossible.
+      expect(hasSwitch).toBe(['active', 'blocked', 'inactive'].includes(state));
+    }
+    expect(within(stateOf('Menu QR')).getByText(/offre supérieure/)).toBeTruthy();
+  });
+
+  it('module désactivé : activation par le mécanisme existant, portée dans l’URL', async () => {
+    renderWithCapabilities(<ModulesPage />, {
+      permissions: MANAGE,
+      sites: SITES,
+      mainSiteId: 's1',
+    });
+    await screen.findByTestId('module-state-inactive');
+    fireEvent.click(within(stateOf('Alertes')).getByRole('switch'));
     await waitFor(() => {
-      const put = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'PUT');
-      expect(String(put?.[0])).toMatch(/\/sites\/s1\/modules\/pos$/);
-      expect(JSON.parse(String(put?.[1]?.body))).toEqual({ enabled: false });
-      const headers = new Headers(put?.[1]?.headers);
-      expect(headers.get('X-Site-Id')).toBeNull();
+      const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT');
+      expect(String(put?.[0])).toMatch(/\/sites\/s1\/modules\/alerts$/);
+      expect(JSON.parse(String(put?.[1]?.body))).toEqual({ enabled: true });
     });
   });
 
-  it('module hors abonnement du site : non activable', async () => {
+  it('site demandé par la page Sites (?site=)', async () => {
     renderWithCapabilities(<ModulesPage />, {
-      permissions: ['organization.module.view', 'organization.module.manage'],
+      permissions: MANAGE,
       sites: SITES,
       mainSiteId: 's1',
+      path: '/organization/modules',
+      route: '/organization/modules?site=s2',
     });
-    await screen.findByText('Non inclus dans votre offre');
-    const switches = await screen.findAllByRole('switch');
-    expect((switches.at(-1) as HTMLInputElement).checked).toBe(false);
-    expect((switches.at(-1) as HTMLInputElement).disabled).toBe(true);
+    expect((await screen.findByTestId('site-profile')).textContent).toMatch(/^Dépôt/);
   });
 
   it('sans permission de gestion : lecture seule', async () => {
@@ -112,11 +149,19 @@ describe('modules : activation par site (palier C)', () => {
   });
 
   it('aucun site : aucune lecture, invitation à créer un site', async () => {
-    renderWithCapabilities(<ModulesPage />, {
-      permissions: ['organization.module.view', 'organization.module.manage'],
-      sites: [],
-    });
+    renderWithCapabilities(<ModulesPage />, { permissions: MANAGE, sites: [] });
     expect(await screen.findByText(/Créez d'abord un site/)).toBeTruthy();
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('profil du site inconnu : repli neutre', async () => {
+    renderWithCapabilities(<ModulesPage />, {
+      permissions: MANAGE,
+      sites: [{ id: 's9', name: 'Annexe', code: 'ANX', kind: 'other', profile: null }],
+      mainSiteId: 's9',
+    });
+    expect((await screen.findByTestId('site-profile')).textContent).toBe(
+      'Annexe — profil du site : Profil non défini',
+    );
   });
 });

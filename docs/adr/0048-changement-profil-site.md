@@ -114,3 +114,13 @@ un changement est BLOCKED (« Créer un nouveau site avec ce profil »), opérat
   thème visuel, non implémenté ici.
 - Inchangés : `StockService`, CMUP, ventes, POS, reçus, inventaires, lots, assortiment,
   licences, console, CLI, RBAC global.
+
+## Suite : interface par site (palier E)
+
+Sans changement backend : la coquille, le menu, le tableau de bord (`SiteProfileHero`) et le
+thème visuel suivent le profil du **site actif** (`BusinessProfileTheme`, `frontend/src/core/theme/`,
+dérivé des données du catalogue, repli neutre) ; la page Modules distingue activé / activé mais
+inactif (dépendance) / désactivé / hors abonnement / à venir / non proposé par le profil du site,
+sans interrupteur pour une activation impossible ; la page Sites montre site → profil → modules
+actifs → statut ; un changement de site vide le cache des requêtes ; une page d'un module absent
+du site actif l'explique. Voir [`DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) §8 bis.

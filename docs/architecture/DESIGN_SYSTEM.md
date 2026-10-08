@@ -35,6 +35,7 @@ bibliothèque d'interface, pas d'animation décorative ni de graphique superflu.
 | Focus | `--sm-focus-ring` | Anneau visible au clavier (`:focus-visible`). |
 | Densité | `--sm-control-padding-{x,y}`, `--sm-cell-padding` | Contrôles PrimeReact compacts ; variante `data-density="compact"` du profil UX. |
 | Accent (profil UX) | `--sm-accent`, `--sm-accent-text`, `--sm-accent-soft`, `--sm-accent-strong` | Logo et entrée active ; palette `blue`, `green`, `orange`, `teal`, `indigo` (`data-accent`), texte blanc ≥ 4,5 : 1. |
+| Accent secondaire (thème métier) | `--sm-accent-2` | Motifs des illustrations de profil seulement (palier E) ; dérivé de l'accent (`data-accent`), jamais porteur d'information. |
 | Coquille | `--sm-sidebar-width`, `--sm-topbar-height`, `--sm-content-max` | |
 
 Règle : **aucune valeur visuelle en dur** dans un composant ; ajouter un jeton si besoin.
@@ -132,13 +133,39 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
 ## 8. Navigation et tableau de bord
 
 - Barre latérale générée depuis le registre des modules, filtrée par permissions et
-  fonctionnalités, **groupée** selon le profil UX du tenant (`caps.ux.navigation` : rubriques
+  fonctionnalités, **groupée** selon le profil UX du SITE actif (`caps.ux.navigation` : rubriques
   et ordre ; repli : `NavItem.group`, `NAV_GROUPS`). Une rubrique sans entrée visible
   disparaît ; titres textuels liés aux listes (`aria-labelledby`).
 - Tableau de bord : widgets et raccourcis déclarés par le profil UX
   ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md) §6), chacun conditionné par sa permission
   (et sa fonctionnalité de plan) ; aucune requête sans la permission correspondante. Modules
   planifiés du profil : « À venir pour votre activité », badge neutre, sans lien.
+
+### 8 bis. Thème métier du site (palier E)
+
+**Le profil métier et l'expérience fonctionnelle sont déterminés par le site actif, tandis que
+le plan commercial reste porté par l'abonnement du site.** La couche
+`BusinessProfileTheme` (`frontend/src/core/theme/`) se place entre le profil et le Design
+System : *profil du site → `BusinessProfileTheme` → jetons `--sm-*` → pages*.
+
+- `resolveBusinessProfileTheme(caps, t, modules)` / `useBusinessProfileTheme()` : `colors.accent`
+  (profil UX, `data-accent`), `density`, `icons` (icône du thème, sinon du secteur),
+  `visuals.illustration` (icône du profil et motifs = icônes des premières entrées du menu du
+  profil, donc des modules effectifs du site — rien n'est simulé), `labels` (profil, secteur,
+  site, portée `site` / `reference`), `dashboard` (widgets et raccourcis du profil).
+- Tout vient des **données** du catalogue exposées par les capacités : aucun composant ne
+  compare un code de profil ou de secteur (test statique). Profil absent, inconnu ou sans
+  thème : **thème neutre StockManager** (`fallback`, accent bleu, `pi pi-briefcase`), jamais
+  d'erreur.
+- Un seul Design System : composants partagés inchangés ; `ProfileIllustration` (décorative,
+  `aria-hidden`) et l'en-tête du tableau de bord (`SiteProfileHero`) en sont les seuls
+  consommateurs visuels nouveaux, avec la coquille (`data-accent`, `data-density`,
+  `data-profile-theme`).
+- Changement de site : le cache TanStack Query est **vidé** (`removeQueries`), jamais
+  seulement invalidé — aucune donnée du site précédent n'est réaffichée. Une page d'un module
+  absent du site actif affiche « Fonction non disponible sur ce site » (`RouteFallback`).
+- Cellules de tableau PrimeReact mémoïsées par ligne : une valeur affichée dans une cellule
+  doit venir de la ligne (`rowData`), pas d'une autre requête.
 
 ## 9. Responsive
 

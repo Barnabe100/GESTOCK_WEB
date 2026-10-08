@@ -306,7 +306,15 @@ jamais**), **SIMPLE** sinon ; activations au plus petit changement, plan jamais 
 plan signalé) ; désactivation manuelle d'un module refusée avec des opérations en cours
 (`409 module_has_open_operations`) ; `POST /sites` accepte `business_profile_code` (autre que
 le profil d'origine : `organization.profile.manage` en plus) ; audit `site.profile_changed` /
-`site.profile_change_refused`. Ne pas passer au palier E sans validation. Non implémentés (feuille de route §13) :
+`site.profile_change_refused` (palier D validé). **Palier E — interface par site** (frontend
+seul, aucune migration) : profil, modules, menu, tableau de bord et thème visuel suivent le
+**site actif** ; couche `BusinessProfileTheme` (`frontend/src/core/theme/` : couleurs, densité,
+icônes, illustration, libellés, tableau de bord) **dérivée des données** du profil du site,
+repli neutre si profil absent / inconnu ; changement de site = cache TanStack Query **vidé** ;
+`RouteFallback` (« Fonction non disponible sur ce site ») ; page Modules à états (activé,
+inactif par dépendance, désactivé, hors abonnement, à venir, non proposé) ; page Sites : profil
+et modules actifs par site ([`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM.md) §8 bis).
+Ne pas passer au palier F sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
