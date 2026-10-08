@@ -85,6 +85,14 @@ def list_modules(ctx: ModuleView, db: DbSession, registry: RegistryDep) -> list[
     return ModuleService(db, ctx, registry).list_all()
 
 
+@router.get("/sites/{site_id}/modules", response_model=list[ModuleOut])
+def list_site_modules(
+    site_id: uuid.UUID, ctx: ModuleView, db: DbSession, registry: RegistryDep
+) -> list[ModuleOut]:
+    """Modules d'un site selon SON profil et l'abonnement de CE site (profils par site)."""
+    return ModuleService(db, ctx, registry).list_for_site(site_id)
+
+
 @router.put("/modules/{code}", status_code=status.HTTP_204_NO_CONTENT)
 def toggle_module(
     code: str, body: ModuleToggle, ctx: ModuleManage, db: DbSession, registry: RegistryDep

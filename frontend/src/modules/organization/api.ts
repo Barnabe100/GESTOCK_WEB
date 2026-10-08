@@ -192,15 +192,3 @@ export function useBusinessProfiles(enabled: boolean) {
 }
 
 /** Changement de profil : le serveur contrôle, audite et ne supprime aucune donnée. */
-export function useChangeBusinessProfile() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (code: string) => api.put<Tenant>('/tenant/business-profile', { code }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: orgKeys.tenant });
-      void qc.invalidateQueries({ queryKey: orgKeys.modules });
-      // Menu, tableau de bord, terminologie et thème sont relus depuis les capacités.
-      void qc.invalidateQueries({ queryKey: ['capabilities'] });
-    },
-  });
-}

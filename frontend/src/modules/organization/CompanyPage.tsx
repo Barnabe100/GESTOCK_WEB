@@ -323,9 +323,11 @@ export default function CompanyPage() {
           )}
         </div>
       </div>
-      <Card className="sm-form-card">
-        <BusinessProfileSection />
-      </Card>
+      {tenant.data && (
+        <Card className="sm-form-card">
+          <BusinessProfileSection code={tenant.data.business_profile_code} />
+        </Card>
+      )}
     </>
   );
 }

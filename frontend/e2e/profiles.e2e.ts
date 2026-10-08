@@ -210,11 +210,15 @@ test.describe('Profils d’activité', () => {
     const resto = (await (
       await request.get('/api/v1/tenant', { headers: bearer(restoToken) })
     ).json()) as { id: string };
+    // Profil défini par site (D2) : le profil de l'entreprise n'est plus modifiable, et jamais
+    // pour une autre entreprise.
     const refused = await request.put('/api/v1/tenant/business-profile', {
       headers: bearer(shopToken),
-      data: { code: 'retail.alimentation', tenant_id: resto.id },
+      data: { code: 'restaurant.restaurant', tenant_id: resto.id },
     });
-    expect(refused.ok()).toBeTruthy();
+    expect(refused.status()).toBe(409);
+    expect(((await refused.json()) as { code: string }).code).toBe('profile_is_per_site');
+    expect((await capabilities(request, shopToken)).profile.code).toBe('retail.alimentation');
     expect((await capabilities(request, restoToken)).profile.code).toBe('restaurant.restaurant');
 
     // Même compte, deux entreprises : le menu suit l'entreprise active.

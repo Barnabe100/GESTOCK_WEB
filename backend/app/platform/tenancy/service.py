@@ -9,7 +9,7 @@ from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
-from app.platform.licensing.service import tenant_terms
+from app.platform.licensing.service import current_terms
 from app.platform.registry import ModuleRegistry
 from app.platform.sequences.service import site_has_numbers
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
@@ -19,6 +19,8 @@ from app.platform.subscriptions.service import (
     period_enabled,
     plan_tariff,
     self_service,
+    site_subscription,
+    tenant_subscriptions,
     unattached_subscription,
 )
 from app.platform.tenancy.models import Site, TenantModule
@@ -217,21 +219,23 @@ class ModuleService:
         self.registry = registry
         self.capabilities = CapabilityService(db, registry)
 
-    def _profile_and_plans(self) -> tuple[BusinessProfile, list[PlanTerms]]:
-        """Profil et conditions des abonnements de l'entreprise (licence en vigueur, sinon
-        plan) : un module est activable s'il est proposé par le profil et inclus dans au moins
-        un abonnement (chaque site n'en reçoit que ce que ses propres conditions incluent)."""
-        profile = self.db.get(BusinessProfile, self.ctx.tenant.business_profile_code)
-        if profile is None:
-            raise BusinessRuleError("Profil introuvable", code="unknown_profile")
-        return profile, tenant_terms(self.db)
+    def _offers(self) -> list[tuple[BusinessProfile, PlanTerms]]:
+        """Profil et conditions de chaque abonnement de l'entreprise : profil de SON site
+        (jamais celui du tenant ; abonnement d'inscription non rattaché : profil d'origine) et
+        conditions en vigueur (licence, sinon plan). Un module est activable s'il est proposé
+        par le profil ET inclus dans les conditions d'au moins un même abonnement."""
+        return [
+            (self.capabilities.subscription_profile(s, self.ctx.tenant), current_terms(self.db, s))
+            for s in tenant_subscriptions(self.db)
+        ]
 
-    def list_all(self) -> list[ModuleOut]:
-        profile, plans = self._profile_and_plans()
-        in_profile = {m.module_code for m in profile.modules}
-        in_plan = {code for terms in plans for code in terms.modules}
+    def _rows(
+        self,
+        in_profile: set[str],
+        in_plan: set[str],
+        effective: frozenset[str],
+    ) -> list[ModuleOut]:
         enabled = self.capabilities.enabled_module_codes()
-        effective = self.ctx.capabilities.modules
         return [
             ModuleOut(
                 code=m.code,
@@ -247,11 +251,36 @@ class ModuleService:
             if m.core or m.code in in_profile
         ]
 
+    def list_all(self) -> list[ModuleOut]:
+        """Vue de l'entreprise : modules proposés par le profil d'au moins un site, inclus dans
+        au moins un abonnement ; ``effective`` : contexte de la requête (site ou sites
+        accessibles)."""
+        offers = self._offers()
+        in_profile = {m.module_code for profile, _ in offers for m in profile.modules}
+        in_plan = {code for _, terms in offers for code in terms.modules}
+        return self._rows(in_profile, in_plan, self.ctx.capabilities.modules)
+
+    def list_for_site(self, site_id: uuid.UUID) -> list[ModuleOut]:
+        """Modules d'UN site : ``in_profile`` selon le profil du site, ``in_plan`` selon les
+        conditions de l'abonnement du site, ``effective`` selon les capacités de ce site."""
+        site = SiteService(self.db, self.ctx).get(site_id)  # RLS : autre tenant introuvable
+        capabilities = self.ctx.site_capabilities(site.id)  # site non accessible : refus
+        subscription = site_subscription(self.db, site.id)
+        if subscription is None:
+            raise BusinessRuleError("Aucun abonnement", code="subscription_missing")
+        profile = self.capabilities.site_profile(site.id)
+        terms = current_terms(self.db, subscription)
+        return self._rows(
+            {m.module_code for m in profile.modules}, set(terms.modules), capabilities.modules
+        )
+
     def set_enabled(self, code: str, enabled: bool) -> None:
         if code not in self.registry or self.registry.get(code).core:
             raise BusinessRuleError("Module non paramétrable", code="module_not_configurable")
-        profile, plans = self._profile_and_plans()
-        if not any(code in self.capabilities.offered_modules(profile, plan) for plan in plans):
+        if not any(
+            code in self.capabilities.offered_modules(profile, terms)
+            for profile, terms in self._offers()
+        ):
             raise BusinessRuleError(
                 "Module non inclus dans votre profil ou votre abonnement",
                 code="module_not_offered",

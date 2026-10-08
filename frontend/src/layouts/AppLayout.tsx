@@ -113,6 +113,13 @@ export function AppLayout({
           <div className="sm-brand-text">
             <span className="sm-brand-product">{t('app.name')}</span>
             <div className="sm-strong">{capabilities.tenant.name}</div>
+            {/* Vue « Tous les sites » : profil du site de référence, jamais présenté comme
+                celui de tous les sites (profils par site). */}
+            {capabilities.profile_scope === 'reference' && (
+              <small className="sm-muted" data-testid="business-profile-scope">
+                {t('layout.referenceProfile')}
+              </small>
+            )}
             <small className="sm-muted sm-brand-profile" data-testid="business-profile">
               <i className={sectorIcon} aria-hidden />
               <span>{profileLabel(t, capabilities.profile)}</span>

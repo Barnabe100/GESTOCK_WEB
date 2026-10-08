@@ -248,7 +248,7 @@ def test_site_profile_must_exist_in_the_catalogue_and_is_mandatory(
     db.rollback()
 
 
-def test_site_profiles_are_independent_and_not_yet_used_by_capabilities(
+def test_site_profiles_are_independent_and_drive_their_own_capabilities(
     provision: Any, api_for: Any, owner_db: Session
 ) -> None:
     alpha = provision("ind-prof", profile="retail.alimentation")
@@ -269,12 +269,12 @@ def test_site_profiles_are_independent_and_not_yet_used_by_capabilities(
         text("SELECT business_profile_code FROM tenants WHERE id = :t"), {"t": alpha.tenant_id}
     ).scalar_one()
     assert tenant_profile == "retail.alimentation"
-    # Palier A : les capacités restent celles du profil de l'entreprise, même sur ce site.
+    # Palier B : les capacités d'un site suivent SON profil (Entrepôt : ni point de vente).
     api.site_id = other_site
     caps = api.get("/me/capabilities")
     assert caps.status_code == 200, caps.text
-    assert caps.json()["profile"]["code"] == "retail.alimentation"
-    assert "pos" in {m["code"] for m in caps.json()["modules"]}
+    assert caps.json()["profile"]["code"] == "distribution.entrepot"
+    assert "pos" not in {m["code"] for m in caps.json()["modules"]}
 
 
 def test_console_role_reads_site_profiles_but_cannot_change_them(

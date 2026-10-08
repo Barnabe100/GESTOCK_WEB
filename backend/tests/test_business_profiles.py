@@ -21,6 +21,8 @@ from app.platform.catalog.sync import sync_catalog
 from app.platform.registry import get_registry
 from tests.conftest import Api, add_site
 from tests.stock_helpers import member
+from tests.test_signup import _api as _signup_api
+from tests.test_signup import _signup, offers  # noqa: F401
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 
@@ -170,9 +172,10 @@ def test_inactive_profile_is_neither_listed_nor_provisioned(
         assert detail["is_active"] is False
         with pytest.raises(Exception, match="Profil inconnu"):
             provision("beta", profile="retail.sport")
+        # Entreprise avec des sites : le profil est défini par site (D2).
         response = owner.put("/tenant/business-profile", json={"code": "retail.sport"})
-        assert response.status_code == 422
-        assert response.json()["code"] == "unknown_profile"
+        assert response.status_code == 409
+        assert response.json()["code"] == "profile_is_per_site"
     finally:
         sync_catalog(owner_db, load_catalog(get_registry()))
         owner_db.commit()
@@ -381,12 +384,17 @@ def test_expired_subscription_is_not_bypassed_by_the_profile(
     assert response.json()["code"] == "subscription_restricted"
 
 
-def test_profile_belongs_to_the_tenant_not_to_the_site(
-    provision: Any, api_for: Any, client: TestClient
+def test_profile_belongs_to_each_site(
+    provision: Any, api_for: Any, client: TestClient, owner_db: Session
 ) -> None:
     t = provision("alpha", profile="retail.quincaillerie")
     owner = api_for("owner@alpha.example.com")
-    depot = add_site(owner, "Dépôt", "DEP", "warehouse")
+    depot = add_site(owner, "Dépôt", "DEP", "warehouse").json()["id"]
+    owner_db.execute(
+        text("UPDATE sites SET business_profile_code = 'distribution.entrepot' WHERE id = :s"),
+        {"s": depot},
+    )
+    owner_db.commit()
     seller = member(
         SimpleNamespace(owner=owner),
         client,
@@ -395,14 +403,22 @@ def test_profile_belongs_to_the_tenant_not_to_the_site(
         all_sites=False,
         site_ids=[str(t.site_id)],
     )
-    for api, site in ((owner, depot.json()["id"]), (seller, str(t.site_id)), (owner, None)):
-        scoped = Api(api.client, api.token, site)
-        caps = _caps(scoped)
-        assert caps["profile"]["code"] == "retail.quincaillerie"
-        assert caps["ux"]["navigation"] == _caps(owner)["ux"]["navigation"]
+    # Profil effectif = profil du site sélectionné ; présentation propre à chaque site.
+    on_depot = _caps(Api(owner.client, owner.token, depot))
+    assert on_depot["profile"]["code"] == "distribution.entrepot"
+    for api in (seller, owner):
+        scoped = _caps(Api(api.client, api.token, t.site_id))
+        assert scoped["profile"]["code"] == "retail.quincaillerie"
+        assert scoped["ux"]["navigation"] != on_depot["ux"]["navigation"]
+    # Sans site : profil du site de référence (site principal), jamais commun à tous.
+    consolidated = _caps(owner)
+    assert (consolidated["profile"]["code"], consolidated["profile_scope"]) == (
+        "retail.quincaillerie",
+        "reference",
+    )
     # La portée des sites reste appliquée indépendamment du profil.
     assert [s["id"] for s in _caps(seller)["sites"]] == [str(t.site_id)]
-    refused = Api(seller.client, seller.token, depot.json()["id"]).get("/me/capabilities")
+    refused = Api(seller.client, seller.token, depot).get("/me/capabilities")
     assert refused.status_code == 403
 
 
@@ -442,74 +458,71 @@ def test_provisioning_initialises_profile_modules_within_the_plan(
 # --- Changement de profil ----------------------------------------------------------------
 
 
-def test_profile_change_is_controlled_audited_and_keeps_data(
+def test_tenant_profile_change_is_refused_once_sites_exist(
     provision: Any, api_for: Any, owner_db: Session
 ) -> None:
     t = provision("shop", profile="retail.alimentation", plan="ENTREPRISE")
     owner = api_for("owner@shop.example.com")
-    category = owner.post("/catalog/categories", json={"name": "Divers"}).json()
-    article = owner.post(
-        "/catalog/articles",
-        json={
-            "reference": "A-1",
-            "designation": "Riz 25 kg",
-            "category_id": category["id"],
-            "unit": "u",
-            "purchase_price": "100",
-            "sale_price": "150",
-        },
-    ).json()
-
-    # Entrepôt : ni point de vente ni caisse ; ils sont activés → refus explicite.
-    response = owner.put("/tenant/business-profile", json={"code": "distribution.entrepot"})
+    response = owner.put("/tenant/business-profile", json={"code": "restaurant.maquis"})
     assert response.status_code == 409
-    assert response.json()["code"] == "profile_change_incompatible"
-    assert response.json()["modules"] == ["cash_register", "pos"]
+    assert response.json()["code"] == "profile_is_per_site"
+    # Rien n'a changé : ni le profil d'origine, ni celui du site, ni l'audit.
     assert owner.get("/tenant").json()["business_profile_code"] == "retail.alimentation"
-
-    unknown = owner.put("/tenant/business-profile", json={"code": "retail.inconnu"})
-    assert (unknown.status_code, unknown.json()["code"]) == (422, "unknown_profile")
-
-    # Vers la restauration : modules proposés par défaut et inclus au plan activés.
-    changed = owner.put("/tenant/business-profile", json={"code": "restaurant.maquis"})
-    assert changed.status_code == 200, changed.text
-    assert changed.json()["business_profile_code"] == "restaurant.maquis"
-    caps = _caps(owner)
-    assert caps["profile"]["sector"]["code"] == "restaurant"
-    assert caps["terminology"]["fr"]["catalog"]["item"] == "Produit"
-    assert "restaurant.tables" in {m["code"] for m in caps["modules"]}
-    # Données conservées.
-    assert owner.get(f"/catalog/articles/{article['id']}").json()["designation"] == "Riz 25 kg"
-    audit = owner_db.execute(
-        text(
-            "SELECT data FROM audit_logs WHERE tenant_id = :t AND action = 'tenant.profile_changed'"
-        ),
-        {"t": t.tenant_id},
+    assert _caps(owner)["profile"]["code"] == "retail.alimentation"
+    site_profile = owner_db.execute(
+        text("SELECT business_profile_code FROM sites WHERE id = :s"), {"s": t.site_id}
     ).scalar_one()
-    assert audit["previous_profile"] == "retail.alimentation"
-    assert audit["profile"] == "restaurant.maquis"
-    assert "restaurant.tables" in audit["enabled_modules"]
-
-    # Même profil : aucun changement, aucun nouvel audit.
-    assert (
-        owner.put("/tenant/business-profile", json={"code": "restaurant.maquis"}).status_code == 200
-    )
-    count = owner_db.execute(
+    assert site_profile == "retail.alimentation"
+    changes = owner_db.execute(
         text(
             "SELECT count(*) FROM audit_logs "
             "WHERE tenant_id = :t AND action = 'tenant.profile_changed'"
         ),
         {"t": t.tenant_id},
     ).scalar_one()
-    assert count == 1
+    assert changes == 0
 
-    # Après désactivation du point de vente puis de la caisse (données conservées), l'entrepôt
-    # est accepté.
-    assert owner.put("/modules/pos", json={"enabled": False}).status_code == 204
-    assert owner.put("/modules/cash_register", json={"enabled": False}).status_code == 204
-    moved = owner.put("/tenant/business-profile", json={"code": "distribution.entrepot"})
-    assert moved.status_code == 200, moved.text
-    assert _caps(owner)["ux"]["theme"]["density"] == "compact"
+
+def test_origin_profile_change_before_the_first_site(
+    client: TestClient,
+    offers: None,  # noqa: F811
+    owner_db: Session,
+) -> None:
+    """Inscription sans site : le profil d'origine reste modifiable (contrôlé, audité), il sert
+    de profil de référence et sera celui du premier site ; ensuite il est figé (D2)."""
+    owner = _signup_api(client, _signup(client))
+    # Entrepôt : ni point de vente ni caisse ; ils sont activés → refus explicite.
+    response = owner.put("/tenant/business-profile", json={"code": "distribution.entrepot"})
+    assert response.status_code == 409
+    assert response.json()["code"] == "profile_change_incompatible"
+    assert response.json()["modules"] == ["cash_register", "pos"]
+    unknown = owner.put("/tenant/business-profile", json={"code": "retail.inconnu"})
+    assert (unknown.status_code, unknown.json()["code"]) == (422, "unknown_profile")
+
+    changed = owner.put("/tenant/business-profile", json={"code": "restaurant.maquis"})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["business_profile_code"] == "restaurant.maquis"
+    caps = _caps(owner)
+    assert (caps["profile"]["code"], caps["profile_scope"]) == ("restaurant.maquis", "reference")
+    assert caps["terminology"]["fr"]["catalog"]["item"] == "Produit"
+    tenant_id = owner.get("/tenant").json()["id"]
+    audit = owner_db.execute(
+        text(
+            "SELECT data FROM audit_logs WHERE tenant_id = :t AND action = 'tenant.profile_changed'"
+        ),
+        {"t": tenant_id},
+    ).scalar_one()
+    assert (audit["previous_profile"], audit["profile"]) == (
+        "retail.alimentation",
+        "restaurant.maquis",
+    )
+
+    # Premier site : il reçoit le profil d'origine ; le profil d'entreprise est ensuite figé.
+    site = owner.post("/sites", json={"name": "Maquis", "code": "MAQ"})
+    assert site.status_code == 201, site.text
+    assert site.json()["business_profile_code"] == "restaurant.maquis"
+    refused = owner.put("/tenant/business-profile", json={"code": "retail.alimentation"})
+    assert (refused.status_code, refused.json()["code"]) == (409, "profile_is_per_site")
 
 
 def test_cli_change_profile(provision: Any, settings: Any, capsys: Any, owner_db: Session) -> None:
@@ -552,15 +565,15 @@ def test_each_tenant_only_sees_and_changes_its_own_profile(
         "/tenant/business-profile",
         json={"code": "retail.sport", "tenant_id": str(b.tenant_id)},
     )
-    assert response.status_code == 200
+    assert (response.status_code, response.json()["code"]) == (409, "profile_is_per_site")
     assert _caps(beta)["profile"]["code"] == "restaurant.restaurant"
-    assert _caps(alpha)["profile"]["code"] == "retail.sport"
+    assert _caps(alpha)["profile"]["code"] == "retail.alimentation"
 
     # RLS (rôle applicatif, sans BYPASSRLS) : le tenant B est invisible et intouchable.
     with create_session_factory(app_engine)() as session:
         set_db_context(session, tenant_id=a.tenant_id, user_id=None)
         rows = session.execute(text("SELECT id, business_profile_code FROM tenants")).all()
-        assert [(r[0], r[1]) for r in rows] == [(a.tenant_id, "retail.sport")]
+        assert [(r[0], r[1]) for r in rows] == [(a.tenant_id, "retail.alimentation")]
         updated = session.execute(
             text("UPDATE tenants SET business_profile_code = 'retail.sport' WHERE id = :b"),
             {"b": b.tenant_id},

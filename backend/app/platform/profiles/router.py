@@ -1,7 +1,9 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 
+from app.core.errors import ConflictError
 from app.platform.catalog.models import BusinessProfile
 from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
 from app.platform.onboarding.service import OnboardingService
@@ -15,6 +17,7 @@ from app.platform.profiles.schemas import (
     SectorOut,
 )
 from app.platform.profiles.service import change_business_profile
+from app.platform.tenancy.models import Site
 from app.platform.tenancy.schemas import TenantOut
 
 router = APIRouter(tags=["business-profiles"])
@@ -71,8 +74,11 @@ def get_business_profile(
 def change_tenant_business_profile(
     body: BusinessProfileChange, ctx: ProfileManage, db: DbSession, registry: RegistryDep
 ) -> TenantOut:
-    """Change le profil d'activité du tenant du jeton (jamais d'un autre) : contrôlé, audité,
-    sans suppression de données."""
+    """Profil d'origine du tenant du jeton (jamais d'un autre), modifiable seulement tant que
+    l'entreprise n'a aucun site : le profil d'activité est ensuite propre à chaque site (D2,
+    ``409 profile_is_per_site``). Contrôlé, audité, sans suppression de données."""
+    if db.scalar(select(Site.id).limit(1)) is not None:  # RLS : sites de ce tenant
+        raise ConflictError("Le profil d'activité est défini par site", code="profile_is_per_site")
     change_business_profile(
         db,
         registry,

@@ -147,7 +147,13 @@ export default function DashboardPage() {
                 </div>
               )}
               <div>
-                <dt>{t('dashboard.profile')}</dt>
+                <dt>
+                  {t(
+                    caps.profile_scope === 'reference'
+                      ? 'dashboard.referenceProfile'
+                      : 'dashboard.profile',
+                  )}
+                </dt>
                 <dd>{profileLabel(t, caps.profile)}</dd>
               </div>
             </dl>

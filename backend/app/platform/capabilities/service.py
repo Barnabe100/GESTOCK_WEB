@@ -11,6 +11,13 @@ abonnement de l'entreprise (une permission n'est retenue que si UN abonnement l'
 son propre statut) ; toute écriture portant sur un site est revérifiée pour ce site
 (``RequestContext.ensure_site_allows``).
 
+**Profil par site** (palier B) : le profil effectif d'un abonnement est celui de SON site
+(``sites.business_profile_code``) ; l'abonnement pris à l'inscription, pas encore rattaché à un
+site, utilise le profil d'origine du tenant. Sans site sélectionné, l'union porte sur les
+abonnements des sites ACCESSIBLES au membre (et l'abonnement non rattaché) ; la présentation
+utilise le profil du site de référence (site principal, ``reference_site_id``), jamais un profil
+commun inventé.
+
 Le profil d'activité ne fait que **proposer** des modules : il n'accorde aucune permission et
 ne contourne ni le plan, ni l'abonnement, ni les rôles. La présentation (navigation, tableau
 de bord, terminologie, thème) est résolue à part, pour l'interface seulement
@@ -40,9 +47,16 @@ from app.platform.subscriptions.service import (
 from app.platform.tenancy.models import Site, Tenant, TenantModule
 
 
+class ProfileScope:
+    SITE = "site"  # profil du site sélectionné
+    REFERENCE = "reference"  # vue « Tous les sites » : profil du site de référence (D4)
+
+
 @dataclass(frozen=True)
 class Capabilities:
+    # Profil effectif du site sélectionné, ou profil de référence sans site (``profile_scope``).
     profile_code: str
+    profile_scope: str
     # Classification du profil (reporting, présentation) ; jamais une règle d'accès.
     sector_code: str | None
     ux_profile_code: str | None
@@ -59,6 +73,9 @@ class Capabilities:
     # Fonctionnalités optionnelles du plan, pour les modules effectifs.
     features: frozenset[str]
     accessible_site_ids: frozenset[uuid.UUID]
+    # Vue « Tous les sites » : site dont le profil sert de référence (``None`` : site
+    # sélectionné, ou aucun site accessible).
+    reference_site_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -185,18 +202,69 @@ class CapabilityService:
             features=PlanPolicy(self.session, terms, self.registry).features(modules),
         )
 
+    # --- Profils --------------------------------------------------------------------------
+
+    def profile(self, code: str) -> BusinessProfile:
+        profile = self.session.get(BusinessProfile, code)
+        if profile is None:
+            raise LookupError(f"profil introuvable : {code}")
+        return profile
+
+    def site_profile(self, site_id: uuid.UUID) -> BusinessProfile:
+        """Profil effectif d'un site : ``sites.business_profile_code`` (jamais celui du tenant)."""
+        site = self.session.get(Site, site_id)
+        if site is None:
+            raise LookupError("site introuvable")
+        return self.profile(site.business_profile_code)
+
+    def subscription_profile(self, subscription: Subscription, tenant: Tenant) -> BusinessProfile:
+        """Profil d'un abonnement : celui de son site ; abonnement d'inscription pas encore
+        rattaché à un site : profil d'origine du tenant."""
+        if subscription.site_id is not None:
+            return self.site_profile(subscription.site_id)
+        return self.profile(tenant.business_profile_code)
+
+    def reference_site_id(self, accessible: frozenset[uuid.UUID]) -> uuid.UUID | None:
+        """Site de référence de la vue « Tous les sites » (= ``main_site_id``) : le plus ancien
+        site ACTIF du tenant s'il est accessible au membre, sinon le premier site accessible
+        (ordre alphabétique). Une règle de calcul, aucun indicateur en base."""
+        oldest = self.session.scalar(
+            select(Site.id)
+            .where(Site.is_active.is_(True))
+            .order_by(Site.created_at, Site.id)
+            .limit(1)
+        )
+        if oldest is not None and oldest in accessible:
+            return oldest
+        if not accessible:
+            return None
+        return self.session.scalar(
+            select(Site.id).where(Site.id.in_(accessible)).order_by(Site.name, Site.id).limit(1)
+        )
+
+    # --- Abonnements (suite) -----------------------------------------------------------------
+
     def grants(
-        self, profile: BusinessProfile, site_id: uuid.UUID | None, now: datetime
+        self,
+        tenant: Tenant,
+        site_id: uuid.UUID | None,
+        now: datetime,
+        accessible: frozenset[uuid.UUID] | None = None,
     ) -> list[SubscriptionGrant]:
-        """Abonnement du site, ou tous les abonnements de l'entreprise (sans site)."""
+        """Abonnement du site (profil du site), ou, sans site, ceux des sites accessibles
+        (``accessible``) et l'abonnement non rattaché — chacun évalué avec le profil de SON site.
+        Membre sans aucun site accessible : abonnements de l'entreprise (données communes)."""
         if site_id is not None:
             subscription = site_subscription(self.session, site_id)
             subscriptions = [subscription] if subscription is not None else []
         else:
             subscriptions = tenant_subscriptions(self.session)
+            if accessible is not None:
+                scoped = [s for s in subscriptions if s.site_id is None or s.site_id in accessible]
+                subscriptions = scoped or subscriptions
         if not subscriptions:
             raise SubscriptionMissingError("aucun abonnement")
-        return [self.grant(s, profile, now) for s in subscriptions]
+        return [self.grant(s, self.subscription_profile(s, tenant), now) for s in subscriptions]
 
     # --- Résolution complète --------------------------------------------------------------
 
@@ -208,11 +276,21 @@ class CapabilityService:
         site_id: uuid.UUID | None,
         now: datetime,
     ) -> Capabilities:
-        profile = self.session.get(BusinessProfile, tenant.business_profile_code)
-        if profile is None:
-            raise LookupError("profil introuvable pour le tenant")
-        grants = self.grants(profile, site_id, now)
+        accessible = self.accessible_site_ids(membership)
+        grants = self.grants(tenant, site_id, now, accessible)
         representative = max(grants, key=lambda g: g.rank)
+        reference_site: uuid.UUID | None = None
+        if site_id is not None:
+            profile = self.site_profile(site_id)
+            scope = ProfileScope.SITE
+        else:
+            reference_site = self.reference_site_id(accessible)
+            profile = (
+                self.site_profile(reference_site)
+                if reference_site is not None
+                else self.profile(tenant.business_profile_code)
+            )
+            scope = ProfileScope.REFERENCE
 
         permitted: set[str] = set()
         candidates: set[str] = set()
@@ -224,6 +302,7 @@ class CapabilityService:
 
         return Capabilities(
             profile_code=profile.code,
+            profile_scope=scope,
             sector_code=profile.sector_code,
             ux_profile_code=profile.ux_profile_code,
             # Offre dont les droits sont en vigueur (licence en vigueur, sinon plan) : R4.
@@ -235,5 +314,6 @@ class CapabilityService:
             permissions=frozenset(permitted),
             restricted_permissions=frozenset(candidates - permitted),
             features=frozenset().union(*(g.features for g in grants)),
-            accessible_site_ids=self.accessible_site_ids(membership),
+            accessible_site_ids=accessible,
+            reference_site_id=reference_site,
         )

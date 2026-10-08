@@ -95,7 +95,11 @@ describe('menu dynamique', () => {
 describe('coquille selon le profil UX', () => {
   afterEach(cleanup);
 
-  function renderLayout(ux: Capabilities['ux'], profile: Capabilities['profile']) {
+  function renderLayout(
+    ux: Capabilities['ux'],
+    profile: Capabilities['profile'],
+    profileScope: Capabilities['profile_scope'] = 'site',
+  ) {
     const caps: Capabilities = {
       ...capabilities(['stock.level.view', 'sales.sale.view', 'users.member.view']),
       modules: [...CORE, 'stock', 'sales'].map((code) => ({
@@ -105,6 +109,7 @@ describe('coquille selon le profil UX', () => {
       })),
       navigation: ux.navigation.flatMap((g) => g.modules),
       profile,
+      profile_scope: profileScope,
       ux,
     };
     const { container } = render(
@@ -172,6 +177,29 @@ describe('coquille selon le profil UX', () => {
     const titles = screen.getAllByRole('list').map((list) => list.getAttribute('aria-labelledby'));
     expect(titles).toEqual([null, 'nav-stock', 'nav-sales', 'nav-admin']);
     expect(screen.getByText('Stock', { selector: 'p' })).toBeTruthy();
+  });
+
+  it('vue « Tous les sites » : profil présenté comme profil de référence, jamais commun', () => {
+    const ux: Capabilities['ux'] = {
+      code: 'retail.default',
+      navigation: [{ group: 'home', modules: ['dashboard'] }],
+      dashboard: { widgets: [], shortcuts: [] },
+      theme: { accent: 'green', density: 'comfortable', icon: null },
+      upcoming: [],
+    };
+    const profile: Capabilities['profile'] = {
+      code: 'retail.alimentation',
+      name: 'Alimentation',
+      sector: { code: 'retail', name: 'Commerce', icon: 'pi pi-shopping-bag' },
+      ux_profile: 'retail.default',
+    };
+    renderLayout(ux, profile, 'reference');
+    expect(screen.getByTestId('business-profile-scope').textContent).toBe('Profil de référence');
+    expect(screen.getByTestId('business-profile').textContent).toBe('Alimentation / Supérette');
+    cleanup();
+    // Site sélectionné : son propre profil, sans mention de référence.
+    renderLayout(ux, profile, 'site');
+    expect(screen.queryByTestId('business-profile-scope')).toBeNull();
   });
 
   it("un profil sans rubrique pour un module planifié n'affiche aucune entrée fictive", () => {

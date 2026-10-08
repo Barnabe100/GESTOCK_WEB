@@ -55,6 +55,8 @@ export interface SiteInfo {
   kind: SiteKind;
   /** Statut effectif de l'abonnement du site (1 site = 1 abonnement, ADR-0033). */
   subscription_status?: SubscriptionStatus | null;
+  /** Profil d'activité propre au site (profils par site). */
+  profile?: { code: string; name: string; sector: string | null } | null;
 }
 
 export type SubscriptionStatus =
@@ -104,7 +106,12 @@ export interface Capabilities {
     timezone: string;
   };
   is_owner: boolean;
+  /**
+   * Profil du site sélectionné (`profile_scope` = `site`) ; vue « Tous les sites » : profil du
+   * site de référence (`reference`), jamais un profil commun à tous les sites.
+   */
   profile: { code: string; name: string; sector: SectorInfo | null; ux_profile: string | null };
+  profile_scope?: 'site' | 'reference';
   plan: { code: string; name: string };
   subscription: {
     status: SubscriptionStatus;

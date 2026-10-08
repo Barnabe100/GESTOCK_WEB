@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.core.config import Settings
 from app.core.errors import BusinessRuleError, NotFoundError
 from app.platform.capabilities.service import CapabilityService
-from app.platform.catalog.models import BusinessProfile, Plan
+from app.platform.catalog.models import Plan
 from app.platform.context import (
     DbSession,
     NowDep,
@@ -155,9 +155,9 @@ def _subscription_out(
     now: datetime,
     settings: Settings,
 ) -> SubscriptionOut:
-    profile = db.get(BusinessProfile, ctx.tenant.business_profile_code)
-    assert profile is not None
-    grant = CapabilityService(db, registry).grant(subscription, profile, now)
+    service = CapabilityService(db, registry)
+    # Profil du site de l'abonnement (jamais celui du tenant).
+    grant = service.grant(subscription, service.subscription_profile(subscription, ctx.tenant), now)
     site = db.get(Site, subscription.site_id) if subscription.site_id else None
     policy = PlanPolicy(db, grant.terms, registry)
     return SubscriptionOut(

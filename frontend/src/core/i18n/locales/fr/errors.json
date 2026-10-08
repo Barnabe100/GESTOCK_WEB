@@ -123,6 +123,7 @@
   "cash_movement_category_invalid": "Nature incompatible avec le sens du mouvement.",
   "unknown_profile": "Profil d'activité inconnu ou inactif.",
   "profile_change_incompatible": "Ce profil ne propose pas certains modules activés : désactivez-les d'abord (leurs données sont conservées).",
+  "profile_is_per_site": "Le profil d'activité est défini pour chaque site : le profil de l'entreprise n'est plus modifiable.",
   "signup_unavailable": "Inscription impossible avec ces informations. Si vous avez déjà un compte, connectez-vous.",
   "signup_closed": "Les inscriptions en ligne sont momentanément fermées.",
   "plan_not_available": "Cette offre n'est pas disponible en ligne. Choisissez une autre offre ou contactez TechNova.",

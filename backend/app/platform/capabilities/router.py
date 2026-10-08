@@ -5,7 +5,6 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, Plan
@@ -27,13 +26,21 @@ class NamedCode(BaseModel):
 
 
 class ProfileInfo(BaseModel):
-    """Profil d'activité du tenant, avec son secteur et son profil UX (classification et
-    présentation seulement)."""
+    """Profil d'activité, avec son secteur et son profil UX (classification et présentation
+    seulement)."""
 
     code: str
     name: str
     sector: SectorInfo | None
     ux_profile: str | None
+
+
+class SiteProfileInfo(BaseModel):
+    """Profil d'activité propre à un site (``sites.business_profile_code``)."""
+
+    code: str
+    name: str
+    sector: str | None
 
 
 class TenantInfo(BaseModel):
@@ -60,6 +67,8 @@ class SiteInfo(BaseModel):
     # Statut effectif de l'abonnement du site (1 site = 1 abonnement, ADR-0033) : un site
     # « en attente d'activation » n'est pas encore opérationnel.
     subscription_status: str | None = None
+    # Profil d'activité du site (profils par site, palier B).
+    profile: SiteProfileInfo | None = None
 
 
 class ModuleInfo(BaseModel):
@@ -77,14 +86,19 @@ class CapabilitiesOut(BaseModel):
     user: UserOut
     tenant: TenantInfo
     is_owner: bool
+    # Profil effectif du site sélectionné (``profile_scope`` = ``site``) ; sans site, profil du
+    # site de référence (``reference``, = ``main_site_id``) : jamais un profil commun à tous les
+    # sites, que l'interface présente comme « profil de référence » (D4, D10).
     profile: ProfileInfo
+    profile_scope: str
     plan: NamedCode
     subscription: SubscriptionInfo
     site: SiteInfo | None
     sites: list[SiteInfo]
     # Site principal (Recette, étape 1, décision du palier 4) : le plus ancien site actif du
     # tenant s'il est accessible au membre, sinon le premier site accessible ; ``None`` sans
-    # site accessible. Calculé par le serveur : l'interface ne le devine jamais.
+    # site accessible. Calculé par le serveur : l'interface ne le devine jamais. Site de
+    # référence de la vue « Tous les sites » (profils par site, D4).
     main_site_id: uuid.UUID | None = None
     modules: list[ModuleInfo]
     permissions: list[str]
@@ -110,32 +124,49 @@ def get_capabilities(
     Le frontend construit menus, routes et tableau de bord à partir de cette seule réponse ;
     le backend applique indépendamment les mêmes règles sur chaque requête."""
     caps = ctx.capabilities
-    profile = db.get(BusinessProfile, caps.profile_code)
+    service = CapabilityService(db, registry)
+    profile = service.profile(caps.profile_code)
     plan = db.get(Plan, caps.plan_code)
     subscription = db.get(Subscription, caps.subscription_id)
-    assert profile is not None and plan is not None and subscription is not None
+    assert plan is not None and subscription is not None
     sites = db.scalars(
         select(Site).where(Site.id.in_(caps.accessible_site_ids)).order_by(Site.name)
     ).all()
-    service = CapabilityService(db, registry)
+    # Chaque abonnement est évalué avec le profil de SON site (jamais celui du tenant).
     site_status = {
-        s.site_id: service.grant(s, profile, now).status.value
+        s.site_id: service.grant(s, service.subscription_profile(s, ctx.tenant), now).status.value
         for s in tenant_subscriptions(db)
         if s.site_id is not None
     }
     # Limites affichées : conditions en vigueur de l'abonnement représentatif (licence, sinon
     # plan).
-    terms = service.grant(subscription, profile, now).terms
+    terms = service.grant(
+        subscription, service.subscription_profile(subscription, ctx.tenant), now
+    ).terms
+    site_profiles = {
+        p.code: p
+        for p in db.scalars(
+            select(BusinessProfile).where(
+                BusinessProfile.code.in_({site.business_profile_code for site in sites})
+            )
+        )
+    }
 
     experience = BusinessProfileRegistry(db, registry).effective(profile, caps.modules)
 
     def site_info(site: Site) -> SiteInfo:
+        site_profile = site_profiles.get(site.business_profile_code)
         return SiteInfo(
             id=site.id,
             name=site.name,
             code=site.code,
             kind=site.kind,
             subscription_status=site_status.get(site.id),
+            profile=SiteProfileInfo(
+                code=site_profile.code, name=site_profile.name, sector=site_profile.sector_code
+            )
+            if site_profile is not None
+            else None,
         )
 
     return CapabilitiesOut(
@@ -148,6 +179,7 @@ def get_capabilities(
             sector=SectorInfo.model_validate(profile.sector) if profile.sector else None,
             ux_profile=profile.ux_profile_code,
         ),
+        profile_scope=caps.profile_scope,
         plan=NamedCode(code=plan.code, name=plan.name),
         subscription=SubscriptionInfo(
             status=caps.subscription_status.value,
@@ -157,7 +189,7 @@ def get_capabilities(
         ),
         site=site_info(ctx.site) if ctx.site else None,
         sites=[site_info(s) for s in sites],
-        main_site_id=_main_site_id(db, ctx.tenant.id, [s.id for s in sites]),
+        main_site_id=service.reference_site_id(caps.accessible_site_ids),
         modules=[
             ModuleInfo(code=m.code, status=m.status.value, core=m.core)
             for m in registry.all()
@@ -176,20 +208,3 @@ def get_capabilities(
             .items()
         },
     )
-
-
-def _main_site_id(
-    db: Session, tenant_id: uuid.UUID, accessible: list[uuid.UUID]
-) -> uuid.UUID | None:
-    """Site principal : le plus ancien site ACTIF du tenant (création), s'il est accessible au
-    membre ; sinon le premier site accessible (ordre de la liste ``sites``). Aucun indicateur
-    en base : une règle de calcul, pas une donnée."""
-    oldest = db.scalar(
-        select(Site.id)
-        .where(Site.tenant_id == tenant_id, Site.is_active.is_(True))
-        .order_by(Site.created_at, Site.id)
-        .limit(1)
-    )
-    if oldest is not None and oldest in accessible:
-        return oldest
-    return accessible[0] if accessible else None

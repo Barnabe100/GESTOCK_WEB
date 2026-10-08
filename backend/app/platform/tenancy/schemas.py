@@ -86,6 +86,8 @@ class SiteOut(BaseModel):
     phone: str | None
     is_active: bool
     created_at: datetime
+    # Profil d'activité du site (profils par site) : lecture seule à ce stade.
+    business_profile_code: str
 
 
 class SiteCreate(BaseModel):
