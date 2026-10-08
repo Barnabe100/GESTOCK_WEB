@@ -327,8 +327,13 @@ profil de chaque site (`sites_detail` de la fiche, `site_profiles` de la liste ;
 l'entreprise = profil d'**origine**) et n'en change jamais (aucune route
 d'écriture, droits SQL inchangés) ; CLI : `create-tenant --business-profile` conservé,
 `change-profile` limité aux entreprises **sans site** (règle `profile_is_per_site` portée par le
-service `change_business_profile`, commune à l'API et à la CLI). Ne pas passer au palier G sans
-validation. Non implémentés (feuille de route §13) :
+service `change_business_profile`, commune à l'API et à la CLI). **Palier G — consolidation**
+(aucune fonctionnalité, aucune migration) : recette de bout en bout
+(`tests/test_site_model_acceptance.py`, E2E `site-experience` : données du site actif),
+inventaire des routes de la console par le schéma OpenAPI (l'ancien test statique ne voyait pas
+les routes incluses), synthèse du modèle dans ADR-0048 ; correctif : la création d'un site
+attend que l'abonnement d'inscription soit connu (un clic sur « Enregistrer » pendant ce
+chargement n'envoyait rien). Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

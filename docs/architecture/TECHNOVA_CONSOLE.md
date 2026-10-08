@@ -172,9 +172,11 @@ La console **consulte** le profil d'activité de chaque site (fiche : section «
 d'activité », sites inactifs compris ; liste : profil des sites actifs — un nom, « N profils »
 avec les noms en infobulle, ou le profil d'inscription « aucun site »). Le profil de
 l'entreprise (`business_profile_*`) n'est que son profil d'**origine**. La console **ne change
-jamais** un profil : aucune route d'écriture (test statique sur les routes), et le rôle SQL
-`stockmanager_platform` n'a que `SELECT (business_profile_code)` sur `sites` (migration 0039),
-aucun droit d'écriture sur `sites`, `tenants.business_profile_code` ni `site_modules`. Le
+jamais** un profil ni un module : aucune route d'écriture de profil ou de module (inventaire
+complet des routes par le schéma OpenAPI, testé), et le rôle SQL `stockmanager_platform` ne lit
+sur `sites` que `id`, `name`, `code`, `tenant_id`, `is_active` (migrations 0018, 0020) et
+`business_profile_code` (migration 0039), sans aucun droit d'écriture sur `sites`, sur
+`tenants.business_profile_code` ni sur `site_modules`. Le
 changement de profil d'un site reste celui de l'entreprise (`PUT /sites/{id}/business-profile`,
 aperçu, niveaux, confirmation). CLI (D8) : `create-tenant --business-profile` fixe le profil
 d'origine et celui du site initial ; `change-profile` ne change que le profil d'origine d'une

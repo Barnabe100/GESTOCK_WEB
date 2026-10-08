@@ -325,6 +325,9 @@ Pas de `DELETE` sur tenants ni subscriptions : l'expiration ne supprime jamais d
    séquence `license_number_seq` (ADR-0034). Depuis 3.3-B3 (migration 0022) :
    `license_activations` — lecture, libération d'un poste actif seulement (ADR-0035). Depuis
    3.3-B4 (migration 0023) : `notifications` — lecture et insertion (job des rappels, ADR-0036).
+   Depuis le palier A des profils par site (migration 0039) : `sites` — lecture de
+   `business_profile_code` (profil de chaque site, consulté en lecture seule par la console,
+   palier F) ; aucun droit sur `site_modules` ni d'écriture sur `sites`.
 
 ## Ajouter une table tenant-scoped (règle pour les modules futurs)
 

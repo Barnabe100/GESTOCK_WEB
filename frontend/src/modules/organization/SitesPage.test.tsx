@@ -145,6 +145,37 @@ describe('sites : 1 site = 1 abonnement (ADR-0033)', () => {
     });
   });
 
+  it('premier site : enregistrement possible seulement une fois l’abonnement connu (aucun clic perdu)', async () => {
+    let release: (value: Response) => void = () => undefined;
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (init?.method === 'POST') return jsonResponse({ id: 'new' }, 201);
+      if (u.endsWith('/public/plans')) return jsonResponse(PLANS);
+      if (u.endsWith('/subscriptions')) return pending;
+      return jsonResponse([]);
+    });
+    render();
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.input(dialog.querySelector('#site-name') as Element, {
+      target: { value: 'Boutique centrale' },
+    });
+    fireEvent.input(dialog.querySelector('#site-code') as Element, {
+      target: { value: 'CENTRE' },
+    });
+    // Abonnement d'inscription pas encore connu : l'enregistrement attend.
+    const save = screen.getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    release(jsonResponse([{ id: 's-1', site: null }]));
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toMatchObject({ name: 'Boutique centrale', code: 'CENTRE' });
+    expect(posted()[0]).not.toHaveProperty('plan_code');
+  });
+
   it('premier site d’une inscription : abonnement déjà choisi, aucune offre demandée', async () => {
     api([{ id: 's-1', site: null }]);
     render();

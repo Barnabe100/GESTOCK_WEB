@@ -125,6 +125,25 @@ sans interrupteur pour une activation impossible ; la page Sites montre site →
 actifs → statut ; un changement de site vide le cache des requêtes ; une page d'un module absent
 du site actif l'explique. Voir [`DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) §8 bis.
 
+## Synthèse du modèle (recette, palier G)
+
+```text
+Tenant (profil d'origine = profil d'inscription, défaut d'un nouveau site ; jamais effectif)
+  └── Sites
+        ├── Profil propre        sites.business_profile_code (changement : aperçu + PUT, ce site seul)
+        ├── Modules propres      site_modules (profil du site ∩ abonnement du site ∩ activé)
+        ├── Capacités propres    /me/capabilities avec X-Site-Id (modules, permissions, profil UX)
+        └── Expérience propre    menu, tableau de bord, thème (BusinessProfileTheme), cache vidé
+
+Console TechNova  →  consultation (profil de chaque site)      ≠  forçage du profil métier
+CLI               →  création du tenant et du profil initial   ≠  contournement du modèle par site
+```
+
+Le plan commercial reste porté par l'abonnement de chaque site ; un module « Bientôt disponible »
+n'est jamais activé (E.1) ; les données d'un site ne sont jamais servies pour un autre site ni pour
+une autre entreprise. Recette de bout en bout : `tests/test_site_model_acceptance.py` (A1
+Alimentation / A2 Entrepôt / B1 Maquis), E2E `site-experience` (données du site actif).
+
 ## Palier F : console TechNova et CLI (D8, lecture seule)
 
 - **Console** : `GET /tenants` expose `site_profiles` (profils distincts des sites actifs) à côté

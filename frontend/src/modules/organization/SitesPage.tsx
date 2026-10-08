@@ -70,11 +70,15 @@ type FormValues = z.infer<typeof schema>;
 function SiteDialog({
   site,
   choosePlan,
+  offerKnown,
   initialProfile,
   onClose,
 }: {
   site: Site | null;
   choosePlan: boolean;
+  /** Abonnement d'inscription connu (liste des abonnements chargée) : tant qu'il ne l'est pas,
+   * ``choosePlan`` peut encore changer, l'enregistrement attend (aucun clic perdu). */
+  offerKnown: boolean;
   /** Profil proposé à la création (ex. « Créer un nouveau site avec ce profil »). */
   initialProfile?: string;
   onClose: () => void;
@@ -307,7 +311,12 @@ function SiteDialog({
         )}
         <div className="sm-dialog-actions">
           <Button type="button" label={t('actions.cancel')} text onClick={onClose} />
-          <Button type="submit" label={t('actions.save')} loading={save.isPending} />
+          <Button
+            type="submit"
+            label={t('actions.save')}
+            loading={save.isPending}
+            disabled={!offerKnown}
+          />
         </div>
       </form>
     </Dialog>
@@ -451,6 +460,7 @@ export default function SitesPage() {
         <SiteDialog
           site={editing}
           choosePlan={!preselected}
+          offerKnown={!subscriptions.isLoading}
           initialProfile={newSiteProfile}
           onClose={() => {
             setEditing(undefined);

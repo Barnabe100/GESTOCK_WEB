@@ -176,7 +176,11 @@ petit changement, aucune donnée supprimée. Côté interface (palier E) : **le 
 l'expérience fonctionnelle (menu, modules, tableau de bord, thème visuel) sont déterminés par le
 site actif, tandis que le plan commercial reste porté par l'abonnement du site** — thème métier
 `BusinessProfileTheme` dérivé des données du profil du site, cache vidé à chaque changement de
-site ; la navigation n'est jamais une preuve de droit.
+site ; la navigation n'est jamais une preuve de droit. Un module « Bientôt disponible »
+(`planned`) peut être affiché mais jamais activé (contrôle serveur, palier E.1). La console
+TechNova consulte le profil de chaque site sans pouvoir le changer, et la CLI ne fixe que le
+profil initial (`create-tenant`) ou celui d'une entreprise encore sans site (palier F). Synthèse
+et recette : ADR-0048, « Synthèse du modèle ».
 
 ```text
 modules_effectifs(site) = profil(site).modules_disponibles

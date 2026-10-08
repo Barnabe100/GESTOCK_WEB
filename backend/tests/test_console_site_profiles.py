@@ -204,15 +204,21 @@ def test_console_exposes_no_profile_change_route(admin: TestClient, two_profiles
     }
 
 
-def test_no_console_route_writes_a_profile(console_app: Any) -> None:
-    writes = [
-        (sorted(route.methods), route.path)  # type: ignore[attr-defined]
-        for route in console_app.routes
-        if getattr(route, "methods", None)
-        and set(route.methods) & {"POST", "PUT", "PATCH", "DELETE"}  # type: ignore[attr-defined]
-        and "profile" in route.path  # type: ignore[attr-defined]
-    ]
-    assert writes == []
+def test_no_console_route_writes_a_profile_or_a_module(console_app: Any) -> None:
+    """Inventaire complet des routes exposées (schéma OpenAPI : indépendant de l'organisation
+    interne des routeurs). Palier G : la version précédente parcourait ``app.routes``, où les
+    routes incluses n'apparaissent pas ; elle ne vérifiait donc rien."""
+    paths: dict[str, dict[str, Any]] = console_app.openapi()["paths"]
+    writes = {
+        (method.upper(), path)
+        for path, operations in paths.items()
+        for method in operations
+        if method in {"post", "put", "patch", "delete"}
+    }
+    # Garde-fou : l'inventaire contient bien les actions connues de la console.
+    assert ("POST", f"{CONSOLE_PREFIX}/tenants/{{tenant_id}}/suspend") in writes
+    assert len(writes) > 10
+    assert [w for w in writes if "profile" in w[1] or "module" in w[1]] == []
 
 
 def test_platform_role_reads_but_never_writes_profiles(

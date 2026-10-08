@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, createActiveSite, loginUi, provisionTenant, tokenFor } from './support';
+import { bearer, createActiveSite, loginUi, provisionTenant, siteIdsOf, tokenFor } from './support';
 
 /**
  * Palier E — Profil, modules, navigation, tableau de bord et thème du SITE actif, sur une
@@ -37,7 +37,7 @@ async function setup(request: APIRequestContext, prefix: string) {
     'distribution.entrepot',
     'retail.quincaillerie',
   ]);
-  return { name, email };
+  return { name, email, token };
 }
 
 async function selectSite(page: Page, label: string) {
@@ -88,6 +88,67 @@ test('changer de site change profil, menu, thème, tableau de bord et modules', 
   await expect(page.getByRole('row', { name: /Dépôt Central/ })).toContainText('Entrepôt');
   await expect(page.getByTestId('site-modules-DEPOT-UX')).toContainText(/modules? actifs?/);
   expect(await overflow(page)).toBe(false);
+});
+
+test('palier G : les données suivent le site actif, jamais celles de l’autre site', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const w = await setup(request, 'g');
+  const headers = bearer(w.token);
+  const post = async (path: string, data: unknown) => {
+    const response = await request.post(`/api/v1${path}`, { headers, data });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return (await response.json()) as { id: string };
+  };
+  // Référence sans chiffre : la quantité vérifiée (37) ne peut pas apparaître ailleurs.
+  const reference = `G-${Date.now()
+    .toString()
+    .slice(-7)
+    .replace(/\d/g, (d) => 'ABCDEFGHIJ'.charAt(Number(d)))}`;
+  const category = await post('/catalog/categories', { name: `Cat ${reference}` });
+  const article = await post('/catalog/articles', {
+    reference,
+    designation: `Article ${reference}`,
+    category_id: category.id,
+    unit: 'u',
+    purchase_price: '100',
+    sale_price: '150',
+    site_ids: await siteIdsOf(request, w.token),
+  });
+  const supplier = await post('/suppliers', { name: `Fournisseur ${reference}` });
+  const sites = (await (await request.get('/api/v1/sites', { headers })).json()) as {
+    id: string;
+    code: string;
+  }[];
+  const shop = sites.find((s) => s.code !== 'DEPOT-UX') as { id: string };
+  const entry = await post('/stock/entries', {
+    site_id: shop.id,
+    supplier_id: supplier.id,
+    lines: [{ article_id: article.id, quantity: '37', unit_cost: '100' }],
+  });
+  await post(`/stock/entries/${entry.id}/validate`, {});
+
+  await loginUi(page, w.email, PASSWORD, w.name);
+  await selectSite(page, 'Site principal');
+  await page.goto('/stock/levels');
+  await page.getByRole('searchbox').first().fill(reference);
+  const row = page.getByRole('row').filter({ hasText: reference });
+  await expect(row).toContainText('37 u');
+
+  // Changement de site : le stock du site principal n'est jamais affiché pour le dépôt.
+  await selectSite(page, 'Dépôt Central');
+  await expect(page.getByTestId('business-profile')).toHaveText('Entrepôt');
+  await page.getByRole('searchbox').first().fill(reference);
+  const depot = page.getByRole('row').filter({ hasText: reference });
+  await expect(depot).toContainText('Non stocké');
+  await expect(depot).not.toContainText('37');
+
+  // Retour au site principal : sa donnée revient.
+  await selectSite(page, 'Site principal');
+  await page.getByRole('searchbox').first().fill(reference);
+  await expect(page.getByRole('row').filter({ hasText: reference })).toContainText('37 u');
 });
 
 test('expérience du site sur mobile, sans débordement @mobile', async ({ page, request }) => {
