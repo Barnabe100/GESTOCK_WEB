@@ -318,7 +318,10 @@ et modules actifs par site ([`DESIGN_SYSTEM.md`](docs/architecture/DESIGN_SYSTEM
 disponible peut être exposé dans le catalogue mais ne peut jamais être activé tant que son
 implémentation n'est pas disponible ; le contrôle est effectué côté serveur (statut `planned`
 du registre, `ModuleService.set_enabled_for_site` → `422 module_not_implemented`, après
-l'offre : hors plan / non proposé restent `module_not_offered` ; désactivation permise).
+l'offre : hors plan / non proposé restent `module_not_offered` ; désactivation permise ;
+**validé**, référence `34924cd`). **Décision ouverte** : les activations de modules planifiés
+créées automatiquement (défauts du profil) sont conservées, inertes ; à trancher avant la
+livraison effective de chaque module concerné (ADR-0048, section E.1).
 Ne pas passer au palier F sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et

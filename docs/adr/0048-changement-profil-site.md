@@ -140,3 +140,9 @@ Un module marqué Bientôt disponible peut être exposé dans le catalogue mais 
   capacités, initialisation d'un site et changement de profil (défauts du profil : lignes
   `site_modules` éventuellement activées pour un module planifié, inertes car `require_module`
   refuse tout module non `available`).
+- **Décision ouverte (à trancher avant la livraison effective de chaque module concerné)** :
+  ces activations planifiées créées automatiquement (initialisation d'un site, changement de
+  profil, copie de la migration 0040) rendraient le module effectif dès son passage à
+  `available`. Comportement conservé tel quel à la validation du palier E.1 (commit `34924cd`) ;
+  la livraison d'un module planifié doit décider s'il naît activé ou désactivé sur les sites
+  existants.
