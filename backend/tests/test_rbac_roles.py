@@ -319,7 +319,7 @@ def test_custom_role_never_bypasses_plan_or_subscription(
 
     # Module désactivé : les permissions enregistrées du rôle ne donnent plus rien.
     owner_db.execute(
-        text("UPDATE tenant_modules SET enabled = false WHERE module_code IN ('stock', 'alerts')")
+        text("UPDATE site_modules SET enabled = false WHERE module_code IN ('stock', 'alerts')")
     )
     owner_db.commit()
     assert not {p for p in _permissions(api) if p.startswith("stock.")}

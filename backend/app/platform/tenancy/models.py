@@ -1,7 +1,15 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    ForeignKeyConstraint,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, TenantFiltered
@@ -87,7 +95,9 @@ class Site(IdMixin, TenantScopedMixin, TimestampMixin, Base):
 
 
 class TenantModule(TimestampMixin, TenantFiltered, Base):
-    """Activation d'un module par le tenant (dans les limites du profil et du plan)."""
+    """**LEGACY** (profils / modules par site, palier C, migration 0040) : ancienne activation des
+    modules au niveau du tenant. Conservée intacte comme historique, elle n'est plus ni lue ni
+    écrite : la source de vérité est ``site_modules`` (``SiteModule``)."""
 
     __tablename__ = "tenant_modules"
 
@@ -95,4 +105,24 @@ class TenantModule(TimestampMixin, TenantFiltered, Base):
         Uuid, ForeignKey("tenants.id", ondelete="RESTRICT"), primary_key=True
     )
     module_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class SiteModule(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Activation d'un module sur UN site (profils / modules par site, palier C, migration 0040) :
+    **source de vérité** des activations. Un module est effectif sur le site s'il est proposé par
+    le profil DU SITE, inclus dans l'abonnement DU SITE (licence en vigueur, sinon plan) et activé
+    ici (dépendances comprises). Jamais supprimée : une désactivation passe ``enabled`` à faux.
+    PLAN ≠ PROFIL ≠ ACTIVATION SITE."""
+
+    __tablename__ = "site_modules"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "site_id", "module_code"),
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+    )
+
+    site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    module_code: Mapped[str] = mapped_column(String(64), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

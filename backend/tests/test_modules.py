@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1 import mount_module_routers
 from app.platform.registry import ModuleManifest, ModuleRegistry
+from tests.conftest import set_site_module
 
 
 def _by_code(api: Any) -> dict[str, dict[str, Any]]:
@@ -24,35 +25,44 @@ def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) 
     assert "stock" in modules
 
 
-def test_toggle_optional_module(provision: Any, api_for: Any) -> None:
-    provision("resto", profile="restaurant.restaurant", plan="ENTREPRISE")
+def test_toggle_optional_module_on_a_site(provision: Any, api_for: Any) -> None:
+    t = provision("resto", profile="restaurant.restaurant", plan="ENTREPRISE")
     api = api_for("owner@resto.example.com")
     assert _by_code(api)["restaurant.qr"]["enabled"] is False
-    assert api.put("/modules/restaurant.qr", json={"enabled": True}).status_code == 204
+    assert set_site_module(api, t.site_id, "restaurant.qr", True).status_code == 204
+    assert _by_code(api)["restaurant.qr"]["enabled"] is True
     assert _by_code(api)["restaurant.qr"]["effective"] is True
     caps = api.get("/me/capabilities").json()
     assert "restaurant.qr" in {m["code"] for m in caps["modules"]}
 
 
+def test_tenant_level_toggle_is_retired(provision: Any, api_for: Any) -> None:
+    provision("alpha", profile="retail.alimentation")
+    api = api_for("owner@alpha.example.com")
+    refused = api.put("/modules/pos", json={"enabled": False})
+    assert (refused.status_code, refused.json()["code"]) == (409, "module_is_per_site")
+    assert _by_code(api)["pos"]["enabled"] is True
+
+
 def test_toggle_rules(provision: Any, api_for: Any) -> None:
-    provision("resto", profile="restaurant.restaurant", plan="STANDARD")
-    provision("quinc", profile="retail.quincaillerie")
+    r = provision("resto", profile="restaurant.restaurant", plan="STANDARD")
+    q = provision("quinc", profile="retail.quincaillerie")
     resto = api_for("owner@resto.example.com")
-    assert resto.put("/modules/restaurant.qr", json={"enabled": True}).json()["code"] == (
+    assert set_site_module(resto, r.site_id, "restaurant.qr", True).json()["code"] == (
         "module_not_offered"
     )
-    dependents = resto.put("/modules/catalog", json={"enabled": False})
+    dependents = set_site_module(resto, r.site_id, "catalog", False)
     assert dependents.status_code == 409 and dependents.json()["code"] == "module_has_dependents"
-    assert resto.put("/modules/users", json={"enabled": False}).json()["code"] == (
+    assert set_site_module(resto, r.site_id, "users", False).json()["code"] == (
         "module_not_configurable"
     )
     quinc = api_for("owner@quinc.example.com")
-    assert quinc.put("/modules/restaurant.tables", json={"enabled": True}).json()["code"] == (
+    assert set_site_module(quinc, q.site_id, "restaurant.tables", True).json()["code"] == (
         "module_not_offered"
     )
-    assert quinc.put("/modules/alerts", json={"enabled": False}).status_code == 204
-    assert quinc.put("/modules/stock", json={"enabled": False}).status_code == 409
-    missing = quinc.put("/modules/sales", json={"enabled": False})
+    assert set_site_module(quinc, q.site_id, "alerts", False).status_code == 204
+    assert set_site_module(quinc, q.site_id, "stock", False).status_code == 409
+    missing = set_site_module(quinc, q.site_id, "sales", False)
     assert missing.json()["code"] == "module_has_dependents"
 
 
@@ -67,7 +77,7 @@ def test_module_routers_are_guarded_by_module_activation(
 
     owner_db.execute(
         text(
-            "UPDATE tenant_modules SET enabled = false "
+            "UPDATE site_modules SET enabled = false "
             "WHERE tenant_id = :t AND module_code = 'catalog'"
         ),
         {"t": t.tenant_id},

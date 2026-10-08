@@ -474,7 +474,7 @@ def test_expired_subscription_allows_read_only(priced: World, owner_db: Session)
 
 def test_module_deactivation_blocks_payments(priced: World, owner_db: Session) -> None:
     sale = _sale(priced)
-    owner_db.execute(text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'sales'"))
+    owner_db.execute(text("UPDATE site_modules SET enabled = false WHERE module_code = 'sales'"))
     owner_db.commit()
     denied = _pay(priced.owner, sale, "1000")
     assert denied.status_code == 403 and denied.json()["code"] == "module_unavailable"

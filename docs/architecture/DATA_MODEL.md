@@ -24,7 +24,7 @@ Identifiants : UUIDv7 générés par l'application. Horodatages : `timestamptz` 
                         │          └──────────┐   │             │
                         └──────── membership_roles (site_id nul = tout le tenant)
                         └──────── membership_sites
-   tenant_modules (activations)        audit_logs (append-only)     subscription_access_policies
+   site_modules (activations par site)  audit_logs (append-only)     subscription_access_policies
 ```
 
 ## Tables
@@ -133,7 +133,8 @@ notification.
 |---|---|---|
 | `tenants` | `name` (raison sociale), `slug` (unique), `status`, `business_profile_code` (profil d'origine / d'inscription ; le profil métier est porté par chaque site, migration 0039), `country_code` → `geo_countries` (obligatoire pour tout nouveau tenant), `currency` (figée), `locale`, `timezone` ; entreprise : `trade_name`, `email`, `phone`, `address`, `city`, `region`, `website`, `tax_id` (IFU), `trade_register` (RCCM), `description`, `logo_url` (https) — **source unique de l'identité de l'entreprise** pour les documents (projection `DocumentIdentity`, ADR-0027 ; aucune copie) | RLS sur `id` |
 | `sites` | `tenant_id`, `name`, `code`, `kind` (store/warehouse/restaurant/other : nature physique, jamais un profil), `address`, `phone`, `is_active`, `business_profile_code` (profil d'activité **du site**, migration 0039 : initialisé avec le profil de l'entreprise ; **profil effectif du site** depuis le palier B : capacités, modules proposés et présentation du site) | `UNIQUE(tenant_id, code)`, `UNIQUE(tenant_id, id)` ; FK `business_profile_code` → `business_profiles` (`ON DELETE RESTRICT`, `NOT NULL`) ; lecture de cette colonne seule accordée au rôle de la console |
-| `tenant_modules` | `tenant_id`, `module_code`, `enabled` | PK `(tenant_id, module_code)` |
+| `site_modules` | `tenant_id`, `site_id`, `module_code`, `enabled` — activation d'un module sur **UN site**, **source de vérité** des activations (palier C, migration 0040) ; jamais supprimée (désactivation = `enabled` faux) ; initialisée à la création du site : modules `default_enabled` du profil **du site** ∩ modules de l'abonnement **du site** (facultatifs créés désactivés, rien copié d'un autre site) ; reprise : copie exacte des `tenant_modules` du tenant pour chacun de ses sites | `UNIQUE(tenant_id, site_id, module_code)` ; FK composite `(tenant_id, site_id)` → `sites` (`RESTRICT`) ; droits `SELECT, INSERT, UPDATE` (aucune suppression), aucun droit pour la console |
+| `tenant_modules` | `tenant_id`, `module_code`, `enabled` — **LEGACY** (gelée depuis le palier C, migration 0040) : historique conservé intact, **ni lue ni écrite** par l'application ; un tenant sans site calcule ses modules depuis le profil d'origine ∩ plan | PK `(tenant_id, module_code)` |
 | `subscriptions` | `tenant_id`, `site_id` (1 site = 1 abonnement, ADR-0033 : clé étrangère composite `(tenant_id, site_id)`, unique ; nul seulement pour l'abonnement d'inscription en attente du premier site — au plus un par entreprise), `plan_code`, `billing_period`, `status`, `started_at`, `current_period_start/end`, `cancelled_at`, prix figé, `requested_activations` (postes demandés, ≥ 1, défaut 1) | |
 | `tenant_memberships` | `tenant_id`, `user_id`, `status` (`active` / `suspended` = « Inactif »), `is_owner`, `all_sites` — **appartenance au tenant**, seule ressource administrée par le tenant ; `users` = identité globale, jamais modifiée par un administrateur de tenant (ADR-0029) | `UNIQUE(tenant_id, user_id)` ; jamais supprimée (désactivation) |
 | `roles` | `tenant_id`, `name`, `description`, `template_code`, `is_system`, `is_active` | nom des rôles personnalisés unique par tenant, casse ignorée (index partiel `lower(name)`) ; un exemplaire par modèle (`(tenant_id, template_code)`) ; `CHECK is_system = (template_code IS NOT NULL)` ; rôle de base : nom, description et permissions résolus depuis son modèle (ADR-0013, ADR-0015) ; jamais supprimé (désactivé) |
@@ -279,7 +280,7 @@ type PostgreSQL natif).
 
 | Table | Politiques |
 |---|---|
-| sites, tenant_modules, tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (dont transferts, emplacements, lots et réglages), sales, sale_lines, catalog_packagings, catalog_barcodes, catalog_site_articles | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
+| sites, site_modules, tenant_modules (legacy), tenant_memberships, membership_sites, membership_roles, roles, role_permissions, subscriptions, catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_* (dont transferts, emplacements, lots et réglages), sales, sale_lines, catalog_packagings, catalog_barcodes, catalog_site_articles | `tenant_isolation` : `tenant_id = app_current_tenant_id()` (lecture et écriture) |
 | tenant_memberships | + `own_memberships_read` : **sans tenant actif**, l'utilisateur lit ses propres appartenances |
 | tenants | `tenant_isolation` sur `id` + `member_tenants_read` (**sans tenant actif**) |
 | audit_logs | lecture : tenant actif ; insertion : tenant actif ou `tenant_id` nul |
@@ -289,7 +290,7 @@ type PostgreSQL natif).
 | Droits | Tables |
 |---|---|
 | `SELECT` | catalogue, licenses (émises et révoquées par TechNova seule) |
-| `SELECT, INSERT, UPDATE` | users, tenants, sites, tenant_modules, tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits, stock_transfers, sales |
+| `SELECT, INSERT, UPDATE` | users, tenants, sites, site_modules, tenant_modules (legacy, plus écrite), tenant_memberships, subscriptions, roles (jamais supprimés, ADR-0015), catalog_categories, suppliers, catalog_articles, customers, document_sequences, stock_levels, stock_exit_reasons, stock_entries, stock_exits, stock_transfers, sales |
 | `SELECT, INSERT, UPDATE, DELETE` | auth_sessions, role_permissions, membership_sites, membership_roles, stock_entry_lines, stock_exit_lines, stock_transfer_lines, sale_lines (lignes de brouillon), stock_exit_line_lots (Lot 3-H-A : choix de lots d'une sortie brouillon), stock_transfer_line_lots (Lot 3-H-B1 : choix de lots d'un transfert brouillon), inventory_line_lots (Lot 3-H : comptage par lot d'un inventaire ouvert) |
 | `SELECT, INSERT` | audit_logs, stock_movements (append-only), subscription_payments (décision : TechNova seule), catalog_packagings (+ `UPDATE (name, conversion, sale_price, is_active, updated_at)` ; jamais supprimés, Lot 3-B) |
 | `SELECT, INSERT, DELETE` + `UPDATE (is_active, updated_at)` | catalog_barcodes (Lot 3-D : retrait d'un code audité ; code et porteur jamais modifiés) |

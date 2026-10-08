@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import create_session_factory, set_db_context
 from tests import stock_helpers as sh
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, login, set_module_everywhere, set_site_module
 from tests.stock_helpers import World
 
 # --- Aides ---------------------------------------------------------------------------------------
@@ -801,7 +801,7 @@ def test_sales_do_not_depend_on_the_cash_module(priced: World, owner_db: Session
     session = _opened(priced.owner, _register(priced), "1000")
     cash_sale = _sale(priced, 10000)
     _paid(priced.owner, cash_sale, "10000")
-    assert priced.owner.put("/modules/cash_register", json={"enabled": False}).status_code == 204
+    set_module_everywhere(priced.owner, "cash_register", False)
     for path in ("/cash/registers", "/cash/sessions", "/cash/movements"):
         denied = priced.owner.get(path)
         assert denied.status_code == 403 and denied.json()["code"] == "module_unavailable"
@@ -817,12 +817,12 @@ def test_sales_do_not_depend_on_the_cash_module(priced: World, owner_db: Session
         f"/sales/{cash_sale['id']}/payments/{payment['id']}/cancel", json={"reason": "Erreur"}
     )
     assert cancelled.status_code == 200
-    assert priced.owner.put("/modules/cash_register", json={"enabled": True}).status_code == 204
+    set_module_everywhere(priced.owner, "cash_register", True)
     assert _session(priced.owner, session)["theoretical_balance"] == "1000.00"
     # Les ventes ne peuvent pas être désactivées tant que la caisse (qui en dépend) est active.
-    busy = priced.owner.put("/modules/sales", json={"enabled": False})
+    busy = set_site_module(priced.owner, priced.site, "sales", False)
     assert busy.status_code == 409 and busy.json()["code"] == "module_has_dependents"
-    owner_db.execute(text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'sales'"))
+    owner_db.execute(text("UPDATE site_modules SET enabled = false WHERE module_code = 'sales'"))
     owner_db.commit()
     assert priced.owner.get("/cash/registers").json()["code"] == "module_unavailable"
 

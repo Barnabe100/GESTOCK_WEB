@@ -327,7 +327,7 @@ def test_module_and_subscription_policies(owner: Api, owner_db: Session) -> None
     assert blocked.status_code == 403 and blocked.json()["code"] == "subscription_restricted"
 
     owner_db.execute(
-        text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'customers'")
+        text("UPDATE site_modules SET enabled = false WHERE module_code = 'customers'")
     )
     owner_db.commit()
     unavailable = owner.get("/customers")

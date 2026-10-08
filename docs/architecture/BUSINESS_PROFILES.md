@@ -167,16 +167,21 @@ la navigation, le tableau de bord et les capacités l'afficheront sans autre cha
 
 `PUT /api/v1/tenant/business-profile {code}` (permission `organization.profile.manage`,
 nature `admin`) ou `stockmanager change-profile --tenant-id … --profile …` (TechNova) :
-profil actif requis ; **aucune donnée supprimée** ; refus `409 profile_change_incompatible`
-si un module implémenté et activé n'est pas proposé par le nouveau profil (le désactiver
-d'abord, ses données restent) ; modules proposés par défaut, inclus au plan et jamais
-paramétrés, activés ; audité (`tenant.profile_changed`). Pas d'assistant de migration.
+profil actif requis ; **aucune donnée supprimée** ; audité (`tenant.profile_changed`). Pas
+d'assistant de migration. Depuis le palier B, le profil métier est porté par **chaque site** : le
+profil du tenant n'est plus que le profil d'origine, modifiable par le Web seulement tant
+qu'aucun site n'existe (`409 profile_is_per_site`). Depuis le palier C (migration 0040), ce
+changement n'écrit plus aucune activation et ne contrôle plus d'incompatibilité : les
+activations vivent dans `site_modules` (premier site initialisé avec les modules par défaut
+du profil du site ∩ abonnement du site) ; `tenant_modules` est un historique legacy, ni lu ni
+écrit.
 
 ## 10. Création d'un tenant
 
 `stockmanager create-tenant … --business-profile retail.alimentation` (alias `--profile`) →
 `TenantProvisioningService` : profil actif d'un secteur actif, modules proposés initialisés
-dans les limites du plan, audit `tenant.provisioned` avec profil, secteur et profil UX.
+dans les limites du plan **sur le premier site** (`site_modules`, palier C ; jamais
+`tenant_modules`), audit `tenant.provisioned` avec profil, secteur et profil UX.
 
 ## 11. Sécurité
 

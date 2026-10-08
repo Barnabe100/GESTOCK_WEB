@@ -109,6 +109,10 @@ def test_migration_backfills_every_site_with_its_tenant_current_profile(
     owner_db.commit()
     owner_db.close()
 
+    # Les activations de ces sites (palier C) n'ont pas d'équivalent dans ``tenant_modules`` :
+    # le retour arrière de 0040 les refuserait. Hors de propos ici (profil du site).
+    with owner_engine.begin() as conn:
+        conn.execute(text("DELETE FROM site_modules"))
     owner_engine.dispose()
     command.downgrade(_alembic(), "0038")
     with Session(owner_engine) as session:
@@ -173,11 +177,13 @@ def test_downgrade_refuses_to_lose_a_site_specific_profile(
         text(f"UPDATE sites SET {COLUMN} = 'restaurant.maquis' WHERE id = :s"),
         {"s": alpha.site_id},
     )
+    # Activations des sites (palier C) retirées : c'est le contrôle de 0039 qui est exercé.
+    owner_db.execute(text("DELETE FROM site_modules"))
     owner_db.commit()
     owner_db.close()
     owner_engine.dispose()
     try:
-        with pytest.raises(RuntimeError, match="Retour arrière refusé"):
+        with pytest.raises(RuntimeError, match="profil d'activité différent"):
             command.downgrade(_alembic(), "0038")
         with Session(owner_engine) as session:
             # Descente annulée en entier : colonne, valeur et FORCE conservés.

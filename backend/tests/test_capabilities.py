@@ -45,11 +45,11 @@ def test_plan_filters_modules(provision: Any, api_for: Any, owner_db: Session) -
     for t in (std, ent):
         owner_db.execute(
             text(
-                "INSERT INTO tenant_modules (tenant_id, module_code, enabled) "
-                "VALUES (:t, 'restaurant.qr', true) "
-                "ON CONFLICT (tenant_id, module_code) DO UPDATE SET enabled = true"
+                "INSERT INTO site_modules (id, tenant_id, site_id, module_code, enabled) "
+                "VALUES (gen_random_uuid(), :t, :s, 'restaurant.qr', true) "
+                "ON CONFLICT (tenant_id, site_id, module_code) DO UPDATE SET enabled = true"
             ),
-            {"t": t.tenant_id},
+            {"t": t.tenant_id, "s": t.site_id},
         )
     owner_db.commit()
     assert "restaurant.qr" not in _module_codes(_caps(api_for("owner@std.example.com")))
@@ -62,8 +62,7 @@ def test_disabled_dependency_removes_dependents(
     t = provision("alpha", profile="retail.alimentation")
     owner_db.execute(
         text(
-            "UPDATE tenant_modules SET enabled = false "
-            "WHERE tenant_id = :t AND module_code = 'sales'"
+            "UPDATE site_modules SET enabled = false WHERE tenant_id = :t AND module_code = 'sales'"
         ),
         {"t": t.tenant_id},
     )

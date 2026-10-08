@@ -36,7 +36,7 @@ from app.platform.onboarding.models import OnboardingStep
 from app.platform.ratelimit.models import RateLimitHit
 from app.platform.sequences.models import DocumentSequence
 from app.platform.subscriptions.models import Subscription, SubscriptionPayment
-from app.platform.tenancy.models import Site, Tenant, TenantModule
+from app.platform.tenancy.models import Site, SiteModule, Tenant, TenantModule
 
 __all__ = [
     "DocumentSequence",
@@ -71,6 +71,7 @@ __all__ = [
     "Role",
     "RolePermission",
     "Site",
+    "SiteModule",
     "Subscription",
     "SubscriptionAccessPolicy",
     "SubscriptionPayment",

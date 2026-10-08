@@ -14,6 +14,7 @@ TENANT_TABLES = (
     "tenants",
     "sites",
     "tenant_modules",
+    "site_modules",
     "tenant_memberships",
     "membership_sites",
     "membership_roles",
@@ -80,6 +81,17 @@ def test_context_limits_rows_to_active_tenant(
     a = provision("alpha")
     b = provision("beta")
     _add_role_assignments(owner_db, a, b)
+    if table == "tenant_modules":
+        # Table legacy gelée (palier C) : plus alimentée, mais toujours isolée par la RLS.
+        for t in (a, b):
+            owner_db.execute(
+                text(
+                    "INSERT INTO tenant_modules (tenant_id, module_code, enabled) "
+                    "VALUES (:t, 'stock', true)"
+                ),
+                {"t": t.tenant_id},
+            )
+        owner_db.commit()
     assert int(owner_db.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()) >= 2
     set_db_context(db, tenant_id=a.tenant_id)
     rows = (

@@ -800,7 +800,7 @@ def test_standard_plan_includes_inventories(provision: Any, api_for: Any) -> Non
 
 def test_module_deactivation_blocks_routes(world: World, owner_db: Session) -> None:
     owner_db.execute(
-        text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'inventory_count'")
+        text("UPDATE site_modules SET enabled = false WHERE module_code = 'inventory_count'")
     )
     owner_db.commit()
     denied = world.owner.get(BASE)

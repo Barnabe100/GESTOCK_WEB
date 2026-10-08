@@ -127,6 +127,21 @@ class ModuleOut(BaseModel):
     effective: bool
 
 
+class SiteModuleOut(BaseModel):
+    """État d'un module sur UN site (palier C) : ``effective`` = ``in_profile`` (profil du site)
+    ET ``in_plan`` (abonnement du site) ET ``activated_for_site`` (``site_modules``), dépendances
+    résolues."""
+
+    code: str
+    status: str
+    core: bool
+    depends_on: list[str]
+    in_profile: bool
+    in_plan: bool
+    activated_for_site: bool
+    effective: bool
+
+
 class ModuleToggle(BaseModel):
     enabled: bool
 

@@ -609,7 +609,7 @@ def test_expired_subscription_keeps_consultation(priced: World, owner_db: Sessio
 def test_module_deactivation(priced: World, owner_db: Session) -> None:
     customer = _customer(priced, limit="10000")
     owner_db.execute(
-        text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'receivables'")
+        text("UPDATE site_modules SET enabled = false WHERE module_code = 'receivables'")
     )
     owner_db.commit()
     for path in ("/receivables", f"/customers/{customer['id']}/credit-exposure"):

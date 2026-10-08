@@ -1,14 +1,13 @@
-"""Changement contrôlé du profil d'activité d'un tenant (API d'administration et CLI TechNova).
+"""Changement contrôlé du profil d'ORIGINE d'un tenant (API d'administration et CLI TechNova).
 
-Règles (ADR-0024) :
+Règles (ADR-0024, profils / modules par site) :
 - le nouveau profil doit exister et être actif ;
-- **aucune donnée n'est supprimée ni modifiée** : seul ``tenants.business_profile_code``
-  change ; les activations de modules existantes sont conservées ;
-- refus (``409 profile_change_incompatible``) si un module **implémenté** et **activé** par le
-  tenant n'est pas proposé par le nouveau profil (il faut d'abord le désactiver : ses données
-  restent intactes) ;
-- les modules proposés par défaut par le nouveau profil, inclus au plan et jamais paramétrés
-  par le tenant, sont activés (comme à la création du tenant) ;
+- **aucune donnée n'est supprimée ni modifiée** : seul ``tenants.business_profile_code`` change ;
+- le profil d'activité EFFECTIF est celui de chaque site (``sites.business_profile_code``) :
+  l'API refuse ce changement dès qu'un site existe (``409 profile_is_per_site``) ;
+- les activations de modules sont portées par les sites (``site_modules``, palier C) ;
+  ``tenant_modules`` (legacy) n'est ni lu ni écrit : aucun contrôle d'incompatibilité ici (une
+  entreprise sans site n'a encore aucun module activé) ;
 - audité (``tenant.profile_changed``).
 Le plan, les permissions, les rôles, les sites et la RLS ne sont pas concernés.
 """
@@ -16,15 +15,13 @@ Le plan, les permissions, les rôles, les sites et la RLS ne sont pas concernés
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError, ConflictError
+from app.core.errors import BusinessRuleError
 from app.platform.audit.service import RequestMeta, record_audit
 from app.platform.catalog.models import BusinessProfile
-from app.platform.registry import ModuleRegistry, ModuleStatus
-from app.platform.subscriptions.service import tenant_plans
-from app.platform.tenancy.models import Tenant, TenantModule
+from app.platform.registry import ModuleRegistry
+from app.platform.tenancy.models import Tenant
 
 
 @dataclass(frozen=True)
@@ -56,36 +53,6 @@ def change_business_profile(
     if previous == profile.code:
         return ProfileChange(previous=previous, profile=profile.code)
 
-    rows = {row.module_code: row for row in session.scalars(select(TenantModule))}
-    offered = {link.module_code for link in profile.modules}
-    blocking = sorted(
-        code
-        for code, row in rows.items()
-        if row.enabled
-        and code in registry
-        and not registry.get(code).core
-        and registry.get(code).status == ModuleStatus.AVAILABLE
-        and code not in offered
-    )
-    if blocking:
-        raise ConflictError(
-            "Des modules activés ne sont pas proposés par ce profil",
-            code="profile_change_incompatible",
-            extra={"modules": blocking},
-        )
-
-    # Modules inclus dans au moins un abonnement de l'entreprise (ADR-0033).
-    plan_modules = {m.module_code for plan in tenant_plans(session) for m in plan.modules}
-    enabled: list[str] = []
-    for link in profile.modules:
-        if (
-            link.default_enabled
-            and link.module_code in plan_modules
-            and link.module_code not in rows
-        ):
-            session.add(TenantModule(tenant_id=tenant.id, module_code=link.module_code))
-            enabled.append(link.module_code)
-
     tenant.business_profile_code = profile.code
     record_audit(
         session,
@@ -99,9 +66,9 @@ def change_business_profile(
             "previous_profile": previous,
             "profile": profile.code,
             "sector": profile.sector_code,
-            "enabled_modules": enabled,
+            "enabled_modules": [],
         },
         meta=meta,
     )
     session.flush()
-    return ProfileChange(previous=previous, profile=profile.code, enabled_modules=enabled)
+    return ProfileChange(previous=previous, profile=profile.code)

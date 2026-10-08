@@ -24,7 +24,8 @@ from app.platform.identity.passwords import normalize_email, validate_new_passwo
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.models import BillingPeriod, Subscription, SubscriptionStatus
 from app.platform.subscriptions.service import freeze_tariff, period_end, plan_tariff
-from app.platform.tenancy.models import Site, SiteKind, Tenant, TenantModule
+from app.platform.tenancy.models import Site, SiteKind, Tenant
+from app.platform.tenancy.site_modules import init_site_modules
 from app.shared.ids import new_id
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -176,7 +177,14 @@ class TenantProvisioningService:
             ) from exc
 
         subscription = self._create_subscription(tenant_id, plan, cmd)
-        enabled = self._init_modules(tenant_id, profile, plan)
+        # Modules (palier C) : aucune écriture dans ``tenant_modules`` (legacy) ; activations du
+        # premier site créées avec lui ; sans site, calculées depuis le profil d'origine.
+        plan_modules = {m.module_code for m in plan.modules}
+        enabled = {
+            link.module_code
+            for link in profile.modules
+            if link.default_enabled and link.module_code in plan_modules
+        }
         admin_role = self._create_roles(tenant_id)
         site: Site | None = None
         if cmd.create_first_site:
@@ -190,6 +198,7 @@ class TenantProvisioningService:
             )
             self.db.add(site)
             self.db.flush()  # le site existe avant son rattachement (clé étrangère composite)
+            init_site_modules(self.db, tenant_id, site.id, profile, plan_modules)
             # 1 site = 1 abonnement (ADR-0033) ; sans site (inscription publique), l'abonnement
             # attend le premier site, auquel il sera rattaché.
             subscription.site_id = site.id
@@ -298,23 +307,6 @@ class TenantProvisioningService:
         freeze_tariff(subscription, plan_tariff(plan, cmd.billing_period))
         self.db.add(subscription)
         return subscription
-
-    def _init_modules(self, tenant_id: uuid.UUID, profile: BusinessProfile, plan: Plan) -> set[str]:
-        plan_modules = {m.module_code for m in plan.modules}
-        enabled: set[str] = set()
-        for link in profile.modules:
-            if link.module_code not in plan_modules:
-                continue
-            self.db.add(
-                TenantModule(
-                    tenant_id=tenant_id,
-                    module_code=link.module_code,
-                    enabled=link.default_enabled,
-                )
-            )
-            if link.default_enabled:
-                enabled.add(link.module_code)
-        return enabled
 
     def _create_roles(self, tenant_id: uuid.UUID) -> Role:
         """Rôles système (permissions résolues à l'exécution depuis leur modèle). Renvoie le

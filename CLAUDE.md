@@ -281,7 +281,17 @@ panier ; aucune donnée interne ; paiements avec `sales.payment.view`) ; impress
 journalisée `sale.receipt_printed` ; format V1 **ticket thermique 80 mm** (impression
 navigateur, `@page` injectée le temps de l'impression ; 58 mm / A4 prévus par `RECEIPT_FORMATS`,
 non implémentés) ; « Voir le reçu » / « Imprimer » après la vente, « Voir le reçu » /
-« Réimprimer » sur la fiche d'une vente validée. Ne pas passer au lot suivant sans validation. Non implémentés (feuille de route §13) :
+« Réimprimer » sur la fiche d'une vente validée. Ne pas passer au lot suivant sans validation. **Profils / modules
+par site** : palier A (migration 0039, `sites.business_profile_code`) et palier B (capacités et
+API par site, profil du tenant = profil d'origine, `409 profile_is_per_site` dès qu'un site
+existe) validés ; **palier C — modules par site** (migration 0040) : **PLAN ≠ PROFIL ≠
+ACTIVATION SITE**, `site_modules` = **source de vérité** des activations (effectif = profil du
+site ∩ abonnement du site ∩ activé sur le site, dépendances résolues, aucune activation
+implicite), nouveau site = modules par défaut de SON profil ∩ SON abonnement (rien copié d'un
+autre site), `tenant_modules` = **legacy gelé** (ni lu ni écrit ; tenant sans site : défauts
+calculés), `GET`/`PUT /sites/{site_id}/modules[/{code}]` (portée dans l'URL, jamais
+`X-Site-Id`), `PUT /modules/{code}` → `409 module_is_per_site`, `GET /modules` = synthèse. Palier D
+(changement de profil d'un site) non commencé. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

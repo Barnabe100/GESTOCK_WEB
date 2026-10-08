@@ -277,7 +277,7 @@
   },
   "moduleAdmin": {
     "title": "Modules",
-    "intro": "Activez les modules inclus dans votre profil et votre abonnement.",
+    "intro": "Activez, pour chaque site, les modules proposés par son profil et inclus dans son abonnement. Un site ne modifie jamais les modules d'un autre site.",
     "module": "Module",
     "status": "État",
     "enabled": "Activé",
@@ -285,7 +285,11 @@
     "core": "Socle",
     "planned": "Bientôt",
     "dependsOn": "Nécessite : {{modules}}",
-    "saved": "Modules mis à jour"
+    "saved": "Modules du site mis à jour",
+    "siteProfile": "Profil du site : {{profile}}",
+    "effective": "Effectif",
+    "notEffective": "Non effectif (module requis désactivé)",
+    "noSite": "Créez d'abord un site : les modules s'activent pour chaque site."
   },
   "members": {
     "title": "Utilisateurs",

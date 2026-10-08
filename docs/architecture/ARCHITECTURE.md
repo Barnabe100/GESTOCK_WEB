@@ -158,16 +158,26 @@ Une ressource d'un autre tenant répond **404** (on ne révèle pas son existenc
 | **Business Profile** | Activité précise d'un secteur : modules proposés, profil UX, surcharges | `retail.alimentation`, `restaurant.maquis` |
 | **Profil UX** | Présentation d'un métier : navigation, tableau de bord, terminologie, thème | `retail.default`, `restaurant.default` |
 | **Subscription Plan** | Ce que le client a acheté : modules autorisés, limites | `STANDARD`, `ENTREPRISE` (mensuel / annuel) |
-| **Activated Modules** | Modules effectivement activés par le tenant (dans les limites ci-dessus) | un maquis qui n'active pas `restaurant.qr` |
+| **Activated Modules** | Modules activés **sur un site** (`site_modules`, palier C), dans les limites ci-dessus ; `tenant_modules` = legacy, ni lu ni écrit | le site d'un maquis qui n'active pas `restaurant.qr` |
 | **Permission** | Droit d'un utilisateur sur une action | `sales.sale.validate` |
 
 ### 5.2 Résolution des capacités — [ADR-0003](../adr/0003-resolution-des-capacites.md)
 
+**PLAN ≠ PROFIL ≠ ACTIVATION SITE** (palier C, migration 0040) : le plan (abonnement **du
+site**, licence en vigueur sinon plan) dit ce qui est autorisé ; le profil **du site** dit ce
+qui est proposé ; l'activation **du site** (`site_modules`, source de vérité) dit ce qui est
+choisi sur CE site. Aucun des trois ne remplace les autres, aucun site n'hérite de la
+configuration d'un autre ; `tenant_modules` est conservé comme historique legacy, jamais lu.
+
 ```text
-modules_effectifs(tenant) = profil.modules_disponibles
-                          ∩ plan.modules_autorisés
-                          ∩ tenant.modules_activés
-                          (+ fermeture sur les dépendances ; module requis absent ⇒ module inactif)
+modules_effectifs(site) = profil(site).modules_disponibles
+                        ∩ abonnement(site).modules_autorisés
+                        ∩ site_modules(site).activés
+                        (+ fermeture sur les dépendances ; module requis absent ⇒ module inactif,
+                         jamais d'activation implicite)
+
+modules_effectifs(« Tous les sites ») = ∪ modules_effectifs(site accessible)
+modules_effectifs(tenant sans site)   = profil d'origine.modules par défaut ∩ plan (calculés)
 
 permissions_effectives(user, site) = permissions des rôles ACTIFS de l'utilisateur (tenant + site)
                                    ∩ permissions déclarées par les modules_effectifs

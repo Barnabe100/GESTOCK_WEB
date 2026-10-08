@@ -91,6 +91,7 @@ DATA_TABLES = (
     "role_permissions",
     "roles",
     "tenant_memberships",
+    "site_modules",
     "tenant_modules",
     "subscriptions",
     "sites",
@@ -461,6 +462,18 @@ def add_site(
     if active and response.status_code == 201:
         activate_site(response.json()["id"])
     return response
+
+
+def set_site_module(api: "Api", site: Any, code: str, enabled: bool) -> Any:
+    """(Dés)active un module sur UN site (activations par site, palier C)."""
+    return api.put(f"/sites/{site}/modules/{code}", json={"enabled": enabled})
+
+
+def set_module_everywhere(api: "Api", code: str, enabled: bool) -> None:
+    """(Dés)active un module sur CHAQUE site de l'entreprise (vue « Tous les sites » : union)."""
+    for site in api.get("/sites").json():
+        response = set_site_module(api, site["id"], code, enabled)
+        assert response.status_code == 204, response.text
 
 
 @pytest.fixture

@@ -80,14 +80,15 @@ export interface SiteInput {
   requested_activations?: number;
 }
 
-export interface TenantModule {
+/** État d'un module sur UN site (palier C) : effectif = profil ∩ plan ∩ activation du site. */
+export interface SiteModule {
   code: string;
   status: 'available' | 'planned';
   core: boolean;
   depends_on: string[];
   in_profile: boolean;
   in_plan: boolean;
-  enabled: boolean;
+  activated_for_site: boolean;
   effective: boolean;
 }
 
@@ -144,18 +145,20 @@ export function useSaveSite() {
   });
 }
 
-export function useModules() {
+export function useSiteModules(siteId: string | null) {
   return useQuery({
-    queryKey: orgKeys.modules,
-    queryFn: ({ signal }) => api.get<TenantModule[]>('/modules', signal),
+    queryKey: [...orgKeys.modules, siteId],
+    queryFn: ({ signal }) => api.get<SiteModule[]>(`/sites/${siteId}/modules`, signal),
+    enabled: siteId !== null,
   });
 }
 
-export function useToggleModule() {
+/** Activation sur UN site : portée explicite dans l'URL (jamais l'en-tête du site actif). */
+export function useToggleSiteModule() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ code, enabled }: { code: string; enabled: boolean }) =>
-      api.put<void>(`/modules/${code}`, { enabled }),
+    mutationFn: ({ siteId, code, enabled }: { siteId: string; code: string; enabled: boolean }) =>
+      api.put<void>(`/sites/${siteId}/modules/${code}`, { enabled }),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: orgKeys.modules });
       void qc.invalidateQueries({ queryKey: ['capabilities'] });

@@ -1,6 +1,10 @@
 """Calcul unique des capacités d'un utilisateur dans un tenant (et un site).
 
-modules effectifs   = modules core ∪ fermeture_dépendances(profil ∩ plan ∩ activations tenant)
+modules effectifs   = modules core ∪ fermeture_dépendances(profil ∩ plan ∩ activations du site)
+
+**Activations** (palier C) : ``site_modules`` du site (source de vérité) ; entreprise encore
+sans site : modules ``default_enabled`` du profil d'origine, calculés (aucune table).
+``tenant_modules`` est un historique legacy, jamais lu.
 permissions         = permissions accordées (propriétaire : toutes) ∩ permissions des modules
                       effectifs, puis filtrées par la politique du statut d'abonnement.
 
@@ -44,7 +48,7 @@ from app.platform.subscriptions.service import (
     site_subscription,
     tenant_subscriptions,
 )
-from app.platform.tenancy.models import Site, Tenant, TenantModule
+from app.platform.tenancy.models import Site, SiteModule, Tenant
 
 
 class ProfileScope:
@@ -126,15 +130,38 @@ class CapabilityService:
         terms = plan if isinstance(plan, PlanTerms) else PlanTerms.of_plan(plan)
         return {m.module_code for m in profile.modules} & set(terms.modules)
 
-    def enabled_module_codes(self) -> set[str]:
+    @staticmethod
+    def default_module_codes(profile: BusinessProfile) -> set[str]:
+        """Modules activés par défaut par un profil (``default_enabled``)."""
+        return {m.module_code for m in profile.modules if m.default_enabled}
+
+    def site_module_codes(self, site_id: uuid.UUID) -> set[str]:
+        """Modules activés sur un site (``site_modules``, source de vérité)."""
         return set(
             self.session.scalars(
-                select(TenantModule.module_code).where(TenantModule.enabled.is_(True))
+                select(SiteModule.module_code).where(
+                    SiteModule.site_id == site_id, SiteModule.enabled.is_(True)
+                )
             )
         )
 
-    def effective_modules(self, profile: BusinessProfile, plan: Plan | PlanTerms) -> set[str]:
-        candidates = self.offered_modules(profile, plan) & self.enabled_module_codes()
+    def activated_modules(self, profile: BusinessProfile, site_id: uuid.UUID | None) -> set[str]:
+        """Activations d'un site ; sans site (entreprise inscrite sans site) : défauts du
+        profil d'origine, calculés à la volée. ``tenant_modules`` n'est jamais lu."""
+        if site_id is None:
+            return self.default_module_codes(profile)
+        return self.site_module_codes(site_id)
+
+    def effective_modules(
+        self,
+        profile: BusinessProfile,
+        plan: Plan | PlanTerms,
+        site_id: uuid.UUID | None = None,
+    ) -> set[str]:
+        """Profil ∩ plan ∩ activations (du site), dépendances résolues (un module dont une
+        dépendance n'est pas effective est retiré ; aucune dépendance n'est activée
+        implicitement), plus les modules core."""
+        candidates = self.offered_modules(profile, plan) & self.activated_modules(profile, site_id)
         return self.registry.core_codes() | self.registry.resolve_dependencies(candidates)
 
     # --- Permissions ----------------------------------------------------------------------
@@ -191,7 +218,7 @@ class CapabilityService:
             raise LookupError("plan introuvable pour l'abonnement")
         status = effective_status(subscription, plan.grace_days, now)
         terms = subscription_terms(self.session, subscription, plan, now)
-        modules = frozenset(self.effective_modules(profile, terms))
+        modules = frozenset(self.effective_modules(profile, terms, subscription.site_id))
         return SubscriptionGrant(
             subscription=subscription,
             plan=plan,

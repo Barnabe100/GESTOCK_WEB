@@ -19,7 +19,7 @@ from app.core.db import create_session_factory, set_db_context
 from app.platform.catalog.loader import DATA_DIR, CatalogError, load_catalog, profile_ux
 from app.platform.catalog.sync import sync_catalog
 from app.platform.registry import get_registry
-from tests.conftest import Api, add_site
+from tests.conftest import Api, add_site, set_module_everywhere
 from tests.stock_helpers import member
 from tests.test_signup import _api as _signup_api
 from tests.test_signup import _signup, offers  # noqa: F401
@@ -334,7 +334,7 @@ def test_default_modules_are_not_active_modules(
     provision("shop", profile="retail.alimentation", plan="ENTREPRISE")
     owner = api_for("owner@shop.example.com")
     assert "pos:open" in _caps(owner)["ux"]["dashboard"]["shortcuts"]
-    assert owner.put("/modules/pos", json={"enabled": False}).status_code == 204
+    set_module_everywhere(owner, "pos", False)
     caps = _caps(owner)
     assert "pos" not in _groups(caps)["sales"]
     assert "pos:open" not in caps["ux"]["dashboard"]["shortcuts"]
@@ -440,8 +440,8 @@ def test_provisioning_initialises_profile_modules_within_the_plan(
     t = provision("alpha", profile=profile, plan="STANDARD")
     rows = dict(
         owner_db.execute(
-            text("SELECT module_code, enabled FROM tenant_modules WHERE tenant_id = :t"),
-            {"t": t.tenant_id},
+            text("SELECT module_code, enabled FROM site_modules WHERE site_id = :s"),
+            {"s": t.site_id},
         ).all()
     )
     assert {code for code, on in rows.items() if on} >= enabled
@@ -491,11 +491,8 @@ def test_origin_profile_change_before_the_first_site(
     """Inscription sans site : le profil d'origine reste modifiable (contrôlé, audité), il sert
     de profil de référence et sera celui du premier site ; ensuite il est figé (D2)."""
     owner = _signup_api(client, _signup(client))
-    # Entrepôt : ni point de vente ni caisse ; ils sont activés → refus explicite.
-    response = owner.put("/tenant/business-profile", json={"code": "distribution.entrepot"})
-    assert response.status_code == 409
-    assert response.json()["code"] == "profile_change_incompatible"
-    assert response.json()["modules"] == ["cash_register", "pos"]
+    # Aucun module n'est activé avant le premier site (activations par site, palier C) :
+    # aucun contrôle d'incompatibilité.
     unknown = owner.put("/tenant/business-profile", json={"code": "retail.inconnu"})
     assert (unknown.status_code, unknown.json()["code"]) == (422, "unknown_profile")
 
@@ -521,6 +518,16 @@ def test_origin_profile_change_before_the_first_site(
     site = owner.post("/sites", json={"name": "Maquis", "code": "MAQ"})
     assert site.status_code == 201, site.text
     assert site.json()["business_profile_code"] == "restaurant.maquis"
+    # Ses modules : défauts du profil du site ∩ son abonnement (palier C).
+    activated = {
+        code
+        for (code,) in owner_db.execute(
+            text("SELECT module_code FROM site_modules WHERE site_id = :s AND enabled"),
+            {"s": site.json()["id"]},
+        ).all()
+    }
+    assert {"pos", "cash_register", "restaurant.tables"} <= activated
+    assert "restaurant.qr" not in activated
     refused = owner.put("/tenant/business-profile", json={"code": "retail.alimentation"})
     assert (refused.status_code, refused.json()["code"]) == (409, "profile_is_per_site")
 

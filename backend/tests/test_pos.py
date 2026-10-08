@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import create_session_factory, set_db_context
 from tests import stock_helpers as sh
-from tests.conftest import PASSWORD, Api, login
+from tests.conftest import PASSWORD, Api, login, set_module_everywhere
 from tests.stock_helpers import World
 
 # --- Aides ---------------------------------------------------------------------------------------
@@ -234,7 +234,7 @@ def test_electronic_payments_without_any_cash_register(priced: World) -> None:
     second = _done(priced.owner, _body(priced, [(0, "1")], [("10000", "OTHER")]))
     assert second["sale"]["payment_status"] == "PAID"
     # Module Caisse désactivé : POS et ventes disponibles, espèces comprises (sans caisse).
-    assert priced.owner.put("/modules/cash_register", json={"enabled": False}).status_code == 204
+    set_module_everywhere(priced.owner, "cash_register", False)
     assert _done(priced.owner, _body(priced, [(0, "1")], [("10000", "CARD")]))["sale"]
     cash = _checkout(priced.owner, _body(priced, [(0, "1")], [("10000", "CASH")]))
     assert cash.status_code == 201, cash.text
@@ -386,7 +386,7 @@ def test_subscription_and_module(priced: World, owner_db: Session) -> None:
     owner_db.execute(
         text("UPDATE subscriptions SET current_period_end = now() + interval '30 days'")
     )
-    owner_db.execute(text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'pos'"))
+    owner_db.execute(text("UPDATE site_modules SET enabled = false WHERE module_code = 'pos'"))
     owner_db.commit()
     denied = _checkout(priced.owner, _body(priced, [(0, "1")]))
     assert denied.status_code == 403 and denied.json()["code"] == "module_unavailable"

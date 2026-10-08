@@ -41,24 +41,31 @@ async function post(request: APIRequestContext, token: string, path: string, dat
   return (await response.json()) as { id: string; number: string; code: string };
 }
 
-/** Module Créances activé (une entreprise créée avant la Phase 2.8 l'active elle-même). */
+/**
+ * Module Créances activé sur chaque site (une entreprise créée avant la Phase 2.8 l'active
+ * elle-même ; activation par site, portée explicite dans l'URL).
+ */
 async function enableReceivables(request: APIRequestContext, token: string) {
-  const response = await request.put('/api/v1/modules/receivables', {
-    headers: bearer(token),
-    data: { enabled: true },
-  });
-  expect(response.status(), await response.text()).toBe(204);
+  const headers = bearer(token);
+  const sites = (await (await request.get('/api/v1/sites', { headers })).json()) as Site[];
+  for (const site of sites) {
+    const response = await request.put(`/api/v1/sites/${site.id}/modules/receivables`, {
+      headers,
+      data: { enabled: true },
+    });
+    expect(response.status(), await response.text()).toBe(204);
+  }
 }
 
 async function setup(request: APIRequestContext): Promise<Setup> {
   const token = await apiToken(request, OWNER.email, OWNER.password);
-  await enableReceivables(request, token);
   const headers = bearer(token);
   const sites = (await (await request.get('/api/v1/sites', { headers })).json()) as Site[];
   const shop = sites.find((s) => s.code !== DEPOT.code) as Site;
   const depot =
     sites.find((s) => s.code === DEPOT.code) ??
     (await createActiveSite<Site>(request, token, { ...DEPOT, kind: 'warehouse' }));
+  await enableReceivables(request, token);
   const suffix = Date.now().toString().slice(-7);
   const category = await post(request, token, '/catalog/categories', {
     name: `Créances E2E ${suffix}`,

@@ -4,13 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
+from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
 from app.platform.audit.service import record_audit
 from app.platform.capabilities.service import CapabilityService
 from app.platform.catalog.models import BusinessProfile, GeoCountry, Plan
 from app.platform.context import RequestContext
 from app.platform.licensing.service import current_terms
-from app.platform.registry import ModuleRegistry
+from app.platform.registry import ModuleRegistry, get_registry
 from app.platform.sequences.service import site_has_numbers
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
 from app.platform.subscriptions.plan_policy import PlanTerms
@@ -23,8 +23,15 @@ from app.platform.subscriptions.service import (
     tenant_subscriptions,
     unattached_subscription,
 )
-from app.platform.tenancy.models import Site, TenantModule
-from app.platform.tenancy.schemas import ModuleOut, SiteCreate, SiteUpdate, TenantUpdate
+from app.platform.tenancy.models import Site, SiteModule
+from app.platform.tenancy.schemas import (
+    ModuleOut,
+    SiteCreate,
+    SiteModuleOut,
+    SiteUpdate,
+    TenantUpdate,
+)
+from app.platform.tenancy.site_modules import init_site_modules
 from app.shared.clock import utcnow
 from app.shared.ids import new_id
 
@@ -153,6 +160,16 @@ class SiteService:
             self.db.add(subscription)
             action = "subscription.created"
         self.db.flush()
+        # Modules du site (palier C) : défauts du profil DU SITE ∩ abonnement DU SITE, dans la
+        # même transaction ; rien n'est copié d'un autre site.
+        modules = init_site_modules(
+            self.db,
+            self.ctx.tenant_id,
+            site.id,
+            CapabilityService(self.db, get_registry()).site_profile(site.id),
+            current_terms(self.db, subscription).modules,
+        )
+        self.db.flush()
         record_audit(
             self.db,
             action=action,
@@ -177,7 +194,12 @@ class SiteService:
             user_id=self.ctx.user.id,
             entity_type="site",
             entity_id=site.id,
-            data=fields | {"kind": site.kind.value},
+            data=fields
+            | {
+                "kind": site.kind.value,
+                "business_profile": site.business_profile_code,
+                "modules": sorted(modules),
+            },
             meta=self.ctx.meta,
         )
         return site
@@ -212,30 +234,59 @@ class SiteService:
         return site
 
 
+MODULE_MANAGE = "organization.module.manage"
+
+
 class ModuleService:
+    """Modules par site (palier C) : l'activation est une configuration de CHAQUE site
+    (``site_modules``), dans les limites du profil du site et de l'abonnement du site.
+    PLAN ≠ PROFIL ≠ ACTIVATION SITE ; ``tenant_modules`` (legacy) n'est ni lu ni écrit."""
+
     def __init__(self, db: Session, ctx: RequestContext, registry: ModuleRegistry) -> None:
         self.db = db
         self.ctx = ctx
         self.registry = registry
         self.capabilities = CapabilityService(db, registry)
 
-    def _offers(self) -> list[tuple[BusinessProfile, PlanTerms]]:
-        """Profil et conditions de chaque abonnement de l'entreprise : profil de SON site
-        (jamais celui du tenant ; abonnement d'inscription non rattaché : profil d'origine) et
-        conditions en vigueur (licence, sinon plan). Un module est activable s'il est proposé
-        par le profil ET inclus dans les conditions d'au moins un même abonnement."""
+    def _offers(self) -> list[tuple[uuid.UUID | None, BusinessProfile, PlanTerms]]:
+        """Site, profil et conditions de chaque abonnement de l'entreprise : profil de SON site
+        (abonnement d'inscription non rattaché : profil d'origine) et conditions en vigueur
+        (licence, sinon plan)."""
         return [
-            (self.capabilities.subscription_profile(s, self.ctx.tenant), current_terms(self.db, s))
+            (
+                s.site_id,
+                self.capabilities.subscription_profile(s, self.ctx.tenant),
+                current_terms(self.db, s),
+            )
             for s in tenant_subscriptions(self.db)
         ]
 
-    def _rows(
-        self,
-        in_profile: set[str],
-        in_plan: set[str],
-        effective: frozenset[str],
-    ) -> list[ModuleOut]:
-        enabled = self.capabilities.enabled_module_codes()
+    def list_all(self) -> list[ModuleOut]:
+        """Synthèse de l'entreprise (lecture) : proposé par le profil d'au moins un site, inclus
+        dans au moins un abonnement ; « activé » = activé sur au moins un site ACCESSIBLE
+        (entreprise sans site : défauts du profil d'origine) ; ``effective`` : contexte de la
+        requête."""
+        offers = self._offers()
+        in_profile = {m.module_code for _, profile, _ in offers for m in profile.modules}
+        in_plan = {code for _, _, terms in offers for code in terms.modules}
+        accessible = self.ctx.capabilities.accessible_site_ids
+        site_ids = [site for site, _, _ in offers if site is not None and site in accessible]
+        enabled: set[str] = set()
+        if site_ids:
+            enabled = set(
+                self.db.scalars(
+                    select(SiteModule.module_code).where(
+                        SiteModule.site_id.in_(site_ids), SiteModule.enabled.is_(True)
+                    )
+                )
+            )
+        elif all(site is None for site, _, _ in offers):
+            enabled = {
+                c
+                for _, profile, _ in offers
+                for c in CapabilityService.default_module_codes(profile)
+            }
+        effective = self.ctx.capabilities.modules
         return [
             ModuleOut(
                 code=m.code,
@@ -251,46 +302,78 @@ class ModuleService:
             if m.core or m.code in in_profile
         ]
 
-    def list_all(self) -> list[ModuleOut]:
-        """Vue de l'entreprise : modules proposés par le profil d'au moins un site, inclus dans
-        au moins un abonnement ; ``effective`` : contexte de la requête (site ou sites
-        accessibles)."""
-        offers = self._offers()
-        in_profile = {m.module_code for profile, _ in offers for m in profile.modules}
-        in_plan = {code for _, terms in offers for code in terms.modules}
-        return self._rows(in_profile, in_plan, self.ctx.capabilities.modules)
-
-    def list_for_site(self, site_id: uuid.UUID) -> list[ModuleOut]:
-        """Modules d'UN site : ``in_profile`` selon le profil du site, ``in_plan`` selon les
-        conditions de l'abonnement du site, ``effective`` selon les capacités de ce site."""
+    def _site_offer(self, site_id: uuid.UUID) -> tuple[Site, BusinessProfile, PlanTerms]:
         site = SiteService(self.db, self.ctx).get(site_id)  # RLS : autre tenant introuvable
-        capabilities = self.ctx.site_capabilities(site.id)  # site non accessible : refus
+        if site.id not in self.ctx.capabilities.accessible_site_ids:
+            raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
         subscription = site_subscription(self.db, site.id)
         if subscription is None:
             raise BusinessRuleError("Aucun abonnement", code="subscription_missing")
-        profile = self.capabilities.site_profile(site.id)
-        terms = current_terms(self.db, subscription)
-        return self._rows(
-            {m.module_code for m in profile.modules}, set(terms.modules), capabilities.modules
+        return (
+            site,
+            self.capabilities.site_profile(site.id),
+            current_terms(self.db, subscription),
         )
 
-    def set_enabled(self, code: str, enabled: bool) -> None:
+    def list_for_site(self, site_id: uuid.UUID) -> list[SiteModuleOut]:
+        """Modules d'UN site : ``in_profile`` (profil du site), ``in_plan`` (abonnement du
+        site), ``activated_for_site`` (``site_modules``), ``effective`` (les trois, dépendances
+        résolues : capacités du site)."""
+        site, profile, terms = self._site_offer(site_id)
+        effective = self.ctx.site_capabilities(site.id).modules
+        in_profile = {m.module_code for m in profile.modules}
+        activated = self.capabilities.site_module_codes(site.id)
+        return [
+            SiteModuleOut(
+                code=m.code,
+                status=m.status.value,
+                core=m.core,
+                depends_on=list(m.depends_on),
+                in_profile=m.core or m.code in in_profile,
+                in_plan=m.core or m.code in terms.modules,
+                activated_for_site=m.core or m.code in activated,
+                effective=m.code in effective,
+            )
+            for m in self.registry.all()
+            if m.core or m.code in in_profile
+        ]
+
+    def _ensure_manage(self, site_id: uuid.UUID) -> None:
+        """``organization.module.manage`` détenue SUR CE SITE (rôles de l'entreprise ou du
+        site), filtrée par le statut de l'abonnement du site."""
+        capabilities = self.ctx.site_capabilities(site_id)
+        if MODULE_MANAGE in capabilities.permissions:
+            return
+        extra = {"site_id": str(site_id)}
+        if MODULE_MANAGE in capabilities.restricted_permissions:
+            raise ForbiddenError(
+                "Action indisponible avec le statut de l'abonnement de ce site",
+                code="subscription_restricted",
+                extra=extra,
+            )
+        raise ForbiddenError(
+            "Permission insuffisante sur ce site", code="permission_denied", extra=extra
+        )
+
+    def set_enabled_for_site(self, site_id: uuid.UUID, code: str, enabled: bool) -> None:
+        """Active / désactive un module sur CE site seulement (aucun autre site touché)."""
+        site, profile, terms = self._site_offer(site_id)
+        self._ensure_manage(site.id)
         if code not in self.registry or self.registry.get(code).core:
             raise BusinessRuleError("Module non paramétrable", code="module_not_configurable")
-        if not any(
-            code in self.capabilities.offered_modules(profile, terms)
-            for profile, terms in self._offers()
-        ):
+        if enabled and code not in self.capabilities.offered_modules(profile, terms):
+            # Le plan reste la limite : un module hors profil du site ou hors abonnement du
+            # site n'est jamais activé.
             raise BusinessRuleError(
-                "Module non inclus dans votre profil ou votre abonnement",
+                "Module non inclus dans le profil ou l'abonnement de ce site",
                 code="module_not_offered",
             )
-        currently = self.capabilities.enabled_module_codes() | self.registry.core_codes()
+        currently = self.capabilities.site_module_codes(site.id) | self.registry.core_codes()
         if enabled:
             missing = [d for d in self.registry.get(code).depends_on if d not in currently]
             if missing:
                 raise ConflictError(
-                    "Modules requis non activés",
+                    "Modules requis non activés sur ce site",
                     code="module_dependency_missing",
                     extra={"missing": missing},
                 )
@@ -298,22 +381,32 @@ class ModuleService:
             dependents = sorted(self.registry.dependents_of(code) & currently)
             if dependents:
                 raise ConflictError(
-                    "D'autres modules activés en dépendent",
+                    "D'autres modules activés sur ce site en dépendent",
                     code="module_has_dependents",
                     extra={"dependents": dependents},
                 )
-        row = self.db.get(TenantModule, (self.ctx.tenant_id, code))
+        row = self.db.scalars(
+            select(SiteModule)
+            .where(SiteModule.site_id == site.id, SiteModule.module_code == code)
+            .with_for_update()
+        ).one_or_none()
         if row is None:
-            row = TenantModule(tenant_id=self.ctx.tenant_id, module_code=code)
+            row = SiteModule(
+                tenant_id=self.ctx.tenant_id, site_id=site.id, module_code=code, enabled=enabled
+            )
             self.db.add(row)
+        previous = row.enabled if row.id is not None else None
         row.enabled = enabled
+        self.db.flush()
         record_audit(
             self.db,
             action="module.enabled" if enabled else "module.disabled",
             tenant_id=self.ctx.tenant_id,
             user_id=self.ctx.user.id,
+            site_id=site.id,
             entity_type="module",
             entity_id=code,
+            data={"site_id": str(site.id), "previous": previous, "enabled": enabled},
             meta=self.ctx.meta,
         )
 

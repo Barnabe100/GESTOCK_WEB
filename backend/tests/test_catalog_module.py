@@ -259,7 +259,7 @@ def test_supplier_link_requires_suppliers_module(owner: Api, owner_db: Session) 
     category = _category(owner)
     supplier = _supplier(owner)
     owner_db.execute(
-        text("UPDATE tenant_modules SET enabled = false WHERE module_code = 'suppliers'")
+        text("UPDATE site_modules SET enabled = false WHERE module_code = 'suppliers'")
     )
     owner_db.commit()
     response = owner.post(

@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
+from app.core.errors import ConflictError
 from app.platform.context import DbSession, RegistryDep, RequestContext, require_permission
 from app.platform.onboarding.service import OnboardingService
 from app.platform.tenancy.identity import document_identity
@@ -11,6 +12,7 @@ from app.platform.tenancy.schemas import (
     ModuleOut,
     ModuleToggle,
     SiteCreate,
+    SiteModuleOut,
     SiteOut,
     SiteUpdate,
     TenantOut,
@@ -85,17 +87,31 @@ def list_modules(ctx: ModuleView, db: DbSession, registry: RegistryDep) -> list[
     return ModuleService(db, ctx, registry).list_all()
 
 
-@router.get("/sites/{site_id}/modules", response_model=list[ModuleOut])
+@router.get("/sites/{site_id}/modules", response_model=list[SiteModuleOut])
 def list_site_modules(
     site_id: uuid.UUID, ctx: ModuleView, db: DbSession, registry: RegistryDep
-) -> list[ModuleOut]:
-    """Modules d'un site selon SON profil et l'abonnement de CE site (profils par site)."""
+) -> list[SiteModuleOut]:
+    """Modules d'un site : profil du site, abonnement du site, activation du site (palier C)."""
     return ModuleService(db, ctx, registry).list_for_site(site_id)
 
 
-@router.put("/modules/{code}", status_code=status.HTTP_204_NO_CONTENT)
-def toggle_module(
-    code: str, body: ModuleToggle, ctx: ModuleManage, db: DbSession, registry: RegistryDep
+@router.put("/sites/{site_id}/modules/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def toggle_site_module(
+    site_id: uuid.UUID,
+    code: str,
+    body: ModuleToggle,
+    ctx: ModuleManage,
+    db: DbSession,
+    registry: RegistryDep,
 ) -> None:
-    ModuleService(db, ctx, registry).set_enabled(code, body.enabled)
+    """Active / désactive un module sur CE site seulement (portée explicite dans l'URL) ;
+    permission revérifiée pour ce site, profil et abonnement du site contrôlés."""
+    ModuleService(db, ctx, registry).set_enabled_for_site(site_id, code, body.enabled)
     db.commit()
+
+
+@router.put("/modules/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def toggle_module(code: str, body: ModuleToggle, ctx: ModuleManage) -> None:
+    """Activation au niveau de l'entreprise retirée (palier C) : un module s'active par site,
+    ``PUT /sites/{site_id}/modules/{code}``."""
+    raise ConflictError("Les modules s'activent pour chaque site", code="module_is_per_site")

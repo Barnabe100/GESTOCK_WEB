@@ -123,7 +123,7 @@ def test_the_plan_still_bounds_every_site(provision: Any, api_for: Any, owner_db
     # Un profil ne fait pas activer un module qu'aucun abonnement n'inclut.
     _set_site_profile(owner_db, str(t.site_id), "distribution.entrepot")
     _set_site_profile(owner_db, annex, "distribution.entrepot")
-    refused = owner.put("/modules/pos", json={"enabled": True})
+    refused = owner.put(f"/sites/{annex}/modules/pos", json={"enabled": True})
     assert (refused.status_code, refused.json()["code"]) == (422, "module_not_offered")
 
 
