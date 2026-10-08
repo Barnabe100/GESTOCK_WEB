@@ -186,6 +186,7 @@ class TenantProvisioningService:
                 name=cmd.first_site_name,
                 code=cmd.first_site_code,
                 kind=cmd.first_site_kind,
+                business_profile_code=profile.code,
             )
             self.db.add(site)
             self.db.flush()  # le site existe avant son rattachement (clé étrangère composite)

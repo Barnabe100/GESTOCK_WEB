@@ -118,7 +118,14 @@ class SiteService:
             ):
                 raise BusinessRuleError("Offre indisponible", code="plan_not_available")
         fields = data.model_dump(exclude={"plan_code", "billing_period", "requested_activations"})
-        site = Site(id=new_id(), tenant_id=self.ctx.tenant_id, **fields)
+        # Profil du site : celui de l'entreprise (profil par site, palier A ; le choix du
+        # profil à la création viendra avec le palier B).
+        site = Site(
+            id=new_id(),
+            tenant_id=self.ctx.tenant_id,
+            business_profile_code=self.ctx.tenant.business_profile_code,
+            **fields,
+        )
         self.db.add(site)
         self._flush()
         if pending is not None:

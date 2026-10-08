@@ -99,8 +99,9 @@ def test_cannot_insert_row_for_another_tenant(db: Session, provision: Any) -> No
     with pytest.raises(DBAPIError, match="row-level security"):
         db.execute(
             text(
-                "INSERT INTO sites (id, tenant_id, name, code, kind, is_active) "
-                "VALUES (:id, :tenant, 'Intrus', 'X', 'store', true)"
+                "INSERT INTO sites (id, tenant_id, name, code, kind, is_active, "
+                "business_profile_code) "
+                "VALUES (:id, :tenant, 'Intrus', 'X', 'store', true, 'retail.alimentation')"
             ),
             {"id": new_id(), "tenant": b.tenant_id},
         )

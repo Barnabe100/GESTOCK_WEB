@@ -75,6 +75,15 @@ class Site(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     address: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Profil d'activité du SITE (profils / modules par site, palier A, migration 0039) :
+    # catalogue global ``business_profiles``. Initialisé avec le profil de l'entreprise ;
+    # jamais déduit de ``kind``. Ne pilote encore ni les modules ni les capacités (palier B).
+    business_profile_code: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("business_profiles.code", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
 
 
 class TenantModule(TimestampMixin, TenantFiltered, Base):
