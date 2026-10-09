@@ -175,6 +175,10 @@ livraison du module concerné les remet à `false`. Lecture du menu : site séle
 effectif → `403 module_unavailable` ; sans site sélectionné, seuls les sites où le menu est
 effectif pour le membre sont lus.
 
+La migration de livraison d'un module refuse de descendre si des données saisies existent
+(0041 : sections ou éléments de menu) ; détail dans
+[`RESTAURANT.md`](../architecture/RESTAURANT.md) §11.
+
 ### D11 — Profils (données)
 
 Définitions : *proposé* = `modules` ∪ `optional_modules` du profil ; *activé par défaut* =

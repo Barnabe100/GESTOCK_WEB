@@ -270,7 +270,8 @@ Solde théorique = Σ mouvements signés (jamais stocké hors instantané de cl�
 RLS `ENABLE` + `FORCE` ; rôle applicatif : `SELECT, INSERT` + `UPDATE` des seules colonnes
 modifiables (jamais de suppression) ; aucun droit pour le rôle de la console. Migration 0041 :
 `restaurant.menu` remis à `false` dans `site_modules` sur les sites existants (activation
-explicite, D10) ; retour arrière refusé s'il perdait un menu saisi.
+explicite, D10) ; retour arrière refusé dès qu'une section ou un élément de menu existe
+(condition, message et tests : [`RESTAURANT.md`](RESTAURANT.md) §11).
 
 ### Créances (Phase 2.8) : aucune table
 

@@ -303,6 +303,28 @@ un manifeste réel, dépendances (D1), modèles de rôles (`auto_provision`), pr
 `module_settings`), plan STANDARD (`restaurant.qr` en R7). Chaque migration : montée, descente,
 remontée, `alembic check` ; tests de migration sur le modèle de `test_site_modules.py`.
 
+### Retour arrière de la migration 0041 (R1)
+
+- **Condition de refus** : au moins une ligne dans `restaurant_menu_sections` ou
+  `restaurant_menu_items`, **toutes entreprises confondues**. Le comptage se fait hors RLS le
+  temps du contrôle (`NO FORCE ROW LEVEL SECURITY`, rôle propriétaire de la migration), puis
+  `FORCE ROW LEVEL SECURITY` est rétablie.
+- **Refus** : erreur « Retour arrière refusé : N section(s) ou élément(s) de menu saisis par les
+  utilisateurs seraient perdus. » La transaction de la migration est annulée : rien n'est
+  supprimé ni modifié.
+- **Descente possible** lorsqu'aucune section ni aucun élément de menu n'existe : les tables,
+  index et droits du menu sont alors supprimés.
+- **Non restauré** : les activations `restaurant.menu` remises à `false` à la montée (lignes
+  inertes de la période « Bientôt disponible », D10) ; ce ne sont pas des données métier.
+- **Aucune procédure de suppression n'est fournie** (ni par l'application, ni par la console, ni
+  par la CLI) : un retour arrière ne supprime jamais silencieusement des données métier. La
+  descente n'est envisageable que sur une base sans menu saisi (par exemple un environnement de
+  test).
+- **Tests de référence** (`backend/tests/test_restaurant_menu_migration.py`) :
+  `test_migration_0041_downgrade_refuses_to_lose_a_menu` (refus, section conservée, RLS
+  rétablie) et `test_migration_0041_disables_the_menu_on_existing_sites_only` (descente vers
+  0040 sans menu saisi, puis remontée).
+
 ## 12. Plan de tests
 
 - **Concurrence** : deux « Prendre » simultanés (un seul succès) ; protection et délai entre
