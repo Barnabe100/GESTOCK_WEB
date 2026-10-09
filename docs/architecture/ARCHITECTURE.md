@@ -291,7 +291,8 @@ de `sectors.toml` + un profil UX. Aucune modification du Core ni de conditions d
   fonctionnalités → politiques**, entièrement en données (`plans.toml`). Les modules
   déclarent les limites qu'ils comptent (`LimitDef`) et leurs fonctionnalités optionnelles ;
   `PlanPolicy` est le seul point d'application (`ensure_capacity`, `require_feature`).
-- Valeurs validées : STANDARD = 1 site, 5 utilisateurs, sans `restaurant.qr` ;
+- Valeurs validées : STANDARD = 1 site, 5 utilisateurs, sans `restaurant.qr` (ajouté à la
+  livraison du palier R7, ADR-0049 ; un site déjà licencié l'obtient à sa prochaine licence) ;
   ENTREPRISE = illimité.
 - **Paramètres commerciaux** (publication, prix, périodes, devise, affichage du prix,
   contact, description, ordre, essai) : en base, gérés par TechNova dans la **console
@@ -317,10 +318,13 @@ par le profil (valeur par défaut), le plan (autorisé ou non) et le tenant
 
 Les cycles de vie (vente, commande restaurant, inventaire, transfert) sont modélisés
 comme des **machines à états explicites** côté backend (états + transitions
-autorisées + permission requise par transition). Exemple futur, cuisine :
+autorisées + permission requise par transition). Exemple conçu, commande restaurant
+([ADR-0049](../adr/0049-restauration-commandes.md), non implémenté) — deux axes indépendants,
+préparation (lignes) et règlement (vente issue de la commande) :
 
 ```text
-nouvelle → en_attente → en_preparation → prete → servie
+ligne    : reçue → en_preparation → prete → servie/remise   (servie/remise : définitif)
+commande : a_confirmer → ouverte → close | annulee | refusee (close : définitif)
 ```
 
 Une transition invalide est refusée par le backend, quel que soit le client.
@@ -340,7 +344,8 @@ Une transition invalide est refusée par le backend, quel que soit le client.
   par les manifestes avec leur nature ; rôles définis **par tenant**. Le propriétaire est
   un attribut de l'appartenance (toutes les permissions des modules actifs). Rôles de
   base (`role_templates.toml`, résolus à l'exécution) : Administrateur (protégé),
-  Gestionnaire, Vendeur, Consultant ; chaque entreprise crée ses **rôles personnalisés**
+  Gestionnaire, Vendeur, Consultant ; modèles facultatifs créés à la demande seulement
+  (`auto_provision = false`, ex. Serveur et Préparateur, ADR-0049) ; chaque entreprise crée ses **rôles personnalisés**
   (Caissier, Magasinier, Serveuse…), duplique, active / désactive — jamais de suppression.
   **Anti-escalade par portée** : un non-propriétaire n'accorde que ce qu'il détient sur la
   même portée (tenant ou site) et seulement sur ses sites
@@ -359,8 +364,11 @@ Une transition invalide est refusée par le backend, quel que soit le client.
 - **Audit** : journal `audit_log` (tenant, site, utilisateur, action, entité,
   avant/après, IP, horodatage) alimenté explicitement par les services pour les
   actions sensibles (connexion, droits, stock, ventes, caisse, annulations).
-- **Endpoints publics** (menu QR, V2) : espace `/api/v1/public/…`, accès par jeton
-  de table signé, périmètre minimal en lecture + création de commande, limitation de débit.
+- **Endpoints publics** (menu QR, palier R7, [ADR-0049](../adr/0049-restauration-commandes.md)) :
+  espace `/api/v1/public/…`, accès par jeton aléatoire **opaque** par point d'accès (stocké
+  haché, révocable par rotation ; entreprise et site déduits du jeton seulement), périmètre
+  minimal en lecture + création et suivi de commande, limitation de fréquence persistante,
+  aucune donnée de stock, de coût ni de caisse.
 - **Validation** : toute entrée validée par Pydantic ; erreurs au format
   *Problem Details* (RFC 9457).
 - **Limitation de débit (production)** : à configurer au niveau du reverse proxy, par
@@ -536,7 +544,7 @@ travail : une requête = une transaction, commit à la fin si succès).
 | Variantes, code-barres | Modèle catalogue : article ↔ *unités vendables* (SKU) dès la V1 pour éviter une migration lourde |
 | Lots, péremption | Niveaux de stock par lot optionnels, derrière le module `stock.lots` |
 | Promotions, marges | Services de tarification séparés, appelés par ventes/POS |
-| Menu restaurant | **Catalogue interne → produits commerciaux → menu → disponibilité → menu QR** ; le menu référence des produits sans les dupliquer ; la disponibilité (manuelle, rupture, épuisé, horaires, automatique selon stock) est un état propre au menu, vérifié par le backend à l'ajout au panier |
+| Menu restaurant | **Catalogue interne → produits commerciaux → menu → disponibilité → menu QR** ; le menu référence des produits sans les dupliquer ; la disponibilité est un état propre au menu, vérifié par le backend ; V1 ([ADR-0049](../adr/0049-restauration-commandes.md)) : menu par site limité à l'assortiment actif, épuisé manuel + indication de stock, sans réservation ; horaires et disponibilité automatique selon stock : ultérieurs |
 | Customer Mobile Web (QR) | Point d'entrée frontend distinct et léger + API publique restreinte |
 | Mobile Flutter | Même API REST ; aucune logique spécifique côté serveur |
 | POS offline | UUID générés côté client + idempotence + file de synchronisation |

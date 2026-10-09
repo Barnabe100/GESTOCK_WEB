@@ -333,7 +333,14 @@ service `change_business_profile`, commune à l'API et à la CLI). **Palier G �
 inventaire des routes de la console par le schéma OpenAPI (l'ancien test statique ne voyait pas
 les routes incluses), synthèse du modèle dans ADR-0048 ; correctif : la création d'un site
 attend que l'abonnement d'inscription soit connu (un clic sur « Enregistrer » pendant ce
-chargement n'envoyait rien). Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+chargement n'envoyait rien). **Restauration / Maquis — conception validée (palier R0)**
+([ADR-0049](docs/adr/0049-restauration-commandes.md),
+[`RESTAURANT.md`](docs/architecture/RESTAURANT.md) ; arbitrages A1–A7, B1–B6, Z1–Z3, W1) :
+**aucun module livré**, modules `restaurant.*` toujours `planned` ; décision ouverte d'E.1
+traitée module par module à la livraison (activations remises à `false` sur les sites
+existants) ; limites connues de V1 : commandes servies non réglées sans client à créditer,
+remboursement d'espèces après clôture de la session d'origine. Paliers R1 (Menu) à R9 ;
+**ne pas commencer R1 sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
