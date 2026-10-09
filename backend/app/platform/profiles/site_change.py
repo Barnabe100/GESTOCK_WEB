@@ -46,7 +46,7 @@ from app.platform.licensing.service import current_terms
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.service import site_subscription
 from app.platform.tenancy.models import Site, SiteModule
-from app.platform.tenancy.site_modules import lock_site
+from app.platform.tenancy.site_modules import lock_site, run_site_setup
 
 PROFILE_MANAGE = "organization.profile.manage"
 CONFIRMATION_TEXT = "CHANGER DE PROFIL"
@@ -415,6 +415,16 @@ class SiteProfileChangeService:
             else:
                 row.enabled = enabled
         self.db.flush()
+        # Palier R2-A : les modules activés par le changement sont initialisés sur le site
+        # (``site_setup``, idempotent) ; ce qui existe déjà est conservé, jamais écrasé.
+        run_site_setup(
+            self.db,
+            self.registry,
+            self.ctx.tenant_id,
+            site.id,
+            plan.target,
+            {code for code, (_previous, enabled) in plan.writes.items() if enabled},
+        )
         reasons = {m.code: m.reason for m in plan.modules}
         record_audit(
             self.db,

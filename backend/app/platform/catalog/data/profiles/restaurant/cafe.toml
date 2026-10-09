@@ -4,3 +4,8 @@ ux_profile = "restaurant.default"
 name = "Café / Salon de thé"
 description = "Boissons chaudes, pâtisseries, petite restauration."
 sort_order = 40
+
+# Paiement par défaut des commandes du site (ADR-0049, D6 / D11) : recopié à l'activation du
+# module sur un site, modifiable ensuite par le gestionnaire, jamais réécrit.
+[module_settings."restaurant.orders"]
+payment_timing = "AT_END"

@@ -53,8 +53,8 @@ Codes antérieurs à la 3.1 (migration `0013`) : `alimentation` → `retail.alim
 # ux_profiles/restaurant.default.toml (extrait)
 code = "restaurant.default"
 modules = ["catalog", "stock", "sales", "pos", "cash_register", "…",
-           "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen"]
-optional_modules = ["restaurant.qr"]
+           "restaurant.menu", "restaurant.orders"]
+optional_modules = ["restaurant.tables", "restaurant.kitchen", "restaurant.qr", "restaurant.recipes"]
 
 [[navigation]]                      # rubriques, dans l'ordre ; libellé : navGroups.<group>
 group = "restaurant"
@@ -87,12 +87,25 @@ description = "Restauration et boissons en service rapide ou en salle."
 sort_order = 20
 # Surcharges facultatives : modules, optional_modules, [[navigation]] (remplace),
 # [dashboard] (remplace), [terminology.<langue>] (fusion), [theme] (fusion).
+
+# Réglages par défaut d'un module proposé par le profil (palier R2-A, ADR-0049 D11 / D14) :
+# valeurs scalaires, recopiées sur un site à l'activation du module (`site_setup`), jamais
+# réécrites ensuite ; leur domaine est contrôlé par le module concerné.
+[module_settings."restaurant.orders"]
+payment_timing = "AT_END"           # AT_END | AT_ORDER
 ```
 
 Validation au chargement (`stockmanager catalog check`, et au démarrage des tests) : code
 conforme au chemin, secteur et profil UX connus et actifs pour un profil actif, modules
 connus et non core, dépendances proposées, rubriques uniques, un module par rubrique au plus,
-références de widgets bien formées vers des modules connus, accent et densité de la palette.
+références de widgets bien formées vers des modules connus, accent et densité de la palette ;
+`[module_settings."<module>"]` : module connu ET proposé par le profil, valeurs scalaires.
+
+Modules de restauration activés par défaut / facultatifs (ADR-0049, D11) : le profil UX
+`restaurant.default` porte le cas Maquis, Bar, Café, Boulangerie (menu et commandes ;
+salle, postes, QR, recettes facultatifs) ; Restaurant et Pizzeria activent aussi salle et
+postes, Traiteur et Restauration rapide les postes (surcharges dans leur profil). Ces
+valeurs ne concernent que les **nouveaux** sites.
 
 ## 4. Configuration par défaut et configuration effective
 

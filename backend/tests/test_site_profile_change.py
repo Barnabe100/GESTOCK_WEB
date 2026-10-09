@@ -158,8 +158,9 @@ def test_simple_change_touches_only_the_target_site(world: World, owner_db: Sess
     origin = sh.count(owner_db, "SELECT count(*) FROM tenants WHERE business_profile_code = 'x'")
     preview = _ok_preview(world.owner, world.site, MAQUIS)
     modules = _modules_of(preview)
-    assert modules["restaurant.tables"]["change"] == "added"
-    assert modules["restaurant.tables"]["action"] == "enable"
+    assert modules["restaurant.orders"]["change"] == "added"
+    assert modules["restaurant.orders"]["action"] == "enable"
+    assert modules["restaurant.tables"]["action"] == "none"  # facultatif pour un maquis (D11)
     assert modules["restaurant.qr"]["action"] == "none"  # facultatif : reste désactivé
     assert modules["restaurant.qr"]["reason"] == "optional"
     assert modules["pos"]["change"] == "kept" and modules["pos"]["action"] == "none"
@@ -169,7 +170,7 @@ def test_simple_change_touches_only_the_target_site(world: World, owner_db: Sess
     assert body["previous_profile"] == ORIGIN
     assert body["business_profile_code"] == MAQUIS
     assert body["level"] == "SIMPLE"
-    assert "restaurant.tables" in body["activated"]
+    assert "restaurant.orders" in body["activated"]
     assert _profile(owner_db, world.site) == MAQUIS
     assert _profile(owner_db, world.site2) == ORIGIN  # autre site inchangé
     assert _activations(owner_db, world.site2) == other_before
@@ -183,7 +184,8 @@ def test_simple_change_touches_only_the_target_site(world: World, owner_db: Sess
     )
     assert origin == 0
     activations = _activations(owner_db, world.site)
-    assert activations["restaurant.tables"] is True
+    assert activations["restaurant.orders"] is True
+    assert activations["restaurant.tables"] is False  # facultatif (D11)
     assert activations["restaurant.qr"] is False
     assert activations["pos"] is True
     # Capacités du site : nouveau profil exposé, modules recalculés.
@@ -192,7 +194,7 @@ def test_simple_change_touches_only_the_target_site(world: World, owner_db: Sess
     )
     caps = site_caps.json()
     assert caps["profile"]["code"] == MAQUIS
-    assert {"restaurant.tables", "pos"} <= {m["code"] for m in caps["modules"]}
+    assert {"restaurant.orders", "pos"} <= {m["code"] for m in caps["modules"]}
     entry = next(s for s in caps["sites"] if s["id"] == world.site)
     assert entry["profile"]["code"] == MAQUIS
     # Audit complet du changement.
@@ -201,11 +203,18 @@ def test_simple_change_touches_only_the_target_site(world: World, owner_db: Sess
     assert audit["level"] == "SIMPLE" and audit["confirmed"] is False
     assert audit["fingerprint"] == preview["fingerprint"]
     changed = {m["code"]: m for m in audit["site_modules"]}
-    assert changed["restaurant.tables"] == {
-        "code": "restaurant.tables",
+    assert changed["restaurant.orders"] == {
+        "code": "restaurant.orders",
         "previous": None,
         "enabled": True,
         "reason": "default",
+    }
+    # Salle facultative pour un maquis (D11) : ligne écrite désactivée.
+    assert changed["restaurant.tables"] == {
+        "code": "restaurant.tables",
+        "previous": None,
+        "enabled": False,
+        "reason": "optional",
     }
 
 
@@ -697,7 +706,8 @@ def test_create_site_with_a_profile(world: World, owner_db: Session, client: Tes
     site = created.json()
     assert site["business_profile_code"] == MAQUIS
     activations = _activations(owner_db, site["id"])
-    assert activations["restaurant.tables"] is True
+    assert activations["restaurant.orders"] is True
+    assert activations["restaurant.tables"] is False  # facultatif (D11)
     assert activations["restaurant.qr"] is False  # facultatif
     assert activations["pos"] is True
     # Rien n'est copié d'un autre site : aucune donnée sur le nouveau site.

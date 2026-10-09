@@ -132,12 +132,14 @@ def test_forged_direct_request_is_refused(
 def test_planned_module_can_still_be_disabled(resto: SimpleNamespace) -> None:
     # Activations planifiées inertes écrites par l'initialisation (défauts du profil) :
     # désactivation permise, réactivation refusée.
-    recipes = _site_modules(resto.owner, resto.site)["restaurant.recipes"]
-    assert recipes["status"] == "planned" and recipes["activated_for_site"] is True
-    assert set_site_module(resto.owner, resto.site, "restaurant.recipes", False).status_code == 204
-    recipes = _site_modules(resto.owner, resto.site)["restaurant.recipes"]
-    assert recipes["activated_for_site"] is False
-    refused = set_site_module(resto.owner, resto.site, "restaurant.recipes", True)
+    # Rapports : planifié, activé par défaut par le profil de restauration (D11 : les recettes
+    # y sont désormais facultatives).
+    reports = _site_modules(resto.owner, resto.site)["reports"]
+    assert reports["status"] == "planned" and reports["activated_for_site"] is True
+    assert set_site_module(resto.owner, resto.site, "reports", False).status_code == 204
+    reports = _site_modules(resto.owner, resto.site)["reports"]
+    assert reports["activated_for_site"] is False
+    refused = set_site_module(resto.owner, resto.site, "reports", True)
     assert refused.json()["code"] == "module_not_implemented"
 
 

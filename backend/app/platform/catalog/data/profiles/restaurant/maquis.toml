@@ -4,3 +4,8 @@ ux_profile = "restaurant.default"
 name = "Maquis"
 description = "Restauration et boissons en service rapide ou en salle."
 sort_order = 20
+
+# Paiement par défaut des commandes du site (ADR-0049, D6 / D11) : recopié à l'activation du
+# module sur un site, modifiable ensuite par le gestionnaire, jamais réécrit.
+[module_settings."restaurant.orders"]
+payment_timing = "AT_END"

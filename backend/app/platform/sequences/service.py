@@ -8,7 +8,13 @@ from app.platform.sequences.models import DocumentSequence
 
 
 def next_number(db: Session, tenant_id: uuid.UUID, key: str, prefix: str, width: int = 6) -> str:
-    """Numéro suivant pour ``key`` dans le tenant (ex. ``ENT-000001``).
+    """Numéro suivant pour ``key`` dans le tenant (ex. ``ENT-000001``) ; voir ``next_value``."""
+    return f"{prefix}-{next_value(db, tenant_id, key):0{width}d}"
+
+
+def next_value(db: Session, tenant_id: uuid.UUID, key: str) -> int:
+    """Valeur suivante (1, 2, 3…) du compteur ``key`` dans le tenant, sans mise en forme (ex.
+    numéro court d'une commande par site et par jour, palier R2-A).
 
     Un seul ordre SQL atomique (``INSERT … ON CONFLICT DO UPDATE … RETURNING``) : la ligne du
     compteur reste verrouillée jusqu'à la fin de la transaction, ce qui sérialise les créations
@@ -23,8 +29,7 @@ def next_number(db: Session, tenant_id: uuid.UUID, key: str, prefix: str, width:
         )
         .returning(DocumentSequence.next_value)
     )
-    value = db.execute(stmt).scalar_one()
-    return f"{prefix}-{value:0{width}d}"
+    return int(db.execute(stmt).scalar_one())
 
 
 def site_sequence_key(site_id: uuid.UUID, kind: str, year: int) -> str:

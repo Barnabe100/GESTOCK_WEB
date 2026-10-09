@@ -1,8 +1,11 @@
 # Restauration / Maquis — conception
 
 > **Conception validée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
-> (arbitrages A1–A7, B1–B6, Z1–Z3, W1). **Palier R1 (menu) livré** (migration 0041) ; les autres
-> modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison de leur palier.
+> (arbitrages A1–A7, B1–B6, Z1–Z3, W1 ; décisions du palier R2 : D14). **Palier R1 (menu)
+> livré** (migration 0041). **Palier R2 en cours** (commandes et règlement, absorbe l'ancien
+> R3 ; R2-A livré : socle de plateforme) ; `restaurant.orders` reste `planned` jusqu'au commit
+> R2-E. Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
+> de leur palier.
 > **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
 > suivants sont indicatifs.
 
@@ -53,6 +56,11 @@ l'offre, activé sur le site, **effectif** (seul état qui ouvre l'accès) — A
 - Réglages par site (mode de paiement, protection, délai entre prises, acceptation automatique
   QR) : créés à l'activation par le hook `site_setup` depuis `module_settings` du profil, jamais
   écrasés par un changement de profil.
+- `site_setup` (socle R2-A) : appelé pour un module **disponible** quand il devient activé sur
+  un site (création du premier site ou d'un nouveau site, activation manuelle, changement de
+  profil du site), dans la même transaction ; crée seulement ce qui manque ; jamais à la
+  désactivation, jamais pour un module planifié ; un échec annule l'activation. Désactiver ne
+  supprime rien ; réactiver retrouve les réglages conservés (D14, N5).
 
 ## 3. Parcours par canal et par mode de paiement
 
@@ -69,6 +77,9 @@ règlement (vente → validation = déduction du stock → paiements ; tout ou r
 - T2 accepte la dérogation existante `expired_lot_override` (`sales.sale.expired_lot_override`,
   motif, audit), comme `POST /pos/checkout`.
 - `POST /pos/checkout` et `SaleService.checkout` (POS ordinaire) sont inchangés.
+- **Palier R2** (D14, Q2) : seul le canal **Personnel** (`STAFF`) est livré ; l'intégration à
+  l'écran du POS est reportée. Le moteur est unique : un canal ultérieur (POS, QR) sera une
+  autre route du même module, appelant le même service.
 
 ## 4. Modèle de données
 
@@ -102,7 +113,17 @@ lecture, motifs `blockers`) : élément ou section désactivé, épuisé, articl
 assortiment actif du site, conditionnement désactivé ou sans prix configuré. Le menu ne bloque
 jamais le catalogue (aucun port ; R2 enregistrera les commandes ouvertes).
 
-### R2 — Commandes
+### R2 — Commandes (migration 0042, sous-étape R2-B)
+
+Précisions du palier R2 (D14) : `call_name` ≤ 40 caractères (Q4) ; `restaurant_order_events`
+porte une `idempotency_key` facultative, unique par commande (ajout de lignes rejouable,
+P-8) ; `restaurant_menu_items` reçoit `UNIQUE (tenant_id, site_id, id)` (cible de la clé
+étrangère des lignes, seule retouche du schéma R1) ; `table_id` sans clé étrangère jusqu'à R5,
+aucun `station_id` avant R6 ; `version` informatif (P-7) ; retour arrière refusé dès qu'une
+commande ou une ligne de réglages existe (Q7, N5). Clé du compteur : la colonne
+`document_sequences.sequence_key` est limitée à 50 caractères, la forme exacte de la clé est
+arrêtée en R2-B (R2-A fournit le compteur brut `next_value`).
+
 
 - `restaurant_site_settings` (une ligne par site) : `payment_timing` (`AT_END` | `AT_ORDER`),
   `claim_protection_minutes` (défaut 5), `claim_cooldown_minutes` (défaut 0), `qr_auto_accept`
@@ -132,7 +153,7 @@ jamais le catalogue (aucun port ; R2 enregistrera les commandes ouvertes).
 - Catalogue : `business_profiles.module_settings` (JSONB, section générique des profils).
 - Numéro : compteur `restaurant.order:{site_id}:{AAAA-MM-JJ}` (jour de l'entreprise).
 
-### R3 — Ventes (module `sales`)
+### R2-D — Ventes (module `sales`, migration 0043, ancien palier R3)
 
 - `origin_type` / `origin_id` facultatifs, posés par le serveur seulement, **immuables**
   (déclencheur), jamais acceptés en entrée de l'API.
@@ -171,14 +192,18 @@ jamais le catalogue (aucun port ; R2 enregistrera les commandes ouvertes).
 | SERVED, CANCELLED → * | — | interdit (A7), déclencheur |
 
 Sans postes : une action porte sur toutes les lignes ouvertes de la commande (un évènement) ;
-avec postes : sur les lignes d'un poste (un évènement par poste). Le passage à « close » est
-calculé sous le verrou de la commande.
+avec postes : sur les lignes d'un poste (un évènement par poste). Le palier R2 permet aussi
+d'agir **ligne par ligne** (P-2 : une boisson servie avant le plat), un évènement par requête.
+Le passage à « close » est calculé sous le verrou de la commande. Une commande dont toutes les
+lignes sont annulées n'est pas réglable (`409 order_empty`) ; elle s'annule avec
+`restaurant.order.cancel` et un motif (N4).
 
 Refus : `order_not_settled`, `order_settled` (ajout ET annulation de lignes, annulation de la
-commande), `order_has_served_lines`, `order_closed`, `sale_origin_unavailable`,
-`assignee_not_eligible`, et les refus existants des ventes, paiements, caisse et stock
-(`insufficient_stock`, `insufficient_unexpired_stock`, `article_inactive`,
-`article_not_in_site_assortment`, `cash_session_closed`, `sale_has_payments`…).
+commande), `order_empty` (règlement d'une commande sans ligne), `order_has_served_lines`,
+`order_closed`, `sale_origin_unavailable`, `assignee_not_eligible`, et les refus existants des
+ventes, paiements, caisse et stock (`insufficient_stock`, `insufficient_unexpired_stock`,
+`article_inactive`, `article_not_in_site_assortment`, `cash_session_closed`,
+`sale_has_payments`…).
 
 ### Annulation de la vente d'une commande (Z3, B4)
 
@@ -266,7 +291,11 @@ profil, ADR-0048) n'est jamais pris par une commande.
   Vendeur liste explicite (« sans annulation » vise les ventes et documents validés, pas les
   lignes non réglées) ; Consultant `*.view` automatiquement.
 - Serveur et Préparateur : `auto_provision = false`, créés à la demande
-  (`POST /roles/from-template`) ; gestion des conflits de noms précisée en R2.
+  (`POST /roles/from-template`) ; un rôle personnalisé du même nom fait refuser la création
+  du modèle (`409 role_name_taken`), sans renommage automatique (D14, Q5).
+- `restaurant.order.confirm` est déclarée au palier R7, à son premier usage (P-12).
+- État financier d'une commande (numéro de vente, payé / partiel / dû) visible avec
+  `restaurant.order.view` ; détail des paiements réservé à `sales.payment.view` (P-11).
 - Réattribution : nouveau responsable détenteur de `restaurant.order.claim` effectif sur le site.
 
 ## 9. Notifications
@@ -290,8 +319,8 @@ qu'à sa prochaine licence.
 | Migration | Palier | Contenu |
 |---|---|---|
 | 0041 | R1 (livrée) | menu (contrainte `NULLS NOT DISTINCT`, FK composite), RLS, droits ; remise à `false` de `restaurant.menu` ; descente refusée si un menu a été saisi |
-| 0042 | R2 | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings` ; remise à `false` de `restaurant.orders` |
-| 0043 | R3 | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT` ; descente refusée si des ventes `RESTAURANT` existent |
+| 0042 | R2 (R2-B) | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings` ; remise à `false` de `restaurant.orders` ; descente refusée si une commande ou des réglages existent |
+| 0043 | R2 (R2-D, ancien R3) | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT` ; descente refusée si des ventes `RESTAURANT` existent |
 | 0044 | R4 | `member_notifications`, politiques RLS, droits du rôle de purge |
 | 0045 | R5 | zones, tables, FK `restaurant_orders.table_id` ; remise à `false` de `restaurant.tables` |
 | 0046 | R6 | postes, affectations, `station_id` ; remise à `false` de `restaurant.kitchen` |
@@ -377,9 +406,11 @@ remontée, `alembic check` ; tests de migration sur le modèle de `test_site_mod
 
 | Id | Sujet | Palier |
 |---|---|---|
-| O1 | Communication du numéro au client (ticket de retrait, annonce, page QR) | R2 |
-| O2 | Nom d'appel facultatif (ne remplace jamais le numéro) | R2 |
-| — | Conflits de noms des modèles Serveur / Préparateur | R2 |
+| O1 | ~~Communication du numéro au client~~ — tranché (D14, Q3) : numéro affiché, ticket de retrait 80 mm sans prix ; page QR en R7 | R2 |
+| O2 | ~~Nom d'appel facultatif~~ — tranché (D14, Q4) : 40 caractères, jamais à la place du numéro | R2 |
+| — | ~~Conflits de noms des modèles Serveur / Préparateur~~ — tranché (D14, Q5) : `409 role_name_taken` | R2 |
+| — | Indicateur de stock à la prise de commande (reporté, D14, Q6) | après R2 |
+| — | Intégration du canal POS à l'écran du point de vente (reportée, D14, Q2) | après R2 |
 | O7 | Perte de stock d'une ligne préparée puis annulée | R6 |
 | O8 | Déplacement d'une commande entre tables | R5 |
 | O9 | Plafonds QR (lignes, quantités, commandes ouvertes par point) | R7 |
@@ -398,10 +429,14 @@ remontée, `alembic check` ; tests de migration sur le modèle de `test_site_mod
   en ajout seul ; écran en trois colonnes avec recherche par numéro ; commandes non finales =
   travail en cours ; aucun contournement de l'état close ; limites V1 identifiables avec leur
   ancienneté.
-- **R3 Règlement** : une vente active par commande, même rejouée ; prix figés ; POS ordinaire
-  identique ; échec du règlement sans perte de commande pour chaque canal et chaque mode ;
-  procédure Z3 cohérente (caisse, stock, paiements, vente active unique) ; état financier lu sur
-  la vente.
+- **R2 Règlement (ancien R3)** : une vente active par commande, même rejouée ; prix figés ; POS
+  ordinaire identique ; échec du règlement sans perte de commande pour chaque canal et chaque
+  mode ; procédure Z3 cohérente (caisse, stock, paiements, vente active unique) ; état
+  financier lu sur la vente.
+- **R2, compléments (D14)** : ticket de retrait 80 mm sans prix, sans dépendance au POS ; un
+  seul moteur, canal posé par la route ; retours arrière de 0042 et 0043 protégés et testés ;
+  réglages conservés par une désactivation ; `restaurant.orders` jamais utilisable dans un
+  commit où le règlement ou l'interface n'existe pas.
 - **R4 Notifications** : avis en 15 s au plus ; destinataires exacts ; jamais l'auteur ; aucun
   doublon ; résolution calculée ; purge à 30 jours ; aucune lecture croisée.
 - **R5 Tables** : occupation exacte ; un site sans tables n'est pas affecté.

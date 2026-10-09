@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from fastapi import APIRouter
     from sqlalchemy.orm import Session
 
+    from app.platform.catalog.models import BusinessProfile
     from app.platform.footprint import SiteFootprintFn
 
 
@@ -93,6 +94,17 @@ class ModuleManifest:
     # Empreinte du module sur un site, en lecture seule (palier D, ``app.platform.footprint``) :
     # qualifie un changement de profil du site et protège les opérations en cours.
     site_footprint: "SiteFootprintFn | None" = field(default=None, compare=False, hash=False)
+    # Initialisation du module sur UN site quand il y devient activé (palier R2-A, ADR-0049) :
+    # ``(session, tenant_id, site_id, profil du site)``, appelée dans la transaction de
+    # l'activation (création d'un site, activation manuelle, changement de profil du site).
+    # Contrat : idempotente, crée seulement ce qui manque — jamais d'écrasement, une
+    # réactivation retrouve la configuration du site — et ne touche aucun autre site ; ne
+    # suppose ni les données de ``tenant_setup`` ni les membres (au provisionnement, le premier
+    # site est initialisé avant eux). Jamais appelée pour un module planifié (ses activations
+    # sont inertes, E.1).
+    site_setup: "Callable[[Session, uuid.UUID, uuid.UUID, BusinessProfile], None] | None" = field(
+        default=None, compare=False, hash=False
+    )
 
     @property
     def url_prefix(self) -> str:

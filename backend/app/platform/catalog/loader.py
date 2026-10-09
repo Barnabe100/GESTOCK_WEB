@@ -74,6 +74,10 @@ class ProfileDef:
     terminology: dict[str, Any]
     theme: dict[str, Any]
     settings: dict[str, Any]
+    # Réglages par défaut des modules, par code de module (section générique, palier R2-A,
+    # ADR-0049 D11) : recopiés sur un site à l'activation du module (``site_setup``), jamais
+    # réécrits ensuite. Valeurs scalaires ; leur domaine est contrôlé par le module concerné.
+    module_settings: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -118,6 +122,10 @@ class RoleTemplate:
     exclude_patterns: tuple[str, ...] = ()
     # Rôle protégé : ni désactivable, ni modifiable, ni renommable par le tenant.
     protected: bool = False
+    # Créé automatiquement dans chaque nouvelle entreprise (défaut). ``false`` : modèle
+    # facultatif, ajouté à la demande seulement (``POST /roles/from-template``), jamais par le
+    # provisionnement (ex. Serveur, Préparateur — ADR-0049, D12).
+    auto_provision: bool = True
 
     def resolve(self, available_permissions: set[str]) -> list[str]:
         def matches(code: str, patterns: tuple[str, ...]) -> bool:
@@ -239,6 +247,7 @@ def _load_profiles(directory: Path, ux_profiles: dict[str, UxProfileDef]) -> dic
             terminology=raw.get("terminology", {}),
             theme=raw.get("theme", {}),
             settings=raw.get("settings", {}),
+            module_settings=raw.get("module_settings", {}),
         )
     return profiles
 
@@ -329,6 +338,7 @@ def _load_role_templates(raw: dict[str, Any]) -> dict[str, RoleTemplate]:
             permission_patterns=tuple(data.get("permissions", ())),
             exclude_patterns=tuple(data.get("exclude", ())),
             protected=bool(data.get("protected", False)),
+            auto_provision=bool(data.get("auto_provision", True)),
         )
         for code, data in raw.get("roles", {}).items()
     }
@@ -389,6 +399,7 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
         if profile.is_active and owner_ux is not None and not owner_ux.is_active:
             errors.append(f"{owner} : actif avec un profil UX inactif {owner_ux.code}")
         check_modules(owner, profile.modules, profile.optional_modules)
+        errors.extend(_module_settings_errors(owner, profile, known))
         errors.extend(
             validate_ux_parts(
                 owner,
@@ -440,9 +451,31 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
     for template in catalog.role_templates.values():
         if not template.permission_patterns:
             errors.append(f"modèle de rôle {template.code} : aucune permission")
+        if template.protected and not template.auto_provision:
+            # Le rôle d'administration doit exister dans toute entreprise dès sa création.
+            errors.append(f"modèle de rôle {template.code} : rôle protégé non provisionné")
 
     if errors:
         raise CatalogError("Catalogue invalide :\n- " + "\n- ".join(errors))
+
+
+def _module_settings_errors(owner: str, profile: ProfileDef, known: set[str]) -> list[str]:
+    """``[module_settings."<module>"]`` : module connu ET proposé par le profil (activé par défaut
+    ou facultatif), table de valeurs scalaires (texte, nombre, booléen)."""
+    errors: list[str] = []
+    offered = {*profile.modules, *profile.optional_modules}
+    for code, values in profile.module_settings.items():
+        if code not in known:
+            errors.append(f"{owner} : réglages d'un module inconnu {code}")
+        elif code not in offered:
+            errors.append(f"{owner} : réglages du module {code} non proposé par le profil")
+        if not isinstance(values, dict):
+            errors.append(f"{owner} : réglages de {code} : table attendue")
+            continue
+        for key, value in values.items():
+            if isinstance(value, dict | list):
+                errors.append(f"{owner} : réglage {code}.{key} : valeur scalaire attendue")
+    return errors
 
 
 @lru_cache

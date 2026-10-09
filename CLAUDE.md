@@ -347,8 +347,15 @@ prix refusé, prix du catalogue, aucun coût), « épuisé » manuel relu toutes
 `.availability` (write) ; lecture limitée aux sites où le menu est effectif, écritures revérifiées
 par site ; sites existants désactivés jusqu'à activation explicite ; **dépendants planifiés jamais
 bloquants** (`module_has_dependents` ne compte que les modules disponibles) ; `restaurant.orders`
-ne dépend plus des tables. Autres modules `restaurant.*` toujours `planned` ; **ne pas commencer
-R2 sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+ne dépend plus des tables. Autres modules `restaurant.*` toujours `planned`. **Palier R2 en cours —
+commandes et règlement** (absorbe l'ancien R3 ; décisions D14 d'ADR-0049 ; migrations 0042 et 0043
+distinctes ; un commit par sous-étape R2-A à R2-F, chaque sous-étape sur validation explicite) :
+**R2-A livré** — socle de plateforme : `site_setup` du manifeste (module DISPONIBLE initialisé sur
+un site à son activation, idempotent, jamais d'écrasement, jamais un module planifié),
+`module_settings` des profils (format et validation ; colonne en 0042), `auto_provision` des
+modèles de rôles, compteur brut `next_value`, profils de restauration D11 (nouveaux sites
+seulement) ; `restaurant.orders` reste `planned` en production jusqu'au commit R2-E (N1) ; **ne
+pas commencer R2-B sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

@@ -3,6 +3,8 @@
 # **résolus à l'exécution** contre le registre (ADR-0013) : un nouveau module enrichit
 # automatiquement les rôles concernés, sans migration de données. `exclude` retire des motifs
 # du résultat ; `protected` interdit toute désactivation ou modification par le tenant.
+# `auto_provision = false` (défaut : true) : modèle facultatif, jamais créé automatiquement
+# dans les entreprises, ajouté à la demande seulement (ADR-0049, D12).
 # Aucune permission de module non développé : les modèles sont complétés quand le module existe.
 # Le propriétaire n'est pas un rôle : c'est un attribut de l'appartenance (is_owner).
 # Les codes sont stables (référencés en base par roles.template_code) ; les noms sont affichés.

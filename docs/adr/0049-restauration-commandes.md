@@ -1,7 +1,8 @@
 # ADR-0049 — Restauration : menu, moteur de commandes unique, préparation, règlement, QR
 
 - **Statut** : Acceptée (conception, palier R0) ; **palier R1 livré** (`restaurant.menu`,
-  migration 0041) — les autres modules restent planifiés
+  migration 0041) ; **palier R2 en cours** (commandes et règlement, décisions D14 ; R2-A livré :
+  socle de plateforme) — les autres modules restent planifiés
 - **Date** : 2026-10-09
 - **Prolonge** : [ADR-0020](0020-paiements-des-ventes.md) (paiements),
   [ADR-0022](0022-caisse.md) (caisse), [ADR-0023](0023-point-de-vente.md) (POS),
@@ -87,7 +88,8 @@ commande ; un nouveau règlement reprend les prix figés.
 
 Déduction à la validation de la vente seulement, par le moteur existant (FEFO, lots, CMUP).
 Aucune réservation ; disponibilité indicative + épuisé manuel. Refus au règlement : articles
-nommés, commande conservée, nouvelle tentative après correction.
+nommés, commande conservée, nouvelle tentative après correction. La disponibilité indicative
+est **reportée** après R2 (D14, Q6) : en R2, seul l'épuisé manuel du menu s'applique.
 
 ### D6 — Paiement avant ou après (A1, B2, B6)
 
@@ -245,12 +247,96 @@ offre ∩ activé ∩ disponible ∩ dépendances effectives — seul état qui 
 - Historique en ajout seul et audit conservés ; contrôle du site et de l'entreprise à chaque
   action.
 
+### D14 — Palier R2 : commandes et règlement (décisions validées avant R2-A)
+
+**Périmètre et découpage**
+
+- **Q1** : un seul palier fonctionnel R2 qui **absorbe l'ancien palier R3** (règlement) : un
+  module de commandes sans règlement ne serait pas utilisable (aucune commande close ; « à la
+  commande » : préparation impossible). Migrations distinctes : **0042** (commandes) et
+  **0043** (origine des ventes) ; numéros des paliers suivants inchangés (R4 notifications…).
+  R2 n'est livré qu'à la fin de R2-F.
+- **Sous-étapes**, un commit chacune après ses vérifications (Q8) : R2-A socle de plateforme ;
+  R2-B migration 0042 et moteur T1 ; R2-C prise en charge et modèles de rôles ; R2-D migration
+  0043 et règlement ; R2-E interface et bascule du module ; R2-F E2E, documentation, rapport.
+- **N1** : `restaurant.orders` reste `planned` dans le registre de production jusqu'au commit
+  R2-E ; les tests intermédiaires utilisent un registre de test (copie où le module est
+  disponible), sans drapeau ni chemin d'exception dans le code de production. Aucun commit
+  intermédiaire ne rend le module utilisable sans règlement ni interface ; les commits
+  intermédiaires ne se déploient pas en production.
+- **Q2** : intégration à l'écran du POS reportée ; **un seul moteur** de commandes, le canal
+  (`STAFF` en R2, `POS`, `QR`) étant fourni par la route, jamais par le client ; le POS
+  ordinaire et `SaleService.checkout` ne sont pas modifiés.
+- **Q6** : indicateur de stock reporté (D5) ; aucune réservation ; le contrôle décisif reste
+  celui du règlement.
+
+**Commande**
+
+- **Q3** : numéro affiché clairement après la création ; **ticket de retrait** 80 mm imprimé
+  par le navigateur, sans prix, coût ni stock (numéro, nom d'appel, mode de service, lignes),
+  construit par le serveur ; composant d'impression **propre au module** (N2) :
+  `ReceiptPrinter`, `ReceiptDialog` et le POS ne sont pas modifiés. Réimpression permise à qui
+  peut consulter la commande (`restaurant.order.view`) ; impression **non journalisée** en V1.
+- **Q4** : nom d'appel facultatif (40 caractères au plus), secondaire : le numéro reste la
+  référence.
+- **P-2** : actions de préparation et de service par ligne **en plus** des actions sur toute la
+  commande ; un évènement par requête (lignes concernées) ; sans postes, l'avis « prête » (R4)
+  reste émis quand toute la commande est prête.
+- **P-7** : `version` informatif, exposé à l'interface, jamais exigé en entrée.
+- **P-8** : ajout de lignes idempotent (clé d'idempotence facultative sur l'évènement).
+- **P-13** : écran en trois colonnes « Reçues », « En préparation », « Prêtes ».
+- **N4** : une commande dont toutes les lignes ont été annulées n'est pas réglable
+  (`409 order_empty`) ; elle s'annule avec `restaurant.order.cancel` et un motif obligatoire.
+
+**Règlement et droits**
+
+- **P-11** : état financier (numéro de vente, payé / partiel / dû) visible avec
+  `restaurant.order.view` ; détail des paiements réservé à `sales.payment.view`.
+- **P-12** : `restaurant.order.confirm` déclarée au palier R7 (QR), à son premier usage.
+- **Q5** : modèles Serveur et Préparateur facultatifs (`auto_provision = false`) ; si un rôle
+  personnalisé porte déjà ce nom, la création du modèle est refusée (`409 role_name_taken`),
+  sans renommage automatique.
+
+**Données et migrations**
+
+- **Q7 / N5** : retour arrière de 0042 refusé dès qu'une commande **ou** une ligne de réglages
+  existe, y compris quand seuls des réglages subsistent après désactivation du module ; la
+  désactivation ne supprime aucune donnée et la réactivation retrouve les réglages (le
+  `site_setup` crée seulement ce qui manque). Retour arrière de 0043 refusé s'il existe des
+  ventes `RESTAURANT`.
+- **Q9** : la règle de retour arrière de 0041 est documentée à part
+  ([`RESTAURANT.md`](../architecture/RESTAURANT.md) §11).
+
+**Socle de plateforme (R2-A, livré)**
+
+- `site_setup` du manifeste : initialisation d'un module **disponible** sur un site quand il y
+  devient activé (création du premier site ou d'un nouveau site, activation manuelle,
+  changement de profil du site), dans la transaction de l'activation ; idempotente, sans
+  écrasement ; jamais pour un module planifié ni à la désactivation ; un échec annule
+  l'activation. Un site dont l'activation est antérieure à la livraison d'un module (inerte)
+  est initialisé par le module lui-même à son premier usage (R2-B).
+- `module_settings` des profils : réglages par défaut d'un module proposé par le profil
+  (valeurs scalaires, domaine contrôlé par le module) ; paiement par défaut des commandes
+  porté par chaque profil de restauration (D11). Format et validation livrés en R2-A ;
+  colonne `business_profiles.module_settings` et synchronisation en base dans 0042 (R2-B),
+  comme prévu en R0.
+- `auto_provision` des modèles de rôles (défaut `true`) : un modèle facultatif n'est jamais
+  créé par le provisionnement ; un modèle protégé l'est toujours.
+- `next_value` : compteur brut par entreprise et par clé (numéro court des commandes). La
+  clé `document_sequences.sequence_key` est limitée à 50 caractères : la forme exacte de la
+  clé des commandes (R0 : `restaurant.order:{site_id}:{AAAA-MM-JJ}`, 64 caractères) est
+  arrêtée en R2-B.
+- Profils D11 appliqués aux données : Maquis, Bar, Café, Boulangerie portés par le profil UX
+  `restaurant.default` ; Restaurant, Pizzeria, Traiteur, Restauration rapide le surchargent.
+  Seuls les **nouveaux** sites sont concernés ; les activations des sites existants ne
+  changent pas.
+
 ## Conséquences
 
-- **Ventes (R3)** : `origin_type` / `origin_id` immuables (déclencheur), index unique partiel des
-  ventes actives par origine, canal `RESTAURANT` (contrainte CHECK), méthode interne
-  `create_from_order`, port `sales/origin_port.py` appelé **avant** le verrou de la vente lors
-  d'une annulation (refus si aucun port enregistré : `409 sale_origin_unavailable`).
+- **Ventes (R2-D, ancien R3)** : `origin_type` / `origin_id` immuables (déclencheur), index
+  unique partiel des ventes actives par origine, canal `RESTAURANT` (contrainte CHECK),
+  méthode interne `create_from_order`, port `sales/origin_port.py` appelé **avant** le verrou
+  de la vente lors d'une annulation (refus si aucun port enregistré : `409 sale_origin_unavailable`).
 - **Catalogue** : les commandes non finales s'enregistrent dans les ports assortiment, usage des
   conditionnements et suivi par lot.
 - **Plateforme** : hook `site_setup` à l'activation d'un module sur un site, section

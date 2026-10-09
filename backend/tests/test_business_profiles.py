@@ -431,7 +431,8 @@ def test_profile_belongs_to_each_site(
     ("profile", "enabled", "absent"),
     [
         ("retail.alimentation", {"pos", "cash_register", "stock"}, {"restaurant.tables"}),
-        ("restaurant.maquis", {"pos", "restaurant.tables", "restaurant.orders"}, {"restaurant.qr"}),
+        # D11 (ADR-0049) : menu et commandes activés par défaut ; salle facultative.
+        ("restaurant.maquis", {"pos", "restaurant.menu", "restaurant.orders"}, {"restaurant.qr"}),
         ("automobile.garage", {"stock", "pos"}, {"automobile.workshop"}),
         ("distribution.entrepot", {"stock", "sales"}, {"pos", "cash_register"}),
     ],
@@ -528,7 +529,7 @@ def test_origin_profile_change_before_the_first_site(
             {"s": site.json()["id"]},
         ).all()
     }
-    assert {"pos", "cash_register", "restaurant.tables"} <= activated
+    assert {"pos", "cash_register", "restaurant.orders"} <= activated
     assert "restaurant.qr" not in activated
     refused = owner.put("/tenant/business-profile", json={"code": "retail.alimentation"})
     assert (refused.status_code, refused.json()["code"]) == (409, "profile_is_per_site")

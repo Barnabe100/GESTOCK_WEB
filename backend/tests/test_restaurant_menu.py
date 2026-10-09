@@ -672,7 +672,17 @@ def test_available_dependents_still_block_and_planned_ones_never_do(
     resto: SimpleNamespace, owner_db: Session
 ) -> None:
     r = resto
-    assert _row(owner_db, r.a, "restaurant.recipes") is True  # défaut inerte (planifié)
+    # Activation inerte héritée (site créé quand les recettes étaient activées par défaut, avant
+    # D11) : un module planifié qui dépend du catalogue.
+    owner_db.execute(
+        text(
+            "UPDATE site_modules SET enabled = true "
+            "WHERE site_id = :s AND module_code = 'restaurant.recipes'"
+        ),
+        {"s": r.a},
+    )
+    owner_db.commit()
+    assert _row(owner_db, r.a, "restaurant.recipes") is True
     # Dépendants mixtes : seul le disponible est cité ; le refus demeure.
     busy = set_site_module(r.owner, r.a, "catalog", False)
     assert _code(busy) == (409, "module_has_dependents")

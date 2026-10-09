@@ -32,7 +32,7 @@ from app.platform.tenancy.schemas import (
     SiteUpdate,
     TenantUpdate,
 )
-from app.platform.tenancy.site_modules import init_site_modules, lock_site
+from app.platform.tenancy.site_modules import init_site_modules, lock_site, run_site_setup
 from app.shared.clock import utcnow
 from app.shared.ids import new_id
 
@@ -179,6 +179,7 @@ class SiteService:
             site.id,
             CapabilityService(self.db, get_registry()).site_profile(site.id),
             current_terms(self.db, subscription).modules,
+            get_registry(),
         )
         self.db.flush()
         record_audit(
@@ -460,6 +461,10 @@ class ModuleService:
         previous = row.enabled if row.id is not None else None
         row.enabled = enabled
         self.db.flush()
+        if enabled:
+            # Palier R2-A : initialisation du module sur ce site (idempotente, jamais
+            # d'écrasement — une réactivation retrouve la configuration conservée).
+            run_site_setup(self.db, self.registry, self.ctx.tenant_id, site.id, profile, {code})
         record_audit(
             self.db,
             action="module.enabled" if enabled else "module.disabled",

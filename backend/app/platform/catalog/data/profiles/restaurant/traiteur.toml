@@ -4,3 +4,16 @@ ux_profile = "restaurant.default"
 name = "Traiteur"
 description = "Préparations sur commande et événements."
 sort_order = 80
+
+# Modules activés par défaut / facultatifs (ADR-0049, D11) : surcharge de restaurant.default.
+modules = [
+  "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables",
+  "payments", "cash_register", "pos", "reports", "alerts",
+  "restaurant.menu", "restaurant.orders", "restaurant.kitchen",
+]
+optional_modules = ["restaurant.tables", "restaurant.qr", "restaurant.recipes"]
+
+# Paiement par défaut des commandes du site (ADR-0049, D6 / D11) : recopié à l'activation du
+# module sur un site, modifiable ensuite par le gestionnaire, jamais réécrit.
+[module_settings."restaurant.orders"]
+payment_timing = "AT_ORDER"

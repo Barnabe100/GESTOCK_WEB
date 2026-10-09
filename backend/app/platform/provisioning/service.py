@@ -198,7 +198,7 @@ class TenantProvisioningService:
             )
             self.db.add(site)
             self.db.flush()  # le site existe avant son rattachement (clé étrangère composite)
-            init_site_modules(self.db, tenant_id, site.id, profile, plan_modules)
+            init_site_modules(self.db, tenant_id, site.id, profile, plan_modules, self.registry)
             # 1 site = 1 abonnement (ADR-0033) ; sans site (inscription publique), l'abonnement
             # attend le premier site, auquel il sera rattaché.
             subscription.site_id = site.id
@@ -310,9 +310,13 @@ class TenantProvisioningService:
 
     def _create_roles(self, tenant_id: uuid.UUID) -> Role:
         """Rôles système (permissions résolues à l'exécution depuis leur modèle). Renvoie le
-        rôle protégé d'administration du tenant (le catalogue en garantit l'existence)."""
+        rôle protégé d'administration du tenant (le catalogue en garantit l'existence). Les
+        modèles facultatifs (``auto_provision = false``) ne sont jamais créés ici : ils
+        s'ajoutent à la demande (``POST /roles/from-template``)."""
         admin: Role | None = None
         for template in self.role_templates.values():
+            if not template.auto_provision:
+                continue
             role = Role(
                 tenant_id=tenant_id,
                 name=template.name,
