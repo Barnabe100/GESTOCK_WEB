@@ -24,10 +24,11 @@ def test_profiles_drive_modules_navigation_and_terminology(provision: Any, api_f
 
     assert {"restaurant.tables", "restaurant.kitchen"} <= _module_codes(resto)
     assert not [m for m in _module_codes(quinc) if m.startswith("restaurant.")]
-    # Salle, commandes, cuisine : modules planifiés, jamais proposés comme accessibles.
-    assert resto["navigation"][:3] == ["dashboard", "pos", "sales"]
-    for caps in (resto, quinc):
-        assert not [m for m in caps["navigation"] if m.startswith("restaurant.")]
+    # Salle, commandes, cuisine : modules planifiés, jamais proposés comme accessibles ; le
+    # menu (palier R1, ADR-0049) est livré et activé par défaut sur un site de restauration.
+    assert resto["navigation"][:3] == ["dashboard", "restaurant.menu", "pos"]
+    assert [m for m in resto["navigation"] if m.startswith("restaurant.")] == ["restaurant.menu"]
+    assert not [m for m in quinc["navigation"] if m.startswith("restaurant.")]
     assert {"restaurant.tables", "restaurant.kitchen"} <= set(resto["ux"]["upcoming"])
     assert resto["terminology"]["fr"]["catalog"]["item"] == "Produit"
     assert quinc["terminology"]["fr"]["catalog"]["item"] == "Article"

@@ -260,6 +260,18 @@ Numéros de vente : `document_sequences` (clé `{site_id}:sale:{année}`, `BIGIN
 Solde théorique = Σ mouvements signés (jamais stocké hors instantané de clôture). Détails :
 [`CASH_REGISTER.md`](CASH_REGISTER.md).
 
+### Menu des sites de restauration (palier R1, isolés par RLS, [ADR-0049](../adr/0049-restauration-commandes.md))
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `restaurant_menu_sections` | `tenant_id`, `site_id`, `name` (100), `sort_order`, `is_active` — section du menu d'UN site, jamais supprimée | Index unique `uq_restaurant_menu_sections_site_name (tenant_id, site_id, lower(name))` ; `UNIQUE (tenant_id, site_id, id)` (cible des éléments) ; FK composite `(tenant_id, site_id)` → `sites` ; `CHECK` nom sans espaces de bord |
+| `restaurant_menu_items` | `tenant_id`, `site_id`, `section_id`, `article_id`, `packaging_id` (nul = unité de base), `display_name` (150), `description` (500), `sort_order`, `is_active`, `available` (« épuisé » manuel), `unavailable_reason` (200) — présentation d'un article du catalogue au menu d'un site ; prix lu dans le catalogue (aucun prix stocké) ; jamais supprimé | `UNIQUE NULLS NOT DISTINCT (tenant_id, site_id, article_id, packaging_id)` (`uq_restaurant_menu_items_site_presentation` : une présentation au plus une fois par site, unité de base comprise) ; FK composites `(tenant_id, site_id, section_id)` → section du MÊME site, `(tenant_id, article_id)` → `catalog_articles`, `(tenant_id, article_id, packaging_id)` → `catalog_packagings (tenant_id, article_id, id)` (conditionnement de l'article) ; `CHECK` motif seulement pour un élément épuisé |
+
+RLS `ENABLE` + `FORCE` ; rôle applicatif : `SELECT, INSERT` + `UPDATE` des seules colonnes
+modifiables (jamais de suppression) ; aucun droit pour le rôle de la console. Migration 0041 :
+`restaurant.menu` remis à `false` dans `site_modules` sur les sites existants (activation
+explicite, D10) ; retour arrière refusé s'il perdait un menu saisi.
+
 ### Créances (Phase 2.8) : aucune table
 
 Une créance ouverte est une vente `VALIDATED` dont le reste dû (`total` − paiements

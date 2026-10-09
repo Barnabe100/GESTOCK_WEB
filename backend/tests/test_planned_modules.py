@@ -160,7 +160,7 @@ def test_planned_module_stays_visible_and_consultable(resto: SimpleNamespace) ->
     set_site_module(resto.owner, resto.site, "restaurant.qr", True)
     site_modules = _site_modules(resto.owner, resto.site)
     assert site_modules["restaurant.qr"]["status"] == "planned"
-    assert site_modules["restaurant.menu"]["status"] == "planned"
+    assert site_modules["restaurant.orders"]["status"] == "planned"
     summary = {m["code"]: m for m in resto.owner.get("/modules").json()}
     assert summary["restaurant.qr"]["status"] == "planned"
     assert summary["pos"]["status"] == "available" and summary["pos"]["effective"] is True

@@ -147,6 +147,15 @@ point d'activation explicite, `ModuleService.set_enabled_for_site`
 (`PUT /sites/{id}/modules/{code}`), refuse `422 module_not_implemented` — requête directe
 comprise ; hors plan et non proposé gardent `422 module_not_offered` (palier E.1).
 
+**Livraison d'un module planifié** (palier R1, [ADR-0049](../adr/0049-restauration-commandes.md)
+D10) : `restaurant.menu` est le premier module restaurant livré (`available`) ; sa migration de
+livraison (0041) le remet à « désactivé » sur les sites **existants** (activation explicite
+par `organization.module.manage`), les nouveaux sites de restauration le reçoivent activé
+(défaut du profil). Les autres modules `restaurant.*` restent planifiés ; leurs activations
+inertes ne sont pas modifiées et **ne bloquent jamais** la désactivation d'un module livré
+(seuls les dépendants disponibles comptent dans `module_has_dependents`). La rubrique
+« Restaurant » n'affiche que le menu ; « À venir » liste les autres modules.
+
 ## 7. Terminologie et thème
 
 - Terminologie : profil UX puis surcharges du profil (fusion), appliquée à l'espace i18n

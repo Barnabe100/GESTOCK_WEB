@@ -20,10 +20,10 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     # depuis la Phase 3.0 (ADR-0023).
     _planned("payments", "sales"),
     _planned("reports"),
-    # Restauration (V2)
-    _planned("restaurant.menu", "catalog"),
+    # Restauration (ADR-0049) : ``restaurant.menu`` est livré (palier R1, paquet
+    # ``restaurant_menu``) ; les commandes ne dépendent plus des tables (D1, facultatives).
     _planned("restaurant.tables"),
-    _planned("restaurant.orders", "restaurant.menu", "restaurant.tables"),
+    _planned("restaurant.orders", "restaurant.menu"),
     _planned("restaurant.kitchen", "restaurant.orders"),
     _planned("restaurant.qr", "restaurant.orders"),
     _planned("restaurant.recipes", "catalog", "stock"),

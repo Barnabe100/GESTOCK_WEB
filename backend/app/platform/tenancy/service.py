@@ -424,7 +424,15 @@ class ModuleService:
                     extra={"missing": missing},
                 )
         else:
-            dependents = sorted(self.registry.dependents_of(code) & currently)
+            # Seuls les modules DISPONIBLES comptent : l'activation inerte d'un module non livré
+            # (défaut du profil écrit pendant sa période « Bientôt disponible », E.1) ne bloque
+            # jamais la désactivation d'un module livré (ADR-0049, D10). Ses lignes restent
+            # inchangées ; sa migration de livraison les remet à ``false``.
+            dependents = sorted(
+                d
+                for d in self.registry.dependents_of(code) & currently
+                if self.registry.get(d).status is ModuleStatus.AVAILABLE
+            )
             if dependents:
                 raise ConflictError(
                     "D'autres modules activés sur ce site en dépendent",

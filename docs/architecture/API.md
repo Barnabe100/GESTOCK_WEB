@@ -420,6 +420,33 @@ logique propre : orchestration de `SaleService` (et, par lui, `StockService`,
 
 Ventes : `SaleOut.channel` (`BACKOFFICE` \| `POS`), filtre `GET /sales?channel=`.
 
+### Menu des sites de restauration (module `restaurant.menu`) — palier R1
+
+Décisions : [ADR-0049](../adr/0049-restauration-commandes.md) ; conception :
+[`RESTAURANT.md`](RESTAURANT.md). Le menu présente des produits du catalogue GLOBAL (aucun prix
+par site, aucune image, aucun coût exposé) ; il ne dépend que du catalogue (assortiment compris).
+Lecture : site sélectionné sans menu effectif → `403 module_unavailable` (routeur) ; sans site
+sélectionné, seuls les sites où le menu est effectif pour le membre sont lus (`site_id` d'un
+autre site : liste vide ; élément d'un tel site : `404`). Écriture : revérifiée pour le site visé
+(abonnement et modules : `permission_denied` / `subscription_restricted`, `site_mismatch`,
+`site_access_denied`).
+
+| Méthode | Chemin | Permissions | Rôle |
+|---|---|---|---|
+| GET | `/restaurant/menu/sections` · `/sections/{id}` | `restaurant.menu.view` | Sections (`search`, `site_id`, `status` ; tri `position` par défaut, `name`, `site`, `created_at`) : site, nom, ordre, actif, `item_count` ; `404 menu_section_not_found` |
+| POST | `/restaurant/menu/sections` | `restaurant.menu.manage` | Création (`site_id` facultatif si un site est sélectionné, `name`, `sort_order`) ; nom unique par site sans casse, garanti en base (`409 menu_section_name_taken`, création concurrente comprise) |
+| PUT | `/restaurant/menu/sections/{id}` | `restaurant.menu.manage` | Nom et ordre (audit avant / après) |
+| POST | `/restaurant/menu/sections/{id}/activate` · `/deactivate` | `restaurant.menu.manage` | Section désactivée : éléments conservés, non commandables |
+| GET | `/restaurant/menu/items` · `/items/{id}` | `restaurant.menu.view` | Éléments (`search` : nom au menu, référence, désignation, tous les codes-barres ; `site_id`, `section_id`, `status`, `availability` = `available` \| `unavailable` \| `all` ; tri `position` — sections puis éléments — par défaut, `name`, `reference`, `section`, `created_at`) : présentation (article, conditionnement, conversion), prix du catalogue COURANT (`null` : conditionnement désactivé ou sans prix), `available`, `unavailable_reason`, `orderable` et `blockers` (`item_inactive`, `section_inactive`, `unavailable`, `article_inactive`, `article_not_in_site_assortment`, `packaging_inactive`, `packaging_price_not_set`) ; `404 menu_item_not_found` |
+| POST | `/restaurant/menu/items` | `restaurant.menu.manage` | Ajout d'une présentation (`site_id`, `section_id`, `article_id`, `packaging_id` nul = unité de base, `display_name`, `description`, `sort_order`) ; contrôles du serveur : `404 article_not_found` / `menu_section_not_found` (section d'un autre site comprise), `422 article_inactive`, `article_not_in_site_assortment`, `packaging_not_found`, `packaging_inactive`, `packaging_price_not_set`, `menu_section_inactive` ; une présentation au plus une fois par site, garanti en base (`409 menu_item_exists`, avec l'`id` existant) ; prix, disponibilité et statut jamais acceptés du client |
+| PUT | `/restaurant/menu/items/{id}` | `restaurant.menu.manage` | Section (du même site), nom au menu, description, ordre ; la présentation ne change jamais |
+| POST | `/restaurant/menu/items/{id}/activate` · `/deactivate` | `restaurant.menu.manage` | Réactivation = même ligne, contrôles de la présentation refaits |
+| PUT | `/restaurant/menu/items/{id}/availability` | `restaurant.menu.availability` | « Épuisé » manuel (`available`, `reason` facultatif, conservé seulement pour un élément épuisé) ; aucun effet sur le stock ; l'interface relit la liste toutes les 15 s |
+
+Audit : `restaurant_menu.section_created` / `section_updated` / `section_activated` /
+`section_deactivated`, `restaurant_menu.item_created` / `item_updated` / `item_activated` /
+`item_deactivated` / `item_availability_changed`.
+
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 
 API séparée de celle des entreprises (`app.console.main`, rôle SQL dédié), réservée aux

@@ -147,7 +147,11 @@ test.describe('Profils d’activité', () => {
   }) => {
     const caps = await capabilities(request, await tokenFor(request, EMAIL, PASSWORD, RESTO));
     expect(caps.profile.code).toBe('restaurant.restaurant');
-    expect(caps.ux.navigation.map((g) => g.group)).not.toContain('restaurant');
+    // Palier R1 (ADR-0049) : seul le menu est livré — la rubrique « Restaurant » ne contient que
+    // lui ; tables, commandes, cuisine restent planifiées.
+    expect(caps.ux.navigation.find((g) => g.group === 'restaurant')?.modules).toEqual([
+      'restaurant.menu',
+    ]);
     expect(caps.ux.upcoming).toEqual(
       expect.arrayContaining(['restaurant.tables', 'restaurant.kitchen']),
     );
@@ -158,15 +162,18 @@ test.describe('Profils d’activité', () => {
     await openMenu(page);
     // Ventes et caisse d'abord ; les produits sont rangés dans « Stock ».
     expect(await menuGroups(page)).toEqual([
+      'Restaurant',
       'Ventes et clients',
       'Caisse',
       'Stock',
       'Administration',
     ]);
+    const restaurantLinks = sidebar(page).locator('ul[aria-labelledby="nav-restaurant"] a');
+    await expect(restaurantLinks).toHaveText(['Menu']);
     const stockLinks = sidebar(page).locator('ul[aria-labelledby="nav-stock"] a');
     await expect(stockLinks.first()).toHaveText('Produits');
     const links = await sidebar(page).getByRole('link').allTextContents();
-    expect(links.join(' | ')).not.toMatch(/Tables|Cuisine|Salle|Commandes|Menu/);
+    expect(links.join(' | ')).not.toMatch(/Tables|Cuisine|Salle|Commandes/);
 
     // Annoncées « à venir », sans lien.
     const upcoming = page.getByRole('list', { name: 'À venir pour votre activité' });

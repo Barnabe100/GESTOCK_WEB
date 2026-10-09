@@ -1,6 +1,7 @@
 # ADR-0049 — Restauration : menu, moteur de commandes unique, préparation, règlement, QR
 
-- **Statut** : Acceptée (conception, palier R0) — **aucun module livré, aucun code**
+- **Statut** : Acceptée (conception, palier R0) ; **palier R1 livré** (`restaurant.menu`,
+  migration 0041) — les autres modules restent planifiés
 - **Date** : 2026-10-09
 - **Prolonge** : [ADR-0020](0020-paiements-des-ventes.md) (paiements),
   [ADR-0022](0022-caisse.md) (caisse), [ADR-0023](0023-point-de-vente.md) (POS),
@@ -165,6 +166,14 @@ migration de livraison remet à `false` les activations héritées de la périod
 (descente sans restauration : ces lignes étaient inertes). C'est le traitement, module par
 module, de la décision ouverte d'E.1 (ADR-0048). Nouveaux sites : défauts du profil dans les
 limites de l'offre. Un module non livré n'est jamais utilisable.
+
+Précision du palier R1 : une activation inerte d'un module planifié ne bloque jamais la
+désactivation d'un module livré — seuls les dépendants **disponibles** comptent dans
+`module_has_dependents` (ex. : le menu se désactive même si les commandes, planifiées, sont
+« activées » sur le site). Les lignes inertes ne sont ni lues ni modifiées ; la migration de
+livraison du module concerné les remet à `false`. Lecture du menu : site sélectionné sans menu
+effectif → `403 module_unavailable` ; sans site sélectionné, seuls les sites où le menu est
+effectif pour le membre sont lus.
 
 ### D11 — Profils (données)
 

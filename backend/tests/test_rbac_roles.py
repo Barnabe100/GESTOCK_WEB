@@ -97,6 +97,8 @@ def test_base_roles(owner: Api) -> None:
         "cash_register.session.close",
         "pos.terminal.use",  # point de vente (Phase 3.0)
         "subscription.activation.check",  # contrôle du poste installé (Phase 3.3-B3)
+        "restaurant.menu.view",  # menu des sites et « épuisé » (palier R1, ADR-0049)
+        "restaurant.menu.availability",
     }
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer
@@ -188,7 +190,12 @@ def test_duplicate_role(owner: Api) -> None:
     assert copy.status_code == 201, copy.text
     duplicated = copy.json()
     assert duplicated["is_system"] is False and duplicated["template_code"] is None
-    assert duplicated["permission_codes"] == roles["manager"]["permission_codes"]
+    # Copie limitée à l'offre de l'entreprise (ADR-0030) : le menu (restauration) n'est pas
+    # proposé à une quincaillerie — ses permissions du rôle de base ne sont pas reprises.
+    assert duplicated["permission_codes"] == [
+        c for c in roles["manager"]["permission_codes"] if not c.startswith("restaurant.")
+    ]
+    assert "restaurant.menu.manage" in roles["manager"]["permission_codes"]
     # La copie est un rôle personnalisé : modifiable.
     extended = owner.patch(
         f"/roles/{duplicated['id']}",

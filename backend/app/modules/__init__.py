@@ -13,6 +13,7 @@ from app.modules.inventory_count.manifest import MANIFEST as INVENTORY_COUNT
 from app.modules.planned import PLANNED_MODULES
 from app.modules.pos.manifest import MANIFEST as POS
 from app.modules.receivables.manifest import MANIFEST as RECEIVABLES
+from app.modules.restaurant_menu.manifest import MANIFEST as RESTAURANT_MENU
 from app.modules.sales.manifest import MANIFEST as SALES
 from app.modules.stock.manifest import MANIFEST as STOCK
 from app.modules.suppliers.manifest import MANIFEST as SUPPLIERS
@@ -30,5 +31,6 @@ BUSINESS_MODULES: tuple[ModuleManifest, ...] = (
     INVENTORY_COUNT,
     RECEIVABLES,
     POS,
+    RESTAURANT_MENU,
     *PLANNED_MODULES,
 )

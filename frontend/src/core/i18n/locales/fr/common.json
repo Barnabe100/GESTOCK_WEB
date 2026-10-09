@@ -101,7 +101,8 @@
     "paymentMethods": "Moyens de paiement",
     "stockLocations": "Emplacements",
     "stockLots": "Lots",
-    "assortment": "Assortiment des sites"
+    "assortment": "Assortiment des sites",
+    "restaurantMenu": "Menu"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -286,7 +287,9 @@
       "cash_movements": "Mouvements de caisse",
       "cash_sessions_open": "Sessions de caisse ouvertes",
       "cash_registers": "Postes de caisse",
-      "assortment_articles": "Articles de l'assortiment"
+      "assortment_articles": "Articles de l'assortiment",
+      "menu_sections": "Sections du menu",
+      "menu_items": "Éléments du menu"
     }
   },
   "company": {
@@ -549,7 +552,10 @@
     "organization.profile.view": "Consulter les profils d'activité",
     "organization.profile.manage": "Changer le profil d'activité",
     "organization.onboarding.view": "Consulter l'installation (onboarding)",
-    "organization.onboarding.manage": "Démarrer les étapes de l'installation"
+    "organization.onboarding.manage": "Démarrer les étapes de l'installation",
+    "restaurant.menu.view": "Consulter le menu",
+    "restaurant.menu.manage": "Gérer le menu (sections, éléments)",
+    "restaurant.menu.availability": "Marquer un élément du menu épuisé ou disponible"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -2107,5 +2113,70 @@
     "neverPrinted": "Reçu jamais imprimé.",
     "printedCount_one": "Reçu imprimé {{count}} fois.",
     "printedCount_other": "Reçu imprimé {{count}} fois."
+  },
+  "restaurantMenu": {
+    "title": "Menu",
+    "subtitle": "Ce que le site propose à la vente : sections et produits du catalogue présents dans l'assortiment du site, au prix du catalogue. L'« épuisé » est actualisé automatiquement.",
+    "itemsTab": "Éléments du menu",
+    "sectionsTab": "Sections",
+    "newSection": "Nouvelle section",
+    "editSection": "Modifier la section",
+    "newItem": "Ajouter au menu",
+    "editItem": "Modifier l'élément",
+    "sectionName": "Nom de la section",
+    "sectionNameHelp": "Unique sur le site (ex. Boissons, Grillades, Desserts).",
+    "sortOrder": "Ordre d'affichage",
+    "sortOrderHelp": "Les plus petits nombres apparaissent en premier.",
+    "itemCount": "Éléments",
+    "status": "Statut",
+    "sectionSaved": "Section enregistrée",
+    "itemSaved": "Élément enregistré",
+    "statusChanged": "Statut modifié",
+    "deactivateSectionTitle": "Désactiver la section",
+    "deactivateSectionConfirm": "Désactiver « {{name}} » ? Ses éléments restent au menu mais ne sont plus commandables.",
+    "deactivateItemTitle": "Désactiver l'élément",
+    "deactivateItemConfirm": "Désactiver « {{name}} » ? Il reste enregistré et pourra être réactivé.",
+    "searchSections": "Rechercher une section…",
+    "searchItems": "Rechercher (nom, référence, code-barres)…",
+    "noSections": "Aucune section.",
+    "noItems": "Aucun élément au menu.",
+    "section": "Section",
+    "chooseSection": "Choisir une section",
+    "noActiveSection": "Aucune section active sur ce site : créez d'abord une section.",
+    "allSections": "Toutes les sections",
+    "article": "Produit",
+    "articleHelp": "Uniquement les produits de l'assortiment du site.",
+    "presentation": "Présentation",
+    "presentationHelp": "Unité de base ou conditionnement au prix configuré ; une présentation figure une seule fois au menu du site.",
+    "displayName": "Nom au menu",
+    "displayNameHelp": "Facultatif : sinon, la désignation du catalogue.",
+    "description": "Description",
+    "item": "Élément",
+    "price": "Prix",
+    "availability": "Disponibilité",
+    "available": "Disponible",
+    "unavailable": "Épuisé",
+    "availabilityFilter": {
+      "all": "Toutes disponibilités",
+      "available": "Disponibles",
+      "unavailable": "Épuisés"
+    },
+    "markUnavailable": "Marquer épuisé",
+    "markAvailable": "Remettre disponible",
+    "markedUnavailable": "« {{name}} » est marqué épuisé",
+    "unavailableHelp": "« {{name}} » ne pourra plus être commandé jusqu'à sa remise en disponibilité. Le stock n'est pas modifié.",
+    "unavailableReason": "Motif (facultatif)",
+    "orderableHeader": "Commandable",
+    "orderable": "Commandable",
+    "notOrderable": "Non commandable",
+    "blockers": {
+      "item_inactive": "élément désactivé",
+      "section_inactive": "section désactivée",
+      "unavailable": "épuisé",
+      "article_inactive": "produit désactivé au catalogue",
+      "article_not_in_site_assortment": "hors assortiment du site",
+      "packaging_inactive": "conditionnement désactivé",
+      "packaging_price_not_set": "prix du conditionnement non configuré"
+    }
   }
 }

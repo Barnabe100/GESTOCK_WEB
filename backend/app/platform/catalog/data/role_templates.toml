@@ -15,7 +15,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires) et alertes, sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires), alertes et restauration (menu des sites), sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -35,6 +35,8 @@ permissions = [
   "stock.transfer.validate",
   "alerts.*",
   "inventory_count.*",
+  # Restauration (ADR-0049) : toutes les permissions des modules restaurant LIVRÉS (R1 : menu).
+  "restaurant.*",
   "subscription.activation.check",
 ]
 # Limite de crédit des clients (Lot 2) et modification des prix catalogue (Lot 3-A) : réservées
@@ -47,7 +49,7 @@ exclude = [
 
 [roles.seller]
 name = "Vendeur"
-description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients et des créances ; sans annulation."
+description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients, des créances et du menu (avec « épuisé »), sans annulation."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
@@ -62,6 +64,8 @@ permissions = [
   "stock.level.view",
   "alerts.stock.view",
   "inventory_count.inventory.view",
+  "restaurant.menu.view",
+  "restaurant.menu.availability",
   "subscription.activation.check",
 ]
 

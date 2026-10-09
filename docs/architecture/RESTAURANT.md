@@ -1,9 +1,10 @@
 # Restauration / Maquis — conception
 
-> **Conception validée — non implémentée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
-> (arbitrages A1–A7, B1–B6, Z1–Z3, W1). Les modules `restaurant.*` restent `planned` (palier
-> E.1) jusqu'à la livraison de leur palier. **Aucun palier ne commence sans validation
-> explicite.** Les numéros de migration sont indicatifs.
+> **Conception validée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
+> (arbitrages A1–A7, B1–B6, Z1–Z3, W1). **Palier R1 (menu) livré** (migration 0041) ; les autres
+> modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison de leur palier.
+> **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
+> suivants sont indicatifs.
 
 ## 1. Vocabulaire
 
@@ -40,6 +41,15 @@ l'offre, activé sur le site, **effectif** (seul état qui ouvre l'accès) — A
   des lignes routées vers un poste ne sont pas finales (`module_has_open_operations`).
 - Désactiver `restaurant.orders` : refusé avec des dépendants activés (`module_has_dependents`) ou
   des commandes non finales (`module_has_open_operations`).
+- Activations inertes des modules encore planifiés (défauts du profil) : ni lues ni modifiées ;
+  elles ne bloquent jamais la désactivation d'un module livré (seuls les dépendants DISPONIBLES
+  comptent dans `module_has_dependents`, R1). Ex. : le menu se désactive même si les commandes
+  (planifiées) sont « activées » sur le site ; la migration de livraison des commandes (R2) les
+  remettra à `false`.
+- Lecture du menu (R1) : site sélectionné sans menu effectif → `403 module_unavailable`
+  (`require_module` du routeur) ; sans site sélectionné, le service ne lit que les sites où le
+  menu est effectif pour le membre (`has_site_permission(site, "restaurant.menu.view")`) ; les
+  écritures sont revérifiées pour le site visé (`ensure_site_allows`).
 - Réglages par site (mode de paiement, protection, délai entre prises, acceptation automatique
   QR) : créés à l'activation par le hook `site_setup` depuis `module_settings` du profil, jamais
   écrasés par un changement de profil.
@@ -66,13 +76,15 @@ Règles communes : `TenantScopedMixin`, RLS `ENABLE` + `FORCE` (`tenant_isolatio
 étrangères composites `(tenant_id, …)`, `UNIQUE (tenant_id, id)`, aucune suppression
 (désactivation), `NUMERIC(18,2)` / `NUMERIC(18,3)`, droits minimaux dans chaque migration.
 
-### R1 — Menu
+### R1 — Menu (livré, migration 0041)
 
 - `restaurant_menu_sections` : `site_id`, `name` (100), `sort_order`, `is_active` ; nom unique
-  par site, insensible à la casse.
+  par site, insensible à la casse (`uq_restaurant_menu_sections_site_name` ; création
+  concurrente : `409 menu_section_name_taken`).
 - `restaurant_menu_items` : `site_id`, `section_id`, `article_id`, `packaging_id` (NULL = unité
-  de base), `display_name`, `description`, `sort_order`, `is_active`, `available` (épuisé
-  manuel), `unavailable_reason`, `station_id` (R6).
+  de base), `display_name` (150), `description` (500), `sort_order`, `is_active`, `available`
+  (épuisé manuel), `unavailable_reason` (200) ; `station_id` ajouté en R6. Aucun prix stocké
+  (prix du catalogue courant) ; la présentation (article, conditionnement) ne change jamais.
 
 ```sql
 CONSTRAINT uq_restaurant_menu_items_site_presentation
@@ -83,9 +95,12 @@ CONSTRAINT fk_restaurant_menu_items_packaging
 ```
 
 PostgreSQL ≥ 15 (projet : 16) ; SQLAlchemy `postgresql_nulls_not_distinct=True`, comme
-`uq_stock_movements_line_type_site_lot`. Contrainte totale (pas partielle) : rajouter une
-présentation désactivée réactive la même ligne. Élément non commandable (calculé) : article
-hors assortiment actif du site, inactif, ou conditionnement sans prix configuré.
+`uq_stock_movements_line_type_site_lot`. Contrainte totale (pas partielle) : une présentation
+désactivée se réactive (même ligne, contrôles refaits) ; un nouvel ajout est refusé
+`409 menu_item_exists` avec l'identifiant existant. Élément non commandable (calculé à chaque
+lecture, motifs `blockers`) : élément ou section désactivé, épuisé, article inactif ou hors
+assortiment actif du site, conditionnement désactivé ou sans prix configuré. Le menu ne bloque
+jamais le catalogue (aucun port ; R2 enregistrera les commandes ouvertes).
 
 ### R2 — Commandes
 
@@ -274,7 +289,7 @@ qu'à sa prochaine licence.
 
 | Migration | Palier | Contenu |
 |---|---|---|
-| 0041 | R1 | menu (contrainte `NULLS NOT DISTINCT`, FK composite), RLS, droits ; remise à `false` de `restaurant.menu` |
+| 0041 | R1 (livrée) | menu (contrainte `NULLS NOT DISTINCT`, FK composite), RLS, droits ; remise à `false` de `restaurant.menu` ; descente refusée si un menu a été saisi |
 | 0042 | R2 | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings` ; remise à `false` de `restaurant.orders` |
 | 0043 | R3 | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT` ; descente refusée si des ventes `RESTAURANT` existent |
 | 0044 | R4 | `member_notifications`, politiques RLS, droits du rôle de purge |

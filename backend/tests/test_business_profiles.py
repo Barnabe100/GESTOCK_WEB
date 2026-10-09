@@ -232,9 +232,10 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     assert caps["profile"]["sector"]["code"] == "restaurant"
     assert caps["profile"]["ux_profile"] == "restaurant.default"
     groups = _groups(caps)
-    # Salle, tables, commandes, cuisine, menu : planifiés → aucune rubrique « Restaurant ».
-    assert "restaurant" not in groups
-    assert list(groups) == ["home", "sales", "cash", "stock", "admin"]
+    # Palier R1 (ADR-0049) : seul le menu est livré — la rubrique « Restaurant » ne montre que
+    # lui ; salle, tables, commandes, cuisine : planifiés, jamais proposés.
+    assert groups["restaurant"] == ["restaurant.menu"]
+    assert list(groups) == ["home", "restaurant", "sales", "cash", "stock", "admin"]
     assert groups["stock"] == ["catalog", "stock", "inventory_count", "alerts", "suppliers"]
     assert not [w for w in caps["ux"]["dashboard"]["widgets"] if w.startswith("restaurant.")]
     assert caps["ux"]["dashboard"]["widgets"][:2] == ["sales:today", "cash_register:open_sessions"]
@@ -243,7 +244,6 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
         "restaurant.tables",
         "restaurant.orders",
         "restaurant.kitchen",
-        "restaurant.menu",
         "restaurant.recipes",
         "restaurant.qr",
         "reports",
@@ -251,9 +251,10 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     ]
     assert caps["ux"]["theme"] == {"accent": "orange", "density": "comfortable", "icon": None}
     assert caps["terminology"]["fr"]["catalog"]["items"] == "Produits"
-    # Aucune route planifiée n'est servie.
+    # Aucune route planifiée n'est servie ; le menu livré l'est.
     owner = api_for("owner@resto.example.com")
     assert owner.get("/restaurant/tables").status_code == 404
+    assert owner.get("/restaurant/menu/sections").status_code == 200
 
 
 @pytest.mark.parametrize(

@@ -335,12 +335,20 @@ les routes incluses), synthèse du modèle dans ADR-0048 ; correctif : la créat
 attend que l'abonnement d'inscription soit connu (un clic sur « Enregistrer » pendant ce
 chargement n'envoyait rien). **Restauration / Maquis — conception validée (palier R0)**
 ([ADR-0049](docs/adr/0049-restauration-commandes.md),
-[`RESTAURANT.md`](docs/architecture/RESTAURANT.md) ; arbitrages A1–A7, B1–B6, Z1–Z3, W1) :
-**aucun module livré**, modules `restaurant.*` toujours `planned` ; décision ouverte d'E.1
-traitée module par module à la livraison (activations remises à `false` sur les sites
-existants) ; limites connues de V1 : commandes servies non réglées sans client à créditer,
-remboursement d'espèces après clôture de la session d'origine. Paliers R1 (Menu) à R9 ;
-**ne pas commencer R1 sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+[`RESTAURANT.md`](docs/architecture/RESTAURANT.md) ; arbitrages A1–A7, B1–B6, Z1–Z3, W1) ;
+décision ouverte d'E.1 traitée module par module à la livraison (activations remises à `false`
+sur les sites existants) ; limites connues de V1 : commandes servies non réglées sans client à
+créditer, remboursement d'espèces après clôture de la session d'origine. **Palier R1 livré —
+menu** (module `restaurant.menu`, paquet `restaurant_menu`, migration 0041) : sections et
+éléments d'UN site (présentation du catalogue : unité de base ou conditionnement, au plus une
+fois par site — `UNIQUE NULLS NOT DISTINCT` —, assortiment ACTIF du site, conditionnement sans
+prix refusé, prix du catalogue, aucun coût), « épuisé » manuel relu toutes les 15 s, état
+« commandable » calculé (`blockers`) ; permissions `restaurant.menu.view` / `.manage` (admin) /
+`.availability` (write) ; lecture limitée aux sites où le menu est effectif, écritures revérifiées
+par site ; sites existants désactivés jusqu'à activation explicite ; **dépendants planifiés jamais
+bloquants** (`module_has_dependents` ne compte que les modules disponibles) ; `restaurant.orders`
+ne dépend plus des tables. Autres modules `restaurant.*` toujours `planned` ; **ne pas commencer
+R2 sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

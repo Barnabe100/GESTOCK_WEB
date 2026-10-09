@@ -262,5 +262,10 @@
   "assortment_copy_same_site": "Choisissez un autre site source que le site à compléter.",
   "receipt_unavailable": "Le reçu n'est disponible que pour une vente validée.",
   "receipt_print_denied": "Vous n'avez pas le droit d'imprimer le reçu de cette vente.",
-  "receipt_reprint_denied": "Ce reçu a déjà été imprimé : vous n'avez pas le droit de le réimprimer."
+  "receipt_reprint_denied": "Ce reçu a déjà été imprimé : vous n'avez pas le droit de le réimprimer.",
+  "menu_section_name_taken": "Une section de ce nom existe déjà sur ce site.",
+  "menu_section_not_found": "Section du menu introuvable.",
+  "menu_section_inactive": "Cette section est désactivée : choisissez une section active.",
+  "menu_item_exists": "Cette présentation figure déjà au menu de ce site.",
+  "menu_item_not_found": "Élément du menu introuvable."
 }
