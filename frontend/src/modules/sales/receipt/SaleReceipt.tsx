@@ -86,7 +86,7 @@ export function SaleReceipt({
             <span className="sm-receipt-row">
               <span>
                 {`${presented(line, locale)} × ${money(line.unit_price)}`}
-                {line.average_unit_price && ` (${t('receipt.averagePrice')})`}
+                {line.weighted_unit_price && ` (${t('receipt.averagePrice')})`}
               </span>
               <span className="sm-num">{money(line.line_total)}</span>
             </span>

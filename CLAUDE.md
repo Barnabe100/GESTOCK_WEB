@@ -387,7 +387,7 @@ actions selon permissions et états, réattribution parmi `GET /restaurant/order
 calculés par le serveur), règlement par le dialogue des ventes réutilisé (`/settle`), réglages
 du site, **ticket de retrait 80 mm SANS prix** (composant propre au module ; reçu et POS
 inchangés), canal `RESTAURANT` « Restauration », erreurs traduites ; filtre
-`settlement_status` ; `average_unit_price` (calculé) sur les lignes de vente et du reçu : prix
+`settlement_status` ; `weighted_unit_price` (calculé) sur les lignes de vente et du reçu : prix
 moyen pondéré signalé, total exact ; commande sans client : aucun reste dû (limite V1, aucune
 association de client après création) ; **`restaurant.orders` reste `planned`** jusqu'à la
 validation de R2-E (décision de l'utilisateur) ; **ne pas commencer R2-F sans validation

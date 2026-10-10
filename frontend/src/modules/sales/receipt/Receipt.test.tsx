@@ -134,7 +134,7 @@ describe('reçu de vente (80 mm)', () => {
               packaging_conversion: null,
               unit_price: '733.33',
               line_total: '2200.00',
-              average_unit_price: true,
+              weighted_unit_price: true,
             },
           ],
           total: '2200.00',

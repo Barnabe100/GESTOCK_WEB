@@ -33,7 +33,7 @@ export interface SaleLine {
   line_total: string;
   /** Prix unitaire MOYEN pondéré (ligne d'une commande regroupant plusieurs prix figés) : le
    *  total de ligne fait foi (R2-D / R2-E). */
-  average_unit_price?: boolean;
+  weighted_unit_price?: boolean;
   /** Lot 3-B : instantané du conditionnement vendu (nul : unité de base), figé. */
   packaging_id?: string | null;
   packaging_name?: string | null;

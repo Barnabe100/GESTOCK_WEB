@@ -1209,7 +1209,7 @@ def _line_out(
         quantity=line.quantity,
         unit_price=line.unit_price,
         line_total=line.line_total,
-        average_unit_price=line.line_total != round_money(line.quantity * line.unit_price),
+        weighted_unit_price=line.line_total != round_money(line.quantity * line.unit_price),
         packaging_id=line.packaging_id,
         packaging_name=line.packaging_name,
         packaging_conversion=line.packaging_conversion,

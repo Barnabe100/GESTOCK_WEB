@@ -704,7 +704,7 @@ describe('vente en conditionnement (Lot 3-B)', () => {
       quantity: '3.000',
       unit_price: '733.33',
       line_total: '2200.00',
-      average_unit_price: true,
+      weighted_unit_price: true,
     });
     fetchMock.mockImplementation(async (url) =>
       String(url).includes('/payments')

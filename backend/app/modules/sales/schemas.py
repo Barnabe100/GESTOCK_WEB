@@ -76,7 +76,7 @@ class SaleLineOut(BaseModel):
     line_total: Money
     # R2-D / R2-E : prix unitaire MOYEN pondéré (ligne issue d'une commande regroupant une même
     # présentation commandée à plusieurs prix figés) ; le total de ligne fait foi.
-    average_unit_price: bool = False
+    weighted_unit_price: bool = False
     # Lot 3-B : instantané du conditionnement vendu (nul : unité de base) et quantité en unité
     # de base (celle du stock).
     packaging_id: uuid.UUID | None = None

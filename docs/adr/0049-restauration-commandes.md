@@ -501,7 +501,7 @@ financier ; `restaurant.orders` toujours planifié en production (bascule en R2-
   `GET /restaurant/orders/{id}/assignees` (`restaurant.orders.order.reassign` sur le site) :
   membres actifs détenant `restaurant.orders.order.claim` EFFECTIVE sur le site, calculés par le
   serveur avec la règle de la réattribution (l'interface n'en décide jamais) ; indicateur
-  `average_unit_price` (booléen calculé, aucune colonne) sur les lignes des ventes et du reçu :
+  `weighted_unit_price` (booléen calculé, aucune colonne) sur les lignes des ventes et du reçu :
   `vrai` lorsque `line_total ≠ arrondi(quantité × prix unitaire)`, c.-à-d. ligne regroupée à des
   prix figés différents. Le reçu affiche « × prix (prix moyen) » suivi du total EXACT de la
   ligne ; la fiche de la vente signale « Prix moyen pondéré … le total fait foi ». Le POS et les

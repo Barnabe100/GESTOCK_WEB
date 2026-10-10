@@ -299,15 +299,16 @@ def test_same_presentation_at_two_frozen_prices_keeps_the_order_total(
     # Prix unitaire MOYEN (733,33) signalé : la vente et le reçu ne laissent pas croire que
     # 3 × 733,33 = 2 200 ; le total de ligne fait foi.
     line = sale["lines"][0]
-    assert (line["unit_price"], line["average_unit_price"]) == ("733.33", True)
+    assert (line["unit_price"], line["weighted_unit_price"]) == ("733.33", True)
     receipt = _ok(r.owner.get(f"/sales/{settled['sale_id']}/receipt"))
     assert [
-        (li["unit_price"], li["line_total"], li["average_unit_price"]) for li in receipt["lines"]
+        (li["unit_price"], li["line_total"], li["weighted_unit_price"]) for li in receipt["lines"]
     ] == [("733.33", "2200.00", True)]
     # Prix unique : aucun signalement (ventes ordinaires et POS inchangés).
     single = _ok(_order(r.owner, r.site, [_line(r.menu.unit, "2")]), 201)
     plain = _ok(_settle(r.owner, single["id"], payments=_cash("1600")), 201)
-    assert _ok(r.owner.get(f"/sales/{plain['sale_id']}"))["lines"][0]["average_unit_price"] is False
+    plain_sale = _ok(r.owner.get(f"/sales/{plain['sale_id']}"))
+    assert plain_sale["lines"][0]["weighted_unit_price"] is False
 
 
 def test_lists_by_settlement_and_eligible_assignees(resto: SimpleNamespace) -> None:
