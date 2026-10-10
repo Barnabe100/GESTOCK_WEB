@@ -358,3 +358,24 @@ def test_refusals_never_leak_customer_data_without_customer_view(resto: SimpleNa
     owner_refusal = _associate(r.owner, order["id"], inactive)
     assert _code(owner_refusal) == (422, "customer_inactive")
     assert owner_refusal.json()["customer_code"].startswith("CLI-")
+
+
+def test_production_mounts_no_order_route(app: Any, oclient: TestClient) -> None:
+    """N1 (R2-F) : avec le registre de production, AUCUNE route du module des commandes n'est
+    montée — association du client, membres éligibles et règlement compris ; le registre de
+    test les monte toutes (inventaire du schéma OpenAPI)."""
+
+    def order_paths(schema: dict[str, Any]) -> set[str]:
+        return {
+            path
+            for path in schema["paths"]
+            if path.startswith(("/api/v1/restaurant/orders", "/api/v1/restaurant/settings"))
+        }
+
+    mounted = order_paths(oclient.app.openapi())  # type: ignore[attr-defined]
+    assert {
+        "/api/v1/restaurant/orders/{order_id}/customer",
+        "/api/v1/restaurant/orders/{order_id}/assignees",
+        "/api/v1/restaurant/orders/{order_id}/settle",
+    } <= mounted
+    assert order_paths(app.openapi()) == set()
