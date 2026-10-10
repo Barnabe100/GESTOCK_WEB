@@ -59,7 +59,15 @@ def test_missing_subscription_policy_is_rejected(tmp_path: Path) -> None:
 
 def test_role_templates_resolve_patterns() -> None:
     templates = load_catalog(get_registry()).role_templates
-    assert set(templates) == {"administrator", "manager", "seller", "viewer"}
+    # Rôles de base + modèles facultatifs de la restauration (ADR-0049 D12, palier R2-C).
+    assert set(templates) == {
+        "administrator",
+        "manager",
+        "seller",
+        "viewer",
+        "waiter",
+        "preparer",
+    }
     available = {
         "users.member.view",
         "users.member.manage",
