@@ -371,8 +371,17 @@ ne comptent pas) ; réattribution immédiate motivée (`order.reassign`, admin) 
 détenant `order.claim` EFFECTIVE sur le site, calculée par le serveur
 (`422 assignee_not_eligible`) ; modèles facultatifs `waiter` (Serveur, sans encaissement) et
 `preparer` (Préparateur), `auto_provision = false`, `409 role_name_taken` si un rôle
-personnalisé porte déjà leur nom ; Vendeur + `order.claim` ; **ne pas commencer R2-D sans
-validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+personnalisé porte déjà leur nom ; Vendeur + `order.claim` ; **R2-D livré** — règlement
+(migration 0043) : `sales.origin_type` / `origin_id` posés par le serveur, IMMUABLES
+(déclencheur), une vente active par origine (`uq_sales_active_origin`), canal `RESTAURANT`, FK
+`restaurant_orders.sale_id` ; `POST /restaurant/orders/{id}/settle` = UNE transaction (verrou
+de la commande → `sales.api` `create_from_order` aux prix FIGÉS → même `validate` que toute
+vente : stock FEFO / lots / CMUP, crédit, caisse) avec les permissions EXISTANTES des ventes,
+idempotent, tout ou rien ; seule une vente ayant une origine échappe à `sale_prices_changed`
+(POS et ventes ordinaires inchangés) ; lignes de même présentation regroupées (total exact) ;
+Z3 par le port `sales/origin_port.py` (commande verrouillée AVANT la vente ; close :
+`409 order_closed` ; sinon « à régler ») ; état financier lu sur la vente ; **ne pas commencer
+R2-E sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

@@ -15,6 +15,12 @@ from app.modules.restaurant_orders.models import (
     ServiceMode,
     SettlementStatus,
 )
+from app.modules.sales.api import (
+    CreditOverride,
+    ExpiredLotOverride,
+    PaymentCreate,
+    SalePaymentStatus,
+)
 from app.shared.schemas import Money, PositiveQuantity, Quantity
 from app.shared.text import Optional40, Optional200, Required500
 
@@ -91,6 +97,19 @@ class OrderCancel(BaseModel):
     reason: Required500
 
 
+class OrderSettle(BaseModel):
+    """Règlement T2 (D6) : vente aux prix FIGÉS de la commande, validée (stock), paiements
+    immédiats ; reste dû = crédit selon les règles existantes (client de la commande,
+    ``sales.sale.credit_create``, limite et dérogation). Tout ou rien. ``idempotency_key`` :
+    la même clé renvoie la vente déjà enregistrée. Ni prix, ni lignes, ni origine acceptés du
+    client."""
+
+    payments: list[PaymentCreate] = Field(default_factory=list, max_length=10)
+    credit_override: CreditOverride | None = None
+    expired_lot_override: ExpiredLotOverride | None = None
+    idempotency_key: uuid.UUID
+
+
 class OrderReassign(BaseModel):
     """Réattribution immédiate (D7) : le nouveau responsable doit détenir
     ``restaurant.orders.order.claim`` effectif sur le site de la commande ; motif obligatoire."""
@@ -160,6 +179,12 @@ class OrderOut(BaseModel):
     # Montant aux prix figés des lignes non annulées (à régler) ; l'état financier est lu sur
     # la vente (R2-D).
     total: Money
+    # État financier (P-11), LU sur la vente active (jamais copié) : numéro, état d'encaissement
+    # (payé / partiel / dû) et reste dû ; détail des paiements : ``sales.payment.view``.
+    sale_id: uuid.UUID | None = None
+    sale_number: str | None = None
+    payment_status: SalePaymentStatus | None = None
+    amount_due: Money | None = None
     line_counts: LineCounts
     # Ancienneté (limites de V1) : création et dernier service.
     created_at: datetime
@@ -208,3 +233,10 @@ class TicketOut(BaseModel):
     created_at: datetime
     timezone: str
     lines: list[TicketLineOut]
+
+
+class SettlementOut(BaseModel):
+    order: OrderOut
+    sale_id: uuid.UUID
+    # Vrai si la clé avait déjà été traitée (aucune nouvelle écriture).
+    replayed: bool

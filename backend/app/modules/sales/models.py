@@ -39,6 +39,15 @@ class SaleChannel(StrEnum):
 
     BACKOFFICE = "BACKOFFICE"  # écrans de gestion des ventes
     POS = "POS"  # point de vente (encaissement en une étape)
+    # Règlement d'une commande de restauration (ADR-0049, palier R2-D) : vente créée par le
+    # serveur depuis la commande (origine immuable), jamais saisie directement.
+    RESTAURANT = "RESTAURANT"
+
+
+# Origines d'une vente (ADR-0049, R2-D) : posées par le serveur à la création, immuables
+# (déclencheur), jamais acceptées en entrée de l'API ; ``None`` pour une vente ordinaire.
+ORIGIN_RESTAURANT_ORDER = "restaurant_order"
+ACTIVE_ORIGIN_INDEX = "uq_sales_active_origin"
 
 
 class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
@@ -87,6 +96,20 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             name="expired_lot_override_complete",
         ),
         Index("ix_sales_tenant_date", "tenant_id", "sale_date"),
+        # Origine (R2-D) : complète ou absente ; une vente du canal Restauration a toujours une
+        # origine ; au plus UNE vente active (non annulée) par origine.
+        CheckConstraint("(origin_type IS NULL) = (origin_id IS NULL)", name="origin_complete"),
+        CheckConstraint(
+            "channel <> 'RESTAURANT' OR origin_type IS NOT NULL", name="restaurant_has_origin"
+        ),
+        Index(
+            ACTIVE_ORIGIN_INDEX,
+            "tenant_id",
+            "origin_type",
+            "origin_id",
+            unique=True,
+            postgresql_where=text("origin_id IS NOT NULL AND status <> 'CANCELLED'"),
+        ),
     )
 
     # ``VENT-{SITE}-{ANNÉE}-{SÉQUENCE}`` attribué à la VALIDATION (Lot 1, ADR-0037) ; nul pour un
@@ -130,6 +153,11 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     expired_lot_override_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     expired_lot_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expired_lot_override_reason: Mapped[str | None] = mapped_column(String(500))
+    # Origine de la vente (R2-D) : document dont elle est issue (ex. commande de restauration),
+    # posée par le serveur ; seule une vente ayant une origine est dispensée du contrôle
+    # ``sale_prices_changed`` (prix figés sur l'origine).
+    origin_type: Mapped[str | None] = mapped_column(String(32))
+    origin_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
     lines: Mapped[list["SaleLine"]] = relationship(
         cascade="all, delete-orphan", order_by="SaleLine.line_no", lazy="selectin"

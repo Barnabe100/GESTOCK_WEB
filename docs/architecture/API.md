@@ -447,11 +447,11 @@ Audit : `restaurant_menu.section_created` / `section_updated` / `section_activat
 `section_deactivated`, `restaurant_menu.item_created` / `item_updated` / `item_activated` /
 `item_deactivated` / `item_availability_changed`.
 
-### Commandes de restauration (module `restaurant.orders`) — paliers R2-B et R2-C
+### Commandes de restauration (module `restaurant.orders`) — paliers R2-B à R2-D
 
 > **Module encore planifié** (ADR-0049, D14 N1) : ces routes ne sont PAS montées en production
 > avant le commit R2-E (règlement et interface) ; elles sont exercées par les tests avec un
-> registre de test. Le règlement (T2) et la clôture effective arrivent en R2-D.
+> registre de test.
 
 Décisions : [ADR-0049](../adr/0049-restauration-commandes.md) (D2, D3, D6, D13, D14) ; conception :
 [`RESTAURANT.md`](RESTAURANT.md). Portée des sites comme le menu (R1) : lecture limitée aux sites où
@@ -477,8 +477,19 @@ permission précise de l'action SUR CE site (`permission_denied`). Le canal est 
 
 Audit : `restaurant_order.created` / `lines_added` / `prep_started` / `ready` /
 `ready_reverted` / `served` / `lines_cancelled` / `cancelled` / `settings_updated` /
-`claimed` / `reassigned`. Les commandes exposent `assigned_user_id`, `assigned_name` et
-`assigned_at` (début de la protection).
+`claimed` / `reassigned` / `settled` / `sale_cancelled`. Les commandes exposent
+`assigned_user_id`, `assigned_name` et `assigned_at` (début de la protection), et l'état
+financier LU sur la vente active (`sale_id`, `sale_number`, `payment_status`, `amount_due` ;
+détail des paiements : `/sales/{id}/payments` avec `sales.payment.view`).
+
+| Méthode | Chemin | Permissions | Rôle |
+|---|---|---|---|
+| POST | `/restaurant/orders/{id}/settle` | `restaurant.orders.order.view` + sur le site : `sales.sale.create`, `sales.sale.validate`, `sales.payment.create` (avec paiements), `sales.sale.credit_create` (reste dû) | Règlement T2 (R2-D) : `payments`, `credit_override`, `expired_lot_override`, `idempotency_key` ; vente `RESTAURANT` aux prix figés validée par le moteur commun ; `201` `{order, sale_id, replayed}`, même clé : `200` ; refus `409 order_settled`, `order_empty`, `order_closed`, `order_cancelled`, `idempotency_key_reused`, et ceux des ventes (`insufficient_stock`, `insufficient_unexpired_stock`, `article_inactive`, `article_not_in_site_assortment`, `cash_session_required`, `credit_customer_required`, `credit_not_allowed`, `credit_limit_exceeded`, `payment_exceeds_balance`…) — rien n'est écrit ; reçu : `/sales/{id}/receipt` |
+
+Ventes issues d'une commande : `origin_type` (`restaurant_order`) et `origin_id` dans `SaleOut`,
+canal `RESTAURANT` ; `POST /sales/{id}/cancel` d'une telle vente verrouille d'abord la commande
+(`409 order_closed` si elle est close, `409 sale_origin_unavailable` sans gestionnaire) et la
+repasse « à régler ».
 
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 

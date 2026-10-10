@@ -188,6 +188,12 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             ["customers.tenant_id", "customers.id"],
             ondelete="RESTRICT",
         ),
+        # Vente active : du même tenant ET du même site que la commande (migration 0043, R2-D).
+        ForeignKeyConstraint(
+            ["tenant_id", "sale_id", "site_id"],
+            ["sales.tenant_id", "sales.id", "sales.site_id"],
+            ondelete="RESTRICT",
+        ),
         CheckConstraint("daily_number > 0", name="daily_number_positive"),
         CheckConstraint("version > 0", name="version_positive"),
         CheckConstraint(
@@ -248,7 +254,8 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     assigned_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
-    # Vente ACTIVE issue de la commande (R2-D) ; unicité portée par les ventes.
+    # Vente ACTIVE issue de la commande (R2-D) ; unicité portée par les ventes
+    # (``uq_sales_active_origin``) ; remise à nul par l'annulation de la vente (Z3).
     sale_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     idempotency_key: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))

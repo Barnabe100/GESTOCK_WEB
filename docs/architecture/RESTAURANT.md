@@ -3,7 +3,7 @@
 > **Conception validée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
 > (arbitrages A1–A7, B1–B6, Z1–Z3, W1 ; décisions du palier R2 : D14). **Palier R1 (menu)
 > livré** (migration 0041). **Palier R2 en cours** (commandes et règlement, absorbe l'ancien
-> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur) ; `restaurant.orders` reste `planned` jusqu'au commit
+> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; R2-D livré : migration 0043, règlement T2, Z3) ; `restaurant.orders` reste `planned` jusqu'au commit
 > R2-E. Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
 > de leur palier.
 > **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
@@ -162,6 +162,9 @@ site (stable après un changement de code ou de nom), jamais préfixée par `{si
     WHERE origin_id IS NOT NULL AND status <> 'CANCELLED';
   ```
 - Canal `RESTAURANT` ajouté à la contrainte CHECK de `channel`.
+- CHECK `origin_complete` (origine complète ou absente) et `restaurant_has_origin` ; déclencheur
+  `sales_origin_immutable` ; FK composite `restaurant_orders (tenant_id, sale_id, site_id)` →
+  `sales (tenant_id, id, site_id)` (livré, R2-D ; décisions : ADR-0049, « palier R2-D »).
 
 ### R4 à R8
 
@@ -200,7 +203,8 @@ lignes sont annulées n'est pas réglable (`409 order_empty`) ; elle s'annule av
 
 Refus : `order_not_settled`, `order_settled` (ajout ET annulation de lignes, annulation de la
 commande), `order_empty` (règlement d'une commande sans ligne), `order_has_served_lines`,
-`order_closed`, `sale_origin_unavailable`, `assignee_not_eligible`, `order_claim_protected`
+`order_closed`, `sale_origin_unavailable`, `sale_origin_active`, `idempotency_key_reused`,
+`assignee_not_eligible`, `order_claim_protected`
 (prise pendant la protection), `claim_cooldown_active` (délai entre prises), et les refus existants des
 ventes, paiements, caisse et stock (`insufficient_stock`, `insufficient_unexpired_stock`,
 `article_inactive`, `article_not_in_site_assortment`, `cash_session_closed`,
@@ -332,7 +336,7 @@ qu'à sa prochaine licence.
 |---|---|---|
 | 0041 | R1 (livrée) | menu (contrainte `NULLS NOT DISTINCT`, FK composite), RLS, droits ; remise à `false` de `restaurant.menu` ; descente refusée si un menu a été saisi |
 | 0042 | R2 (R2-B, livrée) | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings`, `UNIQUE (tenant_id, site_id, id)` des éléments de menu ; remise à `false` de `restaurant.orders` ; descente refusée si une commande ou des réglages existent |
-| 0043 | R2 (R2-D, ancien R3) | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT` ; descente refusée si des ventes `RESTAURANT` existent |
+| 0043 | R2 (R2-D, livrée) | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT`, FK `restaurant_orders.sale_id` ; descente refusée si une vente issue d'une commande existe |
 | 0044 | R4 | `member_notifications`, politiques RLS, droits du rôle de purge |
 | 0045 | R5 | zones, tables, FK `restaurant_orders.table_id` ; remise à `false` de `restaurant.tables` |
 | 0046 | R6 | postes, affectations, `station_id` ; remise à `false` de `restaurant.kitchen` |

@@ -2,7 +2,7 @@
 
 - **Statut** : Acceptée (conception, palier R0) ; **palier R1 livré** (`restaurant.menu`,
   migration 0041) ; **palier R2 en cours** (commandes et règlement, décisions D14 ; R2-A livré :
-  socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; module encore planifié) — les autres modules restent planifiés
+  socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; R2-D livré : migration 0043 et règlement ; module encore planifié) — les autres modules restent planifiés
 - **Date** : 2026-10-09
 - **Prolonge** : [ADR-0020](0020-paiements-des-ventes.md) (paiements),
   [ADR-0022](0022-caisse.md) (caisse), [ADR-0023](0023-point-de-vente.md) (POS),
@@ -414,6 +414,64 @@ empreinte ; `restaurant.orders` toujours planifié en production.
 
 **R2-C livré** : prise en charge, protection, délai entre prises, réattribution motivée,
 modèles Serveur et Préparateur ; `restaurant.orders` toujours planifié en production.
+
+**Décisions du palier R2-D (règlement T2, Z3, commande close)**
+
+- **Migration 0043** : `sales.origin_type` / `origin_id` (complets ou absents ; posés par le
+  serveur à la création, jamais acceptés de l'API — un champ envoyé par le client est ignoré ;
+  **immuables** : déclencheur `sales_origin_immutable`, même contre une écriture SQL directe) ;
+  index unique partiel `uq_sales_active_origin` (une vente active par origine) ; canal
+  `RESTAURANT` (contrainte `ck_sales_sale_channel` ; une vente de ce canal a toujours une
+  origine) ; FK composite `restaurant_orders (tenant_id, sale_id, site_id)` →
+  `sales (tenant_id, id, site_id)` ; descente refusée dès qu'une vente issue d'une commande
+  existe.
+- **Règlement** `POST /restaurant/orders/{id}/settle` (paiements, `credit_override`,
+  `expired_lot_override`, `idempotency_key` ; ni prix, ni lignes, ni origine) : permissions
+  EXISTANTES sur le site de la commande (`sales.sale.create` + `sales.sale.validate`,
+  `sales.payment.create` avec des paiements, `sales.sale.credit_create` pour un reste dû —
+  contrôlée par les ventes) ; aucune permission nouvelle. Une seule transaction : verrou
+  consultatif de la clé → verrou de la commande → lignes → `sales.api` `create_from_order`
+  (vente `RESTAURANT` aux prix FIGÉS, puis **le même `validate`** que toute vente : articles
+  actifs, assortiment, conditionnements et conversion, quantités entières, client et limite de
+  crédit, `StockService.consume` FEFO / lots / CMUP, dérogation `expired_lot_override`,
+  paiements et caisse) → commande `SETTLED`, `sale_id`, évènement `SETTLED`, audit
+  `restaurant_order.settled` → clôture si toutes les lignes non annulées sont servies. Toute
+  erreur annule tout : ni vente (même brouillon), ni ligne, ni paiement, ni mouvement de stock
+  ou de caisse ; la commande reste « à régler » et la même clé peut être rejouée.
+- **Seule dispense** : une vente ayant une origine n'est pas soumise à `sale_prices_changed`
+  (prix figés) ; les ventes ordinaires et le POS gardent ce contrôle ; `SaleService.checkout`
+  et `POST /pos/checkout` sont inchangés.
+- **Lignes** : une vente porte chaque présentation une seule fois (règle des ventes) ; les
+  lignes non annulées de même présentation sont regroupées, quantités et totaux FIGÉS
+  additionnés (total de la vente = total de la commande, au centime) ; prix unitaire = prix figé
+  commun, ou **moyen pondéré** (arrondi au centime, affichage seulement) si la même présentation
+  a été commandée à deux prix différents.
+- **Idempotence et concurrence** : même clé → `200`, vente existante (aucune écriture) ; clé
+  différente sur une commande réglée → `409 order_settled` ; clé déjà utilisée pour un autre
+  document → `409 idempotency_key_reused` ; deux règlements simultanés : un seul réussit (verrou
+  de la commande), défense en base `uq_sales_active_origin` (`409 sale_origin_active`). Toutes
+  les lignes annulées : `409 order_empty` (N4).
+- **Port d'origine** `sales/origin_port.py` (modèle du port caisse ; aucune dépendance
+  `sales → restaurant`) : l'annulation d'une vente ayant une origine appelle d'abord le
+  gestionnaire enregistré, qui verrouille la commande AVANT la vente ; commande close →
+  `409 order_closed` (vente inchangée) ; vente active de la commande → commande « à régler »
+  (`sale_id` nul, évènement `SALE_CANCELLED`, audit `restaurant_order.sale_cancelled`) dans la
+  même transaction (un refus ultérieur, ex. `sale_has_payments`, annule tout) ; ancienne vente
+  déjà remplacée → commande intacte ; aucun gestionnaire → `409 sale_origin_unavailable`.
+  Permissions : celles des ventes (`sales.payment.cancel`, `sales.sale.cancel`).
+- **Commande close** : définitive (déclencheur 0042) ; un paiement annulé laisse la vente
+  validée et la commande close (reste dû = créance), un nouveau paiement va sur la même vente.
+  Clôture et annulation de la vente sérialisées par le verrou de la commande : soit la commande
+  se clôt et l'annulation est refusée, soit la vente est annulée et la commande reste ouverte.
+- **État financier** (P-11) lu sur la vente active : `sale_id`, `sale_number`,
+  `payment_status`, `amount_due` dans les commandes, visibles avec `restaurant.orders.order.view` ;
+  paiements : `sales.payment.view`. Client de la vente = client de la commande (aucun client
+  saisi au règlement en R2-D).
+- **Historique** : évènements d'une même requête à identifiants croissants (le tri heure puis
+  identifiant garde l'ordre d'écriture : `SERVED` puis `CLOSED`).
+
+**R2-D livré** : migration 0043, règlement T2, port d'origine, Z3, commande close, état
+financier ; `restaurant.orders` toujours planifié en production (bascule en R2-E).
 
 ## Conséquences
 

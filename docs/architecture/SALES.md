@@ -199,7 +199,7 @@ Exports (Lot 2) : `export.generated` (`entity_type="export"`) — fonctionnalit�
   bord et le point de vente ; tri par numéro proposé en option (ordre alphabétique).
 - **Filtres** (`SaleFilters`, mêmes paramètres pour `GET /sales` et `GET /sales/export`) :
   `search` (numéro, code / nom / téléphone du client), `status`, `site_id`, `customer_id`,
-  `date_from` / `date_to`, `payment_status`, `channel` (`BACKOFFICE` / `POS`), `seller_id`
+  `date_from` / `date_to`, `payment_status`, `channel` (`BACKOFFICE` / `POS` / `RESTAURANT`), `seller_id`
   (vendeur / opérateur = `created_by`, candidats : `GET /sales/sellers`), `mine` (« Mes
   ventes »), `article_id`, `article_reference` (référence ou code-barres d'un article vendu),
   `payment_reference` (n° de transaction d'un paiement) — deux références distinctes.
@@ -227,6 +227,18 @@ action « Exporter » (menu des formats Excel / CSV / PDF), affichée seulement 
 **indicatifs** (calcul décimal exact, le serveur fait foi), brouillon, validation confirmée
 (total rappelé), annulation avec motif ; consultation en lecture seule après validation, avec
 les sections « Mouvements de stock » et « Chronologie » selon les permissions.
+
+## 9 ter. Ventes issues d'un document (R2-D, ADR-0049)
+
+Une vente peut être créée par le serveur depuis un document d'un autre module (commande de
+restauration) : `SaleService.create_from_order` (interface `sales.api`) crée la vente du canal
+`RESTAURANT` avec une **origine** (`origin_type`, `origin_id`) posée par le serveur et immuable
+(déclencheur), aux prix FIGÉS sur le document, puis appelle le **même `validate`** que toute
+vente. Seule différence : aucun contrôle `sale_prices_changed` pour une vente ayant une origine.
+Au plus une vente active par origine (`uq_sales_active_origin`). L'annulation d'une telle vente
+passe d'abord par le port d'origine (`sales/origin_port.py`) qui verrouille le document avant
+la vente et peut refuser (`order_closed`) ; sans gestionnaire : `sale_origin_unavailable`. Les
+ventes ordinaires et le POS ne sont pas modifiés (origine nulle).
 
 ## 10. Hors périmètre et suite
 

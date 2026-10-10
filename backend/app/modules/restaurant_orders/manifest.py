@@ -1,3 +1,8 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy.orm import Session
+
 from app.modules.catalog.api import (
     register_assortment_removal_check,
     register_lot_flags_check,
@@ -21,7 +26,10 @@ from app.modules.restaurant_orders.permissions import (
     SETTINGS_MANAGE,
 )
 from app.modules.restaurant_orders.router import router
+from app.modules.restaurant_orders.service import OrderService
 from app.modules.restaurant_orders.settings import site_setup
+from app.modules.sales.api import ORIGIN_RESTAURANT_ORDER, register_sale_origin
+from app.platform.context import RequestContext
 from app.platform.registry import AccessKind, ModuleManifest, ModuleStatus, PermissionDef
 
 R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
@@ -31,6 +39,22 @@ R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
 register_packaging_usage("restaurant.orders", packagings_used)
 register_lot_flags_check("restaurant.orders", lot_flags_check)
 register_assortment_removal_check("restaurant.orders", assortment_removal_check)
+
+
+def _before_sale_cancel(
+    db: Session,
+    ctx: RequestContext,
+    now: datetime,
+    *,
+    origin_id: uuid.UUID,
+    sale_id: uuid.UUID,
+) -> None:
+    OrderService(db, ctx, now).before_sale_cancel(origin_id, sale_id)
+
+
+# Port d'origine des ventes (R2-D, Z3) : annuler la vente d'une commande verrouille d'abord la
+# commande ; commande close : refus ; sinon elle redevient « à régler ».
+register_sale_origin(ORIGIN_RESTAURANT_ORDER, _before_sale_cancel)
 
 MANIFEST = ModuleManifest(
     code="restaurant.orders",

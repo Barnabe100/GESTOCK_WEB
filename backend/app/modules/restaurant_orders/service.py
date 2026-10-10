@@ -17,12 +17,18 @@ D13, D14).
   sur le site (dernière prise lue dans l'historique, seule l'action « Prendre » compte) ;
   réattribution immédiate motivée par ``order.reassign`` vers un membre détenant
   ``order.claim`` effectif sur le site (``assignee_not_eligible``). Responsable ≠ rôle.
-- Le règlement (T2) et la clôture effective relèvent de la sous-étape R2-D.
+- **Règlement T2** (R2-D, D6) : une transaction, tout ou rien — vente du canal
+  ``RESTAURANT`` aux prix FIGÉS de la commande (``sales.api``), validée par le moteur commun
+  (stock FEFO, lots, CMUP, crédit, caisse), paiements immédiats ; échec : commande intacte,
+  « à régler ». Une vente active par commande (verrou de la commande + index
+  ``uq_sales_active_origin``). Clôture (définitive) quand la commande est réglée ET servie.
+- **Annulation de la vente** (Z3) : port d'origine des ventes, sous le verrou de la commande
+  AVANT celui de la vente ; commande close : ``order_closed`` ; sinon « à régler ».
 
 Verrous (``RESTAURANT.md`` §7) : verrou consultatif de l'employé (site + employé, « Prendre »)
 → réglages du site en partage (création, ajout de lignes, prise) → commande (exclusif) →
-lignes (exclusif). États finaux protégés aussi en base (déclencheur). Le service ne valide pas
-la transaction (ADR-0008).
+lignes (exclusif) → vente, paiements, caisse → stock. États finaux protégés aussi en base
+(déclencheur). Le service ne valide pas la transaction (ADR-0008).
 """
 
 import uuid
@@ -75,6 +81,7 @@ from app.modules.restaurant_orders.schemas import (
     LinesAdd,
     OrderCreate,
     OrderOut,
+    OrderSettle,
     SettingsUpdate,
     TicketLineOut,
     TicketOut,
@@ -91,6 +98,13 @@ from app.modules.restaurant_orders.sites import (
     readable_site_ids,
     require_site_permission,
 )
+from app.modules.sales.api import (
+    ORIGIN_RESTAURANT_ORDER,
+    OriginLine,
+    SaleService,
+    sale_by_idempotency_key,
+    sale_financial_states,
+)
 from app.platform.audit.service import audit_action
 from app.platform.capabilities.service import CapabilityService
 from app.platform.context import RequestContext
@@ -98,10 +112,16 @@ from app.platform.identity.models import User
 from app.platform.registry import get_registry
 from app.platform.tenancy.identity import document_identity
 from app.platform.tenancy.models import Site
+from app.shared.ids import new_id
 from app.shared.pagination import PageParams, apply_sort, escape_like, paginate
 
 MONEY_STEP = Decimal("0.01")
 CUSTOMERS_MODULE = "customers"
+# Règlement (D6, D12) : permissions EXISTANTES des ventes sur le site de la commande ; aucune
+# permission nouvelle (le Serveur n'encaisse jamais).
+SALE_CREATE = "sales.sale.create"
+SALE_VALIDATE = "sales.sale.validate"
+PAYMENT_CREATE = "sales.payment.create"
 
 
 class OrderState(StrEnum):
@@ -182,6 +202,9 @@ class OrderService:
         self.db = db
         self.ctx = ctx
         self.now = now
+        # Évènements d'une même requête : même horodatage ; identifiants croissants pour que
+        # l'historique (trié par heure puis identifiant) garde l'ordre d'écriture.
+        self._last_event_id: uuid.UUID | None = None
 
     # --- Commun -------------------------------------------------------------------------------
 
@@ -218,8 +241,13 @@ class OrderService:
         data: dict[str, Any] | None = None,
         idempotency_key: uuid.UUID | None = None,
     ) -> None:
+        event_id = new_id()
+        while self._last_event_id is not None and event_id <= self._last_event_id:
+            event_id = new_id()
+        self._last_event_id = event_id
         self.db.add(
             RestaurantOrderEvent(
+                id=event_id,
                 tenant_id=self.ctx.tenant_id,
                 order_id=order.id,
                 site_id=order.site_id,
@@ -858,6 +886,144 @@ class OrderService:
         )
         return order
 
+    # --- Règlement T2 (R2-D, D6) ---------------------------------------------------------------
+
+    @staticmethod
+    def _sale_lines(lines: Sequence[RestaurantOrderLine]) -> list[OriginLine]:
+        """Lignes de la vente depuis l'instantané des lignes NON annulées, regroupées par
+        présentation (une vente porte chaque présentation une seule fois) : quantités et totaux
+        FIGÉS additionnés (total de la vente = total de la commande) ; prix unitaire figé commun,
+        ou moyen pondéré si une même présentation a été commandée à des prix différents."""
+        groups: dict[tuple[uuid.UUID, uuid.UUID | None], list[RestaurantOrderLine]] = {}
+        for line in lines:
+            if line.status is not LineStatus.CANCELLED:
+                groups.setdefault((line.article_id, line.packaging_id), []).append(line)
+        result: list[OriginLine] = []
+        for (article_id, packaging_id), items in groups.items():
+            quantity = sum((li.quantity for li in items), Decimal(0))
+            total = sum((li.line_total for li in items), Decimal(0))
+            prices = {li.unit_price for li in items}
+            first = items[0]
+            result.append(
+                OriginLine(
+                    article_id=article_id,
+                    packaging_id=packaging_id,
+                    packaging_name=first.packaging_name,
+                    packaging_conversion=first.conversion,
+                    quantity=quantity,
+                    unit_price=prices.pop() if len(prices) == 1 else round_money(total / quantity),
+                    line_total=total,
+                )
+            )
+        return result
+
+    def settle(
+        self, order_id: uuid.UUID, data: OrderSettle
+    ) -> tuple[RestaurantOrder, uuid.UUID, bool]:
+        """Règlement ``(commande, vente, rejoué)``. Tout ou rien dans la transaction de la
+        requête : en cas d'échec (stock, lot, article, assortiment, caisse, moyen de paiement,
+        crédit), ni vente, ni paiement, ni mouvement ; la commande reste « à régler ».
+
+        Verrous : clé d'idempotence (consultatif) → commande → lignes → vente (création et
+        validation par le module Ventes). Deux règlements concurrents : le second attend le
+        verrou de la commande puis trouve la commande réglée (``409 order_settled``) — ou, avec
+        la même clé, la vente déjà enregistrée (rejeu). Base : ``uq_sales_active_origin``."""
+        site_id = self._site_of(order_id)
+        for permission in (SALE_CREATE, SALE_VALIDATE):
+            require_site_permission(self.ctx, site_id, permission)
+        if data.payments:
+            require_site_permission(self.ctx, site_id, PAYMENT_CREATE)
+        self.db.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    func.hashtextextended(f"restaurant.settle:{data.idempotency_key}", 0)
+                )
+            )
+        )
+        order = self._lock_order(order_id)
+        existing = sale_by_idempotency_key(self.db, data.idempotency_key)
+        if existing is not None:
+            if existing.origin_type == ORIGIN_RESTAURANT_ORDER and existing.origin_id == order.id:
+                return order, existing.id, True
+            raise ConflictError(
+                "Cette clé d'idempotence a déjà servi à une autre opération",
+                code="idempotency_key_reused",
+            )
+        self._require_open(order)
+        if order.settlement_status is SettlementStatus.SETTLED:
+            raise ConflictError("Cette commande est déjà réglée", code="order_settled")
+        lines = self._lock_lines(order)
+        sale_lines = self._sale_lines(lines)
+        if not sale_lines:
+            raise ConflictError(
+                "Toutes les lignes de cette commande sont annulées : annulez la commande",
+                code="order_empty",
+            )
+        sale = SaleService(self.db, self.ctx, self.now).create_from_order(
+            site_id=order.site_id,
+            origin_type=ORIGIN_RESTAURANT_ORDER,
+            origin_id=order.id,
+            customer_id=order.customer_id,
+            lines=sale_lines,
+            notes=f"Commande n° {order.daily_number} du {order.business_date:%d/%m/%Y}",
+            idempotency_key=data.idempotency_key,
+            payments=data.payments,
+            credit_override=data.credit_override,
+            expired_lot_override=data.expired_lot_override,
+        )
+        order.settlement_status = SettlementStatus.SETTLED
+        order.sale_id = sale.id
+        self._event(
+            order,
+            EventType.SETTLED,
+            data={"sale_id": str(sale.id), "sale_number": sale.number},
+        )
+        self._touch(order, lines)
+        self.db.flush()
+        self._audit(
+            "settled",
+            order,
+            {
+                "sale_id": str(sale.id),
+                "sale_number": sale.number,
+                "total": format(sale.total, "f"),
+                "is_credit": sale.is_credit,
+                "closed": order.status is OrderStatus.CLOSED,
+            },
+        )
+        return order, sale.id, False
+
+    def before_sale_cancel(self, origin_id: uuid.UUID, sale_id: uuid.UUID) -> None:
+        """Port d'origine des ventes (Z3) : appelé par l'annulation d'une vente issue d'une
+        commande, AVANT le verrou de la vente. Commande close : refus définitif
+        (``order_closed``) ; vente active de la commande : la commande redevient « à régler »
+        (évènement ``SALE_CANCELLED``), dans la même transaction que l'annulation. Une ancienne
+        vente (déjà remplacée) ne touche pas la commande. Aucune permission de la restauration
+        exigée : l'annulation de la vente relève des permissions des ventes."""
+        order = self.db.scalars(
+            select(RestaurantOrder)
+            .where(RestaurantOrder.tenant_id == self.ctx.tenant_id, RestaurantOrder.id == origin_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if order is None or order.sale_id != sale_id:
+            return
+        if order.status is OrderStatus.CLOSED:
+            raise ConflictError(
+                "Commande close : sa vente ne peut plus être annulée (annulez un paiement puis "
+                "enregistrez-en un nouveau sur la même vente)",
+                code="order_closed",
+            )
+        number = sale_financial_states(self.db, {sale_id})[sale_id].number
+        order.settlement_status = SettlementStatus.UNSETTLED
+        order.sale_id = None
+        order.version += 1
+        self._event(
+            order, EventType.SALE_CANCELLED, data={"sale_id": str(sale_id), "sale_number": number}
+        )
+        self.db.flush()
+        self._audit("sale_cancelled", order, {"sale_id": str(sale_id), "sale_number": number})
+
     # --- Lecture ------------------------------------------------------------------------------
 
     def _query(self, site_ids: set[uuid.UUID]) -> Select[Any]:
@@ -960,12 +1126,16 @@ class OrderService:
         customers = get_customer_refs(
             self.db, {o.customer_id for o in orders if o.customer_id is not None}
         )
+        finances = sale_financial_states(
+            self.db, {o.sale_id for o in orders if o.sale_id is not None}
+        )
         result: list[OrderOut] = []
         for order in orders:
             own = lines[order.id]
             counts = Counter(line.status for line in own)
             served = [line.served_at for line in own if line.served_at is not None]
             customer = customers.get(order.customer_id) if order.customer_id else None
+            finance = finances.get(order.sale_id) if order.sale_id else None
             result.append(
                 OrderOut(
                     id=order.id,
@@ -993,6 +1163,10 @@ class OrderService:
                         (li.line_total for li in own if li.status is not LineStatus.CANCELLED),
                         Decimal("0.00"),
                     ),
+                    sale_id=order.sale_id,
+                    sale_number=finance.number if finance else None,
+                    payment_status=finance.payment_status if finance else None,
+                    amount_due=finance.remaining_amount if finance else None,
                     line_counts=LineCounts(
                         received=counts[LineStatus.RECEIVED],
                         in_preparation=counts[LineStatus.IN_PREPARATION],

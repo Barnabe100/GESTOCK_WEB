@@ -123,6 +123,10 @@ class SaleOut(BaseModel):
     expired_lot_override_at: datetime | None = None
     expired_lot_override_by_name: str | None = None
     expired_lot_override_reason: str | None = None
+    # Origine (R2-D) : document dont la vente est issue (ex. ``restaurant_order``), posée par
+    # le serveur ; nulle pour une vente ordinaire.
+    origin_type: str | None = None
+    origin_id: uuid.UUID | None = None
     lines: list[SaleLineOut] = Field(default_factory=list)
 
 

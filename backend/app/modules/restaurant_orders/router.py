@@ -34,8 +34,10 @@ from app.modules.restaurant_orders.schemas import (
     OrderCreate,
     OrderOut,
     OrderReassign,
+    OrderSettle,
     SettingsOut,
     SettingsUpdate,
+    SettlementOut,
     TicketOut,
 )
 from app.modules.restaurant_orders.service import OrderService, OrderState
@@ -225,3 +227,24 @@ def reassign_order(
     service.reassign(order_id, body.assignee_user_id, body.reason)
     db.commit()
     return service.detail(order_id)
+
+
+# --- Règlement T2 (R2-D, D6) --------------------------------------------------------------------
+
+
+@router.post(
+    "/orders/{order_id}/settle", response_model=SettlementOut, status_code=status.HTTP_201_CREATED
+)
+def settle_order(
+    order_id: uuid.UUID, body: OrderSettle, ctx: OrderView, db: DbSession, response: Response
+) -> SettlementOut:
+    """Règlement : permissions EXISTANTES des ventes sur le site de la commande
+    (``sales.sale.create`` + ``sales.sale.validate``, ``sales.payment.create`` avec des
+    paiements, ``sales.sale.credit_create`` pour un reste dû) ; tout ou rien. La même clé
+    renvoie la vente déjà enregistrée (``200``). Reçu : ``/sales/{id}/receipt``."""
+    service = _service(db, ctx)
+    _, sale_id, replayed = service.settle(order_id, body)
+    db.commit()
+    if replayed:
+        response.status_code = status.HTTP_200_OK
+    return SettlementOut(order=service.detail(order_id), sale_id=sale_id, replayed=replayed)

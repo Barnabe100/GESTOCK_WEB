@@ -20,11 +20,13 @@ transaction (ADR-0008).
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
@@ -50,6 +52,7 @@ from app.modules.customers.api import (
 from app.modules.sales.credit import customer_exposure
 from app.modules.sales.filters import SaleFilters
 from app.modules.sales.models import (
+    ACTIVE_ORIGIN_INDEX,
     CreditStatus,
     Payment,
     PaymentStatus,
@@ -59,6 +62,7 @@ from app.modules.sales.models import (
     SalePaymentStatus,
     SaleStatus,
 )
+from app.modules.sales.origin_port import notify_before_cancel
 from app.modules.sales.payment_service import ZERO as MONEY_ZERO
 from app.modules.sales.payment_service import paid_amounts, paid_subquery, payment_status
 from app.modules.sales.schemas import (
@@ -120,6 +124,20 @@ SORTABLE = {
     "created_at": Sale.created_at,
     "validated_at": Sale.validated_at,
 }
+
+
+@dataclass(frozen=True)
+class OriginLine:
+    """Ligne d'une vente issue d'un document d'origine (R2-D) : présentation et montants FIGÉS
+    sur l'origine (prix unitaire, total de ligne), jamais relus dans le catalogue."""
+
+    article_id: uuid.UUID
+    packaging_id: uuid.UUID | None
+    packaging_name: str | None
+    packaging_conversion: Decimal | None
+    quantity: Decimal
+    unit_price: Decimal
+    line_total: Decimal
 
 
 def credit_status(sale: Sale, paid: Decimal) -> CreditStatus | None:
@@ -573,6 +591,96 @@ class SaleService:
             False,
         )
 
+    def create_from_order(
+        self,
+        *,
+        site_id: uuid.UUID,
+        origin_type: str,
+        origin_id: uuid.UUID,
+        customer_id: uuid.UUID | None,
+        lines: Sequence[OriginLine],
+        notes: str | None,
+        idempotency_key: uuid.UUID,
+        payments: Sequence[PaymentCreate] = (),
+        credit_override: CreditOverride | None = None,
+        expired_lot_override: ExpiredLotOverride | None = None,
+    ) -> Sale:
+        """Règlement d'un document d'origine (ADR-0049, R2-D) : vente du canal ``RESTAURANT``
+        créée puis VALIDÉE dans la transaction de l'appelant — même ``validate`` que toute
+        vente (articles actifs, assortiment, conditionnements, quantités, crédit et limite,
+        stock via ``StockService.consume`` : FEFO, lots, CMUP, dérogation ``expired_lot_override``,
+        paiements et caisse). Seule différence : les prix sont ceux FIGÉS sur l'origine (aucun
+        ``sale_prices_changed``). Origine posée ici par le serveur, immuable ; au plus une vente
+        active par origine (index ``uq_sales_active_origin``). Toute erreur annule tout."""
+        site_id = operation_site(self.ctx, site_id)
+        refs = self._articles([(line.article_id, line.packaging_id) for line in lines])
+        ensure_in_assortment(self.db, site_id, {line.article_id for line in lines})
+        self._packagings(
+            [
+                SaleLineInput(
+                    article_id=line.article_id, packaging_id=line.packaging_id, quantity=Decimal(1)
+                )
+                for line in lines
+            ]
+        )
+        self._customer(customer_id)
+        sale = Sale(
+            tenant_id=self.ctx.tenant_id,
+            site_id=site_id,
+            number=None,
+            status=SaleStatus.DRAFT,
+            channel=SaleChannel.RESTAURANT,
+            idempotency_key=idempotency_key,
+            created_by=self.ctx.user.id,
+            customer_id=customer_id,
+            sale_date=tenant_today(self.ctx, self.now),
+            notes=notes,
+            origin_type=origin_type,
+            origin_id=origin_id,
+        )
+        sale.lines = [
+            SaleLine(
+                tenant_id=self.ctx.tenant_id,
+                line_no=index,
+                article_id=line.article_id,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+                line_total=line.line_total,
+                packaging_id=line.packaging_id,
+                packaging_name=line.packaging_name,
+                packaging_conversion=line.packaging_conversion,
+                base_quantity=line.quantity * (line.packaging_conversion or Decimal(1)),
+            )
+            for index, line in enumerate(lines, start=1)
+        ]
+        # Article à quantités entières : contrôle commun du catalogue (ADR-0040).
+        for line in lines:
+            ensure_whole(refs[line.article_id], line.quantity)
+        sale.subtotal = sum((line.line_total for line in sale.lines), ZERO)
+        sale.total = sale.subtotal
+        self.db.add(sale)
+        try:
+            self.db.flush()
+        except IntegrityError as exc:
+            # Défense en profondeur : l'appelant sérialise déjà sous le verrou de son document.
+            if ACTIVE_ORIGIN_INDEX in str(exc.orig):
+                raise ConflictError(
+                    "Une vente active existe déjà pour ce document", code="sale_origin_active"
+                ) from exc
+            raise
+        self._audit(
+            "created",
+            sale,
+            {
+                "status": sale.status.value,
+                "channel": SaleChannel.RESTAURANT.value,
+                "origin_type": origin_type,
+                "origin_id": str(origin_id),
+                **self._snapshot(sale),
+            },
+        )
+        return self.validate(sale.id, payments, credit_override, expired_lot_override)
+
     def update(self, sale_id: uuid.UUID, data: SaleInput) -> Sale:
         """Brouillon seulement ; lignes remplacées et prix relus dans le catalogue."""
         sale = self.get(sale_id, lock=True)
@@ -616,10 +724,16 @@ class SaleService:
         # Le total annoncé au client doit rester exact : un prix catalogue (article ou
         # conditionnement) modifié depuis l'enregistrement du brouillon impose de le
         # réenregistrer (prix relus).
+        # Vente issue d'une origine (R2-D) : prix FIGÉS sur l'origine, seule dispense du contrôle
+        # des prix ; la conversion d'un conditionnement reste contrôlée.
+        frozen_prices = sale.origin_type is not None
         changed = [
             refs[line.article_id].reference
             for line in sale.lines
-            if _current_price(line, refs[line.article_id], packagings) != line.unit_price
+            if (
+                not frozen_prices
+                and _current_price(line, refs[line.article_id], packagings) != line.unit_price
+            )
             or (
                 line.packaging_id is not None
                 and packagings[line.packaging_id].conversion != line.packaging_conversion
@@ -813,7 +927,29 @@ class SaleService:
     def cancel(self, sale_id: uuid.UUID, reason: str) -> Sale:
         """Brouillon : abandon sans effet sur le stock. Vente validée : mouvements inverses
         ``CANCELLATION`` (remise en stock au coût de la sortie, CMUP inchangé, STK-06), liés
-        aux mouvements ``SALE`` d'origine ; les mouvements historiques ne sont jamais modifiés."""
+        aux mouvements ``SALE`` d'origine ; les mouvements historiques ne sont jamais modifiés.
+
+        Vente issue d'une origine (R2-D) : le gestionnaire du module d'origine verrouille son
+        document AVANT le verrou de la vente (ordre du règlement) et peut refuser (ex.
+        ``order_closed``) ; sans gestionnaire enregistré : ``409 sale_origin_unavailable``."""
+        current = self.get(sale_id)
+        if (
+            current.origin_type is not None
+            and current.origin_id is not None
+            and not notify_before_cancel(
+                self.db,
+                self.ctx,
+                self.now,
+                origin_type=current.origin_type,
+                origin_id=current.origin_id,
+                sale_id=current.id,
+            )
+        ):
+            raise ConflictError(
+                "L'origine de cette vente n'est pas disponible : annulation impossible",
+                code="sale_origin_unavailable",
+                extra={"origin_type": current.origin_type},
+            )
         sale = self.get(sale_id, lock=True)
         previous = sale.status
         skipped: list[uuid.UUID] = []
@@ -1006,6 +1142,8 @@ class SaleService:
                     expired_lot_override_at=sale.expired_lot_override_at,
                     expired_lot_override_by_name=user_names.get(sale.expired_lot_override_by),
                     expired_lot_override_reason=sale.expired_lot_override_reason,
+                    origin_type=sale.origin_type,
+                    origin_id=sale.origin_id,
                     lines=[
                         _line_out(line, refs, allocations.get(line.id, [])) for line in sale.lines
                     ]
