@@ -3,7 +3,7 @@
 > **Conception validée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
 > (arbitrages A1–A7, B1–B6, Z1–Z3, W1 ; décisions du palier R2 : D14). **Palier R1 (menu)
 > livré** (migration 0041). **Palier R2 en cours** (commandes et règlement, absorbe l'ancien
-> R3 ; R2-A livré : socle de plateforme) ; `restaurant.orders` reste `planned` jusqu'au commit
+> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1) ; `restaurant.orders` reste `planned` jusqu'au commit
 > R2-E. Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
 > de leur palier.
 > **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
@@ -120,9 +120,9 @@ porte une `idempotency_key` facultative, unique par commande (ajout de lignes re
 P-8) ; `restaurant_menu_items` reçoit `UNIQUE (tenant_id, site_id, id)` (cible de la clé
 étrangère des lignes, seule retouche du schéma R1) ; `table_id` sans clé étrangère jusqu'à R5,
 aucun `station_id` avant R6 ; `version` informatif (P-7) ; retour arrière refusé dès qu'une
-commande ou une ligne de réglages existe (Q7, N5). Clé du compteur : la colonne
-`document_sequences.sequence_key` est limitée à 50 caractères, la forme exacte de la clé est
-arrêtée en R2-B (R2-A fournit le compteur brut `next_value`).
+commande ou une ligne de réglages existe (Q7, N5). Clé du compteur (décision R2-B) :
+`ro:{site_id}:{AAAAMMJJ}`, 48 caractères (limite de 50, colonne inchangée), identifiant du
+site (stable après un changement de code ou de nom), jamais préfixée par `{site_id}:`.
 
 
 - `restaurant_site_settings` (une ligne par site) : `payment_timing` (`AT_END` | `AT_ORDER`),
@@ -151,7 +151,7 @@ arrêtée en R2-B (R2-A fournit le compteur brut `next_value`).
   `SERVED` / `CANCELLED` et d'une commande `CLOSED` / `CANCELLED` / `REJECTED`, ainsi que toute
   modification de l'instantané d'une ligne.
 - Catalogue : `business_profiles.module_settings` (JSONB, section générique des profils).
-- Numéro : compteur `restaurant.order:{site_id}:{AAAA-MM-JJ}` (jour de l'entreprise).
+- Numéro : compteur `ro:{site_id}:{AAAAMMJJ}` (jour de l'entreprise ; D14, R2-B).
 
 ### R2-D — Ventes (module `sales`, migration 0043, ancien palier R3)
 
@@ -183,12 +183,12 @@ arrêtée en R2-B (R2-A fournit le compteur brut `next_value`).
 
 | Ligne : de → vers | Permission | Condition |
 |---|---|---|
-| RECEIVED → IN_PREPARATION | `restaurant.order.prepare` | commande ouverte ; « à la commande » : réglée |
+| RECEIVED → IN_PREPARATION | `restaurant.orders.order.prepare` | commande ouverte ; « à la commande » : réglée |
 | IN_PREPARATION → READY | `prepare` | — |
 | READY → IN_PREPARATION | `prepare` | correction (`READY_REVERTED`) |
-| READY → SERVED | `restaurant.order.serve` | — |
-| RECEIVED → CANCELLED | `restaurant.order.cancel` | commande **non réglée** ; motif |
-| IN_PREPARATION, READY → CANCELLED | `restaurant.order.cancel_prepared` | commande **non réglée** ; motif |
+| READY → SERVED | `restaurant.orders.order.serve` | — |
+| RECEIVED → CANCELLED | `restaurant.orders.order.cancel` | commande **non réglée** ; motif |
+| IN_PREPARATION, READY → CANCELLED | `restaurant.orders.order.cancel_prepared` | commande **non réglée** ; motif |
 | SERVED, CANCELLED → * | — | interdit (A7), déclencheur |
 
 Sans postes : une action porte sur toutes les lignes ouvertes de la commande (un évènement) ;
@@ -196,7 +196,7 @@ avec postes : sur les lignes d'un poste (un évènement par poste). Le palier R2
 d'agir **ligne par ligne** (P-2 : une boisson servie avant le plat), un évènement par requête.
 Le passage à « close » est calculé sous le verrou de la commande. Une commande dont toutes les
 lignes sont annulées n'est pas réglable (`409 order_empty`) ; elle s'annule avec
-`restaurant.order.cancel` et un motif (N4).
+`restaurant.orders.order.cancel` et un motif (N4).
 
 Refus : `order_not_settled`, `order_settled` (ajout ET annulation de lignes, annulation de la
 commande), `order_empty` (règlement d'une commande sans ligne), `order_has_served_lines`,
@@ -273,19 +273,24 @@ profil, ADR-0048) n'est jamais pris par une commande.
 
 | Permission | Nature | Admin. | Gestionnaire | Vendeur | Serveur | Préparateur | Consultant |
 |---|---|:-:|:-:|:-:|:-:|:-:|:-:|
-| `restaurant.menu.view`, `restaurant.order.view` | read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `restaurant.menu.view`, `restaurant.orders.order.view` | read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `restaurant.menu.availability` | write | ✓ | ✓ | ✓ | ✓ | ✓ | |
-| `restaurant.order.create`, `.claim`, `.serve`, `.confirm` | write | ✓ | ✓ | ✓ | ✓ | | |
-| `restaurant.order.prepare` | write | ✓ | ✓ | ✓ | | ✓ | |
-| `restaurant.order.cancel` (lignes reçues, commandes) | write | ✓ | ✓ | ✓ | | | |
-| `restaurant.order.cancel_prepared`, `.reassign` | admin | ✓ | ✓ | | | | |
-| `restaurant.menu.manage`, `restaurant.settings.manage`, `restaurant.table.manage`, `restaurant.station.manage`, `restaurant.qr.manage` | admin | ✓ | ✓ | | | | |
-| `restaurant.recipe.view` / `.manage` | read / admin | ✓ | ✓ / ✓ | | | | ✓ / |
+| `restaurant.orders.order.create`, `.claim`, `.serve`, `.confirm` | write | ✓ | ✓ | ✓ | ✓ | | |
+| `restaurant.orders.order.prepare` | write | ✓ | ✓ | ✓ | | ✓ | |
+| `restaurant.orders.order.cancel` (lignes reçues, commandes) | write | ✓ | ✓ | ✓ | | | |
+| `restaurant.orders.order.cancel_prepared`, `.reassign` | admin | ✓ | ✓ | | | | |
+| `restaurant.menu.manage`, `restaurant.orders.settings.manage` ; gestion des tables (R5), des postes (R6), des points QR (R7) | admin | ✓ | ✓ | | | | |
+| Recettes (R8) : consultation / gestion | read / admin | ✓ | ✓ / ✓ | | | | ✓ / |
 | Encaisser : `sales.sale.create`, `.validate`, `sales.payment.create` (existantes) | write | ✓ | ✓ | ✓ | **jamais** | | |
 | Annuler paiement / vente : `sales.payment.cancel`, `sales.sale.cancel` (existantes) | write | ✓ | rôle perso. | rôle perso. | rôle perso. | | |
 | Activer un module : `organization.module.manage` (existante) | admin | ✓ | | | | | |
 | `organization.notification.view` | read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
+- **Nommage (D14, R2-B)** : toute permission est préfixée par le code EXACT de son module
+  (`restaurant.orders.order.*`, `restaurant.orders.settings.manage`) ; les modules suivants
+  suivront `restaurant.tables.<ressource>.<action>`, `restaurant.kitchen.…`,
+  `restaurant.qr.…`, `restaurant.recipes.…`, noms fixés à la livraison de leur palier.
+- Un module planifié n'accorde aucune permission, même déclarée (registre).
 - Union des rôles de l'utilisateur pour le site ; jamais de test d'un nom de rôle.
 - Modèles de rôles = données complétées à chaque livraison : Gestionnaire `restaurant.*` ;
   Vendeur liste explicite (« sans annulation » vise les ventes et documents validés, pas les
@@ -293,10 +298,10 @@ profil, ADR-0048) n'est jamais pris par une commande.
 - Serveur et Préparateur : `auto_provision = false`, créés à la demande
   (`POST /roles/from-template`) ; un rôle personnalisé du même nom fait refuser la création
   du modèle (`409 role_name_taken`), sans renommage automatique (D14, Q5).
-- `restaurant.order.confirm` est déclarée au palier R7, à son premier usage (P-12).
+- `restaurant.orders.order.confirm` est déclarée au palier R7, à son premier usage (P-12).
 - État financier d'une commande (numéro de vente, payé / partiel / dû) visible avec
-  `restaurant.order.view` ; détail des paiements réservé à `sales.payment.view` (P-11).
-- Réattribution : nouveau responsable détenteur de `restaurant.order.claim` effectif sur le site.
+  `restaurant.orders.order.view` ; détail des paiements réservé à `sales.payment.view` (P-11).
+- Réattribution : nouveau responsable détenteur de `restaurant.orders.order.claim` effectif sur le site.
 
 ## 9. Notifications
 
@@ -319,7 +324,7 @@ qu'à sa prochaine licence.
 | Migration | Palier | Contenu |
 |---|---|---|
 | 0041 | R1 (livrée) | menu (contrainte `NULLS NOT DISTINCT`, FK composite), RLS, droits ; remise à `false` de `restaurant.menu` ; descente refusée si un menu a été saisi |
-| 0042 | R2 (R2-B) | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings` ; remise à `false` de `restaurant.orders` ; descente refusée si une commande ou des réglages existent |
+| 0042 | R2 (R2-B, livrée) | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings`, `UNIQUE (tenant_id, site_id, id)` des éléments de menu ; remise à `false` de `restaurant.orders` ; descente refusée si une commande ou des réglages existent |
 | 0043 | R2 (R2-D, ancien R3) | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT` ; descente refusée si des ventes `RESTAURANT` existent |
 | 0044 | R4 | `member_notifications`, politiques RLS, droits du rôle de purge |
 | 0045 | R5 | zones, tables, FK `restaurant_orders.table_id` ; remise à `false` de `restaurant.tables` |

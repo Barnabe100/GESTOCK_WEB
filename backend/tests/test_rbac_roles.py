@@ -99,6 +99,13 @@ def test_base_roles(owner: Api) -> None:
         "subscription.activation.check",  # contrôle du poste installé (Phase 3.3-B3)
         "restaurant.menu.view",  # menu des sites et « épuisé » (palier R1, ADR-0049)
         "restaurant.menu.availability",
+        # Commandes (palier R2, ADR-0049 D14) : codes préfixés par le module ; sans effet tant que
+        # le module est planifié (capacités effectives filtrées par les modules).
+        "restaurant.orders.order.view",
+        "restaurant.orders.order.create",
+        "restaurant.orders.order.prepare",
+        "restaurant.orders.order.serve",
+        "restaurant.orders.order.cancel",
     }
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer

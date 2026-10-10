@@ -447,6 +447,36 @@ Audit : `restaurant_menu.section_created` / `section_updated` / `section_activat
 `section_deactivated`, `restaurant_menu.item_created` / `item_updated` / `item_activated` /
 `item_deactivated` / `item_availability_changed`.
 
+### Commandes de restauration (module `restaurant.orders`) — palier R2-B
+
+> **Module encore planifié** (ADR-0049, D14 N1) : ces routes ne sont PAS montées en production
+> avant le commit R2-E (règlement et interface) ; elles sont exercées par les tests avec un
+> registre de test. Le règlement (T2), la prise en charge et la clôture effective arrivent en
+> R2-C / R2-D.
+
+Décisions : [ADR-0049](../adr/0049-restauration-commandes.md) (D2, D3, D6, D13, D14) ; conception :
+[`RESTAURANT.md`](RESTAURANT.md). Portée des sites comme le menu (R1) : lecture limitée aux sites où
+les commandes sont effectives pour le membre (`404 order_not_found` sinon) ; site sélectionné sans
+commandes effectives : `403 module_unavailable` ; chaque écriture revérifiée pour son site, avec la
+permission précise de l'action SUR CE site (`permission_denied`). Le canal est posé par la route
+(`STAFF`), jamais par le client.
+
+| Méthode | Chemin | Permissions | Rôle |
+|---|---|---|---|
+| GET | `/restaurant/settings/{site_id}` | `restaurant.orders.order.view` | Réglages du site (`payment_timing`, protection et délai entre prises, `qr_auto_accept` sans effet avant R7) ; créés au premier usage s'ils manquent |
+| PUT | `/restaurant/settings/{site_id}` | `restaurant.orders.settings.manage` | `payment_timing` (`AT_END` \| `AT_ORDER`), `claim_protection_minutes`, `claim_cooldown_minutes` (0–1440) ; audit avant / après ; s'applique aux commandes créées ENSUITE |
+| GET | `/restaurant/orders` | `restaurant.orders.order.view` | Liste (`site_id`, `state` = `active` par défaut \| `closed` \| `cancelled` \| `all`, `prep_status`, `unsettled_served` = servies non réglées, `business_date`, `search` : numéro exact ou nom d'appel ; tri `created_at` par défaut — ancienneté —, `number`, `business_date`) : numéro du jour, mode, client, nom d'appel, états, mode de paiement recopié, total aux prix figés des lignes non annulées, nombre de lignes par état, `last_served_at`, `version` |
+| POST | `/restaurant/orders` | `restaurant.orders.order.create` | Création T1 (`site_id`, `service_mode` = `ON_SITE` \| `COUNTER` \| `TAKEAWAY`, `customer_id` et `call_name` ≤ 40 facultatifs, 1 à 100 `lines` = `menu_item_id`, `quantity`, `note`, `idempotency_key` obligatoire) ; `201` ; même clé sur le même site : `200` et la commande existante ; refus `404 menu_item_not_found` (élément d'un autre site compris), `422 menu_item_not_orderable` (motifs `blockers` du menu), `quantity_not_whole`, `base_quantity_precision`, `customer_not_found`, `customer_inactive`, `customer_unavailable` ; prix du catalogue FIGÉ sur chaque ligne ; ni vente, ni paiement, ni stock |
+| GET | `/restaurant/orders/{id}` · `/events` · `/ticket` | `restaurant.orders.order.view` | Détail avec lignes (instantané : libellé, conditionnement, conversion, prix, quantités, note, état) ; historique en ajout seul ; ticket de retrait 80 mm (entreprise, site, numéro, nom d'appel, mode, lignes non annulées — AUCUN prix, coût ni stock ; impression non journalisée) |
+| POST | `/restaurant/orders/{id}/lines` | `restaurant.orders.order.create` | Ajout à une commande ouverte non réglée (`lines`, `idempotency_key` facultative : rejouée, n'ajoute rien) ; `409 order_settled`, `order_cancelled`, `order_closed` |
+| POST | `/restaurant/orders/{id}/start` · `/ready` · `/revert` | `restaurant.orders.order.prepare` | Reçue → en préparation → prête ; prête → en préparation (correction) ; corps facultatif `line_ids` (sinon toutes les lignes de l'état de départ) ; « à la commande » non réglée : `409 order_not_settled` ; `409 order_line_state_invalid`, `order_lines_not_in_state`, `404 order_line_not_found` |
+| POST | `/restaurant/orders/{id}/serve` | `restaurant.orders.order.serve` | Prête → servie / remise (définitif) ; mêmes règles ; clôture seulement si la commande est réglée (R2-D) |
+| POST | `/restaurant/orders/{id}/cancel-lines` | `restaurant.orders.order.cancel` (lignes reçues), `.cancel_prepared` (lignes en préparation ou prêtes) | `line_ids`, `reason` obligatoire ; commande non réglée ; `409 order_line_final`, `order_settled` |
+| POST | `/restaurant/orders/{id}/cancel` | `restaurant.orders.order.cancel` (+ `.cancel_prepared` selon les lignes) | `reason` obligatoire ; `409 order_has_served_lines`, `order_settled` ; commande sans ligne restante : `order.cancel` seul (N4) |
+
+Audit : `restaurant_order.created` / `lines_added` / `prep_started` / `ready` /
+`ready_reverted` / `served` / `lines_cancelled` / `cancelled` / `settings_updated`.
+
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 
 API séparée de celle des entreprises (`app.console.main`, rôle SQL dédié), réservée aux

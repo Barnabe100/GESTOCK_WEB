@@ -67,6 +67,9 @@ class MenuItem(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     __tablename__ = "restaurant_menu_items"
     __table_args__ = (
         UniqueConstraint("tenant_id", "id"),
+        # Cible de la FK composite des lignes de commande (palier R2, migration 0042) : une
+        # ligne ne référence qu'un élément du MÊME site.
+        UniqueConstraint("tenant_id", "site_id", "id"),
         UniqueConstraint(
             "tenant_id",
             "site_id",

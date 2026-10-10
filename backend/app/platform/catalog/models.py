@@ -81,6 +81,11 @@ class BusinessProfile(TimestampMixin, Base):
         JSONB, default=dict, server_default="{}", nullable=False
     )
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    # Réglages par défaut des modules proposés (palier R2, ADR-0049 D11 / D14) : recopiés sur un
+    # site à l'activation du module (``site_setup``), jamais relus ensuite pour ce site.
+    module_settings: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
 
     sector: Mapped["BusinessSector | None"] = relationship(lazy="joined")
     ux_profile: Mapped["UxProfile | None"] = relationship(lazy="joined")

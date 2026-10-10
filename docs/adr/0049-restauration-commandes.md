@@ -2,7 +2,7 @@
 
 - **Statut** : Acceptée (conception, palier R0) ; **palier R1 livré** (`restaurant.menu`,
   migration 0041) ; **palier R2 en cours** (commandes et règlement, décisions D14 ; R2-A livré :
-  socle de plateforme) — les autres modules restent planifiés
+  socle de plateforme ; R2-B livré : migration 0042 et moteur T1, module encore planifié) — les autres modules restent planifiés
 - **Date** : 2026-10-09
 - **Prolonge** : [ADR-0020](0020-paiements-des-ventes.md) (paiements),
   [ADR-0022](0022-caisse.md) (caisse), [ADR-0023](0023-point-de-vente.md) (POS),
@@ -117,8 +117,8 @@ Aucun paiement en ligne en V1. `POST /pos/checkout` et `SaleService.checkout` so
 ### D7 — Attribution
 
 - Protection d'une commande prise : 5 min par défaut, réglable par site (0 = désactivée) ;
-  réattribution immédiate par `restaurant.order.reassign`, motif obligatoire, auditée ; le
-  nouveau responsable doit détenir `restaurant.order.claim` effectif sur le site
+  réattribution immédiate par `restaurant.orders.order.reassign`, motif obligatoire, auditée ; le
+  nouveau responsable doit détenir `restaurant.orders.order.claim` effectif sur le site
   (`422 assignee_not_eligible`).
 - Délai entre deux prises d'un même employé : désactivé par défaut, réglable par site,
   indépendant ; seule l'action explicite « Prendre » compte (ni la création, ni une
@@ -134,9 +134,9 @@ Aucun paiement en ligne en V1. `POST /pos/checkout` et `SaleService.checkout` so
 Mécanisme de plateforme générique (`member_notifications`), distinct des rappels d'abonnement.
 
 - Transition « prête » : le responsable ET les membres du site disposant **effectivement** de
-  `restaurant.order.serve` (calcul par `CapabilityService.resolve` : appartenance active, accès
+  `restaurant.orders.order.serve` (calcul par `CapabilityService.resolve` : appartenance active, accès
   et rôles du site, abonnement du site), **moins l'auteur de l'action, toujours** ; tout
-  destinataire doit pouvoir lire la commande (`restaurant.order.view` effectif sur ce site).
+  destinataire doit pouvoir lire la commande (`restaurant.orders.order.view` effectif sur ce site).
 - Sans postes : un avis quand toute la commande est prête ; avec postes : un avis par partie
   prête et par poste (`Commande #125 — Table 2 — Bar : prêt (2 articles)`).
 - Clé anti-doublon = (destinataire, évènement de transition) ; une transition répétée légitime
@@ -154,7 +154,7 @@ Mécanisme de plateforme générique (`member_notifications`), distinct des rapp
 Jeton aléatoire opaque par point d'accès (table ou comptoir), stocké haché, révocable par
 rotation ; entreprise et site déduits du jeton seulement ; menu public sans stock, coût ni donnée
 interne ; navigateur seul, aucune installation. Confirmation explicite par défaut
-(`restaurant.order.confirm`), acceptation automatique facultative par site ; en mode « à la
+(`restaurant.orders.order.confirm`), acceptation automatique facultative par site ; en mode « à la
 commande », le comptoir **confirme puis règle** (deux évènements, deux contrôles de permission,
 enchaînables sur un même écran). Limitation de fréquence persistante, idempotence, plafonds,
 RLS. Suivi public « à régler » sans aucune donnée de stock. Notifications push sur le téléphone
@@ -218,8 +218,8 @@ offre ∩ activé ∩ disponible ∩ dépendances effectives — seul état qui 
 ### D13 — Annulations (A2, A3, B3, B4, Z1, Z3, W1)
 
 - Aucune expiration automatique en V1.
-- Commande **non réglée** : ligne reçue → `restaurant.order.cancel` ; ligne en préparation ou
-  prête → `restaurant.order.cancel_prepared` ; motif obligatoire ; sans effet sur vente,
+- Commande **non réglée** : ligne reçue → `restaurant.orders.order.cancel` ; ligne en préparation ou
+  prête → `restaurant.orders.order.cancel_prepared` ; motif obligatoire ; sans effet sur vente,
   paiement, caisse ou stock (rien n'a été vendu ni sorti).
 - Commande : annulation de toutes ses lignes non finales (permission selon leur état), motif
   obligatoire ; refusée si réglée (`409 order_settled`) ou si une ligne est servie
@@ -276,7 +276,7 @@ offre ∩ activé ∩ disponible ∩ dépendances effectives — seul état qui 
   par le navigateur, sans prix, coût ni stock (numéro, nom d'appel, mode de service, lignes),
   construit par le serveur ; composant d'impression **propre au module** (N2) :
   `ReceiptPrinter`, `ReceiptDialog` et le POS ne sont pas modifiés. Réimpression permise à qui
-  peut consulter la commande (`restaurant.order.view`) ; impression **non journalisée** en V1.
+  peut consulter la commande (`restaurant.orders.order.view`) ; impression **non journalisée** en V1.
 - **Q4** : nom d'appel facultatif (40 caractères au plus), secondaire : le numéro reste la
   référence.
 - **P-2** : actions de préparation et de service par ligne **en plus** des actions sur toute la
@@ -286,13 +286,13 @@ offre ∩ activé ∩ disponible ∩ dépendances effectives — seul état qui 
 - **P-8** : ajout de lignes idempotent (clé d'idempotence facultative sur l'évènement).
 - **P-13** : écran en trois colonnes « Reçues », « En préparation », « Prêtes ».
 - **N4** : une commande dont toutes les lignes ont été annulées n'est pas réglable
-  (`409 order_empty`) ; elle s'annule avec `restaurant.order.cancel` et un motif obligatoire.
+  (`409 order_empty`) ; elle s'annule avec `restaurant.orders.order.cancel` et un motif obligatoire.
 
 **Règlement et droits**
 
 - **P-11** : état financier (numéro de vente, payé / partiel / dû) visible avec
-  `restaurant.order.view` ; détail des paiements réservé à `sales.payment.view`.
-- **P-12** : `restaurant.order.confirm` déclarée au palier R7 (QR), à son premier usage.
+  `restaurant.orders.order.view` ; détail des paiements réservé à `sales.payment.view`.
+- **P-12** : `restaurant.orders.order.confirm` déclarée au palier R7 (QR), à son premier usage.
 - **Q5** : modèles Serveur et Préparateur facultatifs (`auto_provision = false`) ; si un rôle
   personnalisé porte déjà ce nom, la création du modèle est refusée (`409 role_name_taken`),
   sans renommage automatique.
@@ -322,14 +322,51 @@ offre ∩ activé ∩ disponible ∩ dépendances effectives — seul état qui 
   comme prévu en R0.
 - `auto_provision` des modèles de rôles (défaut `true`) : un modèle facultatif n'est jamais
   créé par le provisionnement ; un modèle protégé l'est toujours.
-- `next_value` : compteur brut par entreprise et par clé (numéro court des commandes). La
-  clé `document_sequences.sequence_key` est limitée à 50 caractères : la forme exacte de la
-  clé des commandes (R0 : `restaurant.order:{site_id}:{AAAA-MM-JJ}`, 64 caractères) est
-  arrêtée en R2-B.
+- `next_value` : compteur brut par entreprise et par clé (numéro court des commandes).
 - Profils D11 appliqués aux données : Maquis, Bar, Café, Boulangerie portés par le profil UX
   `restaurant.default` ; Restaurant, Pizzeria, Traiteur, Restauration rapide le surchargent.
   Seuls les **nouveaux** sites sont concernés ; les activations des sites existants ne
   changent pas.
+
+**Décisions du palier R2-B (validées)**
+
+- **Clé du compteur des commandes** : `ro:{site_id}:{AAAAMMJJ}` — 3 + 36 + 1 + 8 =
+  **48 caractères**, sous la limite de 50 de `document_sequences.sequence_key`, **sans
+  élargissement de la colonne** (la clé de R0, `restaurant.order:{site_id}:{AAAA-MM-JJ}`, en
+  comptait 64). Compteur par entreprise, par site et par jour de l'entreprise ; fondé sur
+  l'**identifiant** du site, jamais sur son code ni son nom (clé stable après un renommage) ;
+  jamais préfixé par `{site_id}:` (ne fige pas le code du site). Testé : longueur, isolation
+  entre sites, entre jours, stabilité après changement du code et du nom du site.
+- **Permissions préfixées par le code EXACT du module propriétaire** (règle du registre,
+  inchangée) selon « module.ressource.action ». Correspondance avec R0 (seul le préfixe
+  change ; natures, rôles et règles inchangés) :
+
+  | R0 | Retenu |
+  |---|---|
+  | `restaurant.order.view`, `.create`, `.prepare`, `.serve`, `.cancel` (read / write) | `restaurant.orders.order.view`, `.create`, `.prepare`, `.serve`, `.cancel` |
+  | `restaurant.order.cancel_prepared` (admin) | `restaurant.orders.order.cancel_prepared` |
+  | `restaurant.order.claim` (write), `.reassign` (admin) — R2-C | `restaurant.orders.order.claim`, `.reassign` |
+  | `restaurant.order.confirm` (write) — R7 | `restaurant.orders.order.confirm` |
+  | `restaurant.settings.manage` (admin) | `restaurant.orders.settings.manage` |
+
+  Convention pour les modules suivants, **sans figer leurs permissions avant leur palier** :
+  `restaurant.tables.<ressource>.<action>` (R5), `restaurant.kitchen.<ressource>.<action>`
+  (R6), `restaurant.qr.<ressource>.<action>` (R7), `restaurant.recipes.<ressource>.<action>`
+  (R8). Le Gestionnaire (`restaurant.*`) couvre ces codes ; le Vendeur reçoit une liste
+  explicite (R2-B : `restaurant.orders.order.view`, `.create`, `.prepare`, `.serve`,
+  `.cancel`).
+- **Module planifié ⇒ aucune permission accordée** : un module non livré qui déclare déjà ses
+  permissions (ici `restaurant.orders`, planifié jusqu'à R2-E) n'en accorde aucune, même si
+  une activation inerte le compte parmi les modules du site (`available_permissions` du
+  registre ne retient que les modules disponibles). Routes non montées, activation refusée
+  (`module_not_implemented`), aucune permission dans les capacités ni dans la délégation.
+
+**R2-B livré** : migration 0042 (tables, déclencheur d'états finaux, RLS, droits par colonne,
+`business_profiles.module_settings` synchronisée, remise à `false`, descente protégée) ;
+moteur T1 (création idempotente, prix figés, numéro court), ajout de lignes idempotent,
+préparation et service par commande ou par ligne, annulations, réglages par site
+(`site_setup`, création au premier usage), ticket de retrait (API), ports du catalogue,
+empreinte ; `restaurant.orders` toujours planifié en production.
 
 ## Conséquences
 
@@ -341,7 +378,7 @@ offre ∩ activé ∩ disponible ∩ dépendances effectives — seul état qui 
   conditionnements et suivi par lot.
 - **Plateforme** : hook `site_setup` à l'activation d'un module sur un site, section
   `module_settings` des profils, notifications de membres, compteur
-  `restaurant.order:{site}:{jour}` (jamais préfixé par `{site_id}:`, qui figerait le code du
+  `ro:{site_id}:{AAAAMMJJ}` (D14 ; jamais préfixé par `{site_id}:`, qui figerait le code du
   site), clé `auto_provision` des modèles de rôles.
 - **Base** : déclencheurs d'états finaux (lignes, commandes) et d'origine des ventes.
 - **Licences** : un site STANDARD déjà licencié n'obtient le QR qu'à sa prochaine licence ; la

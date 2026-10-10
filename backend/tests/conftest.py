@@ -483,3 +483,32 @@ def lot_tracking_open(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     déjà ``True`` : la fixture reste explicite dans les tests des lots, sans effet."""
     monkeypatch.setattr(lot_tracking, "LOT_TRACKING_AVAILABLE", True)
     yield
+
+
+# --- Commandes de restauration : registre de test (palier R2, N1) -------------------------------
+
+
+@pytest.fixture
+def orders_available() -> Iterator[None]:
+    """Registre du serveur où ``restaurant.orders`` est disponible, le temps du test : le registre
+    de production le garde PLANIFIÉ jusqu'au commit R2-E (ADR-0049, D14 N1)."""
+    import dataclasses
+
+    from app.platform.registry import ModuleStatus
+
+    registry = get_registry()
+    original = registry.get("restaurant.orders")
+    registry._modules["restaurant.orders"] = dataclasses.replace(
+        original, status=ModuleStatus.AVAILABLE
+    )
+    try:
+        yield
+    finally:
+        registry._modules["restaurant.orders"] = original
+
+
+@pytest.fixture
+def oclient(settings: Settings, migrated: None, orders_available: None) -> Iterator[TestClient]:
+    """Application construite avec le registre de test (routes des commandes montées)."""
+    with TestClient(create_app(settings)) as client:
+        yield client

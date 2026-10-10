@@ -73,6 +73,7 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
         profile.terminology = pdef.terminology
         profile.theme = pdef.theme
         profile.settings = pdef.settings
+        profile.module_settings = pdef.module_settings
         profile.modules = [
             *(BusinessProfileModule(module_code=c, default_enabled=True) for c in pdef.modules),
             *(

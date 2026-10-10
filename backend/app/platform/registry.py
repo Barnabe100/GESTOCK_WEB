@@ -231,11 +231,17 @@ class ModuleRegistry:
         self, module_codes: Iterable[str], features: Iterable[str]
     ) -> dict[str, PermissionDef]:
         """Permissions utilisables par un tenant : celles de ses modules effectifs, sauf celles
-        d'une fonctionnalité que son plan n'inclut pas."""
+        d'une fonctionnalité que son plan n'inclut pas. Un module non livré (``planned``) n'en
+        accorde aucune, même s'il déclare déjà les siennes et qu'une activation inerte le
+        compte parmi les modules du site (palier R2-B, N1 : ``restaurant.orders`` planifié
+        jusqu'à R2-E)."""
         enabled = set(features)
+        delivered = [
+            code for code in module_codes if self._modules[code].status is ModuleStatus.AVAILABLE
+        ]
         return {
             code: perm
-            for code, perm in self.permissions_of(module_codes).items()
+            for code, perm in self.permissions_of(delivered).items()
             if perm.feature is None or perm.feature in enabled
         }
 

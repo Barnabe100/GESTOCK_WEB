@@ -273,6 +273,24 @@ modifiables (jamais de suppression) ; aucun droit pour le rôle de la console. M
 explicite, D10) ; retour arrière refusé dès qu'une section ou un élément de menu existe
 (condition, message et tests : [`RESTAURANT.md`](RESTAURANT.md) §11).
 
+### Commandes de restauration (palier R2-B, isolés par RLS, [ADR-0049](../adr/0049-restauration-commandes.md) D14)
+
+| Table | Colonnes principales | Contraintes notables |
+|---|---|---|
+| `restaurant_site_settings` | `tenant_id`, `site_id`, `payment_timing` (`AT_END` \| `AT_ORDER`), `claim_protection_minutes`, `claim_cooldown_minutes`, `qr_auto_accept` — une ligne par site, créée à l'activation (`site_setup`) depuis `module_settings` du profil, jamais écrasée, conservée par une désactivation | `UNIQUE (tenant_id, site_id)` ; FK composite site ; minutes 0–1440 |
+| `restaurant_orders` | `site_id`, `business_date` (jour de l'entreprise), `daily_number`, `channel` (`STAFF` \| `POS` \| `QR`), `service_mode`, `table_id` (R5, sans FK), `customer_id`, `call_name` (40), `status`, `prep_status` (résumé tenu par le service), `settlement_status`, `payment_timing` (recopié), `assigned_*`, `sale_id` (R2-D), `idempotency_key`, `created_by`, `confirmed_*`, `closed_at`, `cancelled_*`, `cancel_reason`, `version` | `UNIQUE (tenant_id, site_id, business_date, daily_number)` ; `UNIQUE (tenant_id, site_id, idempotency_key)` ; `UNIQUE (tenant_id, site_id, id)` (cible des lignes et évènements) ; CHECK motif d'annulation, close ⇒ réglée, réglée ⇒ vente ; index d'ancienneté `(tenant_id, site_id, settlement_status, status, created_at)` |
+| `restaurant_order_lines` | `order_id`, `site_id`, `line_no`, `menu_item_id`, instantané figé (`article_id`, `packaging_id`, `label`, `packaging_name`, `unit`, `conversion`, `unit_price`, `quantity`, `base_quantity`, `line_total`, `note`), `status`, `prepared_*`, `ready_at`, `served_*`, `cancelled_*`, `cancel_reason` | FK composites : commande du MÊME site, élément de menu du MÊME site (`restaurant_menu_items (tenant_id, site_id, id)`, ajouté par 0042), article, conditionnement DE L'ARTICLE ; `UNIQUE (tenant_id, order_id, line_no)` ; CHECK quantités > 0, montants ≥ 0, motif, servie complète |
+| `restaurant_order_events` | `order_id`, `site_id`, `event_type`, `actor_kind`, `actor_user_id`, `reason`, `line_ids`, `data`, `idempotency_key`, `occurred_at` — historique en ajout seul | `UNIQUE (tenant_id, order_id, idempotency_key)` ; index `(tenant_id, site_id, actor_user_id, event_type, occurred_at DESC)` (dernière prise, D7) |
+
+Déclencheur `trg_restaurant_final_state` : ligne servie ou annulée, commande close, annulée ou
+refusée immuables, instantané d'une ligne jamais modifié (même par une écriture SQL directe). RLS
+`ENABLE` + `FORCE` ; rôle applicatif : `SELECT, INSERT` + `UPDATE` des seules colonnes d'état
+(évènements : `SELECT, INSERT`) ; jamais de suppression ; aucun droit pour la console. Compteur des
+numéros : `document_sequences`, clé `ro:{site_id}:{AAAAMMJJ}` (48 caractères). Migration 0042 :
+`restaurant.orders` remis à `false` dans `site_modules` (D10) ; colonne
+`business_profiles.module_settings` ; retour arrière refusé dès qu'une commande ou une ligne de
+réglages existe (condition et tests : [`RESTAURANT.md`](RESTAURANT.md) §11).
+
 ### Créances (Phase 2.8) : aucune table
 
 Une créance ouverte est une vente `VALIDATED` dont le reste dû (`total` − paiements

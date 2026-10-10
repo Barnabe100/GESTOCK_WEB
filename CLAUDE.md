@@ -354,8 +354,17 @@ distinctes ; un commit par sous-étape R2-A à R2-F, chaque sous-étape sur vali
 un site à son activation, idempotent, jamais d'écrasement, jamais un module planifié),
 `module_settings` des profils (format et validation ; colonne en 0042), `auto_provision` des
 modèles de rôles, compteur brut `next_value`, profils de restauration D11 (nouveaux sites
-seulement) ; `restaurant.orders` reste `planned` en production jusqu'au commit R2-E (N1) ; **ne
-pas commencer R2-B sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+seulement) ; `restaurant.orders` reste `planned` en production jusqu'au commit R2-E (N1) ;
+**R2-B livré** — moteur de commandes sans règlement (paquet `restaurant_orders`, migration 0042) :
+`restaurant_site_settings` (créés à l'activation, conservés par une désactivation),
+`restaurant_orders` / `restaurant_order_lines` (prix figés, aucune vente ni stock) /
+`restaurant_order_events` (ajout seul), états finaux protégés par déclencheur, numéro du jour
+par site (clé `ro:{site_id}:{AAAAMMJJ}`, 48 caractères), préparation par ligne, annulations
+motivées, ticket de retrait sans prix ; permissions au préfixe exact du module
+(`restaurant.orders.order.*`, `restaurant.orders.settings.manage`) ; **un module planifié
+n'accorde aucune permission** (registre) ; routes non montées en production (tests : registre de
+test) ; descente de 0042 refusée dès qu'une commande ou un réglage existe ; **ne pas commencer
+R2-C sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

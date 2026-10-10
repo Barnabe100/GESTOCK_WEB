@@ -68,6 +68,13 @@ permissions = [
   "inventory_count.inventory.view",
   "restaurant.menu.view",
   "restaurant.menu.availability",
+  # Commandes (ADR-0049, D14) : saisie, préparation, service, annulation des lignes reçues ;
+  # prise en charge en R2-C ; jamais d'annulation de lignes préparées ni de réglages.
+  "restaurant.orders.order.view",
+  "restaurant.orders.order.create",
+  "restaurant.orders.order.prepare",
+  "restaurant.orders.order.serve",
+  "restaurant.orders.order.cancel",
   "subscription.activation.check",
 ]
 
