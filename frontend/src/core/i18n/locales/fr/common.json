@@ -102,7 +102,8 @@
     "stockLocations": "Emplacements",
     "stockLots": "Lots",
     "assortment": "Assortiment des sites",
-    "restaurantMenu": "Menu"
+    "restaurantMenu": "Menu",
+    "restaurantOrders": "Commandes"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -555,7 +556,16 @@
     "organization.onboarding.manage": "Démarrer les étapes de l'installation",
     "restaurant.menu.view": "Consulter le menu",
     "restaurant.menu.manage": "Gérer le menu (sections, éléments)",
-    "restaurant.menu.availability": "Marquer un élément du menu épuisé ou disponible"
+    "restaurant.menu.availability": "Marquer un élément du menu épuisé ou disponible",
+    "restaurant.orders.order.view": "Consulter les commandes",
+    "restaurant.orders.order.create": "Prendre une commande (saisie, ajout de lignes)",
+    "restaurant.orders.order.claim": "Prendre en charge une commande",
+    "restaurant.orders.order.prepare": "Préparer les commandes (en préparation, prête)",
+    "restaurant.orders.order.serve": "Servir ou remettre une commande",
+    "restaurant.orders.order.cancel": "Annuler une commande ou une ligne non préparée",
+    "restaurant.orders.order.cancel_prepared": "Annuler une ligne en préparation ou prête",
+    "restaurant.orders.order.reassign": "Réattribuer une commande",
+    "restaurant.orders.settings.manage": "Gérer les réglages des commandes du site"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -1067,7 +1077,8 @@
     "allChannels": "Tous les canaux",
     "channels": {
       "BACKOFFICE": "Gestion",
-      "POS": "Point de vente"
+      "POS": "Point de vente",
+      "RESTAURANT": "Restauration"
     },
     "article": "Article",
     "articleReference": "Référence article",
@@ -1106,7 +1117,8 @@
       }
     },
     "presentation": "Présentation",
-    "baseQuantity": "Quantité de base"
+    "baseQuantity": "Quantité de base",
+    "averageUnitPrice": "Prix moyen pondéré (lignes regroupées à des prix différents ; le total fait foi)"
   },
   "filters": {
     "reset": "Réinitialiser",
@@ -2112,7 +2124,8 @@
     "thanks": "Merci pour votre confiance. À très bientôt !",
     "neverPrinted": "Reçu jamais imprimé.",
     "printedCount_one": "Reçu imprimé {{count}} fois.",
-    "printedCount_other": "Reçu imprimé {{count}} fois."
+    "printedCount_other": "Reçu imprimé {{count}} fois.",
+    "averagePrice": "prix moyen"
   },
   "restaurantMenu": {
     "title": "Menu",
@@ -2177,6 +2190,187 @@
       "article_not_in_site_assortment": "hors assortiment du site",
       "packaging_inactive": "conditionnement désactivé",
       "packaging_price_not_set": "prix du conditionnement non configuré"
+    }
+  },
+  "restaurantOrders": {
+    "title": "Commandes",
+    "subtitle": "Commandes du restaurant : suivi en cuisine et au service, règlement et historique. Le numéro du jour identifie la commande auprès du client.",
+    "tabs": {
+      "board": "Suivi",
+      "toSettle": "À régler",
+      "history": "Historique"
+    },
+    "columns": {
+      "RECEIVED": "Reçues",
+      "IN_PREPARATION": "En préparation",
+      "READY": "Prêtes"
+    },
+    "emptyColumn": "Aucune commande.",
+    "counts": "Reçues : {{received}} · En préparation : {{preparing}} · Prêtes : {{ready}}",
+    "openOrder": "Ouvrir la commande n° {{number}}",
+    "searchPlaceholder": "Numéro ou nom d'appel…",
+    "servedUnsettled": "Servies non réglées seulement",
+    "nothingToSettle": "Aucune commande à régler.",
+    "noOrders": "Aucune commande.",
+    "callNameOrCustomer": "Nom d'appel / client",
+    "prepState": "Préparation",
+    "lastServedAt": "Dernier service",
+    "businessDate": "Date",
+    "stateFilter": {
+      "active": "En cours",
+      "closed": "Clôturées",
+      "cancelled": "Annulées ou refusées",
+      "all": "Toutes"
+    },
+    "newOrder": "Nouvelle commande",
+    "newOrderHelp": "Choisissez le mode de service puis les éléments du menu. Les prix sont figés à l'enregistrement ; le numéro du jour est attribué par le serveur.",
+    "menuRequired": "La prise de commande nécessite la consultation du menu (permission manquante).",
+    "serviceMode": "Mode de service",
+    "serviceModes": {
+      "ON_SITE": "Sur place",
+      "COUNTER": "Comptoir",
+      "TAKEAWAY": "À emporter"
+    },
+    "callName": "Nom d'appel",
+    "callNameHelp": "Facultatif : nom ou repère annoncé au client (40 caractères au plus).",
+    "customer": "Client",
+    "customerHelp": "Facultatif. Nécessaire pour un règlement à crédit : il ne peut pas être ajouté après l'enregistrement.",
+    "decimalHint": "Quantité décimale : acceptée seulement si l'article l'autorise (contrôlé par le serveur).",
+    "saveOrder": "Enregistrer la commande",
+    "chooseSiteFirst": "Choisissez d'abord un site.",
+    "menu": "Menu",
+    "noOrderableItem": "Aucun élément commandable sur ce site (menu vide, épuisé ou non disponible).",
+    "addItem": "Ajouter {{name}}",
+    "lines": "Lignes",
+    "emptyCart": "Aucune ligne : touchez un élément du menu pour l'ajouter.",
+    "removeLine": "Retirer {{name}}",
+    "quantityOf": "Quantité de {{name}}",
+    "notePlaceholder": "Note (cuisson, sans oignon…)",
+    "noteOf": "Note pour {{name}}",
+    "indicativeTotal": "Total indicatif : {{total}}",
+    "orderTitle": "Commande n° {{number}}",
+    "number": "Numéro",
+    "numberLabel": "N° {{number}}",
+    "createdBanner": "Commande enregistrée. Annoncez ce numéro au client :",
+    "state": "État",
+    "status": {
+      "PENDING_CONFIRMATION": "À confirmer",
+      "OPEN": "En cours",
+      "CLOSED": "Clôturée",
+      "CANCELLED": "Annulée",
+      "REJECTED": "Refusée"
+    },
+    "prep": {
+      "RECEIVED": "Reçue",
+      "IN_PREPARATION": "En préparation",
+      "READY": "Prête",
+      "SERVED": "Servie",
+      "NONE": "—"
+    },
+    "lineStatus": {
+      "RECEIVED": "Reçue",
+      "IN_PREPARATION": "En préparation",
+      "READY": "Prête",
+      "SERVED": "Servie",
+      "HANDED_OVER": "Remise",
+      "CANCELLED": "Annulée"
+    },
+    "settlement": {
+      "SETTLED": "Réglée",
+      "UNSETTLED": "Non réglée"
+    },
+    "noCustomer": "Sans client",
+    "assignee": "Responsable",
+    "unassigned": "Non prise en charge",
+    "createdAt": "Créée le",
+    "paymentTiming": "Moment du paiement",
+    "paymentTimings": {
+      "AT_END": "À la fin du service",
+      "AT_ORDER": "À la commande"
+    },
+    "financial": "Règlement",
+    "total": "Total",
+    "sale": "Vente",
+    "paymentStatus": "Encaissement",
+    "amountDue": "Reste dû",
+    "item": "Élément",
+    "quantity": "Quantité",
+    "frozenPrice": "Prix figé",
+    "lineTotal": "Montant",
+    "history": "Historique",
+    "lineNumbers": "lignes {{lines}}",
+    "saleNumber": "vente {{number}}",
+    "events": {
+      "CREATED": "Commande créée",
+      "CONFIRMED": "Commande confirmée",
+      "REJECTED": "Commande refusée",
+      "CLAIMED": "Prise en charge",
+      "REASSIGNED": "Réattribuée",
+      "LINES_ADDED": "Lignes ajoutées",
+      "PREP_STARTED": "Préparation commencée",
+      "READY": "Prête",
+      "READY_REVERTED": "Retour en préparation",
+      "SERVED": "Servie ou remise",
+      "LINE_CANCELLED": "Ligne annulée",
+      "SETTLED": "Réglée",
+      "SALE_CANCELLED": "Vente annulée : commande à régler de nouveau",
+      "CLOSED": "Clôturée",
+      "CANCELLED": "Commande annulée"
+    },
+    "reason": "Motif",
+    "addLines": "Ajouter des lignes",
+    "linesAdded": "Lignes ajoutées.",
+    "reassign": "Réattribuer",
+    "reassignHelp": "Seuls les membres pouvant prendre une commande sur ce site sont proposés (calculé par le serveur). Le motif est journalisé.",
+    "reassigned": "Commande réattribuée.",
+    "chooseAssignee": "Choisir un membre",
+    "newAssignee": "Nouveau responsable",
+    "noAssignee": "Aucun membre éligible sur ce site.",
+    "actions": {
+      "start": "Commencer",
+      "ready": "Prête",
+      "revert": "Remettre en préparation",
+      "serve": "Servir",
+      "handOver": "Remettre au client",
+      "cancelLine": "Annuler la ligne",
+      "claim": "Prendre",
+      "startAll": "Tout commencer",
+      "readyAll": "Tout prêt",
+      "serveAll": "Tout servir",
+      "handOverAll": "Tout remettre"
+    },
+    "cancelOrder": "Annuler la commande",
+    "cancelOrderConfirm": "Annuler la commande n° {{number}} ? Cette action est définitive.",
+    "cancelLineConfirm": "Annuler la ligne « {{name}} » ? Cette action est définitive.",
+    "confirmCancel": "Confirmer l'annulation",
+    "updated": "Commande mise à jour.",
+    "settle": "Régler",
+    "settledToast": "Commande réglée : vente {{number}}.",
+    "closedNotice": "Commande clôturée : réglée et entièrement servie. Elle ne peut plus être modifiée.",
+    "settledNotice": "Commande réglée : aucune ligne ne peut plus être ajoutée. Elle sera clôturée une fois tout servi.",
+    "payFirstNotice": "Paiement à la commande : réglez cette commande avant de lancer sa préparation.",
+    "noCustomerCreditNotice": "Commande sans client : le reste dû ne peut pas être laissé à crédit. Réglez la totalité (limite de la version 1 : aucun client ne peut être associé après l'enregistrement).",
+    "cancelledNotice": "Commande annulée. Motif : {{reason}}",
+    "ticket": {
+      "title": "Ticket de retrait",
+      "open": "Ticket",
+      "date": "Heure",
+      "footer": "Présentez ce numéro au retrait.",
+      "noPrices": "Ticket de retrait sans prix (format 80 mm). Le reçu de la vente est disponible après le règlement.",
+      "print": "Imprimer le ticket"
+    },
+    "settings": {
+      "title": "Réglages",
+      "help": "Réglages des commandes du site. Le moment du paiement s'applique aux commandes créées ensuite.",
+      "timingHelp": "Une commande garde le mode en vigueur à sa création.",
+      "protection": "Protection d'une prise en charge",
+      "protectionHelp": "Durée pendant laquelle un collègue ne peut pas reprendre la commande (0 à 1440 minutes).",
+      "cooldown": "Délai entre deux prises",
+      "cooldownHelp": "Durée minimale entre deux prises par le même employé sur le site (0 à 1440 minutes).",
+      "qrAutoAccept": "Acceptation automatique des commandes QR",
+      "qrLater": "(sans effet avant les commandes par QR code)",
+      "updatedAt": "Dernière modification",
+      "saved": "Réglages enregistrés."
     }
   }
 }

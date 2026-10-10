@@ -697,4 +697,34 @@ describe('vente en conditionnement (Lot 3-B)', () => {
     expect(screen.getAllByText('2 boîte')).toHaveLength(2);
     expect(screen.getByRole('columnheader', { name: 'Quantité de base' })).toBeTruthy();
   });
+  it('commande de restauration réglée : prix moyen pondéré signalé, total de ligne exact', async () => {
+    const grouped = line({
+      article_designation: 'Poulet braisé',
+      unit: 'portion',
+      quantity: '3.000',
+      unit_price: '733.33',
+      line_total: '2200.00',
+      average_unit_price: true,
+    });
+    fetchMock.mockImplementation(async (url) =>
+      String(url).includes('/payments')
+        ? jsonResponse({ sale_id: 'v1', sale_status: 'VALIDATED', summary: null, items: [] })
+        : jsonResponse({
+            ...validated,
+            channel: 'RESTAURANT',
+            subtotal: '2200.00',
+            total: '2200.00',
+            lines: [grouped],
+          }),
+    );
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: ALL,
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    const row = (await screen.findByText(/Poulet braisé/)).closest('tr') as HTMLElement;
+    expect(within(row).getByText(money('733.33'))).toBeTruthy();
+    expect(within(row).getByText(/Prix moyen pondéré/)).toBeTruthy();
+    expect(within(row).getByText(money('2200'))).toBeTruthy();
+  });
 });

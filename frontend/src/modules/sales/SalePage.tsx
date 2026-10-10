@@ -590,7 +590,16 @@ function SaleSummary({ sale }: { sale: Sale }) {
         )}
         <Column
           header={t('sales.unitPrice')}
-          body={(l: SaleLine) => formatMoney(l.unit_price, currency, locale)}
+          body={(l: SaleLine) =>
+            l.average_unit_price ? (
+              <span className="sm-stack-xs">
+                <span>{formatMoney(l.unit_price, currency, locale)}</span>
+                <small className="sm-help">{t('sales.averageUnitPrice')}</small>
+              </span>
+            ) : (
+              formatMoney(l.unit_price, currency, locale)
+            )
+          }
         />
         <Column
           header={t('sales.lineTotal')}

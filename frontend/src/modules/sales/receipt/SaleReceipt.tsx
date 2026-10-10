@@ -84,7 +84,10 @@ export function SaleReceipt({
           <li key={index} data-testid="receipt-line">
             <span className="sm-receipt-designation">{line.designation}</span>
             <span className="sm-receipt-row">
-              <span>{`${presented(line, locale)} × ${money(line.unit_price)}`}</span>
+              <span>
+                {`${presented(line, locale)} × ${money(line.unit_price)}`}
+                {line.average_unit_price && ` (${t('receipt.averagePrice')})`}
+              </span>
               <span className="sm-num">{money(line.line_total)}</span>
             </span>
           </li>

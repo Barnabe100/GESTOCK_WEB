@@ -79,6 +79,8 @@ class ReceiptLineOut(BaseModel):
     packaging_conversion: Quantity | None
     unit_price: Money
     line_total: Money
+    # Prix unitaire moyen pondéré (ligne regroupant plusieurs prix figés) : le total fait foi.
+    average_unit_price: bool = False
 
 
 class ReceiptPaymentOut(BaseModel):
@@ -195,6 +197,7 @@ def _receipt(db: Session, ctx: RequestContext, now: datetime, sale: Sale) -> Rec
                 packaging_conversion=line.packaging_conversion,
                 unit_price=line.unit_price,
                 line_total=line.line_total,
+                average_unit_price=line.average_unit_price,
             )
             for line in sorted(out.lines, key=lambda x: x.line_no)
         ],

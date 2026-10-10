@@ -473,6 +473,54 @@ modèles Serveur et Préparateur ; `restaurant.orders` toujours planifié en pro
 **R2-D livré** : migration 0043, règlement T2, port d'origine, Z3, commande close, état
 financier ; `restaurant.orders` toujours planifié en production (bascule en R2-E).
 
+**Décisions du palier R2-E (interface)**
+
+- **Écrans** (module frontend `restaurant_orders`, affiché seulement si le backend déclare
+  `restaurant.orders` effectif) : « Commandes » — suivi en trois colonnes (Reçues, En
+  préparation, Prêtes ; actualisé toutes les 15 s), onglet « À régler » (commandes en cours non
+  réglées, filtre « servies non réglées ») et « Historique » (closes, annulées ou refusées,
+  toutes) ; « Nouvelle commande » (mode de service, nom d'appel, client facultatif, éléments
+  COMMANDABLES du menu du site, une clé d'idempotence par saisie) ; fiche (numéro mis en
+  évidence après la création, lignes aux prix figés et leurs actions, prise en charge,
+  réattribution motivée, annulations motivées, historique, état financier lu sur la vente) ;
+  « Réglages » d'un site (moment du paiement, protection, délai entre prises ;
+  `qr_auto_accept` affiché, non modifiable). Chaque bouton n'apparaît qu'avec la permission et
+  dans l'état qui le permettent ; le serveur refait tous les contrôles.
+- **Ticket de retrait 80 mm sans prix** : composant PROPRE au module (N2), même principe
+  d'impression que le reçu (`#sm-print-root`, règle `@page` injectée le temps de l'impression) ;
+  `ReceiptPrinter`, `ReceiptDialog` et le POS ne sont pas modifiés.
+- **Règlement** : le dialogue de validation des ventes (`ValidateSaleDialog`) est réutilisé tel
+  quel (libellé « Valider la vente » conservé), soumis à `POST /restaurant/orders/{id}/settle`
+  avec une clé par ouverture du dialogue, rejouée en cas de nouvel essai après un refus ;
+  messages d'erreur des ventes (dont dépassement de limite de crédit et lots périmés) ; reçu de
+  la vente ouvert après un règlement réussi (avec `sales.sale.view`). Aucun nouveau mécanisme de
+  crédit ni contournement : le dialogue applique les règles existantes (encaissement proposé
+  d'emblée sans client ou sans `sales.sale.credit_create`).
+- **Ajouts serveur nécessaires à l'interface** (sans migration) : filtre
+  `settlement_status` (`UNSETTLED` \| `SETTLED`) de `GET /restaurant/orders` ;
+  `GET /restaurant/orders/{id}/assignees` (`restaurant.orders.order.reassign` sur le site) :
+  membres actifs détenant `restaurant.orders.order.claim` EFFECTIVE sur le site, calculés par le
+  serveur avec la règle de la réattribution (l'interface n'en décide jamais) ; indicateur
+  `average_unit_price` (booléen calculé, aucune colonne) sur les lignes des ventes et du reçu :
+  `vrai` lorsque `line_total ≠ arrondi(quantité × prix unitaire)`, c.-à-d. ligne regroupée à des
+  prix figés différents. Le reçu affiche « × prix (prix moyen) » suivi du total EXACT de la
+  ligne ; la fiche de la vente signale « Prix moyen pondéré … le total fait foi ». Le POS et les
+  ventes ordinaires ne sont jamais concernés (indicateur toujours faux).
+- **Libellés** : canal `RESTAURANT` = « Restauration » (filtres et fiches des ventes) ; codes
+  d'erreur des commandes traduits (`errors.json`) ; libellés des permissions
+  `restaurant.orders.*`.
+- **Commande sans client** (limite de V1, Z1) : comportement inchangé — le règlement d'une
+  commande sans client n'accepte pas de reste dû (`credit_customer_required` des ventes) ;
+  l'interface l'annonce sur une commande servie non réglée sans client. Aucune route n'associe
+  un client APRÈS la création ; ce point est soumis à décision (non tranché en R2-E).
+- **N1 maintenu sur décision de l'utilisateur** : `restaurant.orders` reste `planned` en
+  production à la fin de R2-E (le plan prévoyait la bascule dans ce commit) ; la bascule suit
+  la validation explicite de R2-E. Les écrans ne s'affichent donc pas encore en production.
+
+**R2-E livré** : interface des commandes, ticket de retrait sans prix, règlement depuis la
+fiche, réglages ; `restaurant.orders` toujours planifié en production (bascule après
+validation). Ne pas commencer R2-F sans validation explicite.
+
 ## Conséquences
 
 - **Ventes (R2-D, ancien R3)** : `origin_type` / `origin_id` immuables (déclencheur), index

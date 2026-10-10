@@ -240,6 +240,14 @@ passe d'abord par le port d'origine (`sales/origin_port.py`) qui verrouille le d
 la vente et peut refuser (`order_closed`) ; sans gestionnaire : `sale_origin_unavailable`. Les
 ventes ordinaires et le POS ne sont pas modifiés (origine nulle).
 
+**Prix moyen pondéré (R2-E)** : les lignes d'une commande de même présentation sont regroupées
+en une ligne de vente ; si elles avaient des prix figés différents, le prix unitaire affiché est
+le prix moyen pondéré arrondi au centime et le total de la ligne reste la somme EXACTE des prix
+figés. Les lignes de vente et du reçu exposent alors `average_unit_price = true` (calculé :
+`line_total ≠ arrondi(quantité × prix unitaire)`, aucune colonne) : reçu « × prix (prix moyen) »,
+fiche « Prix moyen pondéré … le total fait foi ». Toujours `false` pour le POS et les ventes
+ordinaires. Canal `RESTAURANT` libellé « Restauration » dans l'interface.
+
 ## 10. Hors périmètre et suite
 
 **Paiements** : réalisés en Phase 2.7 — [`PAYMENTS.md`](PAYMENTS.md) (encaissement

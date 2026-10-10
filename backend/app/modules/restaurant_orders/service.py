@@ -105,6 +105,7 @@ from app.modules.sales.api import (
     sale_by_idempotency_key,
     sale_financial_states,
 )
+from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.audit.service import audit_action
 from app.platform.capabilities.service import CapabilityService
 from app.platform.context import RequestContext
@@ -841,6 +842,27 @@ class OrderService:
         )
         return order
 
+    def assignees(self, order_id: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+        """Membres éligibles à une réattribution (aide à la saisie, R2-E) : appartenance active
+        et ``order.claim`` EFFECTIVE sur le site de la commande — le calcul exact du contrôle
+        ``assignee_not_eligible``, qui reste fait à la réattribution."""
+        order = self.get(order_id)
+        require_site_permission(self.ctx, order.site_id, ORDER_REASSIGN)
+        rows = self.db.execute(
+            select(TenantMembership.user_id, User.full_name)
+            .join(User, User.id == TenantMembership.user_id)
+            .where(
+                TenantMembership.tenant_id == self.ctx.tenant_id,
+                TenantMembership.status == MembershipStatus.ACTIVE,
+            )
+            .order_by(User.full_name, User.id)
+        ).all()
+        return [
+            (user_id, name)
+            for user_id, name in rows
+            if member_holds(self.db, self.ctx, user_id, order.site_id, ORDER_CLAIM, self.now)
+        ]
+
     def reassign(self, order_id: uuid.UUID, assignee_id: uuid.UUID, reason: str) -> RestaurantOrder:
         """Réattribution IMMÉDIATE (sans égard à la protection), motivée et auditée ; le nouveau
         responsable doit détenir ``order.claim`` effectif sur le site, contrôlé sous le verrou
@@ -1039,6 +1061,7 @@ class OrderService:
         site_id: uuid.UUID | None = None,
         state: OrderState = OrderState.ACTIVE,
         prep: PrepStatus | None = None,
+        settlement: SettlementStatus | None = None,
         unsettled_served: bool = False,
         search: str | None = None,
         day: Any = None,
@@ -1057,6 +1080,8 @@ class OrderService:
             )
         if prep is not None:
             stmt = stmt.where(RestaurantOrder.prep_status == prep)
+        if settlement is not None:
+            stmt = stmt.where(RestaurantOrder.settlement_status == settlement)
         if unsettled_served:
             served = select(RestaurantOrderLine.id).where(
                 RestaurantOrderLine.tenant_id == RestaurantOrder.tenant_id,

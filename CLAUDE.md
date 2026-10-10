@@ -354,7 +354,7 @@ distinctes ; un commit par sous-étape R2-A à R2-F, chaque sous-étape sur vali
 un site à son activation, idempotent, jamais d'écrasement, jamais un module planifié),
 `module_settings` des profils (format et validation ; colonne en 0042), `auto_provision` des
 modèles de rôles, compteur brut `next_value`, profils de restauration D11 (nouveaux sites
-seulement) ; `restaurant.orders` reste `planned` en production jusqu'au commit R2-E (N1) ;
+seulement) ; `restaurant.orders` reste `planned` en production jusqu'à la validation de R2-E (N1) ;
 **R2-B livré** — moteur de commandes sans règlement (paquet `restaurant_orders`, migration 0042) :
 `restaurant_site_settings` (créés à l'activation, conservés par une désactivation),
 `restaurant_orders` / `restaurant_order_lines` (prix figés, aucune vente ni stock) /
@@ -380,8 +380,18 @@ vente : stock FEFO / lots / CMUP, crédit, caisse) avec les permissions EXISTANT
 idempotent, tout ou rien ; seule une vente ayant une origine échappe à `sale_prices_changed`
 (POS et ventes ordinaires inchangés) ; lignes de même présentation regroupées (total exact) ;
 Z3 par le port `sales/origin_port.py` (commande verrouillée AVANT la vente ; close :
-`409 order_closed` ; sinon « à régler ») ; état financier lu sur la vente ; **ne pas commencer
-R2-E sans validation explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+`409 order_closed` ; sinon « à régler ») ; état financier lu sur la vente ; **R2-E livré** — interface (frontend
+`restaurant_orders`, aucune migration) : suivi en trois colonnes (15 s), « À régler »,
+historique, saisie (éléments commandables, clé d'idempotence), fiche (numéro mis en évidence,
+actions selon permissions et états, réattribution parmi `GET /restaurant/orders/{id}/assignees`
+calculés par le serveur), règlement par le dialogue des ventes réutilisé (`/settle`), réglages
+du site, **ticket de retrait 80 mm SANS prix** (composant propre au module ; reçu et POS
+inchangés), canal `RESTAURANT` « Restauration », erreurs traduites ; filtre
+`settlement_status` ; `average_unit_price` (calculé) sur les lignes de vente et du reçu : prix
+moyen pondéré signalé, total exact ; commande sans client : aucun reste dû (limite V1, aucune
+association de client après création) ; **`restaurant.orders` reste `planned`** jusqu'à la
+validation de R2-E (décision de l'utilisateur) ; **ne pas commencer R2-F sans validation
+explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

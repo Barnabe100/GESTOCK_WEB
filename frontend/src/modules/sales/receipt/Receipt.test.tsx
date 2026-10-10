@@ -121,6 +121,32 @@ describe('reçu de vente (80 mm)', () => {
     expect(content).not.toMatch(/CMUP|coût|cost|lot/i);
   });
 
+  it('lignes regroupées à des prix différents : prix moyen signalé, total de la ligne exact', () => {
+    renderWithCapabilities(
+      <SaleReceipt
+        receipt={receipt({
+          lines: [
+            {
+              designation: 'Poulet braisé',
+              unit: 'portion',
+              quantity: '3.000',
+              packaging_name: null,
+              packaging_conversion: null,
+              unit_price: '733.33',
+              line_total: '2200.00',
+              average_unit_price: true,
+            },
+          ],
+          total: '2200.00',
+        })}
+      />,
+      { permissions: VIEW },
+    );
+    const [poulet] = screen.getAllByTestId('receipt-line');
+    expect(text(poulet ?? null)).toContain(`3 portion × ${money('733.33')} (prix moyen)`);
+    expect(text(poulet ?? null)).toContain(money('2200'));
+  });
+
   it('vente à crédit : reste dû et mention du crédit, monnaie rendue nulle', () => {
     renderWithCapabilities(
       <SaleReceipt

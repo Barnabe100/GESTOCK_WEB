@@ -240,3 +240,8 @@ class SettlementOut(BaseModel):
     sale_id: uuid.UUID
     # Vrai si la clé avait déjà été traitée (aucune nouvelle écriture).
     replayed: bool
+
+
+class AssigneeOut(BaseModel):
+    user_id: uuid.UUID
+    full_name: str

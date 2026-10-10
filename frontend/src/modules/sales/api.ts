@@ -13,8 +13,9 @@ export const SALE_PAYMENT_STATUSES: readonly SalePaymentStatus[] = [
 ];
 export const SALE_STATUSES: readonly SaleStatus[] = ['DRAFT', 'VALIDATED', 'CANCELLED'];
 /** Canal d'enregistrement : gestion (back-office) ou point de vente. */
-export type SaleChannel = 'BACKOFFICE' | 'POS';
-export const SALE_CHANNELS: readonly SaleChannel[] = ['BACKOFFICE', 'POS'];
+/** `RESTAURANT` : vente issue du règlement d'une commande (R2-D), jamais saisie directement. */
+export type SaleChannel = 'BACKOFFICE' | 'POS' | 'RESTAURANT';
+export const SALE_CHANNELS: readonly SaleChannel[] = ['BACKOFFICE', 'POS', 'RESTAURANT'];
 /** Formats proposés par l'export de l'historique (le serveur refuse tout autre format). */
 export const SALES_EXPORT_FORMATS = ['xlsx', 'csv', 'pdf'] as const;
 
@@ -30,6 +31,9 @@ export interface SaleLine {
   quantity: string;
   unit_price: string;
   line_total: string;
+  /** Prix unitaire MOYEN pondéré (ligne d'une commande regroupant plusieurs prix figés) : le
+   *  total de ligne fait foi (R2-D / R2-E). */
+  average_unit_price?: boolean;
   /** Lot 3-B : instantané du conditionnement vendu (nul : unité de base), figé. */
   packaging_id?: string | null;
   packaging_name?: string | null;
@@ -62,6 +66,9 @@ export interface Sale {
   customer_name: string | null;
   status: SaleStatus;
   channel: SaleChannel;
+  /** Origine posée par le serveur (ex. `restaurant_order`) ; nulle pour une vente ordinaire. */
+  origin_type?: string | null;
+  origin_id?: string | null;
   sale_date: string;
   notes: string | null;
   subtotal: string;

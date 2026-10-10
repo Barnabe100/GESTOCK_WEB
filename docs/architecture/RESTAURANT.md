@@ -3,8 +3,8 @@
 > **Conception validée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
 > (arbitrages A1–A7, B1–B6, Z1–Z3, W1 ; décisions du palier R2 : D14). **Palier R1 (menu)
 > livré** (migration 0041). **Palier R2 en cours** (commandes et règlement, absorbe l'ancien
-> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; R2-D livré : migration 0043, règlement T2, Z3) ; `restaurant.orders` reste `planned` jusqu'au commit
-> R2-E. Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
+> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; R2-D livré : migration 0043, règlement T2, Z3 ; R2-E livré : interface — suivi, saisie, fiche, règlement, réglages, ticket 80 mm sans prix) ; `restaurant.orders` reste `planned` jusqu'à la
+> validation de R2-E (décision de l'utilisateur). Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
 > de leur palier.
 > **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
 > suivants sont indicatifs.

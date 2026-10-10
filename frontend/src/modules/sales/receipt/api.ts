@@ -22,6 +22,8 @@ export interface ReceiptLine {
   packaging_conversion: string | null;
   unit_price: string;
   line_total: string;
+  /** Prix unitaire moyen pondéré (ligne regroupant plusieurs prix figés) : le total fait foi. */
+  average_unit_price?: boolean;
 }
 
 export interface ReceiptPayment {

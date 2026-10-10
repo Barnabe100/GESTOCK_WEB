@@ -13,7 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from app.modules.restaurant_orders.models import OrderChannel, PrepStatus
+from app.modules.restaurant_orders.models import OrderChannel, PrepStatus, SettlementStatus
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
@@ -26,6 +26,7 @@ from app.modules.restaurant_orders.permissions import (
     SETTINGS_MANAGE,
 )
 from app.modules.restaurant_orders.schemas import (
+    AssigneeOut,
     EventOut,
     LinesAdd,
     LinesCancel,
@@ -100,6 +101,7 @@ def list_orders(
     site_id: uuid.UUID | None = None,
     state: OrderState = OrderState.ACTIVE,
     prep_status: PrepStatus | None = None,
+    settlement_status: SettlementStatus | None = None,
     unsettled_served: bool = False,
     search: Annotated[str | None, Query(max_length=40)] = None,
     business_date: date | None = None,
@@ -109,6 +111,7 @@ def list_orders(
         site_id=site_id,
         state=state,
         prep=prep_status,
+        settlement=settlement_status,
         unsettled_served=unsettled_served,
         search=search,
         day=business_date,
@@ -217,6 +220,15 @@ def claim_order(order_id: uuid.UUID, ctx: OrderClaimer, db: DbSession) -> OrderO
     service.claim(order_id)
     db.commit()
     return service.detail(order_id)
+
+
+@router.get("/orders/{order_id}/assignees", response_model=list[AssigneeOut])
+def order_assignees(order_id: uuid.UUID, ctx: OrderReassigner, db: DbSession) -> list[AssigneeOut]:
+    """Membres éligibles à la réattribution (``order.claim`` effective sur le site)."""
+    return [
+        AssigneeOut(user_id=user_id, full_name=name)
+        for user_id, name in _service(db, ctx).assignees(order_id)
+    ]
 
 
 @router.post("/orders/{order_id}/reassign", response_model=OrderOut)

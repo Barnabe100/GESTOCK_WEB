@@ -2630,3 +2630,174 @@ a {
     background: #fff;
   }
 }
+
+/* --- Commandes de restauration (palier R2-E) ------------------------------------------------ */
+
+/* Suivi en trois colonnes (Reçues, En préparation, Prêtes) ; une colonne sous l'autre sur mobile. */
+.sm-order-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sm-space-3);
+  margin-top: var(--sm-space-3);
+}
+
+.sm-order-column {
+  background: var(--sm-surface-subtle);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  padding: var(--sm-space-3);
+  min-width: 0;
+}
+
+.sm-order-column h2 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-md);
+}
+
+.sm-order-column ul,
+.sm-order-lines ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-2);
+}
+
+.sm-order-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-1);
+  padding: var(--sm-space-2) var(--sm-space-3);
+  background: var(--sm-surface);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+  color: inherit;
+  text-decoration: none;
+  transition: box-shadow var(--sm-transition);
+}
+
+.sm-order-card:hover,
+.sm-order-card:focus-visible {
+  box-shadow: var(--sm-shadow-sm);
+}
+
+.sm-order-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+}
+
+.sm-order-number {
+  font-size: var(--sm-text-lg);
+  font-weight: var(--sm-weight-bold);
+}
+
+.sm-order-call-name {
+  font-weight: var(--sm-weight-bold);
+}
+
+/* Numéro de la commande, mis en évidence à la création et sur la fiche. */
+.sm-order-created {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-3);
+  padding: var(--sm-space-3) var(--sm-space-4);
+  margin-bottom: var(--sm-space-3);
+  background: var(--sm-success-bg);
+  color: var(--sm-success-fg);
+  border-radius: var(--sm-radius-lg);
+}
+
+.sm-order-created p {
+  margin: 0;
+}
+
+.sm-order-number-big {
+  font-size: calc(var(--sm-text-xl) * 1.6);
+  font-weight: var(--sm-weight-bold);
+  line-height: 1;
+}
+
+.sm-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sm-space-1);
+}
+
+/* Saisie : menu du site à gauche, lignes à droite ; empilés sur mobile. */
+.sm-order-cart {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--sm-space-4);
+  margin: var(--sm-space-3) 0;
+}
+
+.sm-order-menu-section h3 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-sm);
+  color: var(--sm-text-muted);
+}
+
+.sm-order-menu-section + .sm-order-menu-section {
+  margin-top: var(--sm-space-3);
+}
+
+.sm-order-menu-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--sm-space-2);
+}
+
+.sm-order-menu-item.p-button {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sm-space-1);
+  min-height: 3.5rem;
+  text-align: left;
+}
+
+.sm-order-lines {
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  padding: var(--sm-space-3);
+  align-self: start;
+}
+
+.sm-order-line-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+}
+
+.sm-order-line-fields {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: var(--sm-space-2);
+}
+
+/* Ticket de retrait : numéro lisible de loin, nom d'appel en dessous. */
+.sm-ticket-number {
+  margin: 2mm 0;
+  text-align: center;
+  font-size: 28pt;
+  font-weight: bold;
+  line-height: 1.1;
+}
+
+.sm-ticket-call-name {
+  margin: 0 0 2mm;
+  text-align: center;
+  font-size: 14pt;
+  font-weight: bold;
+}
+
+@media (max-width: 800px) {
+  .sm-order-board,
+  .sm-order-cart {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

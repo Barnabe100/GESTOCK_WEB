@@ -296,6 +296,39 @@ def test_same_presentation_at_two_frozen_prices_keeps_the_order_total(
     # Une ligne par présentation (règle des ventes) : quantités et totaux figés additionnés.
     assert [(li["quantity"], li["line_total"]) for li in sale["lines"]] == [("3.000", "2200.00")]
     assert sale["total"] == "2200.00"
+    # Prix unitaire MOYEN (733,33) signalé : la vente et le reçu ne laissent pas croire que
+    # 3 × 733,33 = 2 200 ; le total de ligne fait foi.
+    line = sale["lines"][0]
+    assert (line["unit_price"], line["average_unit_price"]) == ("733.33", True)
+    receipt = _ok(r.owner.get(f"/sales/{settled['sale_id']}/receipt"))
+    assert [
+        (li["unit_price"], li["line_total"], li["average_unit_price"]) for li in receipt["lines"]
+    ] == [("733.33", "2200.00", True)]
+    # Prix unique : aucun signalement (ventes ordinaires et POS inchangés).
+    single = _ok(_order(r.owner, r.site, [_line(r.menu.unit, "2")]), 201)
+    plain = _ok(_settle(r.owner, single["id"], payments=_cash("1600")), 201)
+    assert _ok(r.owner.get(f"/sales/{plain['sale_id']}"))["lines"][0]["average_unit_price"] is False
+
+
+def test_lists_by_settlement_and_eligible_assignees(resto: SimpleNamespace) -> None:
+    r = resto
+    roles = _roles(r)
+    manager = _join(r, "gerant@ro-pay.example.com", [roles["manager"]])
+    seller = _join(r, "vendeur@ro-pay.example.com", [roles["seller"]])
+    _join(r, "lecteur@ro-pay.example.com", [roles["viewer"]])
+    paid = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    unpaid = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    _ok(_settle(r.owner, paid["id"], payments=_cash("700")), 201)
+    listed = _ok(r.owner.get("/restaurant/orders", params={"settlement_status": "UNSETTLED"}))
+    assert [o["id"] for o in listed["items"]] == [unpaid["id"]]
+    # Membres éligibles (``order.claim`` effective sur le site) : calcul du serveur.
+    eligible = _ok(manager.api.get(f"/restaurant/orders/{unpaid['id']}/assignees"))
+    names = {a["full_name"] for a in eligible}
+    assert {"gerant", "vendeur"} <= names and "lecteur" not in names
+    assert _code(seller.api.get(f"/restaurant/orders/{unpaid['id']}/assignees")) == (
+        403,
+        "permission_denied",
+    )
 
 
 def test_payment_at_order_requires_settlement_before_preparation(resto: SimpleNamespace) -> None:
