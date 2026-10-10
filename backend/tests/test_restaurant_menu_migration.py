@@ -15,6 +15,9 @@ from alembic.config import Config
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
+from app.platform.catalog.loader import load_catalog
+from app.platform.catalog.sync import sync_catalog
+from app.platform.registry import get_registry
 from tests.conftest import OWNER_URL
 
 
@@ -31,6 +34,10 @@ def at_head(owner_engine: Engine) -> Iterator[None]:
     finally:
         owner_engine.dispose()
         command.upgrade(_alembic(), "head")
+        # La colonne ``module_settings`` (0042) a pu être recréée vide : catalogue resynchronisé.
+        with Session(owner_engine) as session:
+            sync_catalog(session, load_catalog(get_registry()))
+            session.commit()
 
 
 def _activations(conn: Any, site: uuid.UUID) -> dict[str, bool]:
@@ -60,7 +67,8 @@ def test_migration_0041_disables_the_menu_on_existing_sites_only(
         before = _activations(conn, site)
         assert before["restaurant.menu"] and before["restaurant.orders"]
     owner_engine.dispose()
-    command.upgrade(_alembic(), "head")
+    # 0041 seule : la migration suivante (0042) livre et désactive ``restaurant.orders``.
+    command.upgrade(_alembic(), "0041")
     with owner_engine.begin() as conn:
         after = _activations(conn, site)
         assert after["restaurant.menu"] is False

@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.v1 import mount_module_routers
+from app.platform import context
 from app.platform.registry import ModuleManifest, ModuleRegistry
 from tests.conftest import set_site_module
 
@@ -106,7 +107,12 @@ def test_mount_uses_given_registry() -> None:
 
     registry = ModuleRegistry([ModuleManifest(code="demo.sub", router=router)])
     api = APIRouter()
-    mount_module_routers(api, registry)
-    app = FastAPI()
-    app.include_router(api)
-    assert "/demo/sub/ping" in app.openapi()["paths"]
+    try:
+        mount_module_routers(api, registry)
+        app = FastAPI()
+        app.include_router(api)
+        assert "/demo/sub/ping" in app.openapi()["paths"]
+    finally:
+        # Le montage déclare ``demo.sub`` dans l'ensemble global vérifié au démarrage :
+        # retiré pour ne pas faire échouer une application construite ensuite.
+        context._DECLARED_MODULES.discard("demo.sub")
