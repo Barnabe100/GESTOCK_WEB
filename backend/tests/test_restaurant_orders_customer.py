@@ -294,3 +294,67 @@ def test_migration_0044_downgrade_refuses_to_lose_an_association(
             )
         ).scalar_one()
         assert "CUSTOMER_SET" in check
+
+
+# --- Référence d'un client sans consultation des clients (risque résiduel R2-E) ----------------
+
+CUSTOMER_VIEW = "customers.customer.view"
+
+
+def test_reference_without_customer_view_matches_creation_and_reveals_nothing_more(
+    resto: SimpleNamespace,
+) -> None:
+    """Le Serveur (``order.create`` sans ``customers.customer.view``) peut, comme à la création
+    (R2-B) et comme une vente (``sales.sale.create`` seul), désigner un client par son
+    identifiant ; il ne consulte jamais le référentiel et n'obtient que ce que montre déjà
+    une commande : identifiant et nom."""
+    r = resto
+    waiter_role = _ok(r.owner.post("/roles/from-template", json={"template_code": "waiter"}), 201)
+    waiter = _join(r, "serveur2@ro-cust.example.com", [waiter_role["id"]])
+    caps = _ok(waiter.api.get("/me/capabilities"))
+    assert "restaurant.orders.order.create" in caps["permissions"]
+    assert CUSTOMER_VIEW not in caps["permissions"]
+    customer = _customer(r)
+    # Référentiel des clients : jamais consultable (liste, fiche).
+    assert waiter.api.get("/customers").status_code == 403
+    assert waiter.api.get(f"/customers/{customer}").status_code == 403
+    # Création et association : même règle (permission de l'opération, client actif).
+    created = _ok(_order(waiter.api, r.site, [_line(r.menu.unit)], customer_id=customer), 201)
+    other = _ok(_order(waiter.api, r.site, [_line(r.menu.unit)]), 201)
+    associated = _ok(_associate(waiter.api, other["id"], customer))
+    for order in (created, associated):
+        exposed = {k for k in order if "customer" in k}
+        assert exposed == {"customer_id", "customer_name"}
+    [event] = [
+        e
+        for e in _ok(waiter.api.get(f"/restaurant/orders/{other['id']}/events"))
+        if e["event_type"] == "CUSTOMER_SET"
+    ]
+    assert set(event["data"]) == {
+        "customer_id",
+        "customer_name",
+        "previous_customer_id",
+        "previous_customer_name",
+    }
+    # Journal d'audit (données complètes de l'opération) : jamais sans ``audit.log.view``.
+    assert waiter.api.get("/audit-logs").status_code == 403
+
+
+def test_refusals_never_leak_customer_data_without_customer_view(resto: SimpleNamespace) -> None:
+    """Client désactivé : même refus pour tous ; son code n'est joint qu'à qui peut consulter
+    les clients (création comme association)."""
+    r = resto
+    waiter_role = _ok(r.owner.post("/roles/from-template", json={"template_code": "waiter"}), 201)
+    waiter = _join(r, "serveur3@ro-cust.example.com", [waiter_role["id"]])
+    inactive = _customer(r)
+    _ok(r.owner.post(f"/customers/{inactive}/deactivate"))
+    order = _ok(_order(waiter.api, r.site, [_line(r.menu.unit)]), 201)
+    for refused in (
+        _associate(waiter.api, order["id"], inactive),
+        _order(waiter.api, r.site, [_line(r.menu.unit)], customer_id=inactive),
+    ):
+        assert _code(refused) == (422, "customer_inactive")
+        assert "customer_code" not in refused.json()
+    owner_refusal = _associate(r.owner, order["id"], inactive)
+    assert _code(owner_refusal) == (422, "customer_inactive")
+    assert owner_refusal.json()["customer_code"].startswith("CLI-")

@@ -123,6 +123,9 @@ CUSTOMERS_MODULE = "customers"
 SALE_CREATE = "sales.sale.create"
 SALE_VALIDATE = "sales.sale.validate"
 PAYMENT_CREATE = "sales.payment.create"
+# Consultation du référentiel des clients : seule à révéler des données d'un client au-delà de
+# ce qu'une commande affiche (identifiant, nom).
+CUSTOMER_VIEW = "customers.customer.view"
 
 
 class OrderState(StrEnum):
@@ -548,10 +551,14 @@ class OrderService:
         if ref is None:
             raise BusinessRuleError("Client introuvable", code="customer_not_found")
         if not ref.is_active:
+            # Le code du client n'est joint qu'à qui peut consulter les clients sur ce site : un
+            # membre qui désigne un client par son identifiant (création, association) sans
+            # cette permission n'apprend rien de plus que ce qu'une commande affiche.
+            visible = self.ctx.has_site_permission(site_id, CUSTOMER_VIEW)
             raise BusinessRuleError(
                 "Ce client est désactivé",
                 code="customer_inactive",
-                extra={"customer_code": ref.code},
+                extra={"customer_code": ref.code} if visible else {},
             )
         return ref.name
 
