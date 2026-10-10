@@ -125,6 +125,8 @@ class EventType(StrEnum):
     SALE_CANCELLED = "SALE_CANCELLED"
     CLOSED = "CLOSED"
     CANCELLED = "CANCELLED"
+    # Association tardive d'un client (R2-E, Z1 ; migration 0044).
+    CUSTOMER_SET = "CUSTOMER_SET"
 
 
 class ActorKind(StrEnum):

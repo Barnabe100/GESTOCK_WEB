@@ -12,6 +12,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import type { CreditOverride, ExpiredLotOverride, ImmediatePayment } from '@/modules/sales/api';
+import { CustomerPicker, type CustomerOption } from '@/modules/sales/CustomerPicker';
 import { ReceiptDialog } from '@/modules/sales/receipt/ReceiptDialog';
 import { SalePaymentBadge, saleError } from '@/modules/sales/ui';
 import { ValidateSaleDialog } from '@/modules/sales/ValidateSaleDialog';
@@ -191,6 +192,77 @@ function ReassignDialog({ order, onClose }: { order: Order; onClose: () => void 
   );
 }
 
+/**
+ * Association tardive d'un client (Z1) : commande ouverte non réglée ; motif obligatoire pour
+ * remplacer un client déjà associé. Aucun crédit n'en découle : le règlement applique les
+ * règles des ventes. Le serveur revérifie tout (permission, état, client actif).
+ */
+function CustomerDialog({ order, onClose }: { order: Order; onClose: () => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { setCustomer: associate } = useOrderMutations();
+  const replacing = order.customer_id !== null;
+  const unchanged = customer !== null && customer.id === order.customer_id;
+  return (
+    <Dialog
+      header={t(replacing ? 'restaurantOrders.changeCustomer' : 'restaurantOrders.setCustomer')}
+      visible
+      onHide={onClose}
+      className="sm-dialog"
+    >
+      <div className="sm-form">
+        <p>{t('restaurantOrders.setCustomerHelp')}</p>
+        {replacing && (
+          <p className="sm-help">
+            {t('restaurantOrders.currentCustomer', { name: order.customer_name ?? '' })}
+          </p>
+        )}
+        <FormField id="order-late-customer" label={t('restaurantOrders.customer')} required>
+          <CustomerPicker id="order-late-customer" value={customer} onChange={setCustomer} />
+        </FormField>
+        {replacing && (
+          <FormField id="order-customer-reason" label={t('restaurantOrders.reason')} required>
+            <InputTextarea
+              id="order-customer-reason"
+              rows={2}
+              maxLength={500}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </FormField>
+        )}
+        {error && <Message severity="error" text={error} />}
+        <div className="sm-dialog-actions">
+          <Button type="button" label={t('actions.cancel')} text onClick={onClose} />
+          <Button
+            type="button"
+            label={t('actions.save')}
+            disabled={customer === null || unchanged || (replacing && reason.trim() === '')}
+            loading={associate.isPending}
+            onClick={() => {
+              if (customer === null) return;
+              setError(null);
+              associate.mutate(
+                { id: order.id, customerId: customer.id, reason: reason.trim() || null },
+                {
+                  onSuccess: () => {
+                    toast.success(t('restaurantOrders.customerSet'));
+                    onClose();
+                  },
+                  onError: (failure) => setError(orderError(t, failure)),
+                },
+              );
+            }}
+          />
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 /** Historique de la commande (ajout seul) : évènement, auteur, heure, motif, vente. */
 function OrderHistory({ order }: { order: Order }) {
   const { t } = useTranslation();
@@ -204,6 +276,10 @@ function OrderHistory({ order }: { order: Order }) {
       {(events.data ?? []).map((e) => {
         const lines = e.line_ids.map((id) => lineNo.get(id)).filter((n) => n !== undefined);
         const sale = typeof e.data.sale_number === 'string' ? e.data.sale_number : null;
+        const customerName =
+          e.event_type === 'CUSTOMER_SET' && typeof e.data.customer_name === 'string'
+            ? e.data.customer_name
+            : null;
         return (
           <li key={e.id} data-testid="order-event">
             <strong>{t(`restaurantOrders.events.${e.event_type}`)}</strong>
@@ -211,6 +287,9 @@ function OrderHistory({ order }: { order: Order }) {
               <span>{` — ${t('restaurantOrders.lineNumbers', { lines: lines.join(', ') })}`}</span>
             )}
             {sale && <span>{` — ${t('restaurantOrders.saleNumber', { number: sale })}`}</span>}
+            {customerName && (
+              <span>{` — ${t('restaurantOrders.customerNamed', { name: customerName })}`}</span>
+            )}
             <small className="sm-help">
               {` ${formatDateTime(e.occurred_at, locale, timezone)}${
                 e.actor_name ? ` · ${e.actor_name}` : ''
@@ -236,7 +315,7 @@ export default function OrderPage() {
   const toast = useToast();
   const { id } = useParams();
   const [search] = useSearchParams();
-  const { can, capabilities } = useCapabilities();
+  const { can, capabilities, hasModule } = useCapabilities();
   const { currency, locale, timezone } = capabilities.tenant;
   const money = (v: string) => formatMoney(v, currency, locale);
   const query = useOrder(id);
@@ -244,6 +323,7 @@ export default function OrderPage() {
   const [ticket, setTicket] = useState(false);
   const [adding, setAdding] = useState(false);
   const [reassigning, setReassigning] = useState(false);
+  const [choosingCustomer, setChoosingCustomer] = useState(false);
   const [cancelling, setCancelling] = useState<OrderLine[] | 'order' | null>(null);
   const [settling, setSettling] = useState<string | null>(null);
   const [settleError, setSettleError] = useState<{
@@ -263,6 +343,13 @@ export default function OrderPage() {
   const activeLines = lines.filter((l) => l.status !== 'CANCELLED');
   const canSettle = SETTLE_PERMISSIONS.every((p) => can(p));
   const mine = order.assigned_user_id === capabilities.user.id;
+  // Même permission que le choix du client à la création ; recherche des clients : leur lecture.
+  const canSetCustomer =
+    open &&
+    unsettled &&
+    can(ORDER_CREATE) &&
+    hasModule('customers') &&
+    can('customers.customer.view');
   const notify = {
     onSuccess: () => toast.success(t('restaurantOrders.updated')),
     onError: (error: unknown) => toast.error(orderError(t, error)),
@@ -450,7 +537,23 @@ export default function OrderPage() {
           )}
           <div>
             <dt>{t('restaurantOrders.customer')}</dt>
-            <dd>{order.customer_name ?? t('restaurantOrders.noCustomer')}</dd>
+            <dd>
+              {order.customer_name ?? t('restaurantOrders.noCustomer')}
+              {canSetCustomer && (
+                <Button
+                  type="button"
+                  icon="pi pi-user-edit"
+                  label={t(
+                    order.customer_id === null
+                      ? 'restaurantOrders.setCustomer'
+                      : 'restaurantOrders.changeCustomer',
+                  )}
+                  text
+                  size="small"
+                  onClick={() => setChoosingCustomer(true)}
+                />
+              )}
+            </dd>
           </div>
           <div>
             <dt>{t('restaurantOrders.assignee')}</dt>
@@ -629,6 +732,9 @@ export default function OrderPage() {
       {ticket && <OrderTicketDialog orderId={order.id} onClose={() => setTicket(false)} />}
       {adding && <AddLinesDialog order={order} onClose={() => setAdding(false)} />}
       {reassigning && <ReassignDialog order={order} onClose={() => setReassigning(false)} />}
+      {choosingCustomer && (
+        <CustomerDialog order={order} onClose={() => setChoosingCustomer(false)} />
+      )}
       {cancelling !== null && (
         <ReasonDialog
           header={t(

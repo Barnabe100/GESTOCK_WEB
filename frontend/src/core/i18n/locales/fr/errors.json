@@ -286,5 +286,6 @@
   "claim_cooldown_active": "Délai entre deux prises en cours : réessayez dans un instant.",
   "assignee_not_eligible": "Ce membre ne peut pas prendre de commande sur ce site.",
   "sale_origin_unavailable": "Cette vente provient d'un document qui ne permet pas son annulation ici.",
-  "sale_origin_active": "Une vente active existe déjà pour ce document."
+  "sale_origin_active": "Une vente active existe déjà pour ce document.",
+  "customer_change_reason_required": "Motif obligatoire pour remplacer le client de la commande."
 }

@@ -2234,7 +2234,7 @@
     "callName": "Nom d'appel",
     "callNameHelp": "Facultatif : nom ou repère annoncé au client (40 caractères au plus).",
     "customer": "Client",
-    "customerHelp": "Facultatif. Nécessaire pour un règlement à crédit : il ne peut pas être ajouté après l'enregistrement.",
+    "customerHelp": "Facultatif ; peut aussi être associé plus tard, avant le règlement. Nécessaire pour un règlement à crédit.",
     "decimalHint": "Quantité décimale : acceptée seulement si l'article l'autorise (contrôlé par le serveur).",
     "saveOrder": "Enregistrer la commande",
     "chooseSiteFirst": "Choisissez d'abord un site.",
@@ -2315,7 +2315,8 @@
       "SETTLED": "Réglée",
       "SALE_CANCELLED": "Vente annulée : commande à régler de nouveau",
       "CLOSED": "Clôturée",
-      "CANCELLED": "Commande annulée"
+      "CANCELLED": "Commande annulée",
+      "CUSTOMER_SET": "Client associé"
     },
     "reason": "Motif",
     "addLines": "Ajouter des lignes",
@@ -2349,7 +2350,7 @@
     "closedNotice": "Commande clôturée : réglée et entièrement servie. Elle ne peut plus être modifiée.",
     "settledNotice": "Commande réglée : aucune ligne ne peut plus être ajoutée. Elle sera clôturée une fois tout servi.",
     "payFirstNotice": "Paiement à la commande : réglez cette commande avant de lancer sa préparation.",
-    "noCustomerCreditNotice": "Commande sans client : le reste dû ne peut pas être laissé à crédit. Réglez la totalité (limite de la version 1 : aucun client ne peut être associé après l'enregistrement).",
+    "noCustomerCreditNotice": "Commande sans client : le reste dû ne peut pas être laissé à crédit. Associez un client pour un règlement à crédit (selon vos droits), ou réglez la totalité.",
     "cancelledNotice": "Commande annulée. Motif : {{reason}}",
     "ticket": {
       "title": "Ticket de retrait",
@@ -2371,6 +2372,12 @@
       "qrLater": "(sans effet avant les commandes par QR code)",
       "updatedAt": "Dernière modification",
       "saved": "Réglages enregistrés."
-    }
+    },
+    "setCustomer": "Associer un client",
+    "changeCustomer": "Changer de client",
+    "setCustomerHelp": "Le client est repris par la vente au règlement. L'associer ne donne aucun droit au crédit : le règlement applique les règles des ventes.",
+    "currentCustomer": "Client actuel : {{name}}. Un motif est obligatoire pour le remplacer.",
+    "customerSet": "Client associé à la commande.",
+    "customerNamed": "client {{name}}"
   }
 }

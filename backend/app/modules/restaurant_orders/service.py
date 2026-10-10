@@ -908,6 +908,47 @@ class OrderService:
         )
         return order
 
+    def set_customer(
+        self, order_id: uuid.UUID, customer_id: uuid.UUID, reason: str | None
+    ) -> RestaurantOrder:
+        """Association tardive d'un client (R2-E, Z1) : commande OUVERTE et NON réglée (le client
+        de la vente est celui de la commande au règlement, sous le même verrou ; après une
+        annulation de la vente, la commande redevient « à régler » et peut changer de client).
+        Même permission que le choix du client à la création (``order.create`` sur le site) ;
+        mêmes contrôles du client (module Clients effectif sur le site, client du tenant, actif).
+        Aucun droit au crédit n'en découle : le règlement applique les règles existantes des
+        ventes (``sales.sale.credit_create``, limite, dérogation). Remplacer un client déjà
+        associé exige un motif ; même client : rien ne change (aucun évènement)."""
+        site_id = self._site_of(order_id)
+        require_site_permission(self.ctx, site_id, ORDER_CREATE)
+        order = self._lock_order(order_id)
+        self._require_open(order)
+        self._require_unsettled(order)
+        name = self._customer(order.site_id, customer_id)
+        previous = order.customer_id
+        if previous == customer_id:
+            return order
+        if previous is not None and reason is None:
+            raise BusinessRuleError(
+                "Motif obligatoire pour remplacer le client de la commande",
+                code="customer_change_reason_required",
+            )
+        previous_ref = (
+            get_customer_refs(self.db, {previous}).get(previous) if previous is not None else None
+        )
+        change = {
+            "customer_id": str(customer_id),
+            "customer_name": name,
+            "previous_customer_id": str(previous) if previous is not None else None,
+            "previous_customer_name": previous_ref.name if previous_ref is not None else None,
+        }
+        order.customer_id = customer_id
+        order.version += 1
+        self._event(order, EventType.CUSTOMER_SET, reason=reason, data=change)
+        self.db.flush()
+        self._audit("customer_set", order, {"reason": reason, **change})
+        return order
+
     # --- Règlement T2 (R2-D, D6) ---------------------------------------------------------------
 
     @staticmethod

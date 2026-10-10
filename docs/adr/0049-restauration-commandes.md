@@ -509,10 +509,23 @@ financier ; `restaurant.orders` toujours planifié en production (bascule en R2-
 - **Libellés** : canal `RESTAURANT` = « Restauration » (filtres et fiches des ventes) ; codes
   d'erreur des commandes traduits (`errors.json`) ; libellés des permissions
   `restaurant.orders.*`.
-- **Commande sans client** (limite de V1, Z1) : comportement inchangé — le règlement d'une
-  commande sans client n'accepte pas de reste dû (`credit_customer_required` des ventes) ;
-  l'interface l'annonce sur une commande servie non réglée sans client. Aucune route n'associe
-  un client APRÈS la création ; ce point est soumis à décision (non tranché en R2-E).
+- **Association tardive du client (Z1, décision prise en R2-E)** :
+  `PUT /restaurant/orders/{id}/customer` (`customer_id`, `reason`) ; commande OUVERTE et NON
+  réglée (`409 order_settled`, `order_closed`, `order_cancelled`) ; même permission que le
+  choix du client à la création (`restaurant.orders.order.create` sur le site, aucune permission
+  nouvelle) ; mêmes contrôles du client (module Clients effectif sur le site, client du tenant,
+  actif : `customer_unavailable`, `customer_not_found`, `customer_inactive`) ; remplacer un
+  client déjà associé exige un motif (`422 customer_change_reason_required`) ; même client :
+  aucun changement ; retrait impossible. Sous le verrou de la commande, donc sérialisée avec le
+  règlement : la vente porte toujours le client de la commande. Évènement `CUSTOMER_SET` (client,
+  client précédent, motif) et audit `restaurant_order.customer_set`. **Aucun droit au crédit
+  n'en découle** : le règlement applique les règles existantes des ventes
+  (`sales.sale.credit_create`, limite, dérogation). Après annulation de la vente (Z3), la
+  commande redevient « à régler » et son client peut être changé (motif). **Migration 0044** :
+  `GRANT UPDATE (customer_id)` sur `restaurant_orders` et type d'évènement `CUSTOMER_SET` ;
+  descente refusée dès qu'une association existe. Interface : « Associer un client » /
+  « Changer de client » sur la fiche (avec `customers.customer.view` en plus, pour la
+  recherche des clients).
 - **N1 maintenu sur décision de l'utilisateur** : `restaurant.orders` reste `planned` en
   production à la fin de R2-E (le plan prévoyait la bascule dans ce commit) ; la bascule suit
   la validation explicite de R2-E. Les écrans ne s'affichent donc pas encore en production.

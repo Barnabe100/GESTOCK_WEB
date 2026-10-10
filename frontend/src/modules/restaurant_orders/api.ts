@@ -286,6 +286,18 @@ export function useOrderMutations() {
       mutationFn: (id: string) => api.post<Order>(path(id, 'claim')),
       onSuccess,
     }),
+    setCustomer: useMutation({
+      mutationFn: ({
+        id,
+        customerId,
+        reason,
+      }: {
+        id: string;
+        customerId: string;
+        reason: string | null;
+      }) => api.put<Order>(path(id, 'customer'), { customer_id: customerId, reason }),
+      onSuccess,
+    }),
     reassign: useMutation({
       mutationFn: ({ id, assignee, reason }: { id: string; assignee: string; reason: string }) =>
         api.post<Order>(path(id, 'reassign'), { assignee_user_id: assignee, reason }),

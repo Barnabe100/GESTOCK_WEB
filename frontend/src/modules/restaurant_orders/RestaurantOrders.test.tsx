@@ -255,6 +255,9 @@ function serveDetail(
     if (u.includes('/ticket')) return jsonResponse(ticket);
     if (u.includes('/receipt')) return jsonResponse(receipt);
     if (u.includes('/payment-methods')) return jsonResponse(PAYMENT_METHODS_FIXTURE);
+    if (u.includes('/customers?')) {
+      return pageOf([{ id: 'c1', code: 'CLI-000001', name: 'Awa Ouédraogo' }]);
+    }
     if (u.includes('/assignees')) return jsonResponse([{ user_id: 'u2', full_name: 'Awa' }]);
     return jsonResponse(current);
   });
@@ -620,5 +623,86 @@ describe('ventes issues des commandes (R2-E)', () => {
   it('canal « Restauration » libellé et proposé dans les filtres des ventes', () => {
     expect(SALE_CHANNELS).toContain('RESTAURANT');
     expect(i18next.t('sales.channels.RESTAURANT')).toBe('Restauration');
+  });
+});
+
+describe('commandes de restauration — association tardive du client (R2-E, Z1)', () => {
+  const SLOW = { timeout: 5000 };
+  const WITH_CUSTOMERS = [...CASHIER, 'customers.customer.view'];
+
+  async function pickCustomer(dialog: HTMLElement) {
+    const input = within(dialog).getByRole('combobox') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'awa' } });
+    await waitFor(() => expect(input.getAttribute('aria-expanded')).toBe('true'), SLOW);
+    const list = document.getElementById(input.getAttribute('aria-controls') ?? '') as HTMLElement;
+    fireEvent.click(
+      await within(list).findByRole('option', { name: /CLI-000001/, hidden: true }, SLOW),
+    );
+    await waitFor(() => expect(input.value).toMatch(/Awa/), SLOW);
+  }
+
+  it('commande servie sans client : association, puis règlement à crédit possible', async () => {
+    const served = order({
+      line_counts: { received: 0, in_preparation: 0, ready: 0, served: 2, cancelled: 0 },
+      lines: [line({ status: 'SERVED' })],
+    });
+    serveDetail(served, () => jsonResponse({ ...served, customer_id: 'c1', customer_name: 'Awa' }));
+    renderDetail(WITH_CUSTOMERS);
+    expect(await screen.findByText(/Associez un client pour un règlement à crédit/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Associer un client' }));
+    const dialog = await screen.findByRole('dialog');
+    // Aucun motif demandé pour une première association.
+    expect(within(dialog).queryByLabelText(/^Motif/)).toBeNull();
+    const save = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    await pickCustomer(dialog);
+    await act(async () => {
+      fireEvent.click(save);
+    });
+    await waitFor(() =>
+      expect(calls('PUT')).toEqual([
+        ['/api/v1/restaurant/orders/o1/customer', { customer_id: 'c1', reason: null }],
+      ]),
+    );
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'success', summary: 'Client associé à la commande.' }),
+      ),
+    );
+  });
+
+  it('remplacement : motif obligatoire, refus du serveur affiché dans le dialogue', async () => {
+    serveDetail(order({ customer_id: 'c0', customer_name: 'Moussa' }), () =>
+      jsonResponse({ status: 409, code: 'order_settled', detail: 'x' }, 409),
+    );
+    renderDetail(WITH_CUSTOMERS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Changer de client' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('Client actuel : Moussa');
+    await pickCustomer(dialog);
+    const save = within(dialog).getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText(/^Motif/), {
+      target: { value: 'Erreur de client' },
+    });
+    await act(async () => {
+      fireEvent.click(save);
+    });
+    expect(await within(dialog).findByText('Cette commande est déjà réglée.')).toBeTruthy();
+    expect(calls('PUT')).toEqual([
+      ['/api/v1/restaurant/orders/o1/customer', { customer_id: 'c1', reason: 'Erreur de client' }],
+    ]);
+  });
+
+  it('jamais proposée sans les permissions, ni sur une commande réglée', async () => {
+    serveDetail(order());
+    renderDetail(CASHIER); // sans consultation des clients
+    await screen.findByText('Poulet braisé');
+    expect(screen.queryByRole('button', { name: 'Associer un client' })).toBeNull();
+    cleanup();
+    serveDetail(settledOrder());
+    renderDetail(WITH_CUSTOMERS);
+    await screen.findByText('Poulet braisé');
+    expect(screen.queryByRole('button', { name: 'Associer un client' })).toBeNull();
   });
 });

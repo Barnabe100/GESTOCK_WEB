@@ -22,7 +22,7 @@ from app.modules.sales.api import (
     SalePaymentStatus,
 )
 from app.shared.schemas import Money, PositiveQuantity, Quantity
-from app.shared.text import Optional40, Optional200, Required500
+from app.shared.text import Optional40, Optional200, Optional500, Required500
 
 Minutes = Annotated[int, Field(ge=0, le=1440)]
 # Une commande reste un document lisible : au plus 100 lignes par saisie.
@@ -116,6 +116,14 @@ class OrderReassign(BaseModel):
 
     assignee_user_id: uuid.UUID
     reason: Required500
+
+
+class OrderCustomerSet(BaseModel):
+    """Association tardive d'un client (R2-E, Z1) à une commande ouverte NON réglée ; motif
+    obligatoire pour remplacer un client déjà associé (contrôlé par le serveur)."""
+
+    customer_id: uuid.UUID
+    reason: Optional500 = None
 
 
 # --- Lecture ------------------------------------------------------------------------------------
