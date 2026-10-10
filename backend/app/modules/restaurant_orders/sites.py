@@ -6,10 +6,17 @@ site). Toute écriture est revérifiée pour le site visé (``ensure_site_allows
 précise de l'action est exigée sur CE site."""
 
 import uuid
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ForbiddenError, NotFoundError
 from app.modules.restaurant_orders.permissions import ORDER_VIEW
+from app.platform.access.models import MembershipStatus, TenantMembership
+from app.platform.capabilities.service import CapabilityService, SubscriptionMissingError
 from app.platform.context import RequestContext
+from app.platform.registry import get_registry
 
 
 def readable_site_ids(ctx: RequestContext, site_id: uuid.UUID | None) -> set[uuid.UUID]:
@@ -58,3 +65,38 @@ def require_site_permission(ctx: RequestContext, site_id: uuid.UUID, code: str) 
         raise ForbiddenError(
             "Permission insuffisante", code="permission_denied", extra={"permission": code}
         )
+
+
+def member_holds(
+    db: Session,
+    ctx: RequestContext,
+    user_id: uuid.UUID,
+    site_id: uuid.UUID,
+    permission: str,
+    now: datetime,
+) -> bool:
+    """Un AUTRE membre détient-il ``permission`` effective sur ce site ? Appartenance active à
+    l'entreprise, compte actif, site accessible, puis capacités résolues pour CE site (rôles du
+    tenant et du site, modules effectifs, abonnement du site et son statut) — le même calcul que
+    pour ses propres requêtes, jamais un nom de rôle."""
+    membership = db.scalars(
+        select(TenantMembership).where(
+            TenantMembership.tenant_id == ctx.tenant_id, TenantMembership.user_id == user_id
+        )
+    ).one_or_none()
+    if (
+        membership is None
+        or membership.status is not MembershipStatus.ACTIVE
+        or not membership.user.is_active
+    ):
+        return False
+    service = CapabilityService(db, get_registry())
+    if site_id not in service.accessible_site_ids(membership):
+        return False
+    try:
+        capabilities = service.resolve(
+            tenant=ctx.tenant, membership=membership, site_id=site_id, now=now
+        )
+    except SubscriptionMissingError:
+        return False
+    return permission in capabilities.permissions

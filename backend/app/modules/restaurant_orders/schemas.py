@@ -91,6 +91,14 @@ class OrderCancel(BaseModel):
     reason: Required500
 
 
+class OrderReassign(BaseModel):
+    """Réattribution immédiate (D7) : le nouveau responsable doit détenir
+    ``restaurant.orders.order.claim`` effectif sur le site de la commande ; motif obligatoire."""
+
+    assignee_user_id: uuid.UUID
+    reason: Required500
+
+
 # --- Lecture ------------------------------------------------------------------------------------
 
 
@@ -145,6 +153,8 @@ class OrderOut(BaseModel):
     payment_timing: PaymentTiming
     assigned_user_id: uuid.UUID | None
     assigned_name: str | None
+    # Heure de la dernière prise ou réattribution (début de la protection, D7).
+    assigned_at: datetime | None
     created_by: uuid.UUID | None
     created_by_name: str | None
     # Montant aux prix figés des lignes non annulées (à régler) ; l'état financier est lu sur

@@ -17,7 +17,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires), alertes et restauration (menu des sites), sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires), alertes et restauration (menu et commandes des sites, réattribution et réglages compris), sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -51,7 +51,7 @@ exclude = [
 
 [roles.seller]
 name = "Vendeur"
-description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients, des créances et du menu (avec « épuisé »), sans annulation."
+description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients, des créances et du menu (avec « épuisé »), commandes de restauration (saisie, prise en charge, préparation, service, annulation des lignes reçues), sans annulation de ventes ni de documents validés."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
@@ -68,14 +68,44 @@ permissions = [
   "inventory_count.inventory.view",
   "restaurant.menu.view",
   "restaurant.menu.availability",
-  # Commandes (ADR-0049, D14) : saisie, préparation, service, annulation des lignes reçues ;
-  # prise en charge en R2-C ; jamais d'annulation de lignes préparées ni de réglages.
+  # Commandes (ADR-0049, D14) : saisie, prise en charge, préparation, service, annulation des
+  # lignes reçues ; jamais de réattribution, d'annulation de lignes préparées ni de réglages.
   "restaurant.orders.order.view",
   "restaurant.orders.order.create",
+  "restaurant.orders.order.claim",
   "restaurant.orders.order.prepare",
   "restaurant.orders.order.serve",
   "restaurant.orders.order.cancel",
   "subscription.activation.check",
+]
+
+# Modèles FACULTATIFS de la restauration (ADR-0049, D12 ; D14 Q5) : jamais créés par le
+# provisionnement, ajoutés à la demande (POST /roles/from-template) ; refusés si un rôle
+# personnalisé porte déjà leur nom (409 role_name_taken, sans renommage automatique).
+# Fonction dans la commande (responsable, préparateur, personne qui sert) ≠ rôle.
+
+[roles.waiter]
+name = "Serveur"
+description = "Restauration : consultation du menu (avec « épuisé ») et des commandes, saisie, prise en charge, service et remise des commandes ; aucun encaissement, aucune annulation."
+auto_provision = false
+permissions = [
+  "restaurant.menu.view",
+  "restaurant.menu.availability",
+  "restaurant.orders.order.view",
+  "restaurant.orders.order.create",
+  "restaurant.orders.order.claim",
+  "restaurant.orders.order.serve",
+]
+
+[roles.preparer]
+name = "Préparateur"
+description = "Restauration : consultation du menu (avec « épuisé ») et des commandes, préparation (en préparation, prête, correction) ; ni saisie, ni service, ni encaissement, ni annulation."
+auto_provision = false
+permissions = [
+  "restaurant.menu.view",
+  "restaurant.menu.availability",
+  "restaurant.orders.order.view",
+  "restaurant.orders.order.prepare",
 ]
 
 [roles.viewer]

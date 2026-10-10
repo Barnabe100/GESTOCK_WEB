@@ -17,8 +17,10 @@ from app.modules.restaurant_orders.models import OrderChannel, PrepStatus
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
+    ORDER_CLAIM,
     ORDER_CREATE,
     ORDER_PREPARE,
+    ORDER_REASSIGN,
     ORDER_SERVE,
     ORDER_VIEW,
     SETTINGS_MANAGE,
@@ -31,6 +33,7 @@ from app.modules.restaurant_orders.schemas import (
     OrderCancel,
     OrderCreate,
     OrderOut,
+    OrderReassign,
     SettingsOut,
     SettingsUpdate,
     TicketOut,
@@ -55,6 +58,8 @@ OrderServer = Annotated[RequestContext, Depends(require_permission(ORDER_SERVE))
 OrderCanceller = Annotated[
     RequestContext, Depends(require_any_permission(ORDER_CANCEL, ORDER_CANCEL_PREPARED))
 ]
+OrderClaimer = Annotated[RequestContext, Depends(require_permission(ORDER_CLAIM))]
+OrderReassigner = Annotated[RequestContext, Depends(require_permission(ORDER_REASSIGN))]
 SettingsManager = Annotated[RequestContext, Depends(require_permission(SETTINGS_MANAGE))]
 Paging = Annotated[PageParams, Depends(page_params)]
 
@@ -197,5 +202,26 @@ def cancel_order(
 ) -> OrderOut:
     service = _service(db, ctx)
     service.cancel(order_id, body.reason)
+    db.commit()
+    return service.detail(order_id)
+
+
+# --- Prise en charge (R2-C, D7) -----------------------------------------------------------------
+
+
+@router.post("/orders/{order_id}/claim", response_model=OrderOut)
+def claim_order(order_id: uuid.UUID, ctx: OrderClaimer, db: DbSession) -> OrderOut:
+    service = _service(db, ctx)
+    service.claim(order_id)
+    db.commit()
+    return service.detail(order_id)
+
+
+@router.post("/orders/{order_id}/reassign", response_model=OrderOut)
+def reassign_order(
+    order_id: uuid.UUID, body: OrderReassign, ctx: OrderReassigner, db: DbSession
+) -> OrderOut:
+    service = _service(db, ctx)
+    service.reassign(order_id, body.assignee_user_id, body.reason)
     db.commit()
     return service.detail(order_id)

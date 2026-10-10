@@ -12,19 +12,24 @@ D13, D14).
 - **Annulations** (commande non réglée) : ligne reçue → ``order.cancel`` ; ligne en
   préparation ou prête → ``order.cancel_prepared`` ; motif obligatoire ; commande entière
   refusée si une ligne est servie ; commande vide → ``order.cancel``.
-- Le règlement (T2), la clôture effective et la prise en charge relèvent des sous-étapes
-  R2-C et R2-D.
+- **Prise en charge** (R2-C, D7) : « Prendre » une commande ouverte ; protection d'une
+  commande prise (réglage du site, 0 = désactivée) ; délai entre deux prises d'un même employé
+  sur le site (dernière prise lue dans l'historique, seule l'action « Prendre » compte) ;
+  réattribution immédiate motivée par ``order.reassign`` vers un membre détenant
+  ``order.claim`` effectif sur le site (``assignee_not_eligible``). Responsable ≠ rôle.
+- Le règlement (T2) et la clôture effective relèvent de la sous-étape R2-D.
 
-Verrous (``RESTAURANT.md`` §7) : réglages du site en partage (création, ajout de lignes) →
-commande (exclusif) → lignes (exclusif). États finaux protégés aussi en base (déclencheur).
-Le service ne valide pas la transaction (ADR-0008).
+Verrous (``RESTAURANT.md`` §7) : verrou consultatif de l'employé (site + employé, « Prendre »)
+→ réglages du site en partage (création, ajout de lignes, prise) → commande (exclusif) →
+lignes (exclusif). États finaux protégés aussi en base (déclencheur). Le service ne valide pas
+la transaction (ADR-0008).
 """
 
 import uuid
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from typing import Any
@@ -54,8 +59,10 @@ from app.modules.restaurant_orders.models import (
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
+    ORDER_CLAIM,
     ORDER_CREATE,
     ORDER_PREPARE,
+    ORDER_REASSIGN,
     ORDER_SERVE,
     ORDER_VIEW,
     SETTINGS_MANAGE,
@@ -79,6 +86,7 @@ from app.modules.restaurant_orders.settings import (
 )
 from app.modules.restaurant_orders.sites import (
     ensure_row_site,
+    member_holds,
     operation_site,
     readable_site_ids,
     require_site_permission,
@@ -715,6 +723,141 @@ class OrderService:
         )
         return order
 
+    # --- Prise en charge (R2-C, D7) -----------------------------------------------------------
+
+    def _last_claim_at(self, site_id: uuid.UUID) -> datetime | None:
+        """Dernière action « Prendre » de l'employé sur le site, lue dans l'historique (aucune
+        table ; index ``ix_restaurant_order_events_actor``) ; ni la création ni une
+        réattribution ne comptent."""
+        return self.db.scalar(
+            select(func.max(RestaurantOrderEvent.occurred_at)).where(
+                RestaurantOrderEvent.tenant_id == self.ctx.tenant_id,
+                RestaurantOrderEvent.site_id == site_id,
+                RestaurantOrderEvent.actor_user_id == self.ctx.user.id,
+                RestaurantOrderEvent.event_type == EventType.CLAIMED,
+            )
+        )
+
+    def _user_name(self, user_id: uuid.UUID | None) -> str | None:
+        if user_id is None:
+            return None
+        return self.db.scalar(select(User.full_name).where(User.id == user_id))
+
+    def claim(self, order_id: uuid.UUID) -> RestaurantOrder:
+        """« Prendre » : l'employé devient responsable d'une commande ouverte (réglée ou non).
+
+        Ordre des verrous (§7) : verrou consultatif de l'employé (site + employé : ses prises
+        sur le site s'exécutent l'une après l'autre) → réglages du site en partage → commande ;
+        responsable, heure de prise et réglages relus sous ces verrous. Deux prises simultanées
+        d'une commande protégée : exactement une réussit (``409 order_claim_protected``).
+        Commande déjà prise par l'employé : rien ne change (aucun évènement)."""
+        site_id = self._site_of(order_id)
+        require_site_permission(self.ctx, site_id, ORDER_CLAIM)
+        self.db.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    func.hashtextextended(f"restaurant.claim:{site_id}:{self.ctx.user.id}", 0)
+                )
+            )
+        )
+        settings = ensure_settings(
+            self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="share"
+        )
+        order = self._lock_order(order_id)
+        self._require_open(order)
+        if order.assigned_user_id == self.ctx.user.id:
+            return order
+        protection = timedelta(minutes=settings.claim_protection_minutes)
+        if (
+            order.assigned_user_id is not None
+            and order.assigned_at is not None
+            and protection
+            and self.now < order.assigned_at + protection
+        ):
+            raise ConflictError(
+                "Cette commande est déjà prise en charge",
+                code="order_claim_protected",
+                extra={
+                    "assigned_user_id": str(order.assigned_user_id),
+                    "assigned_name": self._user_name(order.assigned_user_id),
+                    "protected_until": (order.assigned_at + protection).isoformat(),
+                },
+            )
+        cooldown = timedelta(minutes=settings.claim_cooldown_minutes)
+        if cooldown:
+            last = self._last_claim_at(site_id)
+            if last is not None and self.now < last + cooldown:
+                raise ConflictError(
+                    "Délai entre deux prises en charge non écoulé",
+                    code="claim_cooldown_active",
+                    extra={"available_at": (last + cooldown).isoformat()},
+                )
+        previous = order.assigned_user_id
+        order.assigned_user_id = self.ctx.user.id
+        order.assigned_at = self.now
+        order.assigned_by = self.ctx.user.id
+        order.version += 1
+        self._event(
+            order,
+            EventType.CLAIMED,
+            data={"previous_user_id": str(previous) if previous else None},
+        )
+        self.db.flush()
+        self._audit(
+            "claimed",
+            order,
+            {
+                "previous_user_id": str(previous) if previous else None,
+                "previous_name": self._user_name(previous),
+            },
+        )
+        return order
+
+    def reassign(self, order_id: uuid.UUID, assignee_id: uuid.UUID, reason: str) -> RestaurantOrder:
+        """Réattribution IMMÉDIATE (sans égard à la protection), motivée et auditée ; le nouveau
+        responsable doit détenir ``order.claim`` effectif sur le site, contrôlé sous le verrou
+        de la commande (``422 assignee_not_eligible``). Ne compte pas comme une prise (délai).
+        Même responsable : rien ne change."""
+        site_id = self._site_of(order_id)
+        require_site_permission(self.ctx, site_id, ORDER_REASSIGN)
+        order = self._lock_order(order_id)
+        self._require_open(order)
+        if not member_holds(self.db, self.ctx, assignee_id, order.site_id, ORDER_CLAIM, self.now):
+            raise BusinessRuleError(
+                "Ce membre ne peut pas prendre en charge les commandes de ce site",
+                code="assignee_not_eligible",
+                extra={"assignee_user_id": str(assignee_id)},
+            )
+        if order.assigned_user_id == assignee_id:
+            return order
+        previous = order.assigned_user_id
+        order.assigned_user_id = assignee_id
+        order.assigned_at = self.now
+        order.assigned_by = self.ctx.user.id
+        order.version += 1
+        self._event(
+            order,
+            EventType.REASSIGNED,
+            reason=reason,
+            data={
+                "previous_user_id": str(previous) if previous else None,
+                "assignee_user_id": str(assignee_id),
+            },
+        )
+        self.db.flush()
+        self._audit(
+            "reassigned",
+            order,
+            {
+                "reason": reason,
+                "previous_user_id": str(previous) if previous else None,
+                "previous_name": self._user_name(previous),
+                "assignee_user_id": str(assignee_id),
+                "assignee_name": self._user_name(assignee_id),
+            },
+        )
+        return order
+
     # --- Lecture ------------------------------------------------------------------------------
 
     def _query(self, site_ids: set[uuid.UUID]) -> Select[Any]:
@@ -843,6 +986,7 @@ class OrderService:
                     assigned_name=users.get(order.assigned_user_id)
                     if order.assigned_user_id
                     else None,
+                    assigned_at=order.assigned_at,
                     created_by=order.created_by,
                     created_by_name=users.get(order.created_by) if order.created_by else None,
                     total=sum(

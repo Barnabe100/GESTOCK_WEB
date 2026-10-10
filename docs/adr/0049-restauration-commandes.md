@@ -2,7 +2,7 @@
 
 - **Statut** : Acceptée (conception, palier R0) ; **palier R1 livré** (`restaurant.menu`,
   migration 0041) ; **palier R2 en cours** (commandes et règlement, décisions D14 ; R2-A livré :
-  socle de plateforme ; R2-B livré : migration 0042 et moteur T1, module encore planifié) — les autres modules restent planifiés
+  socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; module encore planifié) — les autres modules restent planifiés
 - **Date** : 2026-10-09
 - **Prolonge** : [ADR-0020](0020-paiements-des-ventes.md) (paiements),
   [ADR-0022](0022-caisse.md) (caisse), [ADR-0023](0023-point-de-vente.md) (POS),
@@ -367,6 +367,53 @@ moteur T1 (création idempotente, prix figés, numéro court), ajout de lignes i
 préparation et service par commande ou par ligne, annulations, réglages par site
 (`site_setup`, création au premier usage), ticket de retrait (API), ports du catalogue,
 empreinte ; `restaurant.orders` toujours planifié en production.
+
+**Décisions du palier R2-C (prise en charge, D7 ; modèles de rôles, D12 et Q5)**
+
+- **Aucune migration** : 0042 porte déjà `assigned_user_id` / `assigned_at` / `assigned_by`,
+  les évènements `CLAIMED` / `REASSIGNED` et l'index de la dernière prise par employé.
+- **« Prendre »** (`POST /restaurant/orders/{id}/claim`, `restaurant.orders.order.claim`) :
+  commande **ouverte**, réglée ou non (close, annulée ou refusée : refus existants). Commande
+  déjà prise par l'employé : rien ne change (aucun évènement, même version).
+  - **Protection** : mesurée depuis `assigned_at` (dernière prise ou réattribution) ; pendant
+    `claim_protection_minutes`, un autre employé est refusé `409 order_claim_protected`
+    (responsable nommé, fin de la protection) ; 0 = désactivée (reprise immédiate).
+  - **Délai entre prises** : dernière action « Prendre » de l'employé **sur ce site**, lue dans
+    l'historique ; pendant `claim_cooldown_minutes`, refus `409 claim_cooldown_active` (heure
+    de disponibilité) ; ni la création ni une réattribution ne comptent ni ne remettent le délai
+    à zéro ; 0 = désactivé.
+  - **Verrous** (ordre global inchangé) : verrou consultatif de l'employé (site + employé) →
+    réglages du site en partage → commande ; responsable, heure de prise et réglages relus sous
+    ces verrous. Le verrou de l'employé est pris pour **toute** action « Prendre » (et non
+    seulement quand le délai est positif) : le réglage n'est lu qu'après lui, l'ordre global
+    reste ainsi respecté ; coût négligeable. Deux prises simultanées d'une commande protégée :
+    exactement une réussit ; prises simultanées d'un même employé avec délai : une seule.
+- **Réattribution** (`POST /restaurant/orders/{id}/reassign`,
+  `restaurant.orders.order.reassign`, nature `admin`) : immédiate (la protection ne s'applique
+  pas), motif obligatoire (évènement `REASSIGNED` et audit), contrôlée sous le verrou de la
+  commande. Nouveau responsable **calculé par le serveur** : appartenance active, compte actif,
+  site accessible, `restaurant.orders.order.claim` **effective sur le site** (rôles de
+  l'entreprise et du site, modules effectifs, abonnement du site et son statut — le calcul de
+  ses propres capacités ; jamais un nom de rôle), sinon `422 assignee_not_eligible`. Même
+  responsable : rien ne change. Aucun retrait de responsable en V1 (pas de route).
+- Audit `restaurant_order.claimed` (responsable précédent) et `restaurant_order.reassigned`
+  (motif, ancien et nouveau responsables) ; `OrderOut.assigned_at` exposé (début de la
+  protection) ; responsable ≠ rôle (D12).
+- **Modèles de rôles** : Vendeur + `restaurant.orders.order.claim` ; Gestionnaire par
+  `restaurant.*` (prise et réattribution) ; modèles facultatifs `waiter` (**Serveur** : menu
+  consulté et « épuisé », commandes consultées, saisie, prise, service ; aucune permission
+  d'encaissement ni d'annulation) et `preparer` (**Préparateur** : menu consulté et « épuisé »,
+  commandes consultées, préparation), `auto_provision = false`, créés par
+  `POST /roles/from-template`. Un rôle personnalisé du même nom (casse ignorée, créé avant
+  l'arrivée du modèle) fait refuser la création : `409 role_name_taken` nommant le rôle
+  (`role_id`, `role_name`), sans renommage automatique ; un nouveau rôle personnalisé ne peut
+  plus prendre ce nom (`role_name_reserved`, règle existante des modèles).
+- **Filtre des modules planifiés** (R2-B) vérifié sans régression : seul `restaurant.orders`
+  déclare des permissions parmi les modules planifiés ; les permissions des modules livrés
+  restent toutes accordées (registre et capacités du propriétaire, commerce et restauration).
+
+**R2-C livré** : prise en charge, protection, délai entre prises, réattribution motivée,
+modèles Serveur et Préparateur ; `restaurant.orders` toujours planifié en production.
 
 ## Conséquences
 

@@ -283,8 +283,14 @@ def test_protected_template_must_be_provisioned() -> None:
         validate_catalog(broken, get_registry())
 
 
-def test_base_templates_stay_provisioned() -> None:
-    assert all(t.auto_provision for t in role_templates().values())
+def test_only_restaurant_templates_are_optional() -> None:
+    # Rôles de base toujours provisionnés ; seuls Serveur et Préparateur (R2-C, D12) sont
+    # facultatifs, créés à la demande.
+    optional = {code for code, t in role_templates().items() if not t.auto_provision}
+    assert optional == {"waiter", "preparer"}
+    assert {"administrator", "manager", "seller", "viewer"} <= {
+        code for code, t in role_templates().items() if t.auto_provision
+    }
 
 
 # --- module_settings et profils D11 -------------------------------------------------------------

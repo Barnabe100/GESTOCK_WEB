@@ -103,6 +103,7 @@ def test_base_roles(owner: Api) -> None:
         # le module est planifié (capacités effectives filtrées par les modules).
         "restaurant.orders.order.view",
         "restaurant.orders.order.create",
+        "restaurant.orders.order.claim",  # prise en charge (R2-C), jamais la réattribution
         "restaurant.orders.order.prepare",
         "restaurant.orders.order.serve",
         "restaurant.orders.order.cancel",

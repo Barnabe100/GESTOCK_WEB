@@ -3,7 +3,7 @@
 > **Conception validée.** Décisions : [ADR-0049](../adr/0049-restauration-commandes.md)
 > (arbitrages A1–A7, B1–B6, Z1–Z3, W1 ; décisions du palier R2 : D14). **Palier R1 (menu)
 > livré** (migration 0041). **Palier R2 en cours** (commandes et règlement, absorbe l'ancien
-> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1) ; `restaurant.orders` reste `planned` jusqu'au commit
+> R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur) ; `restaurant.orders` reste `planned` jusqu'au commit
 > R2-E. Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
 > de leur palier.
 > **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
@@ -200,7 +200,8 @@ lignes sont annulées n'est pas réglable (`409 order_empty`) ; elle s'annule av
 
 Refus : `order_not_settled`, `order_settled` (ajout ET annulation de lignes, annulation de la
 commande), `order_empty` (règlement d'une commande sans ligne), `order_has_served_lines`,
-`order_closed`, `sale_origin_unavailable`, `assignee_not_eligible`, et les refus existants des
+`order_closed`, `sale_origin_unavailable`, `assignee_not_eligible`, `order_claim_protected`
+(prise pendant la protection), `claim_cooldown_active` (délai entre prises), et les refus existants des
 ventes, paiements, caisse et stock (`insufficient_stock`, `insufficient_unexpired_stock`,
 `article_inactive`, `article_not_in_site_assortment`, `cash_session_closed`,
 `sale_has_payments`…).
@@ -256,7 +257,8 @@ opérations du catalogue concernées (ports).
 
 ## 7. Ordre global des verrous
 
-1. Verrou consultatif de l'employé (site + employé), seulement pour « Prendre » avec délai > 0.
+1. Verrou consultatif de l'employé (site + employé), pour toute action « Prendre » (R2-C : le
+   réglage du délai n'est lu qu'ensuite, sous le verrou des réglages).
 2. Réglages du site, en partage (le changement de profil les prend en exclusif).
 3. Point QR, en partage (R7).
 4. Commande (exclusif).
@@ -301,7 +303,12 @@ profil, ADR-0048) n'est jamais pris par une commande.
 - `restaurant.orders.order.confirm` est déclarée au palier R7, à son premier usage (P-12).
 - État financier d'une commande (numéro de vente, payé / partiel / dû) visible avec
   `restaurant.orders.order.view` ; détail des paiements réservé à `sales.payment.view` (P-11).
-- Réattribution : nouveau responsable détenteur de `restaurant.orders.order.claim` effectif sur le site.
+- Réattribution : nouveau responsable détenteur de `restaurant.orders.order.claim` effectif sur le site
+  (appartenance active, compte actif, site accessible, capacités résolues pour ce site), motif
+  obligatoire, immédiate ; « Prendre » respecte la protection et le délai du site (ADR-0049,
+  décisions du palier R2-C).
+- Codes des modèles facultatifs : `waiter` (Serveur), `preparer` (Préparateur) ; Vendeur :
+  `restaurant.orders.order.claim` en plus des permissions de R2-B.
 
 ## 9. Notifications
 

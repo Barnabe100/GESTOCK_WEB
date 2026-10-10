@@ -69,7 +69,7 @@ Base : `/api/v1` · Documentation interactive : `/api/v1/docs` · Schéma : `/ap
 | GET | `/permissions/delegable` | `users.role.manage` **ou** `users.member.manage` | Permissions que l'utilisateur courant peut accorder (Phase 3.2-E, ADR-0030) : tout le tenant, ou `site_id` (site de son périmètre ; sinon liste vide ; `404 site_not_found`) — exactement ce que l'anti-escalade accepte |
 | GET | `/roles/delegable` | `users.role.manage` **ou** `users.member.manage` | Rôles actifs attribuables par l'utilisateur courant sur tout le tenant, ou pour `site_id` |
 | GET | `/role-templates` | `users.role.view` | Modèles de rôles de base (instanciés ou non) |
-| POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle de base manquant |
+| POST | `/roles/from-template` | `users.role.manage` | Ajouter au tenant un rôle de base manquant, ou un modèle facultatif (`waiter` Serveur, `preparer` Préparateur, jamais créés automatiquement) ; `409 role_name_taken` (avec `role_id`, `role_name`) si un rôle personnalisé porte déjà son nom, sans renommage |
 | GET | `/subscriptions` | `subscription.subscription.view` | Abonnements de l'entreprise, un par site (sites accessibles au membre) et l'éventuel abonnement d'inscription non rattaché : site, offre, statuts stocké et effectif, période, limites et usage **du site**, fonctionnalités, accès, postes demandés (ADR-0033) ; `effective_plan` (offre de la licence en vigueur), `next_plan` (offre de la prochaine licence si différente), `renewal` (devis de la prochaine période, 3.3-B4) ; `license` : licence en vigueur du site, sinon la plus récente (numéro, version, état calculé, plan, validité, postes autorisés ; lecture seule, ADR-0034). **Aucune route** de création ou de modification de licence côté entreprise |
 | GET | `/subscription` | `subscription.subscription.view` | Abonnement du site sélectionné (`X-Site-Id`), sinon abonnement représentatif (même forme que `/subscriptions`) |
 | GET | `/license-activations` | `subscription.subscription.view` | Postes des sites visibles (Phase 3.3-B3, ADR-0035) : filtres `site_id`, `status` ; tri `activated_at` décroissant par défaut, `last_seen_at`, `status` ; `stale` = non vu depuis plus que la durée hors ligne tolérée ; `release_source` (`TENANT` / `TECHNOVA`, jamais l'agent) |
@@ -447,12 +447,11 @@ Audit : `restaurant_menu.section_created` / `section_updated` / `section_activat
 `section_deactivated`, `restaurant_menu.item_created` / `item_updated` / `item_activated` /
 `item_deactivated` / `item_availability_changed`.
 
-### Commandes de restauration (module `restaurant.orders`) — palier R2-B
+### Commandes de restauration (module `restaurant.orders`) — paliers R2-B et R2-C
 
 > **Module encore planifié** (ADR-0049, D14 N1) : ces routes ne sont PAS montées en production
 > avant le commit R2-E (règlement et interface) ; elles sont exercées par les tests avec un
-> registre de test. Le règlement (T2), la prise en charge et la clôture effective arrivent en
-> R2-C / R2-D.
+> registre de test. Le règlement (T2) et la clôture effective arrivent en R2-D.
 
 Décisions : [ADR-0049](../adr/0049-restauration-commandes.md) (D2, D3, D6, D13, D14) ; conception :
 [`RESTAURANT.md`](RESTAURANT.md). Portée des sites comme le menu (R1) : lecture limitée aux sites où
@@ -473,9 +472,13 @@ permission précise de l'action SUR CE site (`permission_denied`). Le canal est 
 | POST | `/restaurant/orders/{id}/serve` | `restaurant.orders.order.serve` | Prête → servie / remise (définitif) ; mêmes règles ; clôture seulement si la commande est réglée (R2-D) |
 | POST | `/restaurant/orders/{id}/cancel-lines` | `restaurant.orders.order.cancel` (lignes reçues), `.cancel_prepared` (lignes en préparation ou prêtes) | `line_ids`, `reason` obligatoire ; commande non réglée ; `409 order_line_final`, `order_settled` |
 | POST | `/restaurant/orders/{id}/cancel` | `restaurant.orders.order.cancel` (+ `.cancel_prepared` selon les lignes) | `reason` obligatoire ; `409 order_has_served_lines`, `order_settled` ; commande sans ligne restante : `order.cancel` seul (N4) |
+| POST | `/restaurant/orders/{id}/claim` | `restaurant.orders.order.claim` | « Prendre » (R2-C, D7) : l'employé devient responsable d'une commande ouverte ; `409 order_claim_protected` pendant la protection d'un autre responsable (`assigned_name`, `protected_until`), `409 claim_cooldown_active` pendant le délai entre deux prises de l'employé sur le site (`available_at`) ; déjà responsable : inchangée |
+| POST | `/restaurant/orders/{id}/reassign` | `restaurant.orders.order.reassign` | `assignee_user_id`, `reason` obligatoire ; immédiate (sans égard à la protection) ; `422 assignee_not_eligible` si le membre ne détient pas `restaurant.orders.order.claim` effective sur le site (appartenance ou compte inactif, site inaccessible, autre entreprise compris) ; ne compte pas comme une prise |
 
 Audit : `restaurant_order.created` / `lines_added` / `prep_started` / `ready` /
-`ready_reverted` / `served` / `lines_cancelled` / `cancelled` / `settings_updated`.
+`ready_reverted` / `served` / `lines_cancelled` / `cancelled` / `settings_updated` /
+`claimed` / `reassigned`. Les commandes exposent `assigned_user_id`, `assigned_name` et
+`assigned_at` (début de la protection).
 
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 

@@ -12,8 +12,10 @@ from app.modules.restaurant_orders.footprint import (
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
+    ORDER_CLAIM,
     ORDER_CREATE,
     ORDER_PREPARE,
+    ORDER_REASSIGN,
     ORDER_SERVE,
     ORDER_VIEW,
     SETTINGS_MANAGE,
@@ -48,6 +50,9 @@ MANIFEST = ModuleManifest(
         PermissionDef(ORDER_CANCEL, W),
         # Lignes en préparation ou prêtes : réservé à l'encadrement.
         PermissionDef(ORDER_CANCEL_PREPARED, A),
+        # Prise en charge (« Prendre ») ; réattribution immédiate motivée : encadrement (D7).
+        PermissionDef(ORDER_CLAIM, W),
+        PermissionDef(ORDER_REASSIGN, A),
         PermissionDef(SETTINGS_MANAGE, A),
     ),
     router=router,

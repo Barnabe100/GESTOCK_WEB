@@ -486,8 +486,22 @@ class RoleService(_AccessBase):
         template = role_templates().get(template_code)
         if template is None:
             raise NotFoundError("Modèle de rôle introuvable", code="role_template_not_found")
-        if any(r.template_code == template_code for r in self.list_all()):
+        roles = self.list_all()
+        if any(r.template_code == template_code for r in roles):
             raise ConflictError("Ce rôle existe déjà", code="role_template_exists")
+        # Un modèle facultatif (ex. Serveur) peut arriver après qu'un rôle personnalisé a pris
+        # son nom : création refusée, le rôle existant est nommé, sans renommage automatique
+        # (ADR-0049, D14 Q5).
+        lowered = template.name.strip().lower()
+        taken = next(
+            (r for r in roles if not r.is_system and r.name.strip().lower() == lowered), None
+        )
+        if taken is not None:
+            raise ConflictError(
+                "Un rôle personnalisé porte déjà ce nom",
+                code="role_name_taken",
+                extra={"role_id": str(taken.id), "role_name": taken.name},
+            )
         self._ensure_grantable(
             template.resolve(
                 set(
