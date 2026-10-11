@@ -60,6 +60,7 @@ from app.modules.restaurant_orders.models import (
     RestaurantOrder,
     RestaurantOrderEvent,
     RestaurantOrderLine,
+    ServiceMode,
     SettlementStatus,
 )
 from app.modules.restaurant_orders.notifications import notify_order_ready
@@ -99,6 +100,7 @@ from app.modules.restaurant_orders.sites import (
     readable_site_ids,
     require_site_permission,
 )
+from app.modules.restaurant_orders.table_port import TABLES_MODULE, TableRef, table_directory
 from app.modules.sales.api import (
     ORIGIN_RESTAURANT_ORDER,
     OriginLine,
@@ -111,9 +113,10 @@ from app.platform.audit.service import audit_action
 from app.platform.capabilities.service import CapabilityService
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
-from app.platform.registry import get_registry
+from app.platform.registry import ModuleStatus, get_registry
 from app.platform.tenancy.identity import document_identity
 from app.platform.tenancy.models import Site
+from app.platform.tenancy.site_modules import lock_site_key_share
 from app.shared.ids import new_id
 from app.shared.pagination import PageParams, apply_sort, escape_like, paginate
 
@@ -217,6 +220,50 @@ class OrderService:
         if self.ctx.site is not None and self.ctx.site.id == site_id:
             return frozenset(self.ctx.capabilities.modules)
         return frozenset(self.ctx.site_capabilities(site_id).modules)
+
+    def _tables_effective_now(self, site_id: uuid.UUID) -> bool:
+        """``restaurant.tables`` effectif sur le site, RECALCULÉ depuis la base (jamais les
+        capacités mises en cache au début de la requête) : appelé APRÈS le verrou du site, il
+        voit toute reconfiguration validée avant (aucune ne peut l'être pendant). Un module
+        planifié n'est jamais effectif, même avec une activation inerte (E.1)."""
+        registry = get_registry()
+        if TABLES_MODULE not in registry:
+            return False
+        if registry.get(TABLES_MODULE).status is not ModuleStatus.AVAILABLE:
+            return False
+        capabilities = CapabilityService(self.db, registry).resolve(
+            tenant=self.ctx.tenant, membership=self.ctx.membership, site_id=site_id, now=self.now
+        )
+        return TABLES_MODULE in capabilities.modules
+
+    def _table_for_order(
+        self, site_id: uuid.UUID, table_id: uuid.UUID, mode: ServiceMode
+    ) -> TableRef:
+        """Table rattachable à une commande du site (R5-B) : « sur place » seulement (A3),
+        module des tables effectif MAINTENANT, table du site et active, prise en partage par le
+        port (ordre §7 : site → réglages → table → commande)."""
+        if mode is not ServiceMode.ON_SITE:
+            raise BusinessRuleError(
+                "Une table ne s'associe qu'à une commande sur place",
+                code="table_not_allowed_for_mode",
+            )
+        directory = table_directory(self.db, self.ctx)
+        if directory is None or not self._tables_effective_now(site_id):
+            raise BusinessRuleError(
+                "Les tables ne sont pas disponibles sur ce site", code="tables_unavailable"
+            )
+        return directory.lock_for_order(site_id, table_id)
+
+    @staticmethod
+    def _table_data(table: TableRef | None) -> dict[str, Any]:
+        """Table telle qu'elle était au moment de l'évènement (historique, A7)."""
+        if table is None:
+            return {"table_id": None, "table_label": None, "zone_name": None}
+        return {
+            "table_id": str(table.id),
+            "table_label": table.label,
+            "zone_name": table.zone_name,
+        }
 
     def _audit(self, action: str, order: RestaurantOrder, data: dict[str, Any]) -> None:
         audit_action(
@@ -495,8 +542,18 @@ class OrderService:
         ).one_or_none()
         if existing is not None:
             return existing, True
+        # R-2 (AR-1) : le site en partage de clé AVANT les réglages, pour TOUTE création (avec
+        # ou sans table). Une reconfiguration (désactivation d'un module, changement de profil)
+        # prend le site en exclusif puis les réglages : sans ce verrou anticipé, l'insertion de
+        # la commande (clé étrangère vers le site) croisait ces deux verrous (interblocage).
+        lock_site_key_share(self.db, site_id)
         settings = ensure_settings(
             self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="share"
+        )
+        table = (
+            self._table_for_order(site_id, data.table_id, data.service_mode)
+            if data.table_id is not None
+            else None
         )
         customer_name = self._customer(site_id, data.customer_id)
         prepared = self._prepare_lines(site_id, data.lines)
@@ -509,6 +566,7 @@ class OrderService:
             channel=channel,
             service_mode=data.service_mode,
             customer_id=data.customer_id,
+            table_id=table.id if table is not None else None,
             call_name=data.call_name,
             status=OrderStatus.OPEN,
             prep_status=PrepStatus.RECEIVED,
@@ -522,7 +580,10 @@ class OrderService:
         self.db.add(order)
         self.db.flush()
         lines = self._add_lines(order, prepared, 1)
-        self._event(order, EventType.CREATED, lines, data={"channel": channel.value})
+        created: dict[str, Any] = {"channel": channel.value}
+        if table is not None:
+            created |= self._table_data(table)
+        self._event(order, EventType.CREATED, lines, data=created)
         self._audit(
             "created",
             order,
@@ -532,6 +593,7 @@ class OrderService:
                 "payment_timing": order.payment_timing.value,
                 "customer": customer_name,
                 "call_name": order.call_name,
+                "table": self._table_data(table) if table is not None else None,
                 "lines": self._lines_audit(lines),
             },
         )

@@ -70,6 +70,9 @@ class OrderCreate(BaseModel):
     site_id: uuid.UUID | None = None
     service_mode: ServiceMode
     customer_id: uuid.UUID | None = None
+    # Table facultative (R5-B, D2) : « sur place » seulement, du site, active, module
+    # ``restaurant.tables`` effectif sur le site — contrôlé par le serveur.
+    table_id: uuid.UUID | None = None
     call_name: Optional40 = None
     lines: list[LineInput] = Field(min_length=1, max_length=MAX_LINES)
     idempotency_key: uuid.UUID

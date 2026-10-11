@@ -1,6 +1,6 @@
 """Interface publique des commandes de restauration (palier R5-A) : utilisée par les modules qui
 dépendent des commandes (``restaurant.tables``), qui ne lisent jamais leurs modèles (règle
-d'architecture 10). Lecture seule."""
+d'architecture 10). Lecture seule, plus l'enregistrement du port des tables (R5-B)."""
 
 import uuid
 from collections.abc import Iterable
@@ -10,9 +10,20 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.modules.restaurant_orders.models import ACTIVE_ORDER_STATUSES, RestaurantOrder
+from app.modules.restaurant_orders.table_port import (
+    TableDirectory,
+    TableRef,
+    register_table_directory,
+)
 from app.platform.footprint import capped_count
 
-__all__ = ["open_orders_by_table", "open_orders_on_tables"]
+__all__ = [
+    "TableDirectory",
+    "TableRef",
+    "open_orders_by_table",
+    "open_orders_on_tables",
+    "register_table_directory",
+]
 
 
 def _open_with_table(site_id: uuid.UUID) -> Select[Any]:

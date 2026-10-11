@@ -376,3 +376,28 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
 - **AR-3 (accepté)** : l'API du plan de salle (états Libre / Occupée / À régler, priorité,
   commandes multiples, commandes qui occupent encore une table : B1 et C2 de la conception) fait
   partie de R5-B ; l'interface graphique reste en R5-C.
+
+### R5-B / B-1 — verrou du site pour toute création, table facultative à la création
+
+- **Ordre des verrous de la création** (à reporter dans `RESTAURANT.md` §7) : verrou consultatif
+  d'idempotence → **site en partage de clé** (`lock_site_key_share`, `FOR KEY SHARE`) → réglages
+  du site (partage) → table (partage, port des tables, si une table est fournie) → compteur du
+  jour → insertion. Attention : en SQLAlchemy, `with_for_update(key_share=True)` produit
+  `FOR NO KEY UPDATE` ; le partage de clé exige `read=True, key_share=True` (erreur détectée par
+  les tests pas à pas avant le commit).
+- **R-2, résultats avec le vrai code** (`tests/test_restaurant_orders_locking.py`) : D1 (création
+  sans table / désactivation des commandes) et D2 (création sans table, puis avec table /
+  changement de profil) — la reconfiguration attend au verrou du site (constaté dans
+  `pg_stat_activity`), aucune erreur ni `40P01`, résultats `201` puis `409`. Ordre inverse : la
+  création attend dès son premier verrou (site), sans interblocage. Ces scénarios ne prouvent
+  pas l'absence générale d'interblocage.
+- **Constat hors périmètre B-1 (préexistant, non corrigé)** : une création peut valider APRÈS
+  une désactivation de `restaurant.orders` validée pendant qu'elle attendait (capacités lues au
+  début de la requête, jamais recalculées pour le module des commandes) : commande ouverte sur un
+  site où le module vient d'être désactivé (observé : désactivation `204`, création `201`, une
+  commande ouverte, module désactivé). Même nature pour les permissions lues en début de
+  requête. Pas un interblocage. Le module des TABLES, lui, est recalculé après les verrous
+  (`tables_unavailable`). Correction proposée (recalcul de l'effectivité des commandes après le
+  verrou du site) soumise à autorisation.
+- **Codes d'erreur nouveaux** (traductions en R5-C) : `table_not_allowed_for_mode`,
+  `tables_unavailable`, `table_inactive` (`table_not_found` existe depuis R5-A).

@@ -82,3 +82,18 @@ def lock_site(session: Session, site_id: uuid.UUID) -> Site | None:
         .with_for_update()
         .execution_options(populate_existing=True)
     ).one_or_none()
+
+
+def lock_site_key_share(session: Session, site_id: uuid.UUID) -> None:
+    """Verrou du site en PARTAGE DE CLÉ (``FOR KEY SHARE``) pour une écriture qui référence le
+    site (ADR-0049, R-2) : pris EN PREMIER, avant tout autre verrou de ligne de l'écriture. Il
+    est compatible avec les autres écritures et entre en conflit avec ``lock_site`` (exclusif) :
+    une reconfiguration attend la fin de l'écriture, ou l'écriture attend la fin de la
+    reconfiguration, sans cycle possible. Le contrôle de clé étrangère d'une insertion pose ce
+    même verrou, mais trop tard (après les verrous propres au module) : d'où cette prise
+    anticipée."""
+    # ``read=True`` + ``key_share=True`` = ``FOR KEY SHARE`` (``key_share`` seul donnerait
+    # ``FOR NO KEY UPDATE``, qui sérialiserait toutes les écritures du site).
+    session.execute(
+        select(Site.id).where(Site.id == site_id).with_for_update(read=True, key_share=True)
+    )
