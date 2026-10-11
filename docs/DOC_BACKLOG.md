@@ -147,15 +147,46 @@ la section sécurité / RBAC, l'exploitation (rôles SQL, cron) et `DESIGN_SYSTE
 - **Points à arbitrer / risques résiduels** :
   - commande rendue entièrement prête par l'ANNULATION de sa dernière ligne non prête : aucun
     avis (D8 ne vise que la transition « prête ») ;
-  - destinataire sans `organization.notification.view` : notification enregistrée (règle D8
-    exacte) mais illisible tant qu'il n'a pas la permission (purgée à 30 jours) ;
+  - destinataire sans `organization.notification.view` (analyse complémentaire, tests
+    `test_every_base_role_able_to_receive_can_read`,
+    `test_custom_role_without_notification_view_receives_but_cannot_read`) : jamais par un
+    rôle STANDARD (Administrateur, Gestionnaire, Vendeur, Serveur ont tous la lecture ; rôles
+    standard résolus depuis leur modèle, entreprises existantes comprises) ; seulement par un
+    rôle PERSONNALISÉ donnant `order.view` + `order.serve` (ou `claim`, responsable) sans la
+    lecture des notifications SUR CE SITE (y compris lecture détenue sur un autre site
+    seulement). Notification alors enregistrée mais illisible (403 / invisible) jusqu'à la
+    purge — conforme à la lettre de D8 (règle des destinataires), en tension avec « lisibles
+    par leurs destinataires ». Arbitrage présenté, en attente ;
+  - comportement EXISTANT constaté (antérieur à R4, non modifié) : en production, le
+    propriétaire peut enregistrer des permissions `restaurant.orders.*` dans un rôle
+    personnalisé (module planifié à activation inerte ; propriétaire exempté de
+    l'anti-escalade) ; sans effet tant que le module est planifié, effectives dès son
+    activation ;
   - postes (R6) : un avis par partie et par poste exigera un évènement source par poste (la clé
     anti-doublon reste (destinataire, évènement)) ;
   - coût : une résolution de capacités par membre de l'équipe du site à chaque commande prête ;
   - planifier le cron de purge en exploitation.
-- **E2E (exécution R4)** : deux exécutions complètes à 161/162 ; échecs différents et isolés —
-  run 1 : premier test (`assortment.e2e.ts:166`, page compilée à la demande par Vite, comme en
-  R2-F) ; run 2 : dépassement du délai de 30 s de `receivables.e2e.ts:156` (réussit seul ; 18 s
-  historiquement, ~30 s aujourd'hui). Ralentissement uniforme (×1,4 en médiane) observé aussi
-  sans la cloche de R4 et sur des entreprises neuves : environnement ou volume de la base de
-  développement, à réexaminer (délai du test, préchauffage, base E2E réinitialisée).
+- **E2E (exécution R4, puis vérification complémentaire)** : premières exécutions à 161/162
+  (échecs différents : `assortment.e2e.ts:166` au run 1, dépassement des 30 s de
+  `receivables.e2e.ts:156` au run 2) ; après diagnostic, deux nouvelles exécutions complètes à
+  **162/162** (32,1 min et 33,8 min). Diagnostic (mesures, aucune correction appliquée) :
+  - `receivables.e2e.ts:156` : aucune requête anormalement lente (trace), mais une succession
+    d'étapes d'~1 s (rafales de requêtes au chargement de chaque page, un seul processus API).
+    A/B même machine, même base : code d'AVANT R4 (`3541126`) 25,5–28,7 s (moy. 27,4 s), code
+    R4 26,7–32,4 s (moy. 28,75 s) → R4 ajoute ~1 s (requête `member-notifications/unread-count`
+    de la cloche à chaque chargement), l'essentiel est antérieur à R4. Base neuve (même code
+    R4) : 22,8–27,4 s (moy. 25,2 s) → volume accumulé de la base E2E ≈ 2–3 s. Le reste vient
+    de l'environnement : suite pytest (base recréée) 1,54 s/test en R2-F, 2,01 s/test sur le
+    code d'avant R4 le lendemain (+30 %). Test historiquement à 18 s, désormais 25–29 s pour un
+    délai de 30 s : marge insuffisante, d'où l'intermittence.
+  - Marge réduite généralisée : en R2-F aucun test ne dépassait 24 s ; aujourd'hui 7 à 8 tests
+    entre 24 et 30 s, dont des scénarios sans lien avec R4 (`users.e2e.ts:90` à 29,2 s,
+    `console-licenses.e2e.ts:102`, `transfers.e2e.ts:215`, `cash.e2e.ts:124`).
+  - `assortment.e2e.ts:166` : non reproduit — 8/8 réussites, Vite et API redémarrés à froid
+    avant chaque essai (titre affiché en 1,4–1,6 s pour 5 s permises), puis réussi dans les
+    deux exécutions complètes (15,2 s, 11,7 s) ; aucun rechargement de dépendances Vite dans
+    les journaux. La trace de l'échec initial avait été écrasée : cause non établie (les
+    sorties de chaque exécution sont désormais conservées séparément).
+  - À arbitrer (rien n'a été modifié) : base E2E réinitialisée ou entreprises jetables,
+    découpage des scénarios longs ou `test.slow()` ciblé, frontend construit (`vite preview`)
+    au lieu du serveur de développement pendant les E2E.
