@@ -72,7 +72,13 @@ def test_base_roles(owner: Api) -> None:
     assert {"catalog.article.create", "stock.entry.validate", "alerts.stock.view"} <= manager
     # Gestionnaire : ni annulation, ni gestion des motifs, ni administration.
     assert not manager & {"stock.entry.cancel", "stock.exit.cancel", "stock.reason.manage"}
-    assert not any(p.startswith(("users.", "organization.")) for p in manager)
+    # Seule exception : lire SES notifications (R4, ADR-0049 D8 ; RESTAURANT.md §8), lecture
+    # personnelle, jamais une administration.
+    assert "organization.notification.view" in manager
+    assert not any(
+        p.startswith(("users.", "organization.")) and p != "organization.notification.view"
+        for p in manager
+    )
 
     assert set(roles["seller"]["permission_codes"]) == {
         "catalog.article.view",
@@ -107,6 +113,7 @@ def test_base_roles(owner: Api) -> None:
         "restaurant.orders.order.prepare",
         "restaurant.orders.order.serve",
         "restaurant.orders.order.cancel",
+        "organization.notification.view",  # ses notifications (palier R4, ADR-0049 D8)
     }
     viewer = set(roles["viewer"]["permission_codes"])
     assert "stock.movement.view" in viewer and "organization.site.view" in viewer
