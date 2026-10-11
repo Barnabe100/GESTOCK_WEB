@@ -202,3 +202,79 @@ la section sécurité / RBAC, l'exploitation (rôles SQL, cron) et `DESIGN_SYSTE
   - À arbitrer (rien n'a été modifié) : base E2E réinitialisée ou entreprises jetables,
     découpage des scénarios longs ou `test.slow()` ciblé, frontend construit (`vite preview`)
     au lieu du serveur de développement pendant les E2E.
+
+## R5 — tables et zones : conception validée (non implémentée)
+
+Conception de `restaurant.tables` validée (implémentation R5-A non autorisée à ce stade). À
+reporter, à la livraison, dans ADR-0049 (D1, D11, O8), `RESTAURANT.md` (§3, §4, §7, §8, §11,
+§13, §14), `DATA_MODEL.md`, `API.md` et le guide utilisateur.
+
+- **Écarts constatés dans le dépôt** :
+  - E1 : `backend/app/modules/planned.py` déclare `restaurant.tables` sans dépendance, alors
+    qu'ADR-0049 D1 prévoit `depends_on = restaurant.orders` ; le manifeste réel livré en R5
+    déclarera la dépendance (entrée planifiée retirée) ;
+  - E2 : conséquence de D1 — le module ne peut être effectif en production tant que
+    `restaurant.orders` est `planned` ; il reste lui aussi `planned` (A2) ;
+  - E3 : D11 active les tables par défaut pour Restaurant / Pizzeria ; les sites existants sont
+    remis à `false` par la migration 0046 (A11), les nouveaux sites suivent D11 ;
+  - E4 : `RESTAURANT.md` §11 attribue encore 0045 à R5 (voir « Plan de migrations » ci-dessus).
+- **Arbitrages retenus (A1–A11, B1–B7)** : plusieurs commandes ouvertes par table, avec
+  avertissement (A1) ; table seulement en `ON_SITE` (A3), aussi par contrainte en base
+  `table_id IS NULL OR service_mode = 'ON_SITE'` (B5) ; zone facultative (A4) ; motif du
+  changement de table facultatif (A5) ; désactivation du module refusée avec des commandes
+  ouvertes rattachées à des tables (A6) ; aucune copie du libellé dans la commande, libellés
+  conservés par l'historique (A7) — l'affichage courant d'une commande close suit les
+  renommages (B6) ; association et changement de table par `restaurant.orders.order.create`
+  vérifiée sur le site de la commande (A8) ; R4 inchangé (A9) ; permissions
+  `restaurant.tables.table.view` (read) et `restaurant.tables.table.manage` (admin, zones et
+  tables) ; retrait de la table permis quand le module n'est pas effectif (B4) ; filtre
+  `table_id` de la liste des commandes (B7).
+- **Indépendance des commandes** : port `restaurant_orders/table_port.py` implémenté et
+  enregistré par `restaurant_tables` ; aucune importation de `restaurant_tables` par les
+  commandes ; module « effectif » = capacités du site RECALCULÉES après les verrous (celles du
+  contexte sont mises en cache par requête) ET module disponible dans le registre (une
+  activation inerte d'un module planifié compte parmi les modules du site) ; sinon
+  `422 tables_unavailable`.
+- **Occupation (B1)**, calculée à la lecture : une commande `PENDING_CONFIRMATION` ou `OPEN`
+  occupe sa table ; Occupée (au moins une commande « en cours ») > À régler (toutes ouvertes,
+  non réglées, tout servi) > Libre. Annulée, refusée ou close : table libérée ; réglée non
+  servie : table occupée. Le filtre « À régler » de la liste des commandes reste inchangé.
+- **Historique** : évènement `TABLE_CHANGED` (table nouvelle et ancienne : identifiant, libellé,
+  zone ; aucun évènement sans changement) et table initiale dans `CREATED` ; audits
+  `restaurant_order.table_changed`, `restaurant_table.*`, `restaurant_zone.*`.
+- **Licences** : `restaurant.tables` figure dans STANDARD et ENTREPRISE depuis la Phase 1 ; toute
+  licence émise le contient (modules du plan figés sans filtre) ; aucun renouvellement ni
+  aucune réémission requis.
+- **Ordre des verrous à reporter dans `RESTAURANT.md` §7** (écritures portant une table) :
+  verrou d'idempotence (création) → site en partage de clé (`FOR KEY SHARE`, en premier) →
+  réglages du site (partage) → table cible (partage) → commande (exclusif, changement de table)
+  → contrôles après verrous → écriture. Désactivation d'une table : table en exclusif puis
+  comptage des commandes ouvertes ; zone : exclusif pour la désactiver, partage pour y
+  rattacher une table.
+- **Migration 0046 (prévue)** : `restaurant_zones`, `restaurant_tables` (RLS, aucun `DELETE`),
+  FK composite `restaurant_orders (tenant_id, site_id, table_id)` en `RESTRICT`, contrainte B5,
+  index partiel, `GRANT UPDATE (table_id)`, valeur `TABLE_CHANGED`, remise à `false` de
+  `restaurant.tables` sur les sites existants, descente refusée dès qu'une zone ou une table
+  existe.
+- **Décision à réexaminer séparément (R-1)** : la politique E.1 d'ADR-0048 est CONSERVÉE (les
+  activations automatiques créées pour les modules planifiés restent telles quelles). Un site
+  Restaurant / Pizzeria créé après 0046 recevra `restaurant.tables` activé (inerte), qui
+  deviendra effectif dès le passage du module à `available`, sans action de l'entreprise ;
+  même cas pour `restaurant.orders` depuis 0042. Aucune remise à `false` future n'est
+  programmée et la politique de `restaurant.orders` n'est pas modifiée ; arbitrage séparé
+  requis.
+- **Risque à établir (R-2, hypothèse non démontrée)** : interblocage possible entre une écriture
+  de commande (réglages pris en partage, puis contrôle de la clé étrangère vers le site à
+  l'insertion) et une opération qui verrouille d'abord le site en exclusif (désactivation d'un
+  module, changement de profil). Tests de concurrence reproductibles obligatoires en R5-B
+  (connexions pilotées pas à pas, attente vérifiée dans `pg_locks` / `pg_stat_activity`,
+  `lock_timeout` borné, absence de `40P01` vérifiée, deux ordres), y compris sur les commandes
+  SANS table ; si l'interblocage est confirmé dans le code existant : scénario reproductible
+  rapporté, aucune correction hors R5 sans autorisation.
+- **Autres risques** : E2E impossibles tant que les modules sont `planned` ; une commande oubliée
+  garde la table « Occupée » (A1 : âge et nombre de commandes affichés) ; plans en base
+  supposés conformes à `plans.toml` (`catalog sync`) ; interrogation du plan de salle toutes
+  les 15 s (index partiel).
+- **Fonctions reportées** : réservations, fusion de tables, statut « nettoyage », création en
+  série des tables (A10), recherche des commandes par libellé de table (B7), transfert de
+  lignes entre commandes / partage d'addition, plan de salle graphique.
