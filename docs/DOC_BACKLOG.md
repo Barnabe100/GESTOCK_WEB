@@ -278,3 +278,42 @@ reporter, à la livraison, dans ADR-0049 (D1, D11, O8), `RESTAURANT.md` (§3, §
 - **Fonctions reportées** : réservations, fusion de tables, statut « nettoyage », création en
   série des tables (A10), recherche des commandes par libellé de table (B7), transfert de
   lignes entre commandes / partage d'addition, plan de salle graphique.
+
+### R5-A — socle livré (zones et tables, migration 0046)
+
+À reporter avec le reste de R5 (mêmes documents). Le module reste `planned` en production (A2) ;
+les tests utilisent un registre de test (fixture `tclient`).
+
+- **Écart d'URL (contrainte du registre)** : deux modules ne peuvent pas partager un préfixe
+  d'URL, et `restaurant.orders` occupe `/restaurant`. Les routes livrées sont donc
+  `/restaurant/tables` (tables : liste, création, `/{id}`, `/{id}/activate|deactivate`) et
+  `/restaurant/tables/zones` (zones), au lieu de `/restaurant/zones` envisagé dans la conception.
+  Les routes des zones sont déclarées avant `/{table_id}` (de même pour le futur plan de salle,
+  R5-B).
+- **Codes d'erreur nouveaux** (traductions `errors.json` à ajouter en R5-C, l'interface étant hors
+  R5-A) : `zone_not_found`, `table_not_found` (404), `zone_name_taken`, `table_label_taken`,
+  `zone_has_active_tables`, `table_has_open_orders` (409), `zone_inactive` (422).
+- **Interface publique nouvelle des commandes** : `restaurant_orders/api.py` (lecture seule :
+  `open_orders_on_tables`, `open_orders_by_table`), utilisée par l'empreinte et la protection de
+  la désactivation d'une table ; aucune opération des commandes modifiée.
+- **Empreinte du module** : `active` = commandes non finales rattachées à une table (A6 :
+  désactivation manuelle refusée, `module_has_open_operations`) ; `info` = zones et tables. Par
+  le mécanisme commun du palier D, un changement de profil qui ARRÊTERAIT les tables avec de
+  telles commandes serait BLOQUÉ (et non STRONG, comme envisagé dans la v1 de la conception). En
+  pratique, tous les profils de restauration proposent les tables (par défaut ou en option) :
+  elles ne s'arrêtent qu'en quittant le secteur, ce qui arrête aussi les commandes, déjà
+  BLOQUÉES par leurs commandes en cours.
+- **Modèles de rôles** : `restaurant.tables.table.view` ajoutée au Vendeur, au Serveur et au
+  Préparateur (descriptions mises à jour) ; Gestionnaire par `restaurant.*` (consultation et
+  configuration), Consultant par `*.view`, Administrateur par `*`.
+- **Migration 0046** : nom de la clé étrangère `restaurant_orders → restaurant_tables` abrégé
+  par SQLAlchemy (convention > 63 caractères : `…_restaur_9e1f`) ; montée refusée si une
+  commande portait déjà un `table_id` ; descente refusée dès qu'une zone, une table ou un
+  évènement `TABLE_CHANGED` existe ; `restaurant.tables` remis à `false` sur les sites
+  existants seulement (politique E.1 conservée pour les sites créés ensuite).
+- **Concurrence de la configuration** (tests pas à pas : transaction tenue sous le rôle
+  applicatif, attente vérifiée dans `pg_stat_activity`, puis validation) : création d'une table
+  contre désactivation de sa zone, désactivation d'une zone contre création d'une table,
+  réactivation d'une table contre désactivation de sa zone, désactivation d'une table contre
+  rattachement d'une commande (écriture de R5-B simulée) ; libellés concurrents (`409`). Les
+  tests d'interblocage des écritures de commandes (R-2) restent à faire en R5-B.
