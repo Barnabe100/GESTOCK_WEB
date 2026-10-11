@@ -340,3 +340,39 @@ Risques résiduels et limites de tests conservés :
   `catalog sync` exécuté (plans en base conformes).
 - **À faire en R5-C** : traductions `errors.json` des sept codes d'erreur ; adresses réelles des
   zones sous `/restaurant/tables/zones`.
+
+## R5-B — intégration des tables aux commandes : conception et arbitrages (non implémentée)
+
+À reporter avec le reste de R5 (`RESTAURANT.md` §7 notamment). Implémentation non autorisée à ce
+stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique E.1 inchangée.
+
+- **R-2 confirmé dans le code existant (commandes SANS table)** — diagnostic pas à pas hors
+  dépôt (transaction « portillon » sur le compteur du jour, attentes vérifiées dans `pg_locks`
+  / `pg_stat_activity`), deux exécutions identiques :
+  - D1 : création d'une commande contre désactivation de `restaurant.orders` → interblocage
+    (`40P01`, victime : la reconfiguration, erreur 500 non traitée) ;
+  - D2 : création contre changement de profil arrêtant les commandes → même résultat ;
+  - cause : la création prend les réglages du site en partage PUIS le site en partage de clé
+    (contrôle de la clé étrangère à l'insertion de la commande), la reconfiguration prend le
+    site en exclusif PUIS les réglages en exclusif (empreinte des commandes) ;
+  - écartés par test : ajout de lignes (D3) et prise en charge (D4) contre désactivation
+    (attente puis `409 module_has_open_operations`) ; ordre proposé simulé (D6) : la
+    reconfiguration attend dès le verrou du site, sans interblocage ;
+  - en production, non déclenchable tant que les routes des commandes ne sont pas montées.
+- **AR-1 (accepté)** : TOUTE création de commande, avec ou sans table, prend le site en partage
+  de clé (`FOR KEY SHARE`) AVANT les réglages du site. D1 et D2 seront rejoués avec le vrai code
+  (sans table explicitement ; attente réelle ; absence de `40P01`) ; l'ordre des verrous sera
+  vérifié sur tous les chemins concernés. Ces tests ne prouvent pas l'absence générale
+  d'interblocage.
+- **AR-2 (hors périmètre, NON INVESTIGUÉ)** :
+  - règlement avec paiement en espèces contre reconfiguration de la caisse (l'empreinte de la
+    caisse prend ses réglages en exclusif sous le verrou du site ; ordre côté règlement non
+    vérifié) ;
+  - opérations de vente, de point de vente et de stock contre un changement de profil arrêtant
+    leurs modules ;
+  - changements d'abonnement ou de licence par la console, hors verrou du site (course possible
+    sur les capacités, pas un interblocage).
+  Aucune modification de ces opérations dans R5-B.
+- **AR-3 (accepté)** : l'API du plan de salle (états Libre / Occupée / À régler, priorité,
+  commandes multiples, commandes qui occupent encore une table : B1 et C2 de la conception) fait
+  partie de R5-B ; l'interface graphique reste en R5-C.
