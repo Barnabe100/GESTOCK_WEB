@@ -180,13 +180,13 @@ def create_role(body: RoleCreate, ctx: RoleManage, db: DbSession, registry: Regi
     service = RoleService(db, ctx, registry)
     role = service.create(body)
     db.commit()
-    return service.out(role)
+    return service.out(role, with_warnings=True)
 
 
 @router.get("/roles/{role_id}", response_model=RoleOut)
 def get_role(role_id: uuid.UUID, ctx: RoleView, db: DbSession, registry: RegistryDep) -> RoleOut:
     service = RoleService(db, ctx, registry)
-    return service.out(service.get(role_id))
+    return service.out(service.get(role_id), with_warnings=True)
 
 
 @router.patch("/roles/{role_id}", response_model=RoleOut)
@@ -196,7 +196,7 @@ def update_role(
     service = RoleService(db, ctx, registry)
     role = service.update(role_id, body)
     db.commit()
-    return service.out(role)
+    return service.out(role, with_warnings=True)
 
 
 @router.post(
@@ -208,7 +208,7 @@ def duplicate_role(
     service = RoleService(db, ctx, registry)
     role = service.duplicate(role_id, body)
     db.commit()
-    return service.out(role)
+    return service.out(role, with_warnings=True)
 
 
 @router.post("/roles/{role_id}/activate", response_model=RoleOut)

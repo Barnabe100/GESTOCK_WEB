@@ -19,7 +19,7 @@ from sqlalchemy import Select, func, select, update
 from app.core.errors import NotFoundError
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
 from app.platform.member_notifications.models import MemberNotification
-from app.platform.member_notifications.service import resolutions
+from app.platform.member_notifications.service import READ_PERMISSION, resolutions
 from app.platform.notifications.router import NotificationSite
 from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, page_params, paginate_rows
@@ -27,7 +27,7 @@ from app.shared.schemas import Page
 
 router = APIRouter(tags=["member-notifications"])
 
-VIEW = "organization.notification.view"
+VIEW = READ_PERMISSION
 View = Annotated[RequestContext, Depends(require_permission(VIEW))]
 
 

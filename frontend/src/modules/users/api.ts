@@ -59,6 +59,30 @@ export interface Role {
    * s'il est personnalisé, le modifier, le dupliquer, l'activer ou le désactiver). ADR-0030.
    */
   delegable: boolean;
+  /**
+   * Avertissements de cohérence calculés par le serveur (création, modification, duplication,
+   * consultation d'un rôle ; absents des listes). Jamais bloquants.
+   */
+  warnings?: RoleWarning[];
+}
+
+/** Attribution actuelle (membre, site) où la lecture des notifications manque sur CE site. */
+export interface RoleWarningAssignment {
+  membership_id: string;
+  full_name: string;
+  site_id: string;
+  site_name: string;
+}
+
+/**
+ * `notification_read_missing` : le rôle peut rendre destinataire de notifications (ex. service,
+ * prise en charge des commandes) sans la permission de les lire (ADR-0049 D8).
+ */
+export interface RoleWarning {
+  code: string;
+  receiver_permissions: string[];
+  read_permission: string;
+  affected: RoleWarningAssignment[];
 }
 
 export interface RoleMember {
@@ -127,6 +151,15 @@ export function useRoles() {
   return useQuery({
     queryKey: userKeys.roles,
     queryFn: ({ signal }) => api.get<Role[]>('/roles', signal),
+  });
+}
+
+/** Un rôle, avec ses avertissements de cohérence (calculés par le serveur). */
+export function useRole(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: [...userKeys.roles, id, 'detail'],
+    queryFn: ({ signal }) => api.get<Role>(`/roles/${encodeURIComponent(id ?? '')}`, signal),
+    enabled: enabled && id !== undefined,
   });
 }
 

@@ -37,6 +37,8 @@ from app.platform.access.schemas import (
     RoleOut,
     RoleTemplateOut,
     RoleUpdate,
+    RoleWarning,
+    RoleWarningAssignment,
 )
 from app.platform.access.site_access import accessible_sites
 from app.platform.audit.service import record_audit
@@ -46,6 +48,7 @@ from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.identity.passwords import normalize_email, validate_new_password
 from app.platform.licensing.service import current_terms
+from app.platform.member_notifications.service import READ_PERMISSION, receiver_permissions
 from app.platform.registry import ModuleRegistry
 from app.platform.subscriptions.plan_policy import PlanPolicy
 from app.platform.subscriptions.service import (
@@ -245,9 +248,75 @@ class RoleService(_AccessBase):
         ).tuples()
         return {role_id: int(count) for role_id, count in rows}
 
-    def out(self, role: Role, counts: dict[uuid.UUID, int] | None = None) -> RoleOut:
+    def out(
+        self,
+        role: Role,
+        counts: dict[uuid.UUID, int] | None = None,
+        *,
+        with_warnings: bool = False,
+    ) -> RoleOut:
         counts = self.member_counts() if counts is None else counts
-        return role_out(role, self.registry, counts.get(role.id, 0), self.is_delegable(role))
+        out = role_out(role, self.registry, counts.get(role.id, 0), self.is_delegable(role))
+        if with_warnings:
+            out.warnings = self.warnings(role)
+        return out
+
+    def warnings(self, role: Role) -> list[RoleWarning]:
+        """Cohérence d'un rôle PERSONNALISÉ (ADR-0049 D8, décision A + C) : il contient une
+        permission pouvant rendre destinataire de notifications sans
+        ``organization.notification.view``. Avertissement seulement — ni la règle des
+        destinataires ni l'enregistrement ne changent.
+
+        ``affected`` : attributions ACTUELLES du rôle (membre actif, site où il s'applique) où le
+        membre ne détient la lecture sur CE site par aucun de ses rôles (rôles de tout le tenant
+        et rôles de ce site ; un rôle limité à un AUTRE site ne compte jamais)."""
+        if role.is_system:
+            return []
+        granted = effective_role_permissions(role, self.registry)
+        receivers = sorted(granted & receiver_permissions())
+        if not receivers or READ_PERMISSION in granted:
+            return []
+        affected: list[RoleWarningAssignment] = []
+        if role.is_active:  # un rôle inactif n'accorde rien à ses titulaires
+            capabilities = CapabilityService(self.db, self.registry)
+            names = dict(self.db.execute(select(Site.id, Site.name)).tuples().all())
+            rows = self.db.execute(
+                select(MembershipRole.site_id, TenantMembership)
+                .join(TenantMembership, TenantMembership.id == MembershipRole.membership_id)
+                .join(User, User.id == TenantMembership.user_id)
+                .where(
+                    MembershipRole.role_id == role.id,
+                    TenantMembership.status == MembershipStatus.ACTIVE,
+                )
+                .order_by(User.full_name, MembershipRole.site_id)
+            ).tuples()
+            for site_id, membership in rows:
+                if membership.is_owner:
+                    continue  # le propriétaire détient toutes les permissions
+                sites = (
+                    [site_id]
+                    if site_id is not None
+                    else sorted(capabilities.accessible_site_ids(membership))
+                )
+                for site in sites:
+                    held = capabilities.granted_permissions(membership, site) or set()
+                    if READ_PERMISSION not in held:
+                        affected.append(
+                            RoleWarningAssignment(
+                                membership_id=membership.id,
+                                full_name=membership.user.full_name,
+                                site_id=site,
+                                site_name=names.get(site, ""),
+                            )
+                        )
+        return [
+            RoleWarning(
+                code="notification_read_missing",
+                receiver_permissions=receivers,
+                read_permission=READ_PERMISSION,
+                affected=affected,
+            )
+        ]
 
     def delegable_roles(self, site_id: uuid.UUID | None = None) -> list[Role]:
         """Rôles actifs que l'acteur peut attribuer sur cette portée (tout le tenant ou un site

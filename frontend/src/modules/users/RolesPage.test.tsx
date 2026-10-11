@@ -232,3 +232,153 @@ describe('page Rôles', () => {
     });
   });
 });
+
+describe('page Rôles — cohérence avec les notifications (R4, ADR-0049 D8)', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const SERVE = 'restaurant.orders.order.serve';
+  const READ = 'organization.notification.view';
+  const ORDER_PERMISSIONS: Permission[] = [
+    ...PERMISSIONS,
+    {
+      code: 'restaurant.orders.order.view',
+      module: 'restaurant.orders',
+      access: 'read',
+      resource: 'order',
+      action: 'view',
+    },
+    {
+      code: SERVE,
+      module: 'restaurant.orders',
+      access: 'write',
+      resource: 'order',
+      action: 'serve',
+    },
+    {
+      code: READ,
+      module: 'organization',
+      access: 'read',
+      resource: 'notification',
+      action: 'view',
+    },
+  ];
+  const warning = (affected: { full_name: string; site_name: string }[] = []) => ({
+    code: 'notification_read_missing',
+    receiver_permissions: [SERVE],
+    read_permission: READ,
+    affected: affected.map((a, i) => ({ membership_id: `m${i}`, site_id: `s${i}`, ...a })),
+  });
+  const SERVICE = role({
+    id: 'r-serve',
+    name: 'Service',
+    permission_codes: ['restaurant.orders.order.view', SERVE],
+  });
+
+  function mock(handlers: { post?: Role; patch?: Role; detail?: Role; duplicate?: Role }) {
+    fetchMock.mockImplementation(async (url, init) => {
+      const path = String(url);
+      if (path.endsWith('/duplicate') && handlers.duplicate)
+        return jsonResponse(handlers.duplicate, 201);
+      if (init?.method === 'POST' && path.endsWith('/roles') && handlers.post)
+        return jsonResponse(handlers.post, 201);
+      if (init?.method === 'PATCH' && handlers.patch) return jsonResponse(handlers.patch);
+      if (path.endsWith('/role-templates')) return jsonResponse([]);
+      if (path.endsWith('/permissions') || path.includes('/permissions/delegable'))
+        return jsonResponse(ORDER_PERMISSIONS);
+      if (path.includes('/members')) return jsonResponse([]);
+      if (/\/roles\/[^/]+$/.test(path)) return jsonResponse(handlers.detail ?? SERVICE);
+      return jsonResponse([...ROLES, SERVICE]);
+    });
+  }
+
+  beforeEach(() => vi.stubGlobal('fetch', fetchMock));
+  afterEach(() => {
+    cleanup();
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  async function createRole(name: string) {
+    renderWithCapabilities(<RolesPage />, { permissions: MANAGE, isOwner: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Nouveau rôle' }));
+    fireEvent.change(await screen.findByLabelText(/^Nom/), { target: { value: name } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+  }
+
+  it('rôle incomplet : enregistré, fenêtre conservée avec un avertissement explicite', async () => {
+    const saved = { ...SERVICE, id: 'r-new', warnings: [warning()] };
+    mock({ post: saved, detail: saved });
+    await createRole('Service');
+    const message = await screen.findByTestId('role-notification-warning');
+    expect(message.textContent).toContain(
+      '« Servir ou remettre une commande » : ses membres peuvent être destinataires de notifications de commandes',
+    );
+    expect(message.textContent).toContain('ne pourront pas consulter ces notifications');
+    expect(message.textContent).toContain(
+      'Vous pouvez ajouter « Consulter ses notifications » à ce rôle',
+    );
+    expect(message.textContent).toContain('Le rôle est enregistré.');
+    // Enregistrement effectué (non bloquant) ; la fenêtre reste ouverte, en modification.
+    expect(fetchMock.mock.calls.filter(([, i]) => i?.method === 'POST')).toHaveLength(1);
+    expect(screen.getByRole('dialog').textContent).toContain('Modifier le rôle');
+    expect(document.body.textContent).not.toMatch(/roles\.warnings\./);
+  });
+
+  it('rôle correctement configuré : aucun avertissement, fenêtre fermée', async () => {
+    const saved = {
+      ...SERVICE,
+      id: 'r-ok',
+      permission_codes: [...SERVICE.permission_codes, READ],
+      warnings: [],
+    };
+    mock({ post: saved, detail: saved });
+    await createRole('Service complet');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByTestId('role-notification-warning')).toBeNull();
+  });
+
+  it('rôle existant : avertissement relu sur le serveur, membres concernés par site', async () => {
+    // Le serveur ne compte pas une lecture accordée sur un AUTRE site : Awa est concernée au
+    // Maquis Centre ; l'interface affiche ce que le serveur calcule.
+    mock({
+      detail: {
+        ...SERVICE,
+        warnings: [warning([{ full_name: 'Awa', site_name: 'Maquis Centre' }])],
+      },
+    });
+    renderWithCapabilities(<RolesPage />, { permissions: MANAGE, isOwner: true });
+    const custom = await screen.findByRole('region', { name: 'Rôles personnalisés' });
+    const row = (await within(custom).findByText('Service')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Modifier' }));
+    expect(await screen.findByTestId('role-notification-warning')).toBeTruthy();
+    expect(screen.getByTestId('role-warning-affected').textContent).toBe(
+      'Membres actuellement concernés (site) : Awa (Maquis Centre).',
+    );
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/roles/r-serve'))).toBe(true);
+  });
+
+  it('rôle existant correct : aucun avertissement', async () => {
+    mock({ detail: { ...SERVICE, warnings: [] } });
+    renderWithCapabilities(<RolesPage />, { permissions: MANAGE, isOwner: true });
+    const custom = await screen.findByRole('region', { name: 'Rôles personnalisés' });
+    const row = (await within(custom).findByText('Service')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Modifier' }));
+    await screen.findByRole('dialog');
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/roles/r-serve'))).toBe(true),
+    );
+    expect(screen.queryByTestId('role-notification-warning')).toBeNull();
+  });
+
+  it('duplication d’un rôle incomplet : la copie s’ouvre avec l’avertissement', async () => {
+    const copy = { ...SERVICE, id: 'r-copy', name: 'Copie de Service', warnings: [warning()] };
+    mock({ duplicate: copy, detail: copy });
+    renderWithCapabilities(<RolesPage />, { permissions: MANAGE, isOwner: true });
+    const custom = await screen.findByRole('region', { name: 'Rôles personnalisés' });
+    const row = (await within(custom).findByText('Service')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Dupliquer' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Dupliquer' }));
+    expect(await screen.findByTestId('role-notification-warning')).toBeTruthy();
+    expect(screen.getByRole('dialog').textContent).toContain('Copie de Service');
+  });
+});

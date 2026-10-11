@@ -60,6 +60,30 @@ class MemberUpdate(BaseModel):
     status: MembershipStatus | None = None
 
 
+class RoleWarningAssignment(BaseModel):
+    """Attribution actuelle du rôle (membre, site) où la lecture des notifications manque : le
+    membre ne la détient sur CE site par aucun de ses rôles (une lecture accordée seulement sur
+    un autre site ne compte pas)."""
+
+    membership_id: uuid.UUID
+    full_name: str
+    site_id: uuid.UUID
+    site_name: str
+
+
+class RoleWarning(BaseModel):
+    """Avertissement de cohérence, NON bloquant : la configuration reste enregistrée.
+
+    ``notification_read_missing`` : le rôle contient une permission pouvant rendre destinataire
+    de notifications (ex. ``restaurant.orders.order.serve`` / ``.claim``) sans la permission de
+    les lire (``organization.notification.view``)."""
+
+    code: str
+    receiver_permissions: list[str]
+    read_permission: str
+    affected: list[RoleWarningAssignment] = []
+
+
 class RoleOut(BaseModel):
     id: uuid.UUID
     # Rôle de base : nom et description de son modèle (données TechNova, versionnées).
@@ -76,6 +100,9 @@ class RoleOut(BaseModel):
     # L'utilisateur courant peut-il accorder ce rôle sur tout le tenant (et, pour un rôle
     # personnalisé, le modifier, l'activer, le désactiver) ? Calculé par le serveur (ADR-0030).
     delegable: bool = False
+    # Avertissements de cohérence (création, modification, duplication, consultation d'UN rôle
+    # personnalisé ; vides dans les listes). Jamais bloquants.
+    warnings: list[RoleWarning] = []
 
 
 class RoleTemplateOut(BaseModel):

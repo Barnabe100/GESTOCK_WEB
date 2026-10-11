@@ -464,7 +464,11 @@
     "unselectModule": "Tout désélectionner",
     "subtitle": "Les rôles regroupent des permissions ; les rôles de base sont proposés par StockManager.",
     "notDelegable": "Hors de votre périmètre",
-    "outOfScope": "Ce rôle contient des permissions que vous ne pouvez pas accorder : vous pouvez le consulter, mais seul un utilisateur qui détient toutes ses permissions peut le modifier, le dupliquer, l'activer ou le désactiver."
+    "outOfScope": "Ce rôle contient des permissions que vous ne pouvez pas accorder : vous pouvez le consulter, mais seul un utilisateur qui détient toutes ses permissions peut le modifier, le dupliquer, l'activer ou le désactiver.",
+    "warnings": {
+      "notification_read_missing": "Ce rôle contient {{permissions}} : ses membres peuvent être destinataires de notifications de commandes. Il ne contient pas « {{read}} » : sans cette permission de lecture sur le site concerné, ils ne pourront pas consulter ces notifications. Vous pouvez ajouter « {{read}} » à ce rôle pour leur permettre cette consultation. Le rôle est enregistré.",
+      "affected": "Membres actuellement concernés (site) : {{list}}."
+    }
   },
   "permissions": {
     "organization.tenant.view": "Consulter les informations de l'entreprise",

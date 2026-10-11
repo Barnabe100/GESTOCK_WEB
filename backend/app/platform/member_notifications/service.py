@@ -27,13 +27,30 @@ from app.shared.ids import new_id
 NotificationResolver = Callable[[Session, Sequence[MemberNotification]], dict[uuid.UUID, bool]]
 
 _resolvers: dict[str, NotificationResolver] = {}
+# Permissions qui peuvent rendre un membre DESTINATAIRE, par type (déclarées par le module
+# émetteur) : sert seulement au contrôle de cohérence des rôles personnalisés (avertissement),
+# jamais au calcul des destinataires, qui reste celui du module.
+_receivers: dict[str, frozenset[str]] = {}
 
 DUPLICATE_KEY = "uq_member_notifications_source"
+# Lire SES notifications (ADR-0049 D8, RESTAURANT.md §8).
+READ_PERMISSION = "organization.notification.view"
 
 
 def register_notification_resolver(kind: str, resolver: NotificationResolver) -> None:
     """Appelé par le module émetteur à son chargement."""
     _resolvers[kind] = resolver
+
+
+def register_notification_receivers(kind: str, permissions: Iterable[str]) -> None:
+    """Appelé par le module émetteur à son chargement : permissions dont la détention peut
+    rendre destinataire d'une notification de ce type."""
+    _receivers[kind] = frozenset(permissions)
+
+
+def receiver_permissions() -> frozenset[str]:
+    """Toutes les permissions déclarées comme pouvant rendre destinataire."""
+    return frozenset().union(*_receivers.values()) if _receivers else frozenset()
 
 
 def resolutions(

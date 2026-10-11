@@ -29,7 +29,7 @@ from app.modules.restaurant_orders.models import (
     RestaurantOrder,
     RestaurantOrderLine,
 )
-from app.modules.restaurant_orders.permissions import ORDER_SERVE, ORDER_VIEW
+from app.modules.restaurant_orders.permissions import ORDER_CLAIM, ORDER_SERVE, ORDER_VIEW
 from app.modules.restaurant_orders.sites import member_permissions
 from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.access.site_access import site_access_condition
@@ -40,6 +40,10 @@ from app.platform.member_notifications.service import notify_members
 KIND_ORDER_READY = "restaurant.order.ready"
 SOURCE_ORDER_EVENT = "restaurant_order_event"
 ENTITY_ORDER = "restaurant_order"
+# Permissions pouvant rendre destinataire de « commande prête » : ``serve`` (titulaires) et
+# ``claim`` (prise en charge : responsable). Déclarées à la plateforme pour l'avertissement de
+# cohérence des rôles personnalisés ; le calcul des destinataires ci-dessous reste la règle D8.
+READY_RECEIVER_PERMISSIONS = (ORDER_SERVE, ORDER_CLAIM)
 
 
 def ready_recipients(

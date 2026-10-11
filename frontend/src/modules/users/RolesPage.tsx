@@ -31,12 +31,14 @@ import {
   useDuplicateRole,
   useDelegablePermissions,
   usePermissions,
+  useRole,
   useRoleMembers,
   useRoles,
   useRoleTemplates,
   useSaveRole,
   useSetRoleActive,
   type Role,
+  type RoleWarning,
 } from './api';
 import { normalizeSearch } from './permissionGroups';
 import { PermissionPicker } from './PermissionPicker';
@@ -99,13 +101,64 @@ function RoleMembers({ role }: { role: Role }) {
   );
 }
 
+/**
+ * Avertissements de cohérence calculés par le serveur (jamais bloquants) : rôle pouvant rendre
+ * destinataire de notifications sans la permission de les lire (ADR-0049 D8).
+ */
+function RoleWarnings({ warnings }: { warnings: RoleWarning[] }) {
+  const { t } = useTranslation();
+  const label = (code: string) => t(`permissions.${code}`, { defaultValue: code });
+  return (
+    <>
+      {warnings.map((w) => (
+        <Message
+          key={w.code}
+          severity="warn"
+          className="sm-block"
+          data-testid="role-notification-warning"
+          content={
+            <div>
+              <p>
+                {t(`roles.warnings.${w.code}`, {
+                  permissions: w.receiver_permissions.map((c) => `« ${label(c)} »`).join(', '),
+                  read: label(w.read_permission),
+                  defaultValue: w.code,
+                })}
+              </p>
+              {w.affected.length > 0 && (
+                <p data-testid="role-warning-affected">
+                  {t('roles.warnings.affected', {
+                    list: w.affected.map((a) => `${a.full_name} (${a.site_name})`).join(', '),
+                  })}
+                </p>
+              )}
+            </div>
+          }
+        />
+      ))}
+    </>
+  );
+}
+
 /** Création, modification (rôle personnalisé) ou consultation (rôle de base, lecture seule). */
-function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void }) {
+function RoleDialog({
+  role,
+  onClose,
+  onSavedWithWarnings,
+}: {
+  role: Role | null;
+  onClose: () => void;
+  /** Rôle enregistré avec avertissement : la fenêtre reste ouverte sur ce rôle. */
+  onSavedWithWarnings: (role: Role) => void;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const { can } = useCapabilities();
   const permissions = usePermissions();
   const save = useSaveRole();
+  // Avertissements relus auprès du serveur pour un rôle personnalisé existant.
+  const detail = useRole(role?.id, role !== null && !role.is_system);
+  const warnings = detail.data?.warnings ?? role?.warnings ?? [];
   const delegable = useDelegablePermissions();
   // Hors périmètre : rôle contenant des permissions que l'utilisateur ne peut pas accorder
   // (le serveur refuserait toute modification).
@@ -139,9 +192,11 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (saved) => {
           toast.success(t(role ? 'roles.updated' : 'roles.created'));
-          onClose();
+          // Enregistré dans tous les cas ; avertissement : fenêtre conservée pour l'afficher.
+          if (saved.warnings?.length) onSavedWithWarnings(saved);
+          else onClose();
         },
         onError: (error) => toast.error(translateError(t, error)),
       },
@@ -159,6 +214,7 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
       {outOfScope && can('users.role.manage') && (
         <Message severity="info" text={t('roles.outOfScope')} data-testid="role-out-of-scope" />
       )}
+      <RoleWarnings warnings={warnings} />
       <div className="sm-form-grid">
         <FormField
           id="role-name"
@@ -221,7 +277,16 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
   );
 }
 
-function DuplicateDialog({ role, onClose }: { role: Role; onClose: () => void }) {
+function DuplicateDialog({
+  role,
+  onClose,
+  onSavedWithWarnings,
+}: {
+  role: Role;
+  onClose: () => void;
+  /** Copie enregistrée avec avertissement : ouverte pour l'afficher. */
+  onSavedWithWarnings: (role: Role) => void;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const duplicate = useDuplicateRole();
@@ -233,9 +298,10 @@ function DuplicateDialog({ role, onClose }: { role: Role; onClose: () => void })
     duplicate.mutate(
       { id: role.id, name: name.trim(), description: description.trim() || null },
       {
-        onSuccess: () => {
+        onSuccess: (copy) => {
           toast.success(t('roles.duplicated'));
           onClose();
+          if (copy.warnings?.length) onSavedWithWarnings(copy);
         },
         onError: (error) => toast.error(translateError(t, error)),
       },
@@ -439,8 +505,21 @@ export default function RolesPage() {
           </section>
         </>
       )}
-      {editing !== undefined && <RoleDialog role={editing} onClose={() => setEditing(undefined)} />}
-      {duplicating && <DuplicateDialog role={duplicating} onClose={() => setDuplicating(null)} />}
+      {editing !== undefined && (
+        <RoleDialog
+          key={editing?.id ?? 'new'}
+          role={editing}
+          onClose={() => setEditing(undefined)}
+          onSavedWithWarnings={setEditing}
+        />
+      )}
+      {duplicating && (
+        <DuplicateDialog
+          role={duplicating}
+          onClose={() => setDuplicating(null)}
+          onSavedWithWarnings={setEditing}
+        />
+      )}
     </>
   );
 }

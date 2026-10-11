@@ -14,7 +14,11 @@ from app.modules.restaurant_orders.footprint import (
     orders_footprint,
     packagings_used,
 )
-from app.modules.restaurant_orders.notifications import KIND_ORDER_READY, resolve_ready
+from app.modules.restaurant_orders.notifications import (
+    KIND_ORDER_READY,
+    READY_RECEIVER_PERMISSIONS,
+    resolve_ready,
+)
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
@@ -31,7 +35,10 @@ from app.modules.restaurant_orders.service import OrderService
 from app.modules.restaurant_orders.settings import site_setup
 from app.modules.sales.api import ORIGIN_RESTAURANT_ORDER, register_sale_origin
 from app.platform.context import RequestContext
-from app.platform.member_notifications.service import register_notification_resolver
+from app.platform.member_notifications.service import (
+    register_notification_receivers,
+    register_notification_resolver,
+)
 from app.platform.registry import AccessKind, ModuleManifest, ModuleStatus, PermissionDef
 
 R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
@@ -61,6 +68,7 @@ register_sale_origin(ORIGIN_RESTAURANT_ORDER, _before_sale_cancel)
 # Notifications des membres (R4, D8) : « commande prête » traitée quand ses lignes sont servies
 # ou annulées — calculé à la lecture.
 register_notification_resolver(KIND_ORDER_READY, resolve_ready)
+register_notification_receivers(KIND_ORDER_READY, READY_RECEIVER_PERMISSIONS)
 
 MANIFEST = ModuleManifest(
     code="restaurant.orders",
