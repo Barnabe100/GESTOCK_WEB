@@ -317,3 +317,26 @@ les tests utilisent un registre de test (fixture `tclient`).
   réactivation d'une table contre désactivation de sa zone, désactivation d'une table contre
   rattachement d'une commande (écriture de R5-B simulée) ; libellés concurrents (`409`). Les
   tests d'interblocage des écritures de commandes (R-2) restent à faire en R5-B.
+
+### R5-A — clôture (validée sur `4d7ffbe`, CI `38168592174` verte : 4/4 jobs)
+
+Validation limitée à R5-A ; `restaurant.orders` et `restaurant.tables` restent `planned` en
+production ; politique E.1 d'ADR-0048 inchangée ; R5-B et R5-C non commencés (R5-B : autorisation
+distincte, avec tests de concurrence, ordre des verrous et investigation de R-2).
+
+Risques résiduels et limites de tests conservés :
+- **R-1** (activations inertes des nouveaux sites Restaurant / Pizzeria, effectives au passage à
+  `available`) : à arbitrer séparément ; aucune remise à `false` future programmée.
+- **R-2** (interblocage possible des écritures de commandes contre désactivation d'un module ou
+  changement de profil) : hypothèse non démontrée ; tests pas à pas obligatoires en R5-B, y
+  compris sur les commandes sans table ; aucune correction hors périmètre sans autorisation.
+- **E2E** : parcours des tables non jouables tant que le module est `planned` (comme les
+  commandes) ; couverture par les tests d'API, de concurrence et de migration.
+- **Suite backend locale** : exécutée une fois complète (1 354 passés, 3 échecs attendus des
+  modèles de rôles et du registre, ajustés puis relancés sur leurs fichiers : 22 passés) ; non
+  relancée intégralement en local ensuite, couverte par la CI sur `4d7ffbe`. Vitest et E2E non
+  exécutés localement (aucun changement frontend) ; tests frontend joués par la CI.
+- **Licences** : vérifié avec les plans synchronisés depuis `plans.toml` ; en production, suppose
+  `catalog sync` exécuté (plans en base conformes).
+- **À faire en R5-C** : traductions `errors.json` des sept codes d'erreur ; adresses réelles des
+  zones sous `/restaurant/tables/zones`.
