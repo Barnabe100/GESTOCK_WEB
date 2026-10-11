@@ -31,7 +31,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import create_session_factory, set_db_context
 from app.platform.member_notifications.service import notify_members
 from app.platform.registry import ModuleStatus, get_registry
-from tests.conftest import PASSWORD, PURGE_URL, Api, add_site
+from tests.conftest import PASSWORD, PURGE_URL, Api, add_site, login
 from tests.test_restaurant_orders import MAQUIS, ORDERS, _api, _code, _line, _menu, _ok, _order
 from tests.test_restaurant_orders_migration import _alembic, at_head  # noqa: F401
 
@@ -538,6 +538,127 @@ def test_base_roles_grant_notification_view() -> None:
     templates = catalog.role_templates
     for code in ("manager", "seller", "waiter", "preparer"):
         assert VIEW in templates[code].permission_patterns, code
+
+
+# --- Cohérence destinataires / lecture (vérification complémentaire de R4) ---------------------
+
+
+def test_every_base_role_able_to_receive_can_read() -> None:
+    """Modèles standard résolus comme si toutes les permissions déclarées étaient disponibles
+    (module des commandes livré) : tout modèle qui peut rendre destinataire (``serve``, ou
+    ``claim`` qui rend responsable) accorde aussi ``organization.notification.view``. Les rôles
+    standard tirent leurs permissions de leur modèle à chaque résolution (entreprises
+    existantes comprises) : aucun rôle standard ne produit de destinataire sans lecture."""
+    from app.platform.catalog.loader import role_templates
+
+    every = {p.code for m in get_registry().all() for p in m.permissions}
+    receivers = []
+    for code, template in role_templates().items():
+        resolved = set(template.resolve(every))
+        if {f"{P}.serve", f"{P}.claim"} & resolved:
+            receivers.append(code)
+            assert VIEW in resolved, code
+    assert set(receivers) == {"administrator", "manager", "seller", "waiter"}
+
+
+def test_production_custom_roles_and_order_permissions(
+    provision: Any, api_for: Any, client: TestClient
+) -> None:
+    """Comportement EXISTANT constaté (antérieur à R4, non modifié) : en production, le module
+    étant planifié avec une activation inerte, le PROPRIÉTAIRE (exempté du contrôle
+    anti-escalade) peut enregistrer des permissions des commandes dans un rôle personnalisé ;
+    un administrateur non propriétaire ne le peut pas (``permission_escalation``). Ces
+    permissions n'ont aucun effet tant que le module est planifié (capacités filtrées) : personne
+    ne devient destinataire avant l'activation."""
+    t = provision("ro-notif-custom", profile=MAQUIS)
+    owner = api_for("owner@ro-notif-custom.example.com")
+    order_perms = [f"{P}.view", f"{P}.serve"]
+    stored = owner.post("/roles", json={"name": "Service", "permissions": order_perms})
+    assert stored.status_code == 201, stored.text
+    member = owner.post(
+        "/members",
+        json={
+            "email": "service@ro-notif-custom.example.com",
+            "full_name": "Service",
+            "password": "Provisoire-123",
+            "roles": [{"role_id": stored.json()["id"]}],
+            "all_sites": True,
+        },
+    )
+    assert member.status_code == 201, member.text
+    temporary = Api(
+        client,
+        login(client, "service@ro-notif-custom.example.com", "Provisoire-123").json()[
+            "access_token"
+        ],
+    )
+    temporary.post(
+        "/me/password", json={"current_password": "Provisoire-123", "new_password": PASSWORD}
+    )
+    holder = api_for("service@ro-notif-custom.example.com")
+    caps = holder.get("/me/capabilities").json()
+    assert not [c for c in caps["permissions"] if c.startswith("restaurant.orders.")]
+    # Administrateur non propriétaire : refus d'accorder ce qu'il ne détient pas (planifié).
+    roles = {x["template_code"]: x["id"] for x in owner.get("/roles").json()}
+    admin = owner.post(
+        "/members",
+        json={
+            "email": "admin@ro-notif-custom.example.com",
+            "full_name": "Admin",
+            "password": "Provisoire-123",
+            "roles": [{"role_id": roles["administrator"]}],
+            "all_sites": True,
+        },
+    )
+    assert admin.status_code == 201, admin.text
+    temporary = Api(
+        client,
+        login(client, "admin@ro-notif-custom.example.com", "Provisoire-123").json()["access_token"],
+    )
+    temporary.post(
+        "/me/password", json={"current_password": "Provisoire-123", "new_password": PASSWORD}
+    )
+    refused = api_for("admin@ro-notif-custom.example.com").post(
+        "/roles", json={"name": "Service bis", "permissions": order_perms}
+    )
+    assert _code(refused) == (403, "permission_escalation")
+    assert t.site_id is not None
+
+
+def test_custom_role_without_notification_view_receives_but_cannot_read(
+    team: SimpleNamespace, owner_engine: Engine
+) -> None:
+    """Règle D8 appliquée telle quelle : un rôle PERSONNALISÉ ``view`` + ``serve`` sans
+    ``organization.notification.view`` (sur le site) rend destinataire ; la notification est
+    enregistrée mais illisible (403 sans la permission ; invisible si elle n'est détenue que
+    sur un autre site)."""
+    r = team
+    serve_only = _custom(r, "Service sans avis", [f"{P}.view", f"{P}.serve"])
+    unread_role = _join(r, "sansavis@ro-notif.example.com", [{"role_id": serve_only}])
+    # Avis lisibles sur l'autre site seulement (rôle standard limité à ce site).
+    elsewhere = _join(
+        r,
+        "avisailleurs@ro-notif.example.com",
+        [
+            {"role_id": serve_only},
+            {"role_id": _template(r, "waiter"), "site_id": r.other_site},
+        ],
+    )
+    order = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    _ready_everything(r.preparer.api, order["id"])
+    recipients = {str(row.recipient_user_id) for row in _rows(owner_engine, order["id"])}
+    assert {unread_role.user_id, elsewhere.user_id} <= recipients
+    assert _code(unread_role.api.get("/member-notifications")) == (403, "permission_denied")
+    assert _code(unread_role.api.get("/member-notifications/unread-count")) == (
+        403,
+        "permission_denied",
+    )
+    # Lecture détenue sur l'autre site seulement : refus sans site sélectionné ; liste vide une
+    # fois l'autre site sélectionné (la notification relève du site de la commande).
+    assert _code(elsewhere.api.get("/member-notifications")) == (403, "permission_denied")
+    elsewhere.api.site_id = r.other_site
+    assert _mine(elsewhere.api) == []
+    assert _unread(elsewhere.api) == 0
 
 
 # --- Purge (rôle SQL dédié) ----------------------------------------------------------------------
