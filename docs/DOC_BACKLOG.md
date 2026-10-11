@@ -157,6 +157,18 @@ la section sécurité / RBAC, l'exploitation (rôles SQL, cron) et `DESIGN_SYSTE
     seulement). Notification alors enregistrée mais illisible (403 / invisible) jusqu'à la
     purge — conforme à la lettre de D8 (règle des destinataires), en tension avec « lisibles
     par leurs destinataires ». Arbitrage présenté, en attente ;
+  - **décision A + C retenue (correctif)** : règle D8 conservée intégralement ; avertissement
+    NON bloquant à la création, modification, duplication et consultation d'un rôle
+    personnalisé (`RoleOut.warnings`, code `notification_read_missing`, champs
+    `receiver_permissions`, `read_permission`, `affected` = attributions (membre, site) où la
+    lecture manque sur CE site — rôles du tenant et de ce site, jamais d'un autre site ; vide
+    pour un rôle inactif ; absent des listes). Permissions pouvant rendre destinataire déclarées
+    par le module émetteur (`register_notification_receivers` ; `restaurant.orders` :
+    `order.serve`, `order.claim`). Interface : message dans la fenêtre du rôle (conservée
+    ouverte après un enregistrement avec avertissement). À reporter dans `API.md` (rôles),
+    la section RBAC et le guide utilisateur (rôles personnalisés). Limite : une combinaison
+    incomplète créée par la seule modification des ATTRIBUTIONS d'un membre (page Utilisateurs)
+    n'est signalée qu'à la consultation du rôle, pas à l'enregistrement du membre ;
   - comportement EXISTANT constaté (antérieur à R4, non modifié) : en production, le
     propriétaire peut enregistrer des permissions `restaurant.orders.*` dans un rôle
     personnalisé (module planifié à activation inerte ; propriétaire exempté de
