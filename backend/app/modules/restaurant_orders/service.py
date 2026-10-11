@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.modules.catalog.api import active_packagings, base_quantity, get_article_refs
-from app.modules.customers.api import get_customer_refs
+from app.modules.customers.api import get_customer_refs, require_active_customer
 from app.modules.restaurant_menu.api import menu_items_of_site
 from app.modules.restaurant_orders.models import (
     ACTIVE_ORDER_STATUSES,
@@ -123,9 +123,6 @@ CUSTOMERS_MODULE = "customers"
 SALE_CREATE = "sales.sale.create"
 SALE_VALIDATE = "sales.sale.validate"
 PAYMENT_CREATE = "sales.payment.create"
-# Consultation du référentiel des clients : seule à révéler des données d'un client au-delà de
-# ce qu'une commande affiche (identifiant, nom).
-CUSTOMER_VIEW = "customers.customer.view"
 
 
 class OrderState(StrEnum):
@@ -547,20 +544,9 @@ class OrderService:
             raise BusinessRuleError(
                 "Les clients ne sont pas disponibles sur ce site", code="customer_unavailable"
             )
-        ref = get_customer_refs(self.db, {customer_id}).get(customer_id)
-        if ref is None:
-            raise BusinessRuleError("Client introuvable", code="customer_not_found")
-        if not ref.is_active:
-            # Le code du client n'est joint qu'à qui peut consulter les clients sur ce site : un
-            # membre qui désigne un client par son identifiant (création, association) sans
-            # cette permission n'apprend rien de plus que ce qu'une commande affiche.
-            visible = self.ctx.has_site_permission(site_id, CUSTOMER_VIEW)
-            raise BusinessRuleError(
-                "Ce client est désactivé",
-                code="customer_inactive",
-                extra={"customer_code": ref.code} if visible else {},
-            )
-        return ref.name
+        # Règle commune (module Clients) : du tenant, actif ; code du client désactivé révélé
+        # seulement avec la consultation des clients sur ce site.
+        return require_active_customer(self.db, self.ctx, customer_id, site_id).name
 
     def add_lines(self, order_id: uuid.UUID, data: LinesAdd) -> RestaurantOrder:
         """Ajout à une commande ouverte NON réglée ; la même clé d'idempotence n'ajoute rien une

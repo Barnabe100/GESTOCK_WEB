@@ -34,8 +34,9 @@ Comportement confirmé (aucune règle modifiée) et durci, à reporter dans `RES
   (réponses et évènement `CUSTOMER_SET`) ; l'audit exige `audit.log.view`.
 - Durcissement : le refus `customer_inactive` des commandes de restauration ne joint le code du
   client (`customer_code`) qu'à un membre détenant `customers.customer.view` sur le site.
-- Point ouvert (hors restaurant, non modifié) : les ventes (`sales`) joignent toujours
-  `customer_code` au refus `customer_inactive`, quelle que soit la permission de l'appelant.
+- ~~Point ouvert~~ RÉSOLU (correction ciblée après R2-F) : les ventes (`sales` : brouillon,
+  modification, validation, point de vente, vente issue d'une commande) appliquent la même
+  règle ; voir la section « Ventes — confidentialité du client désactivé » ci-dessous.
 
 ## R2-F — validation finale de R2-E
 
@@ -52,3 +53,18 @@ Comportement confirmé (aucune règle modifiée) et durci, à reporter dans `RES
   serveur construit).
 - Commentaire de `backend/app/modules/planned.py` (« toujours planifié jusqu'à R2-E ») à
   aligner sur la décision « planifié jusqu'à autorisation explicite d'activation ».
+
+## Ventes — confidentialité du client désactivé (correction ciblée après R2-F)
+
+À reporter dans `SALES.md`, `CLIENTS.md`, `API.md` (refus `customer_inactive`) et la section
+sécurité / RBAC :
+
+- Règle commune portée par le module Clients : `customers.api.require_active_customer` (client
+  du tenant : `422 customer_not_found` ; actif : `422 customer_inactive`) ; le code du client
+  désactivé (`customer_code`) n'est joint au refus qu'à un membre détenant
+  `customers.customer.view` SUR LE SITE de l'opération (`CUSTOMER_VIEW` exporté par
+  `customers.api`). Utilisée par les ventes (`SaleService._customer`) et les commandes de
+  restauration (comportement inchangé).
+- Code d'erreur, message, permissions d'opération et règles de crédit inchangés ; aucune
+  permission nouvelle ; aucun changement frontend (le message traduit n'utilise pas le code).
+

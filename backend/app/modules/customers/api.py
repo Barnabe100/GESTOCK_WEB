@@ -8,7 +8,13 @@ from decimal import Decimal
 from sqlalchemy import Subquery, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import BusinessRuleError
 from app.modules.customers.models import Customer
+from app.platform.context import RequestContext
+
+# Consultation du référentiel des clients : seule permission qui révèle des données d'un client
+# au-delà de ce que montre l'opération qui le désigne (identifiant, nom).
+CUSTOMER_VIEW = "customers.customer.view"
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,27 @@ def get_customer_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, Custo
         c.id: CustomerRef(id=c.id, code=c.code, name=c.name, is_active=c.is_active)
         for c in db.scalars(select(Customer).where(Customer.id.in_(ids)))
     }
+
+
+def require_active_customer(
+    db: Session, ctx: RequestContext, customer_id: uuid.UUID, site_id: uuid.UUID
+) -> CustomerRef:
+    """Client désigné dans une nouvelle opération du site ``site_id`` (vente, commande…) :
+    du tenant (``422 customer_not_found``) et actif (``422 customer_inactive``). Désigner un
+    client relève de la permission de l'opération ; le code du client désactivé n'est joint au
+    refus qu'à un membre détenant ``customers.customer.view`` sur ce site (aucune fuite du
+    référentiel)."""
+    ref = get_customer_ref(db, customer_id)
+    if ref is None:
+        raise BusinessRuleError("Client introuvable", code="customer_not_found")
+    if not ref.is_active:
+        visible = ctx.has_site_permission(site_id, CUSTOMER_VIEW)
+        raise BusinessRuleError(
+            "Ce client est désactivé",
+            code="customer_inactive",
+            extra={"customer_code": ref.code} if visible else {},
+        )
+    return ref
 
 
 def customers_view() -> Subquery:

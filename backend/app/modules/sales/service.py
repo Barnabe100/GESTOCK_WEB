@@ -48,6 +48,7 @@ from app.modules.customers.api import (
     customers_view,
     get_customer_credit,
     get_customer_refs,
+    require_active_customer,
 )
 from app.modules.sales.credit import customer_exposure
 from app.modules.sales.filters import SaleFilters
@@ -329,20 +330,12 @@ class SaleService:
         refs = get_article_refs(self.db, set(article_ids))
         return sorted(refs[a].reference for a in article_ids if a in refs)
 
-    def _customer(self, customer_id: uuid.UUID | None) -> CustomerRef | None:
-        """Client facultatif ; s'il est fourni : du tenant et actif (nouvelle opération)."""
+    def _customer(self, customer_id: uuid.UUID | None, site_id: uuid.UUID) -> CustomerRef | None:
+        """Client facultatif ; s'il est fourni : du tenant et actif (nouvelle opération) ; code
+        du client désactivé révélé seulement avec la consultation des clients sur le site."""
         if customer_id is None:
             return None
-        ref = get_customer_refs(self.db, {customer_id}).get(customer_id)
-        if ref is None:
-            raise BusinessRuleError("Client introuvable", code="customer_not_found")
-        if not ref.is_active:
-            raise BusinessRuleError(
-                "Ce client est désactivé",
-                code="customer_inactive",
-                extra={"customer_code": ref.code},
-            )
-        return ref
+        return require_active_customer(self.db, self.ctx, customer_id, site_id)
 
     @staticmethod
     def _require_status(sale: Sale, expected: SaleStatus, code: str) -> None:
@@ -387,7 +380,7 @@ class SaleService:
         # du site de la vente, sans ajout automatique ; la validation revérifie sous verrou.
         ensure_in_assortment(self.db, sale.site_id, {line.article_id for line in data.lines})
         packagings = self._packagings(data.lines)
-        self._customer(data.customer_id)
+        self._customer(data.customer_id, sale.site_id)
         sale.customer_id = data.customer_id
         sale.sale_date = self._sale_date(data.sale_date)
         sale.notes = data.notes
@@ -623,7 +616,7 @@ class SaleService:
                 for line in lines
             ]
         )
-        self._customer(customer_id)
+        self._customer(customer_id, site_id)
         sale = Sale(
             tenant_id=self.ctx.tenant_id,
             site_id=site_id,
@@ -714,7 +707,7 @@ class SaleService:
         if not sale.lines:
             raise BusinessRuleError("Aucune ligne à valider", code="sale_empty")
         refs = self._articles([(line.article_id, line.packaging_id) for line in sale.lines])
-        self._customer(sale.customer_id)
+        self._customer(sale.customer_id, sale.site_id)
         # Lot 3-B : conditionnements relus (existant, de l'article, actif) et règle des
         # quantités entières revérifiée — la conversion relue doit être celle de la ligne.
         packagings = self._packagings(sale.lines)
