@@ -518,3 +518,32 @@ def oclient(settings: Settings, migrated: None, orders_available: None) -> Itera
     """Application construite avec le registre de test (routes des commandes montées)."""
     with TestClient(create_app(settings)) as client:
         yield client
+
+
+# --- Tables et zones : registre de test (palier R5-A, A2) ---------------------------------------
+
+
+@pytest.fixture
+def tables_available(orders_available: None) -> Iterator[None]:
+    """Registre du serveur où ``restaurant.tables`` (et sa dépendance ``restaurant.orders``) est
+    disponible, le temps du test : le registre de production les garde PLANIFIÉS (A2)."""
+    import dataclasses
+
+    from app.platform.registry import ModuleStatus
+
+    registry = get_registry()
+    original = registry.get("restaurant.tables")
+    registry._modules["restaurant.tables"] = dataclasses.replace(
+        original, status=ModuleStatus.AVAILABLE
+    )
+    try:
+        yield
+    finally:
+        registry._modules["restaurant.tables"] = original
+
+
+@pytest.fixture
+def tclient(settings: Settings, migrated: None, tables_available: None) -> Iterator[TestClient]:
+    """Application construite avec le registre de test (routes des tables et des commandes)."""
+    with TestClient(create_app(settings)) as client:
+        yield client

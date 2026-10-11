@@ -127,6 +127,8 @@ class EventType(StrEnum):
     CANCELLED = "CANCELLED"
     # Association tardive d'un client (R2-E, Z1 ; migration 0044).
     CUSTOMER_SET = "CUSTOMER_SET"
+    # Changement de table (R5, O8 ; migration 0046) : tables nouvelle et ancienne, libellés.
+    TABLE_CHANGED = "TABLE_CHANGED"
 
 
 class ActorKind(StrEnum):
@@ -190,6 +192,13 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             ["customers.tenant_id", "customers.id"],
             ondelete="RESTRICT",
         ),
+        # Table (R5, migration 0046) : du même tenant ET du même site que la commande ; une
+        # table n'est jamais supprimée (désactivation), une commande close garde la sienne.
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id", "table_id"],
+            ["restaurant_tables.tenant_id", "restaurant_tables.site_id", "restaurant_tables.id"],
+            ondelete="RESTRICT",
+        ),
         # Vente active : du même tenant ET du même site que la commande (migration 0043, R2-D).
         ForeignKeyConstraint(
             ["tenant_id", "sale_id", "site_id"],
@@ -216,6 +225,8 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         CheckConstraint(
             "(assigned_user_id IS NULL) = (assigned_at IS NULL)", name="assignment_complete"
         ),
+        # Table seulement « sur place » (A3, B5) ; le mode ne change jamais après la création.
+        CheckConstraint("table_id IS NULL OR service_mode = 'ON_SITE'", name="table_only_on_site"),
         # Ancienneté des commandes « à régler » (limites de V1, §6).
         Index(
             "ix_restaurant_orders_backlog",
@@ -224,6 +235,14 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             "settlement_status",
             "status",
             "created_at",
+        ),
+        # Occupation des tables (R5) : commandes portant une table.
+        Index(
+            "ix_restaurant_orders_table",
+            "tenant_id",
+            "site_id",
+            "table_id",
+            postgresql_where=text("table_id IS NOT NULL"),
         ),
     )
 
@@ -237,7 +256,7 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     service_mode: Mapped[ServiceMode] = mapped_column(
         str_enum(ServiceMode, "restaurant_service_mode"), nullable=False
     )
-    # Table (R5) : clé étrangère ajoutée avec les tables.
+    # Table (R5) : facultative, jamais exigée (D2) ; module ``restaurant.tables``.
     table_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     call_name: Mapped[str | None] = mapped_column(String(40))

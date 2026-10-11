@@ -372,6 +372,8 @@ def test_waiter_and_preparer_templates_on_demand(resto: SimpleNamespace) -> None
         f"{P}.create",
         f"{P}.claim",
         f"{P}.serve",
+        # Zones et tables (palier R5-A) : consultation.
+        "restaurant.tables.table.view",
         # R4 (ADR-0049 D8, RESTAURANT.md §8) : lire ses notifications.
         "organization.notification.view",
     }
@@ -380,6 +382,7 @@ def test_waiter_and_preparer_templates_on_demand(resto: SimpleNamespace) -> None
         "restaurant.menu.availability",
         f"{P}.view",
         f"{P}.prepare",
+        "restaurant.tables.table.view",
         "organization.notification.view",
     }
     again = r.owner.post("/roles/from-template", json={"template_code": "waiter"})
@@ -436,14 +439,16 @@ def test_planned_filter_only_removes_planned_permissions() -> None:
     planned_with_permissions = {
         m.code for m in modules if m.status is ModuleStatus.PLANNED and m.permissions
     }
-    assert planned_with_permissions == {ORDERS}
+    # Modules planifiés au manifeste réel (permissions déclarées, jamais accordées) : les
+    # commandes (R2) et les tables (R5-A, A2).
+    assert planned_with_permissions == {ORDERS, "restaurant.tables"}
     every = [m.code for m in modules]
     features = {f for m in modules for f in m.features}
     expected = {
         p.code for m in modules if m.status is ModuleStatus.AVAILABLE for p in m.permissions
     }
     assert set(registry.available_permissions(every, features)) == expected
-    assert not [c for c in expected if c.startswith(f"{ORDERS}.")]
+    assert not [c for c in expected if c.startswith((f"{ORDERS}.", "restaurant.tables."))]
 
 
 def test_owner_keeps_every_permission_of_delivered_modules(provision: Any, api_for: Any) -> None:

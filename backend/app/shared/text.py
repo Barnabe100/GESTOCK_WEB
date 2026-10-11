@@ -27,6 +27,7 @@ def _opt(n: int) -> StringConstraints:
 
 
 Required20 = Annotated[str, _req(20)]
+Required40 = Annotated[str, _req(40)]
 Required50 = Annotated[str, _req(50)]
 Required100 = Annotated[str, _req(100)]
 Required150 = Annotated[str, _req(150)]

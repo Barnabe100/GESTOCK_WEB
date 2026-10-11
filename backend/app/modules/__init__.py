@@ -15,6 +15,7 @@ from app.modules.pos.manifest import MANIFEST as POS
 from app.modules.receivables.manifest import MANIFEST as RECEIVABLES
 from app.modules.restaurant_menu.manifest import MANIFEST as RESTAURANT_MENU
 from app.modules.restaurant_orders.manifest import MANIFEST as RESTAURANT_ORDERS
+from app.modules.restaurant_tables.manifest import MANIFEST as RESTAURANT_TABLES
 from app.modules.sales.manifest import MANIFEST as SALES
 from app.modules.stock.manifest import MANIFEST as STOCK
 from app.modules.suppliers.manifest import MANIFEST as SUPPLIERS
@@ -35,5 +36,8 @@ BUSINESS_MODULES: tuple[ModuleManifest, ...] = (
     RESTAURANT_MENU,
     # Planifié jusqu'à R2-E (N1, ADR-0049 D14) : manifeste réel, routes non montées.
     RESTAURANT_ORDERS,
+    # Planifié tant que les commandes le sont (A2, palier R5-A) : manifeste réel, routes non
+    # montées.
+    RESTAURANT_TABLES,
     *PLANNED_MODULES,
 )
