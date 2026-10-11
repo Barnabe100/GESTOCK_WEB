@@ -31,6 +31,7 @@ from app.platform.catalog.models import (
 )
 from app.platform.identity.models import AuthSession, User
 from app.platform.licensing.models import License, LicenseActivation
+from app.platform.member_notifications.models import MemberNotification
 from app.platform.notifications.models import Notification, NotificationRead
 from app.platform.onboarding.models import OnboardingStep
 from app.platform.ratelimit.models import RateLimitHit
@@ -58,6 +59,7 @@ __all__ = [
     "GeoCountry",
     "License",
     "LicenseActivation",
+    "MemberNotification",
     "MembershipRole",
     "MembershipSite",
     "Notification",

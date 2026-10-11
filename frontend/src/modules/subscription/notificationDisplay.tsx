@@ -1,21 +1,13 @@
-import { Badge } from 'primereact/badge';
 import { Button } from 'primereact/button';
 import { Message } from 'primereact/message';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatDate } from '@/shared/lib/format';
 
-import {
-  useMarkNotificationsRead,
-  useNotifications,
-  useUnreadNotifications,
-  type AppNotification,
-} from './api';
-
-const VIEW = 'subscription.subscription.view';
+import { useMarkNotificationsRead, useNotifications, type AppNotification } from './api';
 
 /** Lendemain d'un jour ``AAAA-MM-JJ`` (premier jour non couvert), sans conversion de fuseau. */
 function nextDay(value: string): string {
@@ -46,33 +38,6 @@ export function notificationText(t: TFunction, n: AppNotification, locale: strin
 export function notificationTone(step: number): 'info' | 'warning' | 'danger' {
   if (step < 0) return 'danger';
   return step <= 5 ? 'warning' : 'info';
-}
-
-/** Indicateur de la barre supérieure : nombre de rappels non lus, lien vers le centre. */
-export function NotificationsBell() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const { can } = useCapabilities();
-  const unread = useUnreadNotifications(can(VIEW));
-  const count = unread.data?.unread ?? 0;
-  const label = t('notifications.bell', { count });
-  return (
-    <Button
-      text
-      rounded
-      icon="pi pi-bell"
-      className="sm-notifications-bell p-overlay-badge"
-      aria-label={label}
-      tooltip={label}
-      tooltipOptions={{ position: 'bottom' }}
-      data-testid="notifications-bell"
-      onClick={() => navigate('/notifications')}
-    >
-      {count > 0 && (
-        <Badge value={count > 99 ? '99+' : count} severity="danger" data-testid="unread-count" />
-      )}
-    </Button>
-  );
 }
 
 /** Rappels non lus en tête de la page Abonnement (les sites visibles du membre). */

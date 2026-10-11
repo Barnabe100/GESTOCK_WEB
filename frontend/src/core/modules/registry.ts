@@ -4,6 +4,7 @@ import type {
   NavGroup,
   NavItem,
   NavSection,
+  NotificationSource,
   TopbarItem,
   UiCapabilities,
 } from './types';
@@ -28,7 +29,7 @@ function isAllowed(
 /** Modules frontend dont le module backend est effectif (et implémenté) pour le tenant. */
 export function activeModules(
   registry: readonly FrontendModule[],
-  caps: UiCapabilities,
+  caps: Pick<UiCapabilities, 'modules'>,
 ): FrontendModule[] {
   const available = new Set(
     caps.modules.filter((m) => m.status === 'available').map((m) => m.code),
@@ -80,6 +81,20 @@ export function buildTopbarItems(
 ): TopbarItem[] {
   return activeModules(registry, caps).flatMap((module) =>
     (module.topbar ?? []).filter((item) => isAllowed(item, caps)),
+  );
+}
+
+/**
+ * Sources du centre de notifications autorisées (modules actifs, permission vérifiée par `can`
+ * du contexte des capacités), dans l'ordre du registre.
+ */
+export function buildNotificationSources(
+  registry: readonly FrontendModule[],
+  caps: Pick<UiCapabilities, 'modules'>,
+  can: (permission: string) => boolean,
+): NotificationSource[] {
+  return activeModules(registry, caps).flatMap((module) =>
+    (module.notifications ?? []).filter((source) => can(source.permission)),
   );
 }
 

@@ -170,7 +170,7 @@ export function AppLayout({
           </div>
           <div className="sm-topbar-user">
             {topbarItems.map(({ key, component: Item }) => (
-              <Item key={key} />
+              <Item key={key} modules={modules} />
             ))}
             {auth.memberships.length > 1 && (
               <Button

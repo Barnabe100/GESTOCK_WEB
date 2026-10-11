@@ -36,6 +36,8 @@ jobs:
       SM_DB_APP_ROLE: stockmanager_app
       SM_TEST_PLATFORM_DATABASE_URL: postgresql+psycopg://stockmanager_platform:stockmanager_platform@localhost:5432/stockmanager_test
       SM_DB_PLATFORM_ROLE: stockmanager_platform
+      SM_TEST_PURGE_DATABASE_URL: postgresql+psycopg://stockmanager_purge:stockmanager_purge@localhost:5432/stockmanager_test
+      SM_DB_PURGE_ROLE: stockmanager_purge
     defaults:
       run:
         working-directory: backend
@@ -70,6 +72,16 @@ jobs:
           POSTGRES_DB: stockmanager_test
           POSTGRES_PLATFORM_PASSWORD: stockmanager_platform
         run: ./docker/postgres/init/02-platform-role.sh
+
+      - name: Créer le rôle de purge des notifications (sans BYPASSRLS)
+        working-directory: .
+        env:
+          PGHOST: localhost
+          PGPASSWORD: stockmanager
+          POSTGRES_USER: stockmanager
+          POSTGRES_DB: stockmanager_test
+          POSTGRES_PURGE_PASSWORD: stockmanager_purge
+        run: ./docker/postgres/init/03-purge-role.sh
 
       - name: Lint (ruff)
         run: uv run ruff check . && uv run ruff format --check .

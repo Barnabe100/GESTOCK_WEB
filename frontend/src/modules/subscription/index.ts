@@ -2,8 +2,6 @@ import { lazy } from 'react';
 
 import type { FrontendModule } from '@/core/modules/types';
 
-import { NotificationsBell } from './notificationDisplay';
-
 export const subscriptionModule: FrontendModule = {
   code: 'subscription',
   navigation: [
@@ -22,18 +20,19 @@ export const subscriptionModule: FrontendModule = {
       component: lazy(() => import('./SubscriptionPage')),
       permission: 'subscription.subscription.view',
     },
-    {
-      path: 'notifications',
-      component: lazy(() => import('./NotificationsPage')),
-      permission: 'subscription.subscription.view',
-    },
   ],
-  // Rappels d'échéance (3.3-B4) : visibles avec le droit de consulter l'abonnement.
-  topbar: [
+  // Rappels d'échéance (3.3-B4) : une source du centre de notifications unique (indicateur et
+  // page `/notifications` du module Organisation), visible avec le droit de consulter
+  // l'abonnement.
+  notifications: [
     {
-      key: 'notifications',
-      component: NotificationsBell,
+      key: 'subscription',
+      labelKey: 'notifications.sources.subscription',
       permission: 'subscription.subscription.view',
+      unreadPath: '/notifications/unread-count',
+      queryKey: ['notifications'],
+      refetchInterval: 5 * 60_000,
+      panel: lazy(() => import('./ExpiryNotificationsPanel')),
     },
   ],
 };

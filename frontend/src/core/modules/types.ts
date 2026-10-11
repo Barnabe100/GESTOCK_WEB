@@ -32,9 +32,31 @@ export interface ModuleRoute {
 /** Élément de la barre supérieure (ex. indicateur des notifications) fourni par un module. */
 export interface TopbarItem {
   key: string;
-  component: ComponentType;
+  /** Reçoit le registre des modules (ex. sources du centre de notifications). */
+  component: ComponentType<{ modules: readonly FrontendModule[] }>;
   permission?: string;
   feature?: string;
+}
+
+/**
+ * Source du centre de notifications UNIQUE (indicateur et page `/notifications`) : chaque
+ * module déclare la sienne (rappels d'échéance, notifications des membres…) ; une seule
+ * cloche, un seul centre, quelles que soient les sources.
+ */
+export interface NotificationSource {
+  key: string;
+  /** Clé i18n du titre de la section. */
+  labelKey: string;
+  /** Droit de consulter la source (ergonomie ; le backend applique le sien). */
+  permission: string;
+  /** Compteur des non lues (GET, réponse `{ unread }`). */
+  unreadPath: string;
+  /** Préfixe des clés de requête de la source (invalidé après « marquer comme lu »). */
+  queryKey: readonly string[];
+  /** Actualisation périodique du compteur (ms). */
+  refetchInterval: number;
+  /** Liste de la source affichée dans le centre. */
+  panel: LazyExoticComponent<ComponentType> | ComponentType;
 }
 
 /** Module frontend : même `code` que le module backend correspondant. */
@@ -43,6 +65,7 @@ export interface FrontendModule {
   navigation: NavItem[];
   routes: ModuleRoute[];
   topbar?: TopbarItem[];
+  notifications?: NotificationSource[];
 }
 
 /** Sous-ensemble des capacités utile à la construction de l'interface. */

@@ -2,6 +2,9 @@ import { lazy } from 'react';
 
 import type { FrontendModule } from '@/core/modules/types';
 
+import { MEMBER_NOTIFICATIONS_KEY, MEMBER_NOTIFICATIONS_POLL_MS } from './notifications/api';
+import { NotificationsBell } from './notifications/NotificationsBell';
+
 export const organizationModule: FrontendModule = {
   code: 'organization',
   navigation: [
@@ -58,6 +61,26 @@ export const organizationModule: FrontendModule = {
       path: 'organization/modules',
       component: lazy(() => import('./ModulesPage')),
       permission: 'organization.module.view',
+    },
+    // Centre de notifications UNIQUE : une section par source autorisée (voir `notifications`
+    // des modules) ; sans source, la page l'indique.
+    {
+      path: 'notifications',
+      component: lazy(() => import('./notifications/NotificationsCenterPage')),
+    },
+  ],
+  // Indicateur unique (somme des sources autorisées) ; rien sans source.
+  topbar: [{ key: 'notifications', component: NotificationsBell }],
+  // Notifications des membres (ADR-0049 D8, palier R4) : lisibles par leur destinataire.
+  notifications: [
+    {
+      key: 'activity',
+      labelKey: 'memberNotifications.title',
+      permission: 'organization.notification.view',
+      unreadPath: '/member-notifications/unread-count',
+      queryKey: MEMBER_NOTIFICATIONS_KEY,
+      refetchInterval: MEMBER_NOTIFICATIONS_POLL_MS,
+      panel: lazy(() => import('./notifications/MemberNotificationsPanel')),
     },
   ],
 };

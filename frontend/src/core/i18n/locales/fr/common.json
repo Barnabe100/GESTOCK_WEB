@@ -554,6 +554,7 @@
     "organization.profile.manage": "Changer le profil d'activité",
     "organization.onboarding.view": "Consulter l'installation (onboarding)",
     "organization.onboarding.manage": "Démarrer les étapes de l'installation",
+    "organization.notification.view": "Consulter ses notifications",
     "restaurant.menu.view": "Consulter le menu",
     "restaurant.menu.manage": "Gérer le menu (sections, éléments)",
     "restaurant.menu.availability": "Marquer un élément du menu épuisé ou disponible",
@@ -1804,6 +1805,7 @@
   "notifications": {
     "title": "Notifications",
     "subtitle": "Rappels d'échéance des licences de vos sites. L'historique est conservé.",
+    "centerSubtitle": "Vos notifications : activité de vos sites et rappels d'échéance. Lu / non lu propre à chacun.",
     "bell_zero": "Notifications",
     "bell_one": "Notifications : {{count}} non lue",
     "bell_other": "Notifications : {{count}} non lues",
@@ -1833,6 +1835,25 @@
       "before_other": "La période d'essai du site {{site}} se termine dans {{count}} jours (le {{date}}).",
       "today": "La période d'essai du site {{site}} se termine aujourd'hui.",
       "after": "La période d'essai du site {{site}} est terminée depuis le {{date}}."
+    },
+    "sources": {
+      "subscription": "Rappels d'échéance des licences"
+    }
+  },
+  "memberNotifications": {
+    "title": "Activité",
+    "empty": "Aucune notification.",
+    "resolved": "Traitée",
+    "pending": "À traiter",
+    "open": "Ouvrir",
+    "unknownKind": "Notification — site {{site}}",
+    "kinds": {
+      "restaurant": {
+        "order": {
+          "ready_one": "Commande n° {{number}} prête : {{count}} article à servir ({{site}})",
+          "ready_other": "Commande n° {{number}} prête : {{count}} articles à servir ({{site}})"
+        }
+      }
     }
   },
   "paymentMethods": {

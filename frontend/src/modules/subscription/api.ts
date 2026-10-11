@@ -219,15 +219,6 @@ export function useNotifications(query: string, enabled = true) {
   });
 }
 
-export function useUnreadNotifications(enabled: boolean) {
-  return useQuery({
-    queryKey: [...NOTIFICATIONS_KEY, 'unread'],
-    queryFn: ({ signal }) => api.get<{ unread: number }>('/notifications/unread-count', signal),
-    enabled,
-    refetchInterval: 5 * 60_000,
-  });
-}
-
 /** Marque une notification (ou toutes, ``id`` nul) comme lue par le membre. */
 export function useMarkNotificationsRead() {
   const queryClient = useQueryClient();

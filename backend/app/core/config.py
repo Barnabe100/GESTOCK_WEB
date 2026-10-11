@@ -48,6 +48,13 @@ class Settings(BaseSettings):
         "stockmanager"
     )
     db_platform_role: str = "stockmanager_platform"
+    # Purge des notifications des membres (ADR-0049 D8, palier R4) : rôle SQL dédié, sans
+    # BYPASSRLS, limité à ``SELECT (id, created_at)`` et ``DELETE`` des notifications de plus de
+    # 30 jours (``stockmanager notifications purge``).
+    purge_database_url: str = (
+        "postgresql+psycopg://stockmanager_purge:stockmanager_purge@localhost:5432/stockmanager"
+    )
+    db_purge_role: str = "stockmanager_purge"
     db_pool_size: int = 10
     db_max_overflow: int = 10
     db_pool_timeout_seconds: int = 30

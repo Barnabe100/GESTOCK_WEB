@@ -40,6 +40,8 @@ permissions = [
   # Restauration (ADR-0049) : toutes les permissions des modules restaurant LIVRÉS (R1 : menu).
   "restaurant.*",
   "subscription.activation.check",
+  # Notifications des membres (ADR-0049 D8, palier R4) : lire les siennes.
+  "organization.notification.view",
 ]
 # Limite de crédit des clients (Lot 2) et modification des prix catalogue (Lot 3-A) : réservées
 # à l'Administrateur par défaut ; un rôle personnalisé peut les accorder. Le Gestionnaire voit
@@ -77,6 +79,7 @@ permissions = [
   "restaurant.orders.order.serve",
   "restaurant.orders.order.cancel",
   "subscription.activation.check",
+  "organization.notification.view",
 ]
 
 # Modèles FACULTATIFS de la restauration (ADR-0049, D12 ; D14 Q5) : jamais créés par le
@@ -95,6 +98,7 @@ permissions = [
   "restaurant.orders.order.create",
   "restaurant.orders.order.claim",
   "restaurant.orders.order.serve",
+  "organization.notification.view",
 ]
 
 [roles.preparer]
@@ -106,6 +110,7 @@ permissions = [
   "restaurant.menu.availability",
   "restaurant.orders.order.view",
   "restaurant.orders.order.prepare",
+  "organization.notification.view",
 ]
 
 [roles.viewer]

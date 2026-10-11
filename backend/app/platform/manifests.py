@@ -56,6 +56,8 @@ PLATFORM_MODULES: tuple[ModuleManifest, ...] = (
             # permission ne permet de déclarer une étape terminée (validation automatique).
             PermissionDef("organization.onboarding.view", R),
             PermissionDef("organization.onboarding.manage", A),
+            # Notifications des membres (ADR-0049 D8, palier R4) : lire SES notifications.
+            PermissionDef("organization.notification.view", R),
         ),
         limits=(LimitDef("max_sites", _count_active_sites),),
         onboarding=ORGANIZATION_STEPS,

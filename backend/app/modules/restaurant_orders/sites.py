@@ -67,18 +67,17 @@ def require_site_permission(ctx: RequestContext, site_id: uuid.UUID, code: str) 
         )
 
 
-def member_holds(
+def member_permissions(
     db: Session,
     ctx: RequestContext,
     user_id: uuid.UUID,
     site_id: uuid.UUID,
-    permission: str,
     now: datetime,
-) -> bool:
-    """Un AUTRE membre détient-il ``permission`` effective sur ce site ? Appartenance active à
-    l'entreprise, compte actif, site accessible, puis capacités résolues pour CE site (rôles du
-    tenant et du site, modules effectifs, abonnement du site et son statut) — le même calcul que
-    pour ses propres requêtes, jamais un nom de rôle."""
+) -> frozenset[str]:
+    """Permissions EFFECTIVES d'un AUTRE membre sur ce site (vide s'il n'y a pas accès) :
+    appartenance active à l'entreprise, compte actif, site accessible, puis capacités résolues
+    pour CE site (rôles du tenant et du site, modules effectifs, abonnement du site et son
+    statut) — le même calcul que pour ses propres requêtes, jamais un nom de rôle."""
     membership = db.scalars(
         select(TenantMembership).where(
             TenantMembership.tenant_id == ctx.tenant_id, TenantMembership.user_id == user_id
@@ -89,14 +88,26 @@ def member_holds(
         or membership.status is not MembershipStatus.ACTIVE
         or not membership.user.is_active
     ):
-        return False
+        return frozenset()
     service = CapabilityService(db, get_registry())
     if site_id not in service.accessible_site_ids(membership):
-        return False
+        return frozenset()
     try:
         capabilities = service.resolve(
             tenant=ctx.tenant, membership=membership, site_id=site_id, now=now
         )
     except SubscriptionMissingError:
-        return False
-    return permission in capabilities.permissions
+        return frozenset()
+    return frozenset(capabilities.permissions)
+
+
+def member_holds(
+    db: Session,
+    ctx: RequestContext,
+    user_id: uuid.UUID,
+    site_id: uuid.UUID,
+    permission: str,
+    now: datetime,
+) -> bool:
+    """Un AUTRE membre détient-il ``permission`` effective sur ce site ?"""
+    return permission in member_permissions(db, ctx, user_id, site_id, now)

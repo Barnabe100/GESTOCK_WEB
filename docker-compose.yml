@@ -6,6 +6,8 @@
 #   - stockmanager_app      : rôle de l'API des entreprises, sans BYPASSRLS
 #   - stockmanager_platform : rôle de la console TechNova, sans BYPASSRLS, droits minimaux
 #                             (créés par docker/postgres/init ; ADR-0031)
+#   - stockmanager_purge    : purge des notifications des membres de plus de 30 jours
+#                             (`stockmanager notifications purge`, ADR-0049 D8), sans BYPASSRLS
 name: stockmanager
 
 x-backend-env: &backend-env
@@ -16,6 +18,8 @@ x-backend-env: &backend-env
   SM_DB_APP_ROLE: stockmanager_app
   SM_PLATFORM_DATABASE_URL: postgresql+psycopg://stockmanager_platform:stockmanager_platform@db:5432/stockmanager
   SM_DB_PLATFORM_ROLE: stockmanager_platform
+  SM_PURGE_DATABASE_URL: postgresql+psycopg://stockmanager_purge:stockmanager_purge@db:5432/stockmanager
+  SM_DB_PURGE_ROLE: stockmanager_purge
   SM_JWT_SECRET: dev-only-change-me-in-production-0123456789abcdef
   SM_REFRESH_COOKIE_SECURE: "false"
   SM_PLATFORM_COOKIE_SECURE: "false"
@@ -31,6 +35,8 @@ services:
       POSTGRES_APP_PASSWORD: stockmanager_app
       POSTGRES_PLATFORM_USER: stockmanager_platform
       POSTGRES_PLATFORM_PASSWORD: stockmanager_platform
+      POSTGRES_PURGE_USER: stockmanager_purge
+      POSTGRES_PURGE_PASSWORD: stockmanager_purge
     ports:
       - "5432:5432"
     volumes:

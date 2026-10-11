@@ -74,3 +74,82 @@ sécurité / RBAC :
   à l'entreprise), mais à arbitrer : conserver deux codes distincts, ou un refus unique pour qui
   ne peut pas consulter les clients.
 
+## Plan de migrations de la restauration (correction à reporter)
+
+`RESTAURANT.md` §11 (et toute mention « 0044 = R4 ») est décalé par la livraison de R2-E :
+
+| Migration | Palier | Contenu réel |
+|---|---|---|
+| 0044 | R2-E (livrée) | association tardive du client (Z1) : `GRANT UPDATE (customer_id)`, évènement `CUSTOMER_SET` |
+| 0045 | R4 (livrée) | `member_notifications`, politiques RLS (dont restrictives), droits du rôle de purge |
+| 0046 | R5 (prévue) | zones, tables, FK `restaurant_orders.table_id` (ancien « 0045 ») |
+| 0047 | R6 (prévue) | postes, affectations, `station_id` (ancien « 0046 ») |
+| 0048 | R7 (prévue) | points QR (ancien « 0047 ») |
+| 0049 | R8 (prévue) | recettes (ancien « 0048 ») |
+
+Les migrations livrées ne sont ni modifiées ni renumérotées ; les numéros des paliers suivants
+restent indicatifs jusqu'à leur livraison.
+
+## R4 — notifications des membres (ADR-0049 D8)
+
+À reporter dans `RESTAURANT.md` (§4, §7, §8, §9, §12, §14), `DATA_MODEL.md`, `API.md`,
+la section sécurité / RBAC, l'exploitation (rôles SQL, cron) et `DESIGN_SYSTEM.md` :
+
+- **Plateforme** : paquet `app/platform/member_notifications` (modèle, service d'émission
+  `notify_members`, port de résolution `register_notification_resolver`, routeur, purge) ;
+  table `member_notifications` (site, destinataire, `kind`, `source_type` / `source_id`,
+  `entity_type` / `entity_id`, `payload`, `created_at`, `read_at`) ; clé anti-doublon
+  `uq_member_notifications_source (tenant_id, recipient_user_id, source_type, source_id)`.
+- **RLS** (migration 0045) : `tenant_isolation` (rôle applicatif, permissive) ; `recipient_read`
+  et `recipient_update` RESTRICTIVES (`recipient_user_id = app_current_user_id()`) ; droits du
+  rôle applicatif : `SELECT`, `INSERT`, `UPDATE (read_at)`, jamais `DELETE`.
+- **Émission** : une insertion par destinataire dans un point de sauvegarde (la clé anti-doublon
+  est appliquée par l'index unique) — `INSERT … ON CONFLICT` est inutilisable : PostgreSQL y
+  applique la politique de LECTURE, réservée au destinataire. Insertion en dernier, sans verrou
+  (§7 point 8), dans la transaction de la transition.
+- **Commandes** : `restaurant_orders/notifications.py` — type `restaurant.order.ready`, source
+  `restaurant_order_event` (l'évènement `READY`), entité `restaurant_order` ; émis quand une
+  transition « prête » laisse TOUTE la commande prête (sans postes) ; destinataires = responsable
+  + titulaires effectifs de `restaurant.orders.order.serve` sur le site (calcul
+  `member_permissions`, partagé avec `member_holds`), tous lecteurs de la commande
+  (`order.view`), moins l'auteur ; candidats = appartenances actives ayant accès au site ;
+  `payload` = numéro du jour, date, nombre et identifiants des lignes prêtes (aucun prix, client,
+  coût). Résolution à la lecture : lignes concernées toutes servies ou annulées.
+- **API** (`organization.notification.view`, nature `read`) : `GET /member-notifications`
+  (filtres `unread`, `site_id` ; plus récentes d'abord ; `resolved`), `GET
+  /member-notifications/unread-count`, `POST /member-notifications/{id}/read` (idempotent ;
+  `404 notification_not_found` pour celle d'un autre), `POST /member-notifications/read-all`.
+  Lisibles seulement sur les sites accessibles où le membre détient la permission (revérifié à
+  chaque lecture).
+- **Permission** `organization.notification.view` (déclarée dans le module `organization`) :
+  Administrateur (`*`), Consultant (`*.view`), et ajoutée aux modèles Gestionnaire, Vendeur,
+  Serveur, Préparateur (`role_templates.toml`) — conforme à `RESTAURANT.md` §8. Descriptions des
+  modèles à compléter (« notifications »).
+- **Purge** : rôle SQL dédié `stockmanager_purge` (sans `BYPASSRLS` ; script
+  `docker/postgres/init/03-purge-role.sh`, à créer AVANT la migration 0045 sur une base
+  existante — la migration le vérifie) ; droits `USAGE` du schéma, `SELECT (id, created_at)`,
+  `DELETE` ; politiques `purge_read` / `purge_delete` limitées aux lignes de plus de 30 jours
+  (durée figée dans la migration). Commande `stockmanager notifications purge` (quotidienne,
+  idempotente ; `SM_PURGE_DATABASE_URL`, `SM_DB_PURGE_ROLE`). CI : création du rôle et
+  `SM_TEST_PURGE_DATABASE_URL`. `docker/README.md` complété (indispensable à l'exécution de la
+  migration sur un volume existant).
+- **Interface** : centre de notifications UNIQUE — une seule cloche (somme des sources
+  autorisées) et une seule page `/notifications` (module Organisation), une section par source
+  déclarée par les modules (`FrontendModule.notifications`) : « Activité » (notifications des
+  membres, interrogation toutes les 15 s) et « Rappels d'échéance des licences » (anciens
+  `NotificationsPage` et cloche du module Abonnement, devenus `ExpiryNotificationsPanel` ;
+  comportement inchangé). Lien « Ouvrir » vers la commande avec `restaurant.orders.order.view`
+  (marque lu).
+- **E2E différés tant que `restaurant.orders` est planifié** (aucune route de commande en
+  production) : avis créé par « Prête » dans l'interface, compteur de la cloche mis à jour en
+  15 s, « Ouvrir » vers la fiche de la commande, « traitée » après le service. Couverts par les
+  tests API (registre de test) et Vitest.
+- **Points à arbitrer / risques résiduels** :
+  - commande rendue entièrement prête par l'ANNULATION de sa dernière ligne non prête : aucun
+    avis (D8 ne vise que la transition « prête ») ;
+  - destinataire sans `organization.notification.view` : notification enregistrée (règle D8
+    exacte) mais illisible tant qu'il n'a pas la permission (purgée à 30 jours) ;
+  - postes (R6) : un avis par partie et par poste exigera un évènement source par poste (la clé
+    anti-doublon reste (destinataire, évènement)) ;
+  - coût : une résolution de capacités par membre de l'équipe du site à chaque commande prête ;
+  - planifier le cron de purge en exploitation.

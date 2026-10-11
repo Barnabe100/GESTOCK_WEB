@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithCapabilities } from '@/shared/testing';
 
 import type { AppNotification } from './api';
-import { NotificationsBell } from './notificationDisplay';
-import NotificationsPage from './NotificationsPage';
+import { NotificationsBell } from '@/modules/organization/notifications/NotificationsBell';
+
+import ExpiryNotificationsPanel from './ExpiryNotificationsPanel';
+import { subscriptionModule } from '.';
 
 const note = (over: Partial<AppNotification>): AppNotification => ({
   id: 'n-1',
@@ -52,6 +54,7 @@ function api() {
 }
 
 const VIEW = ['subscription.subscription.view'];
+const SUBSCRIPTION = [{ code: 'subscription', status: 'available' }] as never;
 
 describe('Notifications : rappels d’échéance', () => {
   beforeEach(() => {
@@ -65,7 +68,7 @@ describe('Notifications : rappels d’échéance', () => {
   });
 
   it('textes J-n, J0, J+n et essai ; historique avec lues et non lues', async () => {
-    renderWithCapabilities(<NotificationsPage />, { permissions: VIEW });
+    renderWithCapabilities(<ExpiryNotificationsPanel />, { permissions: VIEW });
     const rows = await screen.findAllByTestId('notification');
     const texts = rows.map((r) => r.textContent ?? '');
     expect(texts[0]).toContain(
@@ -80,7 +83,7 @@ describe('Notifications : rappels d’échéance', () => {
   });
 
   it('filtre « Non lues » transmis au serveur ; marquer comme lu, tout marquer', async () => {
-    renderWithCapabilities(<NotificationsPage />, { permissions: VIEW });
+    renderWithCapabilities(<ExpiryNotificationsPanel />, { permissions: VIEW });
     await screen.findAllByTestId('notification');
     fireEvent.click(screen.getByText('Non lues'));
     await waitFor(() =>
@@ -95,14 +98,20 @@ describe('Notifications : rappels d’échéance', () => {
     expect(posts()[1]![0]).toMatch(/\/notifications\/read-all$/);
   });
 
-  it('indicateur : nombre de non lues', async () => {
-    renderWithCapabilities(<NotificationsBell />, { permissions: VIEW });
+  it('indicateur (centre unique) : nombre de non lues des rappels', async () => {
+    renderWithCapabilities(<NotificationsBell modules={[subscriptionModule]} />, {
+      permissions: VIEW,
+      modules: SUBSCRIPTION,
+    });
     expect((await screen.findByTestId('unread-count')).textContent).toBe('4');
     expect(screen.getByRole('button', { name: 'Notifications : 4 non lues' })).toBeTruthy();
   });
 
   it('indicateur sans le droit : aucune requête', async () => {
-    renderWithCapabilities(<NotificationsBell />, { permissions: [] });
+    renderWithCapabilities(<NotificationsBell modules={[subscriptionModule]} />, {
+      permissions: [],
+      modules: SUBSCRIPTION,
+    });
     await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/notifications'))).toBe(false);
     expect(screen.queryByTestId('unread-count')).toBeNull();

@@ -8,6 +8,7 @@ Images de **développement** utilisées par `docker-compose.yml` (racine du dép
 | `frontend/Dockerfile` | Serveur de développement Vite |
 | `postgres/init/01-app-role.sh` | Crée le rôle applicatif `stockmanager_app` (sans `BYPASSRLS`) au premier démarrage de la base |
 | `postgres/init/02-platform-role.sh` | Crée le rôle de la console TechNova `stockmanager_platform` (sans `BYPASSRLS`, ADR-0031) ; à exécuter à la main sur un volume existant (la migration 0017 vérifie sa présence) |
+| `postgres/init/03-purge-role.sh` | Crée le rôle de purge des notifications des membres `stockmanager_purge` (sans `BYPASSRLS`, ADR-0049 D8) ; à exécuter à la main sur un volume existant (la migration 0045 vérifie sa présence) |
 
 Au démarrage, le service `migrate` applique les migrations puis synchronise le catalogue
 (profils, plans, politiques) ; l'API démarre ensuite. Le service `console` (console TechNova, processus distinct,

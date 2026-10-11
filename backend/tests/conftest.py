@@ -50,6 +50,11 @@ PLATFORM_URL = os.environ.get(
     "postgresql+psycopg://stockmanager_platform:stockmanager_platform@localhost:5432/"
     "stockmanager_test",
 )
+# Rôle SQL de purge des notifications des membres (ADR-0049 D8, R4) : sans BYPASSRLS.
+PURGE_URL = os.environ.get(
+    "SM_TEST_PURGE_DATABASE_URL",
+    "postgresql+psycopg://stockmanager_purge:stockmanager_purge@localhost:5432/stockmanager_test",
+)
 PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
@@ -108,6 +113,7 @@ def settings() -> Settings:
         database_url=APP_URL,
         migration_database_url=OWNER_URL,
         platform_database_url=PLATFORM_URL,
+        purge_database_url=PURGE_URL,
         refresh_cookie_secure=False,
         platform_cookie_secure=False,
         db_pool_size=5,

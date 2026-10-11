@@ -62,6 +62,7 @@ from app.modules.restaurant_orders.models import (
     RestaurantOrderLine,
     SettlementStatus,
 )
+from app.modules.restaurant_orders.notifications import notify_order_ready
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
@@ -241,7 +242,7 @@ class OrderService:
         reason: str | None = None,
         data: dict[str, Any] | None = None,
         idempotency_key: uuid.UUID | None = None,
-    ) -> None:
+    ) -> uuid.UUID:
         event_id = new_id()
         while self._last_event_id is not None and event_id <= self._last_event_id:
             event_id = new_id()
@@ -262,6 +263,7 @@ class OrderService:
                 occurred_at=self.now,
             )
         )
+        return event_id
 
     def _lock_order(self, order_id: uuid.UUID, *, write: bool = True) -> RestaurantOrder:
         order = self.db.scalars(
@@ -656,7 +658,7 @@ class OrderService:
             else:
                 line.served_at = self.now
                 line.served_by = self.ctx.user.id
-        self._event(order, rule.event, targets)
+        event_id = self._event(order, rule.event, targets)
         self._touch(order, lines)
         self.db.flush()
         self._audit(
@@ -664,6 +666,9 @@ class OrderService:
             order,
             {"lines": [li.line_no for li in targets], "status": rule.target.value},
         )
+        if rule.event is EventType.READY and order.prep_status is PrepStatus.READY:
+            # R4 (D8) : toute la commande est prête — avis en dernier, sans verrou (§7).
+            notify_order_ready(self.db, self.ctx, order, lines, event_id, self.now)
         return order
 
     # --- Annulations --------------------------------------------------------------------------

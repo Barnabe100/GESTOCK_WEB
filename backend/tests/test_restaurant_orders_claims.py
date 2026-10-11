@@ -372,12 +372,15 @@ def test_waiter_and_preparer_templates_on_demand(resto: SimpleNamespace) -> None
         f"{P}.create",
         f"{P}.claim",
         f"{P}.serve",
+        # R4 (ADR-0049 D8, RESTAURANT.md §8) : lire ses notifications.
+        "organization.notification.view",
     }
     assert set(preparer_role["permission_codes"]) == {
         "restaurant.menu.view",
         "restaurant.menu.availability",
         f"{P}.view",
         f"{P}.prepare",
+        "organization.notification.view",
     }
     again = r.owner.post("/roles/from-template", json={"template_code": "waiter"})
     assert _code(again) == (409, "role_template_exists")
