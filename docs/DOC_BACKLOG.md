@@ -153,3 +153,9 @@ la section sécurité / RBAC, l'exploitation (rôles SQL, cron) et `DESIGN_SYSTE
     anti-doublon reste (destinataire, évènement)) ;
   - coût : une résolution de capacités par membre de l'équipe du site à chaque commande prête ;
   - planifier le cron de purge en exploitation.
+- **E2E (exécution R4)** : deux exécutions complètes à 161/162 ; échecs différents et isolés —
+  run 1 : premier test (`assortment.e2e.ts:166`, page compilée à la demande par Vite, comme en
+  R2-F) ; run 2 : dépassement du délai de 30 s de `receivables.e2e.ts:156` (réussit seul ; 18 s
+  historiquement, ~30 s aujourd'hui). Ralentissement uniforme (×1,4 en médiane) observé aussi
+  sans la cloche de R4 et sur des entreprises neuves : environnement ou volume de la base de
+  développement, à réexaminer (délai du test, préchauffage, base E2E réinitialisée).
