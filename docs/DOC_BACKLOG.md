@@ -67,4 +67,10 @@ sécurité / RBAC :
   restauration (comportement inchangé).
 - Code d'erreur, message, permissions d'opération et règles de crédit inchangés ; aucune
   permission nouvelle ; aucun changement frontend (le message traduit n'utilise pas le code).
+- **Risque résiduel à réexaminer lors de la révision finale** (validé, non corrigé) : la
+  distinction entre `422 customer_not_found` et `422 customer_inactive` révèle encore à
+  l'appelant si un identifiant de client existe dans l'entreprise (même sans
+  `customers.customer.view`). Portée pratique faible (identifiants non devinables, accès limité
+  à l'entreprise), mais à arbitrer : conserver deux codes distincts, ou un refus unique pour qui
+  ne peut pas consulter les clients.
 
