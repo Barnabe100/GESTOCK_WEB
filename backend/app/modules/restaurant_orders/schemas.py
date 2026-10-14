@@ -129,6 +129,14 @@ class OrderCustomerSet(BaseModel):
     reason: Optional500 = None
 
 
+class OrderTableSet(BaseModel):
+    """Changement (``table_id``) ou retrait (``null``, explicite) de la table d'une commande non
+    finale (R5-B, B-2) ; motif facultatif (A5). Contrôles faits par le serveur."""
+
+    table_id: uuid.UUID | None
+    reason: Optional500 = None
+
+
 # --- Lecture ------------------------------------------------------------------------------------
 
 

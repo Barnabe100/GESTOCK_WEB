@@ -1,10 +1,13 @@
-"""Palier R5-B, sous-étape B-1 — ordre des verrous de la création d'une commande (R-2, AR-1).
+"""Palier R5-B, sous-étapes B-1 et B-2 — ordre des verrous de la création d'une commande (R-2,
+AR-1) et du changement ou du retrait de sa table (B-2 : site en partage de clé → table cible en
+partage → commande en exclusif).
 
 Toute création (avec ou sans table) prend le site en PARTAGE DE CLÉ avant les réglages du site ;
 une reconfiguration (désactivation d'un module, changement de profil) prend le site en EXCLUSIF
 avant les réglages. Ces tests rejouent avec le VRAI code (API) les scénarios D1 et D2 du
-diagnostic, qui produisaient un interblocage avant B-1, et les courses entre une création avec
-table et la désactivation des tables ou d'une table.
+diagnostic, qui produisaient un interblocage avant B-1, les courses entre une création avec
+table et la désactivation des tables ou d'une table, puis celles du changement de table (B-2)
+avec la désactivation de la table, le changement de profil, le règlement et la clôture.
 
 Méthode (aucune attente arbitraire) : une transaction « portillon » retient une opération à un
 point précis ; l'attente réelle de chaque opération est constatée dans ``pg_locks`` /
@@ -30,6 +33,7 @@ from app.modules.restaurant_orders.settings import order_sequence_key
 from app.shared.clock import utcnow
 from tests.conftest import Api
 from tests.test_restaurant_orders import _api, _line, _menu, _ok, _order
+from tests.test_restaurant_orders_settlement import _cash, _receive, _serve_all, _settle
 
 MAQUIS = "restaurant.maquis"
 RESTAURANT = "restaurant.restaurant"
@@ -358,3 +362,260 @@ def test_order_lock_sequence_is_site_then_settings(
             ).scalar_one()
         assert held >= 1, "la création attend les réglages sans tenir le site"
     assert create.join() == (201, None)
+
+
+# --- B-2 : changement et retrait de table ------------------------------------------------------
+
+ORDER_ROW = "SELECT id FROM restaurant_orders WHERE id = :o FOR UPDATE"
+STOCK_LEVEL = "SELECT id FROM stock_levels WHERE site_id = :s AND article_id = :a FOR UPDATE"
+
+
+def _waiters(owner_engine: Engine, fragment: str) -> int:
+    """Nombre de sessions en attente d'un verrou dont la requête contient ``fragment``."""
+    with owner_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    "SELECT count(DISTINCT a.pid) FROM pg_stat_activity a "
+                    "JOIN pg_locks l ON l.pid = a.pid AND NOT l.granted "
+                    "WHERE a.datname = current_database() AND a.query LIKE :f"
+                ),
+                {"f": f"%{fragment}%"},
+            ).scalar_one()
+        )
+
+
+def _wait_for_waiters(owner_engine: Engine, fragment: str, count: int) -> None:
+    deadline = time.monotonic() + TIMEOUT
+    while time.monotonic() < deadline:
+        if _waiters(owner_engine, fragment) >= count:
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"{count} attente(s) non constatée(s) sur {fragment}")
+
+
+def _set_table(owner: Api, order: str, table: str | None) -> Any:
+    return owner.put(f"/restaurant/orders/{order}/table", json={"table_id": table})
+
+
+def _order_row(owner_engine: Engine, order: str) -> tuple[str | None, str, str]:
+    """État final EN BASE : table, statut et état de règlement de la commande."""
+    with owner_engine.connect() as conn:
+        table, status, settlement = conn.execute(
+            text("SELECT table_id, status, settlement_status FROM restaurant_orders WHERE id = :o"),
+            {"o": order},
+        ).one()
+    return (None if table is None else str(table)), str(status), str(settlement)
+
+
+def _table_changes(owner_engine: Engine, order: str) -> int:
+    with owner_engine.connect() as conn:
+        return int(
+            conn.execute(
+                text(
+                    "SELECT count(*) FROM restaurant_order_events "
+                    "WHERE order_id = :o AND event_type = 'TABLE_CHANGED'"
+                ),
+                {"o": order},
+            ).scalar_one()
+        )
+
+
+def _stocked(provision: Any, client: TestClient, slug: str) -> SimpleNamespace:
+    """Restaurant (commandes et tables disponibles), stock de l'article du menu, deux tables."""
+    w = _world(provision, client, slug, RESTAURANT)
+    supplier = _ok(w.owner.post("/suppliers", json={"name": "Brasserie"}), 201)["id"]
+    _receive(SimpleNamespace(owner=w.owner, site=w.site, supplier=supplier), w.menu.article, "50")
+    w.t1 = _table(w.owner, w.site, "T1")
+    w.t2 = _table(w.owner, w.site, "T2")
+    return w
+
+
+def test_table_change_first_then_deactivating_the_table(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Le changement tient la table cible (partage) en attendant la commande ; la désactivation
+    attend la table (exclusif), puis compte la commande désormais rattachée : refus (A6)."""
+    w = _stocked(provision, tclient, "rl-b2a")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    with _gate(owner_engine, ORDER_ROW, o=order):
+        change = Call(lambda: _set_table(w.owner, order, w.t1))
+        _wait_until(owner_engine, "FROM restaurant_orders")
+        deactivate = Call(lambda: w.owner.post(f"/restaurant/tables/{w.t1}/deactivate"))
+        _wait_until(owner_engine, "FROM restaurant_orders", "FROM restaurant_tables")
+    assert change.join() == (200, None)
+    assert deactivate.join() == (409, "table_has_open_orders")
+    assert _order_row(owner_engine, order)[0] == w.t1
+    with owner_engine.connect() as conn:
+        active = conn.execute(
+            text("SELECT is_active FROM restaurant_tables WHERE id = :t"), {"t": w.t1}
+        ).scalar_one()
+    assert active is True
+
+
+def test_deactivating_the_table_first_then_table_change_is_refused(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Désactivation en cours (table tenue en exclusif) : le changement attend au verrou de la
+    table, la relit inactive, et la commande garde sa table."""
+    w = _stocked(provision, tclient, "rl-b2b")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    with _gate(
+        owner_engine, "SELECT id FROM restaurant_tables WHERE id = :t FOR UPDATE", t=w.t2
+    ) as gate:
+        gate.execute(
+            text("UPDATE restaurant_tables SET is_active = false WHERE id = :t"), {"t": w.t2}
+        )
+        change = Call(lambda: _set_table(w.owner, order, w.t2))
+        _wait_until(owner_engine, "FROM restaurant_tables")
+    assert change.join() == (422, "table_inactive")
+    assert _order_row(owner_engine, order)[0] == w.t1
+    assert _table_changes(owner_engine, order) == 0
+
+
+def test_removal_does_not_wait_for_the_deactivation_of_the_previous_table(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Le retrait ne verrouille aucune table : la désactivation de l'ancienne table, lancée
+    pendant le retrait non validé, voit encore la commande et est refusée sans attendre ;
+    ensuite, la table se désactive."""
+    w = _stocked(provision, tclient, "rl-b2c")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    with _gate(owner_engine, ORDER_ROW, o=order):
+        removal = Call(lambda: _set_table(w.owner, order, None))
+        _wait_until(owner_engine, "FROM restaurant_orders")
+        refused = w.owner.post(f"/restaurant/tables/{w.t1}/deactivate")
+        assert (refused.status_code, refused.json()["code"]) == (409, "table_has_open_orders")
+    assert removal.join() == (200, None)
+    assert _order_row(owner_engine, order)[0] is None
+    _ok(w.owner.post(f"/restaurant/tables/{w.t1}/deactivate"))
+
+
+def test_table_change_first_then_profile_change(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Le changement tient le site (partage de clé) : le changement de profil attend AU VERROU
+    DU SITE, puis voit la commande rattachée (empreinte des tables modifiée) : refus."""
+    w = _stocked(provision, tclient, "rl-b2d")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    fingerprint = _fingerprint(w.owner, w.site)
+    with _gate(owner_engine, ORDER_ROW, o=order):
+        change = Call(lambda: _set_table(w.owner, order, w.t1))
+        _wait_until(owner_engine, "FROM restaurant_orders")
+        profile = Call(lambda: _change_profile(w.owner, w.site, fingerprint))
+        _wait_until(owner_engine, "FROM restaurant_orders", "FROM sites")
+    assert change.join() == (200, None)
+    status, code = profile.join()
+    assert status == 409 and code in ("profile_preview_outdated", "profile_change_blocked")
+    assert _order_row(owner_engine, order)[0] == w.t1
+    assert _state(owner_engine, w.site, "restaurant.tables") == (True, 1)
+
+
+def test_profile_change_first_then_table_changes(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Changement de profil en cours (site exclusif, retenu sur la ligne ``site_modules`` des
+    tables) : association et retrait attendent AU VERROU DU SITE, sans interblocage, puis
+    s'appliquent avec les modules RECALCULÉS (profil de restauration : tables conservées). Un
+    profil arrêtant les commandes est refusé tant qu'une commande est ouverte (constaté :
+    ``profile_change_blocked``) ; or seule une commande ouverte change de table."""
+    w = _stocked(provision, tclient, "rl-b2e")
+    seated = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    bare = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    stopping = _fingerprint(w.owner, w.site)
+    assert _change_profile(w.owner, w.site, stopping).json()["code"] == "profile_change_blocked"
+    target = "restaurant.fast_food"
+    preview = w.owner.get(
+        f"/sites/{w.site}/business-profile/preview", params={"profile_code": target}
+    )
+    body = {
+        "profile_code": target,
+        "preview_fingerprint": _ok(preview)["fingerprint"],
+        "confirmation": "CHANGER DE PROFIL",
+    }
+    with _gate(owner_engine, SITE_MODULE, s=w.site, c="restaurant.tables"):
+        profile = Call(lambda: w.owner.put(f"/sites/{w.site}/business-profile", json=body))
+        _wait_until(owner_engine, "FROM site_modules")
+        association = Call(lambda: _set_table(w.owner, bare, w.t2))
+        removal = Call(lambda: _set_table(w.owner, seated, None))
+        _wait_for_waiters(owner_engine, "FOR KEY SHARE", 2)
+    assert profile.join() == (200, None)
+    assert association.join() == (200, None)
+    assert removal.join() == (200, None)
+    assert _order_row(owner_engine, bare)[0] == w.t2
+    assert _order_row(owner_engine, seated)[0] is None
+    assert _state(owner_engine, w.site, "restaurant.tables") == (True, 2)
+
+
+def test_settlement_first_then_table_change(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Le règlement tient la commande (exclusif) et attend au stock ; le changement attend la
+    commande, puis s'applique à la commande réglée, encore ouverte (non servie)."""
+    w = _stocked(provision, tclient, "rl-b2f")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    with _gate(owner_engine, STOCK_LEVEL, s=w.site, a=w.menu.article):
+        settle = Call(lambda: _settle(w.owner, order, payments=_cash("700")))
+        _wait_until(owner_engine, "FROM stock_levels")
+        change = Call(lambda: _set_table(w.owner, order, w.t2))
+        _wait_until(owner_engine, "FROM stock_levels", "FROM restaurant_orders")
+    assert settle.join() == (201, None)
+    assert change.join() == (200, None)
+    assert _order_row(owner_engine, order) == (w.t2, "OPEN", "SETTLED")
+
+
+def test_table_change_first_then_settlement(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Les deux attendent la commande, le changement en premier : il s'applique, puis le
+    règlement aboutit sur la commande déplacée."""
+    w = _stocked(provision, tclient, "rl-b2g")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    with _gate(owner_engine, ORDER_ROW, o=order):
+        change = Call(lambda: _set_table(w.owner, order, w.t2))
+        _wait_for_waiters(owner_engine, "FROM restaurant_orders", 1)
+        settle = Call(lambda: _settle(w.owner, order, payments=_cash("700")))
+        _wait_for_waiters(owner_engine, "FROM restaurant_orders", 2)
+    assert change.join() == (200, None)
+    assert settle.join() == (201, None)
+    assert _order_row(owner_engine, order) == (w.t2, "OPEN", "SETTLED")
+
+
+def test_closure_first_then_table_change_is_refused(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Commande servie : son règlement la CLÔT. Il tient la commande en attendant le stock ; le
+    changement attend la commande, puis la trouve close : refus, table inchangée."""
+    w = _stocked(provision, tclient, "rl-b2h")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    _serve_all(w.owner, order)
+    with _gate(owner_engine, STOCK_LEVEL, s=w.site, a=w.menu.article):
+        settle = Call(lambda: _settle(w.owner, order, payments=_cash("700")))
+        _wait_until(owner_engine, "FROM stock_levels")
+        change = Call(lambda: _set_table(w.owner, order, w.t2))
+        _wait_until(owner_engine, "FROM stock_levels", "FROM restaurant_orders")
+    assert settle.join() == (201, None)
+    assert change.join() == (409, "order_closed")
+    assert _order_row(owner_engine, order) == (w.t1, "CLOSED", "SETTLED")
+    assert _table_changes(owner_engine, order) == 0
+
+
+def test_table_change_first_then_closure(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Commande réglée non servie : le changement passe avant le service qui la clôt ; la
+    commande close garde la nouvelle table."""
+    w = _stocked(provision, tclient, "rl-b2i")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)], table_id=w.t1), 201)["id"]
+    _ok(_settle(w.owner, order, payments=_cash("700")), 201)
+    for action in ("start", "ready"):
+        _ok(w.owner.post(f"/restaurant/orders/{order}/{action}"))
+    with _gate(owner_engine, ORDER_ROW, o=order):
+        change = Call(lambda: _set_table(w.owner, order, w.t2))
+        _wait_for_waiters(owner_engine, "FROM restaurant_orders", 1)
+        serve = Call(lambda: w.owner.post(f"/restaurant/orders/{order}/serve"))
+        _wait_for_waiters(owner_engine, "FROM restaurant_orders", 2)
+    assert change.join() == (200, None)
+    assert serve.join() == (200, None)
+    assert _order_row(owner_engine, order) == (w.t2, "CLOSED", "SETTLED")
+    assert _table_changes(owner_engine, order) == 1

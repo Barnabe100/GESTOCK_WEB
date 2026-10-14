@@ -37,6 +37,7 @@ from app.modules.restaurant_orders.schemas import (
     OrderOut,
     OrderReassign,
     OrderSettle,
+    OrderTableSet,
     SettingsOut,
     SettingsUpdate,
     SettlementOut,
@@ -249,6 +250,17 @@ def set_order_customer(
     """Association tardive d'un client (R2-E, Z1) : commande ouverte non réglée."""
     service = _service(db, ctx)
     service.set_customer(order_id, body.customer_id, body.reason)
+    db.commit()
+    return service.detail(order_id)
+
+
+@router.put("/orders/{order_id}/table", response_model=OrderOut)
+def set_order_table(
+    order_id: uuid.UUID, body: OrderTableSet, ctx: OrderCreator, db: DbSession
+) -> OrderOut:
+    """Changement ou retrait de la table (R5-B, B-2) : commande non finale."""
+    service = _service(db, ctx)
+    service.set_table(order_id, body.table_id, body.reason)
     db.commit()
     return service.detail(order_id)
 

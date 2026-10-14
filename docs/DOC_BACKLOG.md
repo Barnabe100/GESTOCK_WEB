@@ -428,3 +428,56 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   `63acc53` (CI verte). Local : ce fichier 5/5, Vitest complet 463/463 ; job relancé une fois :
   vert (run `38603202130`, tentative 2). Test intermittent sous charge du runner, à examiner à
   part.
+
+### R5-B / B-2 — changement et retrait de la table d'une commande
+
+- **Route** `PUT /restaurant/orders/{id}/table`, corps `{table_id: UUID | null, reason?}` :
+  `table_id` obligatoire (`null` explicite = retrait), motif facultatif (A5). Permission
+  `restaurant.orders.order.create` vérifiée sur le site de la commande (A8) ; portée commune
+  des écritures (`404 order_not_found` si le site n'est pas lisible, `403 site_mismatch` si un
+  autre site est sélectionné).
+- **Ordre des verrous** (à reporter dans `RESTAURANT.md` §7) : site en partage de clé
+  (`FOR KEY SHARE`) → table cible en partage (port des tables, association seulement) →
+  commande en exclusif → contrôles → écriture. Le mode de service (fixé à la création) est lu
+  avant le verrou de la commande pour respecter l'ordre table → commande ; la contrainte
+  `table_only_on_site` le garantit aussi en base. Le retrait ne verrouille aucune table.
+- **Association ou changement** : mêmes contrôles qu'à la création — `422
+  table_not_allowed_for_mode` (comptoir, à emporter), `422 tables_unavailable`
+  (`restaurant.tables` non effectif, recalculé après le verrou du site ; module planifié :
+  jamais), `404 table_not_found` (autre site, autre entreprise, inconnue), `422 table_inactive`.
+  **Retrait** permis quand `restaurant.tables` n'est plus effectif (B4).
+- **Commandes finales refusées** : `409 order_closed`, `409 order_cancelled` (contrôle commun
+  `_require_open` : une commande `PENDING_CONFIRMATION`, inexistante avant R7, serait refusée
+  `409 order_not_open`). Une commande réglée encore ouverte (non servie) peut changer de table.
+- **Même table (ou retrait sans table)** : aucune écriture (ni version, ni évènement, ni audit).
+  La table demandée est validée AVANT le verrou de la commande (ordre des verrous) : ses refus
+  (mode, module, table) précèdent donc ceux de l'état de la commande (même table devenue
+  indisponible, commande finale avec une table invalide), toujours sans écriture.
+- **Historique** : évènement `TABLE_CHANGED` (`table_id`, `table_label`, `zone_name` et
+  `previous_*`, libellés au moment du changement, conservés après renommage) et audit
+  `restaurant_order.table_changed` (mêmes données + motif) ; `version` incrémentée. Aucune
+  copie du libellé dans la commande (A7).
+- **Concurrence** (`tests/test_restaurant_orders_locking.py`, attentes constatées dans
+  `pg_locks` / `pg_stat_activity`, aucune erreur ni `40P01`) :
+  - changement d'abord / désactivation de la table cible : la désactivation attend la table,
+    puis `409 table_has_open_orders` ; désactivation d'abord : le changement attend la table,
+    puis `422 table_inactive`, commande inchangée ;
+  - retrait / désactivation de l'ancienne table : aucune attente croisée ; tant que le retrait
+    n'est pas validé, la désactivation voit la commande et est refusée ; ensuite elle aboutit ;
+  - changement d'abord / changement de profil : le profil attend au verrou du site, puis
+    `409` (aperçu périmé ou bloqué) ; profil d'abord (vers un autre profil de restauration) :
+    association et retrait attendent au verrou du site, puis s'appliquent ;
+  - règlement d'abord (commande tenue, attente au stock) : le changement attend la commande,
+    puis s'applique à la commande réglée ouverte ; changement d'abord : le règlement suit ;
+  - clôture d'abord (règlement d'une commande servie) : `409 order_closed`, table inchangée ;
+    changement d'abord puis service qui clôt : la commande close garde la nouvelle table.
+- **Constat** : un changement de profil arrêtant les commandes est refusé
+  (`profile_change_blocked`) tant qu'une commande est ouverte ; tous les profils de restauration
+  proposent les tables. Le retrait « hors module » n'est donc atteignable que par un module
+  planifié (production, E.1) ou une activation retirée par une autre voie que la désactivation
+  (refusée par A6) : testé en simulant l'état en base.
+- **Risque résiduel** : la permission et le module des commandes sont lus au début de la
+  requête (aucun recalcul de `restaurant.orders` pour le changement de table, comme les autres
+  opérations sur une commande existante) ; seuls les modules des tables sont recalculés pour une
+  association. Mécanisme général des capacités inchangé. Aucune migration ; interface en R5-C ;
+  champ `table` de `OrderOut` en B-3.

@@ -1036,6 +1036,63 @@ class OrderService:
         self._audit("customer_set", order, {"reason": reason, **change})
         return order
 
+    def set_table(
+        self, order_id: uuid.UUID, table_id: uuid.UUID | None, reason: str | None
+    ) -> RestaurantOrder:
+        """Changement ou retrait de la table d'une commande non finale (R5-B, B-2 ; A5, A8, B4).
+
+        Permission ``order.create`` vérifiée sur le site de la commande (A8) ; motif facultatif
+        (A5). Associer une table : mêmes contrôles qu'à la création (commande « sur place »,
+        ``restaurant.tables`` EFFECTIF après le verrou du site, table du site et active, prise en
+        partage). Retirer la table (``None``) reste permis quand le module des tables n'est plus
+        effectif (B4) : aucune table n'est alors verrouillée. Même table : rien n'est écrit.
+
+        Ordre des verrous (§7) : site (partage de clé) → table cible (partage) → commande
+        (exclusif) ; la désactivation d'une table (exclusif, puis comptage des commandes en
+        cours) et les reconfigurations du site (site exclusif d'abord) attendent donc ou font
+        attendre ce changement, jamais en sens inverse."""
+        site_id = self._site_of(order_id)
+        require_site_permission(self.ctx, site_id, ORDER_CREATE)
+        lock_site_key_share(self.db, site_id)
+        table: TableRef | None = None
+        if table_id is not None:
+            # Mode de service fixé à la création (jamais modifié) : lu avant le verrou de la
+            # commande pour respecter l'ordre table → commande ; la contrainte
+            # ``table_only_on_site`` le garantit aussi en base.
+            mode = self.db.scalar(
+                select(RestaurantOrder.service_mode).where(
+                    RestaurantOrder.tenant_id == self.ctx.tenant_id,
+                    RestaurantOrder.id == order_id,
+                )
+            )
+            if mode is None:
+                raise NotFoundError("Commande introuvable", code="order_not_found")
+            table = self._table_for_order(site_id, table_id, mode)
+        order = self._lock_order(order_id)
+        self._require_open(order)
+        previous = order.table_id
+        if previous == table_id:
+            return order
+        directory = table_directory(self.db, self.ctx)
+        previous_ref = (
+            directory.labels([previous]).get(previous)
+            if previous is not None and directory is not None
+            else None
+        )
+        before = self._table_data(previous_ref)
+        if previous is not None and previous_ref is None:
+            before["table_id"] = str(previous)
+        change = {
+            **self._table_data(table),
+            **{f"previous_{key}": value for key, value in before.items()},
+        }
+        order.table_id = table_id
+        order.version += 1
+        self._event(order, EventType.TABLE_CHANGED, reason=reason, data=change)
+        self.db.flush()
+        self._audit("table_changed", order, {"reason": reason, **change})
+        return order
+
     # --- Règlement T2 (R2-D, D6) ---------------------------------------------------------------
 
     @staticmethod
