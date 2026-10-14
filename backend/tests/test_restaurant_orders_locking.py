@@ -1,6 +1,7 @@
-"""Palier R5-B, sous-étapes B-1 et B-2 — ordre des verrous de la création d'une commande (R-2,
-AR-1) et du changement ou du retrait de sa table (B-2 : site en partage de clé → table cible en
-partage → commande en exclusif).
+"""Palier R5-B, sous-étapes B-1, B-2 et B-4 — ordre des verrous de la création d'une commande
+(R-2, AR-1), du changement ou du retrait de sa table (B-2 : site en partage de clé → table cible
+en partage → commande en exclusif), et de l'ajout de lignes et de la prise en charge (B-4 : site
+en partage de clé AVANT les réglages ; scénarios S1, S1b, S2).
 
 Toute création (avec ou sans table) prend le site en PARTAGE DE CLÉ avant les réglages du site ;
 une reconfiguration (désactivation d'un module, changement de profil) prend le site en EXCLUSIF
@@ -32,7 +33,7 @@ from sqlalchemy import Connection, Engine, text
 from app.modules.restaurant_orders.settings import order_sequence_key
 from app.shared.clock import utcnow
 from tests.conftest import Api
-from tests.test_restaurant_orders import _api, _line, _menu, _ok, _order
+from tests.test_restaurant_orders import _api, _line, _member, _menu, _ok, _order
 from tests.test_restaurant_orders_settlement import _cash, _receive, _serve_all, _settle
 
 MAQUIS = "restaurant.maquis"
@@ -619,3 +620,205 @@ def test_table_change_first_then_closure(
     assert serve.join() == (200, None)
     assert _order_row(owner_engine, order) == (w.t2, "CLOSED", "SETTLED")
     assert _table_changes(owner_engine, order) == 1
+
+
+# --- B-4 : ajout de lignes et prise en charge — site AVANT les réglages (S1, S1b, S2) ----------
+#
+# Avant le correctif, trois opérations sur la MÊME commande fermaient un cycle (constaté :
+# ``40P01``) : (1) le règlement ou le passage à « prête » tient la commande, puis prend le site en
+# partage de clé (clé étrangère de la vente ou de l'avis) ; (2) l'ajout de lignes ou la prise en
+# charge tient les réglages en partage et attend la commande ; (3) la désactivation des commandes
+# tient le site en exclusif et attend les réglages en exclusif. Désormais (2) prend le site en
+# partage de clé AVANT les réglages : (3) attend au verrou du site, sans rien tenir.
+
+LINE_ROW = "SELECT id FROM restaurant_order_lines WHERE order_id = :o FOR UPDATE"
+SITE_ROW = "SELECT id FROM sites WHERE id = :s FOR UPDATE"
+
+
+def _row_locked_relations(owner_engine: Engine, fragment: str) -> set[str]:
+    """Relations où les sessions en attente d'un verrou (requête contenant ``fragment``) tiennent
+    déjà un VERROU DE LIGNE : mode ``RowShareLock`` accordé, posé par ``FOR KEY SHARE`` /
+    ``FOR SHARE`` / ``FOR UPDATE`` (une simple lecture ne pose qu'un ``AccessShareLock``)."""
+    with owner_engine.connect() as conn:
+        return {
+            str(name)
+            for (name,) in conn.execute(
+                text(
+                    "SELECT DISTINCT c.relname FROM pg_stat_activity a "
+                    "JOIN pg_locks w ON w.pid = a.pid AND NOT w.granted "
+                    "JOIN pg_locks h ON h.pid = a.pid AND h.granted AND h.locktype = 'relation' "
+                    "AND h.mode = 'RowShareLock' "
+                    "JOIN pg_class c ON c.oid = h.relation "
+                    "WHERE a.datname = current_database() AND a.query LIKE :f"
+                ),
+                {"f": f"%{fragment}%"},
+            ).all()
+        }
+
+
+def _maquis(provision: Any, client: TestClient, slug: str) -> SimpleNamespace:
+    """Maquis (commandes disponibles, tables planifiées), stock de l'article du menu."""
+    w = _world(provision, client, slug, MAQUIS)
+    supplier = _ok(w.owner.post("/suppliers", json={"name": "Brasserie"}), 201)["id"]
+    _receive(SimpleNamespace(owner=w.owner, site=w.site, supplier=supplier), w.menu.article, "50")
+    return w
+
+
+def _scalar(owner_engine: Engine, sql: str, **params: Any) -> Any:
+    with owner_engine.connect() as conn:
+        return conn.execute(text(sql), params).scalar_one()
+
+
+def _add(w: SimpleNamespace, order: str) -> Any:
+    return w.owner.post(f"/restaurant/orders/{order}/lines", json={"lines": [_line(w.menu.unit)]})
+
+
+def _settled_sales(owner_engine: Engine, order: str) -> int:
+    return int(
+        _scalar(
+            owner_engine,
+            "SELECT count(*) FROM sales WHERE origin_id = :o AND status <> 'CANCELLED'",
+            o=order,
+        )
+    )
+
+
+def test_add_lines_and_claim_take_the_site_before_the_settings(
+    provision: Any, oclient: TestClient, owner_engine: Engine
+) -> None:
+    """Ordre constaté : site tenu en EXCLUSIF (comme une reconfiguration) — l'ajout de lignes et la
+    prise en charge attendent AU VERROU DU SITE sans tenir les réglages (aucun verrou sur
+    ``restaurant_site_settings``), puis aboutissent."""
+    w = _maquis(provision, oclient, "rl-b4o")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    waiter = _member(
+        SimpleNamespace(owner=w.owner, client=oclient), "w@rl-b4o.example.com", "seller"
+    )
+    with _gate(owner_engine, SITE_ROW, s=w.site):
+        add = Call(lambda: _add(w, order))
+        claim = Call(lambda: waiter.post(f"/restaurant/orders/{order}/claim"))
+        _wait_for_waiters(owner_engine, "FOR KEY SHARE", 2)
+        held = _row_locked_relations(owner_engine, "FOR KEY SHARE")
+        assert "restaurant_site_settings" not in held, held
+        assert "restaurant_orders" not in held, held
+    assert add.join() == (200, None)
+    assert claim.join() == (200, None)
+
+
+def test_s1_settlement_add_lines_and_disabling_orders(
+    provision: Any, oclient: TestClient, owner_engine: Engine
+) -> None:
+    w = _maquis(provision, oclient, "rl-b4s1")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    with _gate(owner_engine, LINE_ROW, o=order):
+        settle = Call(lambda: _settle(w.owner, order, payments=_cash("700")))
+        _wait_until(owner_engine, "FROM restaurant_order_lines")
+        add = Call(lambda: _add(w, order))
+        _wait_until(owner_engine, "FROM restaurant_order_lines", "FROM restaurant_orders")
+        # L'ajout tient le site (partage de clé) ET les réglages (partage), et attend la commande.
+        assert {"sites", "restaurant_site_settings"} <= _row_locked_relations(
+            owner_engine, "FROM restaurant_orders"
+        )
+        disable = Call(lambda: _disable(w.owner, w.site, "restaurant.orders"))
+        # La désactivation attend AU VERROU DU SITE, jamais aux réglages.
+        _wait_until(
+            owner_engine, "FROM restaurant_order_lines", "FROM restaurant_orders", "FROM sites"
+        )
+        assert _waiters(owner_engine, "FROM restaurant_site_settings") == 0
+    # Règlement d'abord (la vente prend le site en partage de clé sans attendre) ; l'ajout trouve
+    # la commande réglée ; la désactivation voit la commande ouverte. Aucune erreur (ni 40P01).
+    assert settle.join() == (201, None)
+    assert add.join() == (409, "order_settled")
+    assert disable.join() == (409, "module_has_open_operations")
+    assert _order_row(owner_engine, order) == (None, "OPEN", "SETTLED")
+    assert _settled_sales(owner_engine, order) == 1
+    assert (
+        _scalar(
+            owner_engine, "SELECT count(*) FROM restaurant_order_lines WHERE order_id = :o", o=order
+        )
+        == 1
+    )
+    assert _state(owner_engine, w.site, "restaurant.orders") == (True, 1)
+
+
+def test_s1b_settlement_claim_and_disabling_orders(
+    provision: Any, oclient: TestClient, owner_engine: Engine
+) -> None:
+    w = _maquis(provision, oclient, "rl-b4s1b")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    waiter = _member(
+        SimpleNamespace(owner=w.owner, client=oclient), "w@rl-b4s1b.example.com", "seller"
+    )
+    with _gate(owner_engine, LINE_ROW, o=order):
+        settle = Call(lambda: _settle(w.owner, order, payments=_cash("700")))
+        _wait_until(owner_engine, "FROM restaurant_order_lines")
+        claim = Call(lambda: waiter.post(f"/restaurant/orders/{order}/claim"))
+        _wait_until(owner_engine, "FROM restaurant_order_lines", "FROM restaurant_orders")
+        assert {"sites", "restaurant_site_settings"} <= _row_locked_relations(
+            owner_engine, "FROM restaurant_orders"
+        )
+        disable = Call(lambda: _disable(w.owner, w.site, "restaurant.orders"))
+        _wait_until(
+            owner_engine, "FROM restaurant_order_lines", "FROM restaurant_orders", "FROM sites"
+        )
+        assert _waiters(owner_engine, "FROM restaurant_site_settings") == 0
+    assert settle.join() == (201, None)
+    # Prise en charge d'une commande ouverte, réglée ou non : elle aboutit après le règlement.
+    assert claim.join() == (200, None)
+    assert disable.join() == (409, "module_has_open_operations")
+    assert _order_row(owner_engine, order) == (None, "OPEN", "SETTLED")
+    assert _settled_sales(owner_engine, order) == 1
+    assigned = _scalar(
+        owner_engine, "SELECT assigned_user_id FROM restaurant_orders WHERE id = :o", o=order
+    )
+    member = _scalar(owner_engine, "SELECT id FROM users WHERE email = 'w@rl-b4s1b.example.com'")
+    assert assigned == member
+    assert _state(owner_engine, w.site, "restaurant.orders") == (True, 1)
+
+
+def test_s2_ready_notification_add_lines_and_disabling_orders(
+    provision: Any, oclient: TestClient, owner_engine: Engine
+) -> None:
+    """« Prête » : l'avis inséré (clé étrangère vers le site) prend le site en partage de clé alors
+    que la commande est tenue."""
+    w = _maquis(provision, oclient, "rl-b4s2")
+    order = _ok(_order(w.owner, w.site, [_line(w.menu.unit)]), 201)["id"]
+    cook = _member(
+        SimpleNamespace(owner=w.owner, client=oclient), "c@rl-b4s2.example.com", "seller"
+    )
+    _ok(cook.post(f"/restaurant/orders/{order}/start"))
+    with _gate(owner_engine, LINE_ROW, o=order):
+        ready = Call(lambda: cook.post(f"/restaurant/orders/{order}/ready"))
+        _wait_until(owner_engine, "FROM restaurant_order_lines")
+        add = Call(lambda: _add(w, order))
+        _wait_until(owner_engine, "FROM restaurant_order_lines", "FROM restaurant_orders")
+        assert {"sites", "restaurant_site_settings"} <= _row_locked_relations(
+            owner_engine, "FROM restaurant_orders"
+        )
+        disable = Call(lambda: _disable(w.owner, w.site, "restaurant.orders"))
+        _wait_until(
+            owner_engine, "FROM restaurant_order_lines", "FROM restaurant_orders", "FROM sites"
+        )
+        assert _waiters(owner_engine, "FROM restaurant_site_settings") == 0
+    assert ready.join() == (200, None)
+    assert add.join() == (200, None)
+    assert disable.join() == (409, "module_has_open_operations")
+    # Un avis « prête » ; deux lignes (la nouvelle à préparer) ; commande ouverte non réglée.
+    assert (
+        _scalar(
+            owner_engine, "SELECT count(*) FROM member_notifications WHERE entity_id = :o", o=order
+        )
+        == 1
+    )
+    assert (
+        _scalar(
+            owner_engine, "SELECT count(*) FROM restaurant_order_lines WHERE order_id = :o", o=order
+        )
+        == 2
+    )
+    assert (
+        _scalar(owner_engine, "SELECT prep_status FROM restaurant_orders WHERE id = :o", o=order)
+        == "RECEIVED"
+    )
+    assert _order_row(owner_engine, order) == (None, "OPEN", "UNSETTLED")
+    assert _state(owner_engine, w.site, "restaurant.orders") == (True, 1)

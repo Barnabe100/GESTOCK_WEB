@@ -645,6 +645,11 @@ class OrderService:
         seconde fois (P-8)."""
         site_id = self._site_of(order_id)
         settings_profile = self._profile(site_id)
+        # Site en partage de clé AVANT les réglages (B-4, scénarios S1 / S2) : sinon une
+        # reconfiguration (site exclusif, puis réglages exclusifs) et une opération qui tient la
+        # commande puis prend le site en partage de clé (règlement, avis « prête ») fermaient un
+        # cycle avec cet ajout (réglages tenus, commande attendue).
+        lock_site_key_share(self.db, site_id)
         ensure_settings(self.db, self.ctx.tenant_id, site_id, settings_profile, lock="share")
         order = self._lock_order(order_id)
         require_site_permission(self.ctx, order.site_id, ORDER_CREATE)
@@ -864,7 +869,8 @@ class OrderService:
         """« Prendre » : l'employé devient responsable d'une commande ouverte (réglée ou non).
 
         Ordre des verrous (§7) : verrou consultatif de l'employé (site + employé : ses prises
-        sur le site s'exécutent l'une après l'autre) → réglages du site en partage → commande ;
+        sur le site s'exécutent l'une après l'autre) → site en partage de clé (B-4, S1b) →
+        réglages du site en partage → commande ;
         responsable, heure de prise et réglages relus sous ces verrous. Deux prises simultanées
         d'une commande protégée : exactement une réussit (``409 order_claim_protected``).
         Commande déjà prise par l'employé : rien ne change (aucun évènement)."""
@@ -877,6 +883,9 @@ class OrderService:
                 )
             )
         )
+        # Site en partage de clé AVANT les réglages (B-4, scénario S1b) : même cycle que
+        # ``add_lines`` avec une reconfiguration et un règlement concurrents.
+        lock_site_key_share(self.db, site_id)
         settings = ensure_settings(
             self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="share"
         )
