@@ -43,7 +43,7 @@ from typing import Any
 from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
+from app.core.errors import BusinessRuleError, ConflictError, ForbiddenError, NotFoundError
 from app.modules.catalog.api import active_packagings, base_quantity, get_article_refs
 from app.modules.customers.api import get_customer_refs, require_active_customer
 from app.modules.restaurant_menu.api import menu_items_of_site
@@ -89,6 +89,7 @@ from app.modules.restaurant_orders.schemas import (
     TicketOut,
 )
 from app.modules.restaurant_orders.settings import (
+    MODULE,
     business_date,
     ensure_settings,
     next_order_number,
@@ -110,7 +111,7 @@ from app.modules.sales.api import (
 )
 from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.audit.service import audit_action
-from app.platform.capabilities.service import CapabilityService
+from app.platform.capabilities.service import CapabilityService, SubscriptionMissingError
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.registry import ModuleStatus, get_registry
@@ -207,6 +208,8 @@ class OrderService:
         self.db = db
         self.ctx = ctx
         self.now = now
+        # Modules effectifs recalculés après le verrou du site (``_fresh_site_modules``).
+        self._fresh_modules: tuple[uuid.UUID, frozenset[str]] | None = None
         # Évènements d'une même requête : même horodatage ; identifiants croissants pour que
         # l'historique (trié par heure puis identifiant) garde l'ordre d'écriture.
         self._last_event_id: uuid.UUID | None = None
@@ -221,20 +224,41 @@ class OrderService:
             return frozenset(self.ctx.capabilities.modules)
         return frozenset(self.ctx.site_capabilities(site_id).modules)
 
-    def _tables_effective_now(self, site_id: uuid.UUID) -> bool:
-        """``restaurant.tables`` effectif sur le site, RECALCULÉ depuis la base (jamais les
-        capacités mises en cache au début de la requête) : appelé APRÈS le verrou du site, il
-        voit toute reconfiguration validée avant (aucune ne peut l'être pendant). Un module
+    def _fresh_site_modules(self, site_id: uuid.UUID) -> frozenset[str]:
+        """Modules effectifs du site RECALCULÉS depuis la base (jamais les capacités mises en
+        cache au début de la requête). Appelé APRÈS le verrou du site (partage de clé), il voit
+        toute reconfiguration validée avant ; aucune ne peut l'être pendant (R-2). Un module
         planifié n'est jamais effectif, même avec une activation inerte (E.1)."""
-        registry = get_registry()
-        if TABLES_MODULE not in registry:
-            return False
-        if registry.get(TABLES_MODULE).status is not ModuleStatus.AVAILABLE:
-            return False
-        capabilities = CapabilityService(self.db, registry).resolve(
-            tenant=self.ctx.tenant, membership=self.ctx.membership, site_id=site_id, now=self.now
-        )
-        return TABLES_MODULE in capabilities.modules
+        if self._fresh_modules is None or self._fresh_modules[0] != site_id:
+            registry = get_registry()
+            try:
+                capabilities = CapabilityService(self.db, registry).resolve(
+                    tenant=self.ctx.tenant,
+                    membership=self.ctx.membership,
+                    site_id=site_id,
+                    now=self.now,
+                )
+            except SubscriptionMissingError:
+                modules: frozenset[str] = frozenset()
+            else:
+                modules = frozenset(
+                    code
+                    for code in capabilities.modules
+                    if code in registry and registry.get(code).status is ModuleStatus.AVAILABLE
+                )
+            self._fresh_modules = (site_id, modules)
+        return self._fresh_modules[1]
+
+    def _ensure_orders_still_effective(self, site_id: uuid.UUID) -> None:
+        """La création a pu attendre une reconfiguration du site (désactivation des commandes,
+        changement de profil) : le module doit être ENCORE effectif, sinon aucune commande n'est
+        créée (même code que ``require_module``)."""
+        if MODULE not in self._fresh_site_modules(site_id):
+            raise ForbiddenError("Module non disponible", code="module_unavailable")
+
+    def _tables_effective_now(self, site_id: uuid.UUID) -> bool:
+        """``restaurant.tables`` effectif sur le site, recalculé après le verrou du site."""
+        return TABLES_MODULE in self._fresh_site_modules(site_id)
 
     def _table_for_order(
         self, site_id: uuid.UUID, table_id: uuid.UUID, mode: ServiceMode
@@ -547,6 +571,9 @@ class OrderService:
         # prend le site en exclusif puis les réglages : sans ce verrou anticipé, l'insertion de
         # la commande (clé étrangère vers le site) croisait ces deux verrous (interblocage).
         lock_site_key_share(self.db, site_id)
+        # Effectivité RÉELLE du module, après le verrou : une désactivation validée pendant que
+        # la création attendait l'interdit (R-2, correction complémentaire de B-1).
+        self._ensure_orders_still_effective(site_id)
         settings = ensure_settings(
             self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="share"
         )

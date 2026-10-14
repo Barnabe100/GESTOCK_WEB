@@ -398,6 +398,27 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   commande ouverte, module désactivé). Même nature pour les permissions lues en début de
   requête. Pas un interblocage. Le module des TABLES, lui, est recalculé après les verrous
   (`tables_unavailable`). Correction proposée (recalcul de l'effectivité des commandes après le
-  verrou du site) soumise à autorisation.
+  verrou du site) soumise à autorisation — **autorisée et livrée** (correction complémentaire
+  ci-dessous).
 - **Codes d'erreur nouveaux** (traductions en R5-C) : `table_not_allowed_for_mode`,
   `tables_unavailable`, `table_inactive` (`table_not_found` existe depuis R5-A).
+
+### R5-B / B-1 — correction complémentaire : effectivité des commandes revérifiée à la création
+
+- **Correction** (création des commandes seulement) : après le verrou du site (partage de clé)
+  et AVANT les réglages, les modules effectifs du site sont RECALCULÉS depuis la base
+  (`OrderService._fresh_site_modules`, un seul calcul par requête, module planifié jamais
+  effectif) ; si `restaurant.orders` n'est plus effectif, la création est refusée
+  (`403 module_unavailable`, code de `require_module`) et rien n'est écrit. Le même calcul sert
+  à l'effectivité des tables. Mécanisme général des capacités, permissions communes et autres
+  modules : inchangés.
+- **Tests pas à pas** (`tests/test_restaurant_orders_locking.py`) : désactivation d'abord (tenue
+  sur sa ligne `site_modules`) → la création attend au verrou du site (constaté), puis
+  `403 module_unavailable` ; état final vérifié EN BASE (module désactivé, aucune commande en
+  cours ; avec table : aucune commande rattachée), sans table puis avec table. Création d'abord
+  → `201` puis `409 module_has_open_operations`, module toujours actif, une commande. D1 / D2
+  rejoués : aucune erreur ni `40P01`.
+- **Risque résiduel** : les PERMISSIONS (et les autres capacités, ex. abonnement) restent lues au
+  début de la requête ; seule l'effectivité des modules des commandes et des tables est
+  revérifiée après le verrou. Les changements d'abonnement ou de licence par la console ne
+  prennent pas le verrou du site (AR-2, non investigué).

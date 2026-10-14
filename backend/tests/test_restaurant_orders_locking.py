@@ -148,6 +148,23 @@ def _fingerprint(owner: Api, site: str) -> str:
     return str(_ok(preview)["fingerprint"])
 
 
+def _state(owner_engine: Engine, site: str, code: str) -> tuple[bool, int]:
+    """État final EN BASE : activation du module sur le site, commandes non finales du site."""
+    with owner_engine.connect() as conn:
+        enabled = conn.execute(
+            text("SELECT enabled FROM site_modules WHERE site_id = :s AND module_code = :c"),
+            {"s": site, "c": code},
+        ).scalar_one()
+        open_orders = conn.execute(
+            text(
+                "SELECT count(*) FROM restaurant_orders WHERE site_id = :s "
+                "AND status IN ('OPEN', 'PENDING_CONFIRMATION')"
+            ),
+            {"s": site},
+        ).scalar_one()
+    return bool(enabled), int(open_orders)
+
+
 def _table(owner: Api, site: str, label: str) -> str:
     return str(
         _ok(owner.post("/restaurant/tables", json={"site_id": site, "label": label}), 201)["id"]
@@ -170,14 +187,17 @@ def test_d1_creation_without_table_vs_disabling_orders(
         _wait_until(owner_engine, "INSERT INTO document_sequences", "FROM sites")
     assert create.join() == (201, None)
     assert disable.join() == (409, "module_has_open_operations")
+    # Création normale aboutie ; désactivation refusée : module toujours actif, une commande.
+    assert _state(owner_engine, w.site, "restaurant.orders") == (True, 1)
 
 
-def test_d1_reverse_disabling_first_then_creation_without_table(
+def test_d1_reverse_disabling_first_then_creation_without_table_is_refused(
     provision: Any, oclient: TestClient, owner_engine: Engine
 ) -> None:
     """Ordre inverse : la désactivation tient le site (retenue sur sa ligne ``site_modules``) ;
-    la création attend dès son PREMIER verrou (site, partage de clé), sans rien tenir que la
-    désactivation réclame : aucun interblocage."""
+    la création attend dès son PREMIER verrou (site, partage de clé), sans interblocage, puis
+    recalcule l'effectivité du module APRÈS ce verrou : le module vient d'être désactivé, la
+    commande n'est pas créée."""
     w = _world(provision, oclient, "rl-d1r", MAQUIS)
     with _gate(owner_engine, SITE_MODULE, s=w.site, c="restaurant.orders"):
         disable = Call(lambda: _disable(w.owner, w.site, "restaurant.orders"))
@@ -185,10 +205,34 @@ def test_d1_reverse_disabling_first_then_creation_without_table(
         create = Call(lambda: _order(w.owner, w.site, [_line(w.menu.unit)]))
         _wait_until(owner_engine, "FROM site_modules", "FOR KEY SHARE")
     assert disable.join() == (204, None)
-    # La création se termine sans erreur ; son résultat métier (capacités lues au début de la
-    # requête) relève d'un risque consigné à part (``docs/DOC_BACKLOG.md``, R5-B).
-    status, _code = create.join()
-    assert status in (201, 403, 422)
+    assert create.join() == (403, "module_unavailable")
+    # Aucune commande ouverte indésirable : module désactivé, zéro commande en cours.
+    assert _state(owner_engine, w.site, "restaurant.orders") == (False, 0)
+
+
+def test_d1_reverse_disabling_first_then_creation_with_table_is_refused(
+    provision: Any, tclient: TestClient, owner_engine: Engine
+) -> None:
+    """Même scénario avec une table (registre de test : commandes et tables disponibles). Les
+    tables, qui dépendent des commandes, sont d'abord désactivées (sinon la désactivation des
+    commandes est refusée : ``module_has_dependents``) ; la création portant une table attend
+    au verrou du site, puis est refusée parce que les commandes ne sont plus effectives."""
+    w = _world(provision, tclient, "rl-d1rt", RESTAURANT)
+    table = _table(w.owner, w.site, "T1")
+    assert _disable(w.owner, w.site, "restaurant.tables").status_code == 204
+    with _gate(owner_engine, SITE_MODULE, s=w.site, c="restaurant.orders"):
+        disable = Call(lambda: _disable(w.owner, w.site, "restaurant.orders"))
+        _wait_until(owner_engine, "FROM site_modules")
+        create = Call(lambda: _order(w.owner, w.site, [_line(w.menu.unit)], table_id=table))
+        _wait_until(owner_engine, "FROM site_modules", "FOR KEY SHARE")
+    assert disable.join() == (204, None)
+    assert create.join() == (403, "module_unavailable")
+    assert _state(owner_engine, w.site, "restaurant.orders") == (False, 0)
+    with owner_engine.connect() as conn:
+        attached = conn.execute(
+            text("SELECT count(*) FROM restaurant_orders WHERE table_id = :t"), {"t": table}
+        ).scalar_one()
+    assert attached == 0
 
 
 def test_d2_creation_without_table_vs_profile_change(
