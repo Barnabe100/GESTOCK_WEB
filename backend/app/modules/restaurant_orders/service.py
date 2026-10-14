@@ -84,6 +84,7 @@ from app.modules.restaurant_orders.schemas import (
     OrderCreate,
     OrderOut,
     OrderSettle,
+    OrderTableOut,
     SettingsUpdate,
     TicketLineOut,
     TicketOut,
@@ -1250,10 +1251,12 @@ class OrderService:
         unsettled_served: bool = False,
         search: str | None = None,
         day: Any = None,
+        table_id: uuid.UUID | None = None,
     ) -> tuple[list[OrderOut], int]:
         """Commandes des sites lisibles ; par défaut les commandes en cours, de la plus ancienne à
         la plus récente (ancienneté). ``unsettled_served`` : commandes servies non réglées
-        (limites de V1). Recherche : numéro exact ou nom d'appel."""
+        (limites de V1). Recherche : numéro exact ou nom d'appel. ``table_id`` : commandes de
+        cette table (B7 ; combiné aux autres filtres, état « en cours » par défaut)."""
         stmt = self._query(readable_site_ids(self.ctx, site_id))
         if state is OrderState.ACTIVE:
             stmt = stmt.where(RestaurantOrder.status.in_(ACTIVE_ORDER_STATUSES))
@@ -1280,6 +1283,8 @@ class OrderService:
             )
         if day is not None:
             stmt = stmt.where(RestaurantOrder.business_date == day)
+        if table_id is not None:
+            stmt = stmt.where(RestaurantOrder.table_id == table_id)
         term = (search or "").strip().lstrip("#")
         if term:
             conditions: list[ColumnElement[bool]] = [
@@ -1339,6 +1344,9 @@ class OrderService:
         finances = sale_financial_states(
             self.db, {o.sale_id for o in orders if o.sale_id is not None}
         )
+        table_ids = {o.table_id for o in orders if o.table_id is not None}
+        directory = table_directory(self.db, self.ctx) if table_ids else None
+        tables = directory.labels(table_ids) if directory is not None else {}
         result: list[OrderOut] = []
         for order in orders:
             own = lines[order.id]
@@ -1346,6 +1354,7 @@ class OrderService:
             served = [line.served_at for line in own if line.served_at is not None]
             customer = customers.get(order.customer_id) if order.customer_id else None
             finance = finances.get(order.sale_id) if order.sale_id else None
+            table = tables.get(order.table_id) if order.table_id is not None else None
             result.append(
                 OrderOut(
                     id=order.id,
@@ -1358,6 +1367,15 @@ class OrderService:
                     customer_id=order.customer_id,
                     customer_name=customer.name if customer is not None else None,
                     call_name=order.call_name,
+                    table_id=order.table_id,
+                    table=OrderTableOut(
+                        id=table.id,
+                        label=table.label,
+                        zone_name=table.zone_name,
+                        is_active=table.is_active,
+                    )
+                    if table is not None
+                    else None,
                     status=order.status,
                     prep_status=order.prep_status,
                     settlement_status=order.settlement_status,

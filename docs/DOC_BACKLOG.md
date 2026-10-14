@@ -481,3 +481,50 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   opérations sur une commande existante) ; seuls les modules des tables sont recalculés pour une
   association. Mécanisme général des capacités inchangé. Aucune migration ; interface en R5-C ;
   champ `table` de `OrderOut` en B-3.
+
+### R5-B / B-2 — validation (`2de09f0`)
+
+- Validé sur la base du compte rendu et de la CI verte. Décisions : protections existantes du
+  changement de profil conservées (B-2 ne les contourne pas) ; **ordre des refus conservé** — la
+  validation de la table peut précéder celle de l'état final de la commande (une table invalide
+  ou inactive peut donc être refusée avant `order_closed`), aucun état métier modifié en cas de
+  refus ; règle « même table : aucune écriture » conservée ; `PENDING_CONFIRMATION` non anticipé
+  (examiné en R7). Risques résiduels (permissions et effectivité de `restaurant.orders` lues en
+  début de requête ; AR-2) toujours ouverts.
+
+### R5-B / B-3 — lecture enrichie, filtre par table, plan de salle
+
+- **`OrderOut`** : `table_id` et `table` (`{id, label, zone_name, is_active}`), libellé et zone
+  COURANTS lus par le port des tables (`labels`, un appel par page) — aucune copie dans la
+  commande (A7), l'affichage d'une commande close suit les renommages (B6), l'historique garde
+  les libellés d'alors. Lu même quand `restaurant.tables` n'est plus effectif (B4). Visible pour
+  qui lit la commande (`order.view`), sans exiger `restaurant.tables.table.view`.
+- **Filtre `table_id`** de `GET /restaurant/orders` (B7) : égalité, combiné aux autres filtres
+  (état « en cours » par défaut) ; table inconnue, d'un autre site ou d'une autre entreprise :
+  liste vide. Recherche par libellé toujours reportée.
+- **Plan de salle** `GET /restaurant/tables/board` (module des tables, `table.view`, déclaré avant
+  `/{table_id}`), pour UN site : site sélectionné, sinon `site_id` ; `422 site_required`,
+  `403 site_mismatch`, `403 site_access_denied` (site non lisible : module non effectif ou
+  permission absente sur ce site, autre entreprise) ; site sélectionné sans le module :
+  `403 module_unavailable`. Non paginé (tables d'un site). Tables actives, plus toute table
+  inactive encore occupée (défense : aucune commande ne disparaît du plan), dans l'ordre des
+  zones puis des tables (sans zone en dernier) ; compteurs par état.
+- **États (B1 / C2)**, calculés à la lecture par l'interface publique des commandes
+  (`occupying_orders`, `OccupyingOrder.to_settle`) : une commande `PENDING_CONFIRMATION` ou `OPEN`
+  occupe sa table ; « en attente de règlement » = `OPEN`, `UNSETTLED`, `prep_status = SERVED` ;
+  table **Occupée** si au moins une commande occupante n'est pas en attente de règlement (à
+  préparer ou à servir, réglée non servie, à confirmer, sans ligne active), **À régler** si
+  toutes le sont, **Libre** sinon ; annulée, refusée ou close : table libérée. Le filtre « À
+  régler » de la liste (`unsettled_served` : au moins une ligne servie) reste inchangé (B1).
+- **Droits** : détail des commandes (numéro, nom d'appel, statuts, création) seulement avec
+  `restaurant.orders.order.view` résolue pour le site du plan (`orders_visible`, sinon
+  `orders: null`). **Choix à confirmer** : le nombre de commandes et l'ancienneté de la plus
+  ancienne (`order_count`, `occupied_since`) restent visibles avec `table.view` seule (A1 : âge et
+  nombre affichés) ; aucun montant n'est exposé par le plan.
+- **Tests** (`tests/test_restaurant_tables_board.py`, 12) : libellé courant (renommage, commande
+  close), non-régression des commandes sans table (trois modes), lecture hors module (état
+  simulé en base), filtre, ordre et contenu du plan, états et priorité (plusieurs commandes,
+  réglée non servie, close, annulée), à confirmer et refusée (états simulés en base avant R7),
+  commande sans ligne active, table inactive occupée (simulée), droits (`order.view` par site,
+  sans `table.view`), portée des sites, isolation entre entreprises, route absente en production.
+- Aucune migration ; aucune écriture ; interface en R5-C ; codes d'erreur sans nouveauté.

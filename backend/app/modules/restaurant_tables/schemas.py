@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,3 +82,63 @@ class TableUpdate(BaseModel):
     label: Required40
     seats: Seats | None = None
     sort_order: SortOrder = 0
+
+
+# --- Plan de salle (R5-B, AR-3) -----------------------------------------------------------------
+
+
+class TableState(StrEnum):
+    """État d'une table, calculé à la lecture (B1 / C2) — priorité : Occupée > À régler > Libre."""
+
+    FREE = "FREE"  # aucune commande à confirmer ou ouverte
+    OCCUPIED = "OCCUPIED"  # au moins une commande « en cours »
+    TO_SETTLE = "TO_SETTLE"  # toutes ouvertes, non réglées, tout servi
+
+
+class BoardOrderOut(BaseModel):
+    """Commande occupant la table (détail réservé à ``restaurant.orders.order.view`` sur le
+    site)."""
+
+    id: uuid.UUID
+    business_date: date
+    daily_number: int
+    call_name: str | None
+    status: str
+    prep_status: str
+    settlement_status: str
+    # Vrai si la commande n'attend plus que son règlement (ouverte, non réglée, tout servi).
+    to_settle: bool
+    created_at: datetime
+
+
+class BoardTableOut(BaseModel):
+    id: uuid.UUID
+    label: str
+    seats: int | None
+    zone_id: uuid.UUID | None
+    zone_name: str | None
+    is_active: bool
+    state: TableState
+    # Nombre de commandes occupant la table (plusieurs possibles, A1) et création de la plus
+    # ancienne (ancienneté) : visibles avec ``restaurant.tables.table.view``.
+    order_count: int
+    occupied_since: datetime | None
+    # ``None`` sans ``restaurant.orders.order.view`` sur le site.
+    orders: list[BoardOrderOut] | None
+
+
+class BoardCounts(BaseModel):
+    free: int
+    occupied: int
+    to_settle: int
+
+
+class BoardOut(BaseModel):
+    """Plan de salle d'UN site : tables actives (et toute table encore occupée), dans l'ordre des
+    zones puis des tables (sans zone en dernier)."""
+
+    site_id: uuid.UUID
+    site_name: str
+    orders_visible: bool
+    counts: BoardCounts
+    tables: list[BoardTableOut]

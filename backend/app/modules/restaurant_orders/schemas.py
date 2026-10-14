@@ -174,6 +174,16 @@ class LineCounts(BaseModel):
     cancelled: int = 0
 
 
+class OrderTableOut(BaseModel):
+    """Table de la commande telle qu'elle est AUJOURD'HUI (libellé et zone courants, B6 ; aucune
+    copie dans la commande, A7) ; l'historique garde les libellés d'alors."""
+
+    id: uuid.UUID
+    label: str
+    zone_name: str | None
+    is_active: bool
+
+
 class OrderOut(BaseModel):
     id: uuid.UUID
     site_id: uuid.UUID
@@ -185,6 +195,10 @@ class OrderOut(BaseModel):
     customer_id: uuid.UUID | None
     customer_name: str | None
     call_name: str | None
+    # Table « sur place » (R5-B) : lue par le port des tables, même si le module n'est plus
+    # effectif (une commande garde sa table jusqu'à son retrait, B4).
+    table_id: uuid.UUID | None = None
+    table: OrderTableOut | None = None
     status: OrderStatus
     prep_status: PrepStatus
     settlement_status: SettlementStatus

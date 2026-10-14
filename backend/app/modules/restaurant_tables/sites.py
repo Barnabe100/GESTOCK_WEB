@@ -21,6 +21,22 @@ def readable_site_ids(ctx: RequestContext, site_id: uuid.UUID | None) -> set[uui
     return {site for site in visible if ctx.has_site_permission(site, TABLE_VIEW)}
 
 
+def board_site(ctx: RequestContext, site_id: uuid.UUID | None) -> uuid.UUID:
+    """Site du plan de salle : le site sélectionné, sinon celui fourni ; il doit être lisible
+    par le membre (module effectif et ``restaurant.tables.table.view`` sur CE site)."""
+    if ctx.site is not None:
+        if site_id is not None and site_id != ctx.site.id:
+            raise ForbiddenError(
+                "Le site ne correspond pas au site sélectionné", code="site_mismatch"
+            )
+        site_id = ctx.site.id
+    if site_id is None:
+        raise BusinessRuleError("Choisissez un site", code="site_required")
+    if site_id not in readable_site_ids(ctx, site_id):
+        raise ForbiddenError("Accès à ce site refusé", code="site_access_denied")
+    return site_id
+
+
 def operation_site(ctx: RequestContext, site_id: uuid.UUID | None) -> uuid.UUID:
     """Site d'une nouvelle écriture : le site sélectionné (``X-Site-Id``), sinon celui fourni,
     accessible au membre et autorisé par l'abonnement et les modules de CE site."""

@@ -3,7 +3,7 @@
 Le routeur est monté avec ``require_module("restaurant.tables")`` (site sélectionné sans le
 module effectif : ``403 module_unavailable``) ; sans site sélectionné, le service limite les
 lectures aux sites où le module est effectif pour le membre et revérifie chaque écriture pour
-son site. Les routes des zones sont déclarées AVANT ``/{table_id}``."""
+son site. Les routes des zones et du plan de salle sont déclarées AVANT ``/{table_id}``."""
 
 import uuid
 from typing import Annotated
@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.modules.restaurant_tables.permissions import TABLE_MANAGE, TABLE_VIEW
 from app.modules.restaurant_tables.schemas import (
+    BoardOut,
     TableCreate,
     TableOut,
     TableUpdate,
@@ -88,6 +89,15 @@ def deactivate_zone(zone_id: uuid.UUID, ctx: TablesManage, db: DbSession) -> Zon
     service.set_zone_active(zone_id, False)
     db.commit()
     return ZoneOut.model_validate(service.zone_row(zone_id))
+
+
+# --- Plan de salle (R5-B, AR-3) -----------------------------------------------------------------
+
+
+@router.get("/board", response_model=BoardOut)
+def table_board(ctx: TablesView, db: DbSession, site_id: uuid.UUID | None = None) -> BoardOut:
+    """États Libre / Occupée / À régler des tables d'un site, calculés à la lecture."""
+    return TableService(db, ctx).board(site_id)
 
 
 # --- Tables -------------------------------------------------------------------------------------

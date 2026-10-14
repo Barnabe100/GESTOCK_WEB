@@ -24,20 +24,38 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
-from app.modules.restaurant_orders.api import open_orders_by_table
+from app.modules.restaurant_orders.api import (
+    ORDER_VIEW,
+    OccupyingOrder,
+    occupying_orders,
+    open_orders_by_table,
+)
 from app.modules.restaurant_tables.models import (
     TABLE_LABEL_INDEX,
     ZONE_NAME_INDEX,
     RestaurantTable,
     RestaurantZone,
 )
-from app.modules.restaurant_tables.schemas import TableCreate, TableUpdate
-from app.modules.restaurant_tables.sites import ensure_row_site, operation_site, readable_site_ids
+from app.modules.restaurant_tables.schemas import (
+    BoardCounts,
+    BoardOrderOut,
+    BoardOut,
+    BoardTableOut,
+    TableCreate,
+    TableState,
+    TableUpdate,
+)
+from app.modules.restaurant_tables.sites import (
+    board_site,
+    ensure_row_site,
+    operation_site,
+    readable_site_ids,
+)
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
 from app.platform.tenancy.models import Site
@@ -339,6 +357,85 @@ class TableService:
             stmt = apply_sort(stmt, params.sort, sortable, "position", RestaurantTable.id)
         rows, total = paginate_rows(self.db, stmt, params)
         return [TableRow(**row._mapping) for row in rows], total
+
+    def board(self, site_id: uuid.UUID | None) -> BoardOut:
+        """Plan de salle d'un site (R5-B, AR-3 ; B1 / C2), calculé à la lecture : une commande à
+        confirmer ou ouverte occupe sa table (plusieurs possibles, A1) ; Occupée si l'une est
+        « en cours », À régler si toutes n'attendent plus que leur règlement, Libre sinon.
+        Annulée, refusée ou close : la table est libérée. Le détail des commandes n'apparaît
+        qu'avec ``restaurant.orders.order.view`` sur le site ; nombre et ancienneté restent
+        visibles. Tables listées : actives, et toute table encore occupée."""
+        site = board_site(self.ctx, site_id)
+        orders = occupying_orders(self.db, site)
+        by_table: dict[uuid.UUID, list[OccupyingOrder]] = {}
+        for order in orders:
+            by_table.setdefault(order.table_id, []).append(order)
+        rows = self.db.execute(
+            self._table_query()
+            .where(
+                RestaurantTable.site_id == site,
+                or_(RestaurantTable.is_active.is_(True), RestaurantTable.id.in_(set(by_table))),
+            )
+            .order_by(
+                RestaurantZone.sort_order.asc().nulls_last(),
+                text_sort(RestaurantZone.name),
+                RestaurantTable.sort_order,
+                text_sort(RestaurantTable.label),
+                RestaurantTable.id,
+            )
+        ).all()
+        visible = self.ctx.has_site_permission(site, ORDER_VIEW)
+        tables: list[BoardTableOut] = []
+        for row in rows:
+            table = TableRow(**row._mapping)
+            own = by_table.get(table.id, [])
+            if not own:
+                state = TableState.FREE
+            elif all(order.to_settle for order in own):
+                state = TableState.TO_SETTLE
+            else:
+                state = TableState.OCCUPIED
+            tables.append(
+                BoardTableOut(
+                    id=table.id,
+                    label=table.label,
+                    seats=table.seats,
+                    zone_id=table.zone_id,
+                    zone_name=table.zone_name,
+                    is_active=table.is_active,
+                    state=state,
+                    order_count=len(own),
+                    occupied_since=min(o.created_at for o in own) if own else None,
+                    orders=[
+                        BoardOrderOut(
+                            id=o.id,
+                            business_date=o.business_date,
+                            daily_number=o.daily_number,
+                            call_name=o.call_name,
+                            status=o.status,
+                            prep_status=o.prep_status,
+                            settlement_status=o.settlement_status,
+                            to_settle=o.to_settle,
+                            created_at=o.created_at,
+                        )
+                        for o in own
+                    ]
+                    if visible
+                    else None,
+                )
+            )
+        site_name = self.db.scalar(select(Site.name).where(Site.id == site)) or ""
+        return BoardOut(
+            site_id=site,
+            site_name=site_name,
+            orders_visible=visible,
+            counts=BoardCounts(
+                free=sum(t.state is TableState.FREE for t in tables),
+                occupied=sum(t.state is TableState.OCCUPIED for t in tables),
+                to_settle=sum(t.state is TableState.TO_SETTLE for t in tables),
+            ),
+            tables=tables,
+        )
 
     def table_row(self, table_id: uuid.UUID) -> TableRow:
         row = self.db.execute(self._table_query().where(RestaurantTable.id == table_id)).one()

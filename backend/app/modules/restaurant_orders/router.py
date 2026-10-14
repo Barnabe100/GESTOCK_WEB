@@ -107,6 +107,7 @@ def list_orders(
     unsettled_served: bool = False,
     search: Annotated[str | None, Query(max_length=40)] = None,
     business_date: date | None = None,
+    table_id: uuid.UUID | None = None,
 ) -> Page[OrderOut]:
     items, total = _service(db, ctx).search(
         paging,
@@ -117,6 +118,7 @@ def list_orders(
         unsettled_served=unsettled_served,
         search=search,
         day=business_date,
+        table_id=table_id,
     )
     return Page(items=items, total=total, limit=paging.limit, offset=paging.offset)
 
