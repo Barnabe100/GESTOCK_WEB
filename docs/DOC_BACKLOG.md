@@ -422,3 +422,9 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   début de la requête ; seule l'effectivité des modules des commandes et des tables est
   revérifiée après le verrou. Les changements d'abonnement ou de licence par la console ne
   prennent pas le verrou du site (AR-2, non investigué).
+- **CI de `e187111` (hors périmètre, non corrigé)** : première exécution du job Frontend en échec
+  dans `frontend/src/pages/SignupPage.test.tsx:254` (`findByRole('radiogroup', « Secteur
+  d'activité »)` au-delà de son délai de 3 s), alors qu'aucun fichier frontend n'a changé depuis
+  `63acc53` (CI verte). Local : ce fichier 5/5, Vitest complet 463/463 ; job relancé une fois :
+  vert (run `38603202130`, tentative 2). Test intermittent sous charge du runner, à examiner à
+  part.
