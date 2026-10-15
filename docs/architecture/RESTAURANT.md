@@ -261,19 +261,54 @@ opérations du catalogue concernées (ports).
 
 ## 7. Ordre global des verrous
 
-1. Verrou consultatif de l'employé (site + employé), pour toute action « Prendre » (R2-C : le
-   réglage du délai n'est lu qu'ensuite, sous le verrou des réglages).
-2. Réglages du site, en partage (le changement de profil les prend en exclusif).
-3. Point QR, en partage (R7).
-4. Commande (exclusif).
-5. Lignes (exclusif, par numéro).
-6. Vente, paiements, caisse (ordre interne de `SaleService`).
-7. Stock (article → assortiment → niveaux → lots, `StockService`).
-8. Insertion des notifications (aucun verrou).
+Ordres **observés dans le code** et vérifiés en R5-B (B-1 à B-4) par des tests pas à pas
+(`backend/tests/test_restaurant_orders_locking.py` : attentes constatées dans `pg_locks` /
+`pg_stat_activity`). Abréviations : *partage de clé* = `FOR KEY SHARE`, *partage* = `FOR SHARE`,
+*exclusif* = `FOR UPDATE`.
 
-Annulation d'une vente d'origine Restauration : le port verrouille la commande avant la vente.
-Les routes de paiement ne verrouillent que la vente. Le verrou exclusif du site (changement de
-profil, ADR-0048) n'est jamais pris par une commande.
+**Règle générale.** Le site est la première ressource : toute opération qui tient des réglages en
+partage puis attend une commande prend d'abord le **site en partage de clé**
+(`lock_site_key_share`) ; une reconfiguration prend le **site en exclusif** (`lock_site`) avant
+tout le reste. Une insertion dans une table liée au site par une clé étrangère (commande, vente,
+paiement, mouvement, avis `member_notifications`, réglages créés à la volée) pose elle aussi un
+partage de clé sur la ligne du site : ce n'est jamais un verrou « gratuit ».
+
+| Opération | Ordre réel |
+|---|---|
+| Création d'une commande (avec ou sans table) | verrou consultatif d'idempotence → **site (partage de clé)** → effectivité des commandes recalculée → réglages (partage) → table (partage, si fournie, par le port) → compteur du jour → insertion |
+| Ajout de lignes | **site (partage de clé)** → réglages (partage) → commande (exclusif) → lignes (exclusif) |
+| Prise en charge (« Prendre ») | verrou consultatif de l'employé (site + employé) → **site (partage de clé)** → réglages (partage) → commande (exclusif) |
+| Changement ou retrait de table | **site (partage de clé)** → table cible (partage, association seulement) → commande (exclusif) |
+| Transitions (préparation, prête, servie, retour) | commande (exclusif) → lignes (exclusif) ; « prête » : insertion des avis en dernier (partage de clé du site par la clé étrangère) |
+| Annulations (lignes, commande), client, réattribution | commande (exclusif) → lignes (exclusif, si concernées) ; aucune insertion liée au site |
+| Règlement | verrou consultatif d'idempotence → commande (exclusif) → lignes (exclusif) → vente, paiements, caisse (ordre interne de `SaleService` ; l'insertion de la vente prend le site en partage de clé) → stock (article → assortiment → niveaux → lots, `StockService`) |
+| Annulation d'une vente d'origine Restauration | le port verrouille la commande avant la vente ; les routes de paiement ne verrouillent que la vente |
+| Réglages du site (modification) | réglages (exclusif) |
+| Désactivation d'un module sur un site | **site (exclusif)** → dépendants (lecture) → verrous de l'empreinte du module (commandes : réglages en exclusif ; caisse : réglages de caisse en exclusif ; tables : aucun) → ligne `site_modules` (exclusif) |
+| Changement de profil d'un site | **site (exclusif)** → toutes les lignes `site_modules` (exclusif) → verrous des empreintes des modules arrêtés |
+| Désactivation d'une table / d'une zone | table (exclusif) puis comptage des commandes en cours / zone (exclusif) ; rattacher une table à une zone : zone en partage |
+
+Le verrou **exclusif** du site n'est jamais pris par une opération sur une commande ; le
+**partage de clé** l'est (explicitement ou par une clé étrangère). Point QR (R7) : non implémenté.
+
+**Cycle d'interblocage confirmé puis corrigé (B-4, commit `6b25162`).** Avant le correctif, trois
+opérations sur la même commande fermaient un cycle (`40P01`, erreur 500) : (1) le règlement ou le
+passage à « prête » tient la commande puis prend le site en partage de clé (insertion de la vente
+ou de l'avis) ; (2) l'ajout de lignes ou la prise en charge tient les réglages en partage et
+attend la commande ; (3) la désactivation de `restaurant.orders` tient le site en exclusif et
+attend les réglages en exclusif. Antérieur à R5-B (reproduit sur R5-A). Correctif : (2) prend le
+site en partage de clé AVANT les réglages ; (3) attend alors au verrou du site sans rien tenir, et
+le partage de clé demandé par (1) est accordé (compatible avec celui de (2)). Scénarios S1, S1b,
+S2 vérifiés sans erreur. Un cycle analogue avait été corrigé pour la création en B-1 (R-2).
+
+**Limites.** Ces vérifications couvrent les scénarios nommés (D1, D2 avec et sans table, courses
+du changement de table, S1, S1b, S2) ; elles ne démontrent pas l'absence générale
+d'interblocage. Les transitions et le règlement tiennent toujours la commande avant de prendre le
+site en partage de clé (non modifiés). Non investigués : règlement en espèces contre
+reconfiguration de la caisse, opérations de vente, de point de vente et de stock contre un
+changement de profil (AR-2), et les changements d'abonnement ou de licence par la console, hors
+verrou du site (courses possibles sur les capacités et les permissions lues en début de
+requête).
 
 ## 8. Permissions et rôles
 

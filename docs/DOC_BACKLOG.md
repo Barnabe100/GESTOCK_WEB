@@ -528,3 +528,68 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   commande sans ligne active, table inactive occupée (simulée), droits (`order.view` par site,
   sans `table.view`), portée des sites, isolation entre entreprises, route absente en production.
 - Aucune migration ; aucune écriture ; interface en R5-C ; codes d'erreur sans nouveauté.
+
+### R5-B / B-3 — validation (`532a5a2`) et arbitrages
+
+- Validé sur la base du compte rendu et de la CI verte ; `532a5a2` reste la référence de la
+  livraison B-3. Arbitrages confirmés (comportement livré conforme, aucun code modifié) :
+  1. `order_count` et `occupied_since` visibles avec `restaurant.tables.table.view` seule, sans
+     `restaurant.orders.order.view`, le détail individuel des commandes restant masqué
+     (`orders: null`) ;
+  2. `table_id` reste exposé dans `OrderOut`, en complément de l'objet `table` ;
+  3. libellé et informations de la table d'une commande consultables avec `order.view`, sans
+     exiger `table.view` ; le plan de salle et la configuration restent protégés par les
+     permissions des tables ;
+  4. une table inactive encore occupée reste visible sur le plan par précaution — **situation
+     anormale** que les routes normales ne créent pas (désactivation refusée avec des commandes
+     en cours, A6 ; rattachement refusé à une table inactive) ;
+  5. plan de salle non paginé et limité à un site dans cette version ; pagination à réévaluer
+     selon les besoins et la volumétrie.
+
+### R5-B / B-4 — vérification globale et clôture technique
+
+- **Ordres de verrouillage réels** consignés dans `RESTAURANT.md` §7 (tableau par opération :
+  création, ajout de lignes, prise en charge, transitions, annulations, règlement, changement de
+  table, désactivation de module, changement de profil, tables et zones). Affirmations inexactes
+  corrigées : l'insertion des avis n'est pas « sans verrou » (clé étrangère vers le site :
+  partage de clé) ; les commandes prennent le site en partage de clé (jamais en exclusif).
+- **Interblocage confirmé (antérieur à R5-B)** — diagnostic pas à pas hors dépôt, puis tests :
+  (1) règlement ou « prête » tient la commande puis prend le site en partage de clé (insertion de
+  la vente ou de l'avis) ; (2) ajout de lignes ou prise en charge tient les réglages en partage et
+  attend la commande ; (3) désactivation de `restaurant.orders` tient le site en exclusif et
+  attend les réglages en exclusif → `40P01` (victime observée : (2), erreur 500). Reproduit à
+  l'identique sur `4d7ffbe` (R5-A, sans code de R5-B) ; non déclenchable en production tant que le
+  module est planifié.
+- **Correctif autorisé (option A), commit `6b25162`** : `add_lines` et `claim` prennent le site en
+  partage de clé (`lock_site_key_share`) AVANT les réglages ; aucune autre opération modifiée
+  (transitions et règlement inchangés ; option B — généralisation — non autorisée).
+- **Tests de non-régression** (`tests/test_restaurant_orders_locking.py`, attentes constatées
+  dans `pg_locks` / `pg_stat_activity`, absence de `40P01`, état final vérifié en base) :
+  - ordre site → réglages : site tenu en exclusif, l'ajout de lignes et la prise en charge
+    attendent au verrou du site sans aucun verrou de ligne sur les réglages ni la commande ;
+  - S1 (règlement + ajout de lignes + désactivation) : la désactivation attend au verrou du
+    site ; `201`, `409 order_settled`, `409 module_has_open_operations` ; une vente, une ligne ;
+  - S1b (règlement + prise en charge + désactivation) : `201`, `200`, `409` ; commande prise par
+    le membre attendu ;
+  - S2 (« prête » + ajout de lignes + désactivation) : `200`, `200`, `409` ; un avis, deux lignes ;
+  - sans le correctif, ces quatre tests échouent (vérifié) ; S3 / S4 du diagnostic hors dépôt
+    (règlement + changement de table + changement de profil ou désactivation des tables) : aucun
+    interblocage, exécutés sur `532a5a2` seulement (avant le correctif, non rejoués après).
+- **Résultats** : suite backend complète locale `1408 passed` (39 min 47 s, sur `6b25162`) ;
+  `1404 passed` sur `532a5a2` avant le correctif ; fichier de concurrence rejoué deux fois
+  (`23 passed` ×2) ; Ruff, `ruff format --check`, Mypy, `alembic check` propres ; Vitest local
+  `463 passed` (sur `532a5a2`, frontend inchangé depuis) ; CI verte sur `532a5a2` et `6b25162`
+  (4/4 jobs). Exécutés seulement en CI : Signing Service, configuration Docker Compose, build du
+  frontend.
+- **Limites et risques résiduels** : les scénarios vérifiés ne démontrent pas l'absence générale
+  d'interblocage ; transitions et règlement tiennent toujours la commande avant le site (cycles
+  connus rompus, autres combinaisons non explorées) ; **AR-2 non investigué** (règlement en
+  espèces contre reconfiguration de la caisse ; vente, POS et stock contre un changement de
+  profil ; console hors verrou du site) ; **courses sur les permissions, abonnements et licences**
+  (capacités et permissions lues en début de requête ; seuls les modules des commandes, à la
+  création, et des tables, à l'association, sont recalculés après le verrou du site) : non
+  investiguées ; **E2E impossibles** tant que `restaurant.orders` et `restaurant.tables` sont
+  `planned` ; test frontend intermittent `SignupPage.test.tsx` (voir B-1) non revu.
+- **État** : aucune migration en R5-B ; politique E.1 d'ADR-0048 inchangée ; modules
+  `restaurant.orders` et `restaurant.tables` toujours `planned` en production ; interface en
+  R5-C (non commencée).
