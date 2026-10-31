@@ -15,11 +15,13 @@ import { FormField } from '@/shared/ui/FormField';
 import { PageHeader } from '@/shared/ui/PageHeader';
 
 import { newKey, SERVICE_MODES, useOrderMutations, type ServiceMode } from './api';
+import { OccupiedTableWarning, TablePicker, useCanChooseTable } from './tables';
 import { MenuCart, orderError, toLineInputs, type CartLine } from './ui';
 
 /**
  * Prise de commande (T1) par le personnel : mode de service obligatoire, nom d'appel et client
- * facultatifs, lignes choisies parmi les éléments COMMANDABLES du menu du site. Le serveur fige
+ * facultatifs, table facultative (« sur place » seulement, R5), lignes choisies parmi les
+ * éléments COMMANDABLES du menu du site. Le serveur fige
  * les prix, attribue le numéro du jour et revérifie tout ; ni vente, ni paiement, ni stock. Une
  * clé d'idempotence par saisie : une double soumission ne crée qu'une commande.
  */
@@ -32,11 +34,13 @@ export default function OrderCreatePage() {
   const [mode, setMode] = useState<ServiceMode>('ON_SITE');
   const [callName, setCallName] = useState('');
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
+  const [tableId, setTableId] = useState<string | null>(null);
   const [lines, setLines] = useState<CartLine[]>([]);
   const [key] = useState(newKey);
   const [error, setError] = useState<string | null>(null);
   const { create } = useOrderMutations();
   const withCustomers = hasModule('customers') && can('customers.customer.view');
+  const withTables = useCanChooseTable() && mode === 'ON_SITE';
   const invalidQuantity = lines.some((l) => l.quantity === '' || Number(l.quantity) <= 0);
 
   const submit = () => {
@@ -47,6 +51,7 @@ export default function OrderCreatePage() {
         service_mode: mode,
         customer_id: customer?.id ?? null,
         call_name: callName.trim() || null,
+        table_id: withTables ? tableId : null,
         lines: toLineInputs(lines),
         idempotency_key: key,
       },
@@ -81,6 +86,8 @@ export default function OrderCreatePage() {
                   onChange={(e) => {
                     setSiteId(e.value as string | null);
                     setLines([]);
+                    // Une table appartient à UN site.
+                    setTableId(null);
                   }}
                   options={capabilities.sites.map((s) => ({ value: s.id, label: s.name }))}
                   placeholder={t('stock.chooseSite')}
@@ -92,7 +99,11 @@ export default function OrderCreatePage() {
                 id="order-mode"
                 value={mode}
                 allowEmpty={false}
-                onChange={(e) => setMode(e.value as ServiceMode)}
+                onChange={(e) => {
+                  setMode(e.value as ServiceMode);
+                  // Table seulement « sur place » : un autre mode l'efface.
+                  setTableId(null);
+                }}
                 options={SERVICE_MODES.map((m) => ({
                   value: m,
                   label: t(`restaurantOrders.serviceModes.${m}`),
@@ -111,6 +122,20 @@ export default function OrderCreatePage() {
                 onChange={(e) => setCallName(e.target.value)}
               />
             </FormField>
+            {withTables && (
+              <FormField
+                id="order-table"
+                label={t('restaurantOrders.table')}
+                help={t('restaurantOrders.tableHelp')}
+              >
+                <TablePicker
+                  id="order-table"
+                  siteId={siteId}
+                  value={tableId}
+                  onChange={setTableId}
+                />
+              </FormField>
+            )}
             {withCustomers && (
               <FormField
                 id="order-customer"
@@ -125,6 +150,7 @@ export default function OrderCreatePage() {
           {lines.some((l) => !isWholeQuantity(l.quantity || '0')) && (
             <p className="sm-help">{t('restaurantOrders.decimalHint')}</p>
           )}
+          {withTables && <OccupiedTableWarning siteId={siteId} tableId={tableId} />}
           {error && <Message severity="error" text={error} />}
           <div className="sm-form-actions">
             <Button

@@ -5,9 +5,10 @@ import { Dropdown } from 'primereact/dropdown';
 import { TabPanel, TabView } from 'primereact/tabview';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { useTables } from '@/modules/restaurant_tables/api';
 import { SalePaymentBadge } from '@/modules/sales/ui';
 import { formatMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
@@ -33,10 +34,44 @@ import {
   type OrderStateFilter,
   type PrepStatus,
 } from './api';
+import { tableLabel, useCanChooseTable } from './tables';
 import { OrderStatusBadge, PrepBadge, SettlementBadge } from './ui';
 
 /** Colonnes de l'écran de suivi (P-13) : état de préparation de la commande. */
 const BOARD_COLUMNS: PrepStatus[] = ['RECEIVED', 'IN_PREPARATION', 'READY'];
+
+/** Filtre par table (B7) : partagé par les trois onglets, porté par l'URL (`?table_id=`). */
+interface TableFilterProps {
+  tableId: string | null;
+  onChange: (tableId: string | null) => void;
+}
+
+/** Choix de la table filtrée : tables des sites lisibles (actives ou non, pour l'historique). */
+function TableFilter({ tableId, onChange }: TableFilterProps) {
+  const { t } = useTranslation();
+  const { capabilities } = useCapabilities();
+  const canChoose = useCanChooseTable();
+  const tables = useTables('limit=100&sort=position', canChoose);
+  if (!canChoose) return null;
+  const showSite = capabilities.site === null && capabilities.sites.length > 1;
+  return (
+    <Dropdown
+      value={tableId}
+      onChange={(e) => onChange((e.value as string | undefined) ?? null)}
+      options={(tables.data?.items ?? []).map((table) => ({
+        value: table.id,
+        label: showSite ? `${tableLabel(table)} (${table.site_name})` : tableLabel(table),
+      }))}
+      placeholder={t('restaurantOrders.allTables')}
+      showClear
+      aria-label={t('restaurantOrders.table')}
+    />
+  );
+}
+
+function TableCell({ order }: { order: Order }) {
+  return order.table ? <span>{tableLabel(order.table)}</span> : <span>—</span>;
+}
 
 function OrderCard({ order, showSite }: { order: Order; showSite: boolean }) {
   const { t } = useTranslation();
@@ -54,6 +89,11 @@ function OrderCard({ order, showSite }: { order: Order; showSite: boolean }) {
           <SettlementBadge order={order} />
         </span>
         {order.call_name && <span className="sm-order-call-name">{order.call_name}</span>}
+        {order.table && (
+          <span className="sm-help">
+            {t('restaurantOrders.tableNamed', { label: tableLabel(order.table) })}
+          </span>
+        )}
         <span className="sm-help">
           {t(`restaurantOrders.serviceModes.${order.service_mode}`)}
           {showSite ? ` · ${order.site_name}` : ''}
@@ -75,7 +115,7 @@ function OrderCard({ order, showSite }: { order: Order; showSite: boolean }) {
 }
 
 /** Écran de suivi en trois colonnes (Reçues, En préparation, Prêtes), actualisé toutes les 15 s. */
-function Board() {
+function Board({ tableId, onChange }: TableFilterProps) {
   const { t } = useTranslation();
   const { capabilities } = useCapabilities();
   const [search, setSearch] = useState('');
@@ -83,16 +123,29 @@ function Board() {
   const showSite = capabilities.site === null && capabilities.sites.length > 1;
   return (
     <>
-      <FilterBar onReset={() => setSearch('')} active={search !== ''}>
+      <FilterBar
+        onReset={() => {
+          setSearch('');
+          onChange(null);
+        }}
+        active={search !== '' || tableId !== null}
+      >
         <SearchInput
           value={search}
           placeholder={t('restaurantOrders.searchPlaceholder')}
           onChange={setSearch}
         />
+        <TableFilter tableId={tableId} onChange={onChange} />
       </FilterBar>
       <div className="sm-order-board">
         {BOARD_COLUMNS.map((prep) => (
-          <BoardColumn key={prep} prep={prep} search={debounced} showSite={showSite} />
+          <BoardColumn
+            key={prep}
+            prep={prep}
+            search={debounced}
+            tableId={tableId}
+            showSite={showSite}
+          />
         ))}
       </div>
     </>
@@ -102,10 +155,12 @@ function Board() {
 function BoardColumn({
   prep,
   search,
+  tableId,
   showSite,
 }: {
   prep: PrepStatus;
   search: string;
+  tableId: string | null;
   showSite: boolean;
 }) {
   const { t } = useTranslation();
@@ -116,6 +171,7 @@ function BoardColumn({
     sort: 'created_at',
   });
   if (search) params.set('search', search);
+  if (tableId) params.set('table_id', tableId);
   const orders = useOrders(params.toString());
   const items = orders.data?.items ?? [];
   return (
@@ -139,7 +195,7 @@ function BoardColumn({
 }
 
 /** Commandes en cours non réglées, de la plus ancienne à la plus récente (limites de V1). */
-function ToSettle() {
+function ToSettle({ tableId, onChange }: TableFilterProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { capabilities } = useCapabilities();
@@ -154,16 +210,19 @@ function ToSettle() {
       settlement_status: 'UNSETTLED',
       unsettled_served: servedOnly ? 'true' : null,
       search: debounced,
+      table_id: tableId,
     }),
   );
+  const filtered = search !== '' || servedOnly || tableId !== null;
   return (
     <>
       <FilterBar
         onReset={() => {
           setSearch('');
           setServedOnly(false);
+          onChange(null);
         }}
-        active={search !== '' || servedOnly}
+        active={filtered}
       >
         <SearchInput
           value={search}
@@ -181,6 +240,13 @@ function ToSettle() {
           />
           <label htmlFor="orders-served-only">{t('restaurantOrders.servedUnsettled')}</label>
         </div>
+        <TableFilter
+          tableId={tableId}
+          onChange={(value) => {
+            onChange(value);
+            setTable((s) => ({ ...s, first: 0 }));
+          }}
+        />
       </FilterBar>
       <ServerTable
         query={orders}
@@ -188,12 +254,7 @@ function ToSettle() {
         onTableChange={setTable}
         minWidth="44rem"
         onRowClick={(o: Order) => void navigate(`/restaurant/orders/${o.id}`)}
-        empty={
-          <ListEmpty
-            filtered={search !== '' || servedOnly}
-            title={t('restaurantOrders.nothingToSettle')}
-          />
-        }
+        empty={<ListEmpty filtered={filtered} title={t('restaurantOrders.nothingToSettle')} />}
       >
         <Column
           header={t('restaurantOrders.number')}
@@ -205,6 +266,7 @@ function ToSettle() {
           header={t('restaurantOrders.callNameOrCustomer')}
           body={(o: Order) => o.call_name ?? o.customer_name ?? '—'}
         />
+        <Column header={t('restaurantOrders.table')} body={(o: Order) => <TableCell order={o} />} />
         <Column
           header={t('restaurantOrders.prepState')}
           body={(o: Order) => <PrepBadge status={o.prep_status} />}
@@ -233,7 +295,7 @@ function ToSettle() {
 }
 
 /** Historique : commandes closes, annulées ou toutes, recherche par numéro ou nom d'appel. */
-function History() {
+function History({ tableId, onChange }: TableFilterProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { capabilities } = useCapabilities();
@@ -246,15 +308,16 @@ function History() {
   const [search, setSearch] = useState('');
   const [state, setState] = useState<OrderStateFilter>('closed');
   const debounced = useDebouncedValue(search);
-  const orders = useOrders(toQueryString(table, { state, search: debounced }));
+  const orders = useOrders(toQueryString(table, { state, search: debounced, table_id: tableId }));
   return (
     <>
       <FilterBar
         onReset={() => {
           setSearch('');
           setState('closed');
+          onChange(null);
         }}
-        active={search !== '' || state !== 'closed'}
+        active={search !== '' || state !== 'closed' || tableId !== null}
       >
         <SearchInput
           value={search}
@@ -276,6 +339,13 @@ function History() {
           }))}
           aria-label={t('restaurantOrders.state')}
         />
+        <TableFilter
+          tableId={tableId}
+          onChange={(value) => {
+            onChange(value);
+            setTable((s) => ({ ...s, first: 0 }));
+          }}
+        />
       </FilterBar>
       <ServerTable
         query={orders}
@@ -283,7 +353,12 @@ function History() {
         onTableChange={setTable}
         minWidth="48rem"
         onRowClick={(o: Order) => void navigate(`/restaurant/orders/${o.id}`)}
-        empty={<ListEmpty filtered={search !== ''} title={t('restaurantOrders.noOrders')} />}
+        empty={
+          <ListEmpty
+            filtered={search !== '' || tableId !== null}
+            title={t('restaurantOrders.noOrders')}
+          />
+        }
       >
         <Column
           header={t('restaurantOrders.number')}
@@ -297,6 +372,7 @@ function History() {
           sortable
           body={(o: Order) => formatDateTime(o.created_at, locale, timezone)}
         />
+        <Column header={t('restaurantOrders.table')} body={(o: Order) => <TableCell order={o} />} />
         <Column
           header={t('restaurantOrders.state')}
           body={(o: Order) => <OrderStatusBadge status={o.status} />}
@@ -328,6 +404,22 @@ export default function OrdersPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { can } = useCapabilities();
+  // Filtre par table porté par l'URL : lien « Voir les commandes de la table » du plan de salle.
+  const [params, setParams] = useSearchParams();
+  const tableId = params.get('table_id');
+  const filter: TableFilterProps = {
+    tableId,
+    onChange: (value) =>
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (value) next.set('table_id', value);
+          else next.delete('table_id');
+          return next;
+        },
+        { replace: true },
+      ),
+  };
   return (
     <>
       <PageHeader
@@ -355,13 +447,13 @@ export default function OrdersPage() {
       />
       <TabView>
         <TabPanel header={t('restaurantOrders.tabs.board')}>
-          <Board />
+          <Board {...filter} />
         </TabPanel>
         <TabPanel header={t('restaurantOrders.tabs.toSettle')}>
-          <ToSettle />
+          <ToSettle {...filter} />
         </TabPanel>
         <TabPanel header={t('restaurantOrders.tabs.history')}>
-          <History />
+          <History {...filter} />
         </TabPanel>
       </TabView>
     </>

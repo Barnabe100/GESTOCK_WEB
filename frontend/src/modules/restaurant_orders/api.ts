@@ -83,6 +83,15 @@ export interface LineCounts {
   cancelled: number;
 }
 
+/** Table de la commande telle qu'elle est AUJOURD'HUI (libellé et zone courants ; l'historique
+ *  garde les libellés d'alors). */
+export interface OrderTable {
+  id: string;
+  label: string;
+  zone_name: string | null;
+  is_active: boolean;
+}
+
 export interface Order {
   id: string;
   site_id: string;
@@ -94,6 +103,9 @@ export interface Order {
   customer_id: string | null;
   customer_name: string | null;
   call_name: string | null;
+  /** Table « sur place » (R5) ; lue même si le module des tables n'est plus effectif. */
+  table_id: string | null;
+  table: OrderTable | null;
   status: OrderStatus;
   prep_status: PrepStatus;
   settlement_status: SettlementStatus;
@@ -167,6 +179,8 @@ export interface OrderCreateInput {
   service_mode: ServiceMode;
   customer_id: string | null;
   call_name: string | null;
+  /** Seulement en mode « sur place » ; contrôlée par le serveur (site, table active, module). */
+  table_id: string | null;
   lines: OrderLineInput[];
   idempotency_key: string;
 }
@@ -242,11 +256,29 @@ export function fetchTicket(orderId: string): Promise<OrderTicket> {
 export function useOrderMutations() {
   const qc = useQueryClient();
   const onSuccess = () => void qc.invalidateQueries({ queryKey: orderKeys.all });
+  // Une commande occupe sa table : le plan de salle est rafraîchi avec les commandes.
+  const withBoard = () => {
+    onSuccess();
+    void qc.invalidateQueries({ queryKey: ['restaurant.tables', 'board'] });
+  };
   const path = (id: string, action: string) => `/restaurant/orders/${id}/${action}`;
   return {
     create: useMutation({
       mutationFn: (input: OrderCreateInput) => api.post<Order>('/restaurant/orders', input),
-      onSuccess,
+      onSuccess: withBoard,
+    }),
+    /** Changement (`tableId`) ou retrait (`null`) de la table ; motif facultatif. */
+    setTable: useMutation({
+      mutationFn: ({
+        id,
+        tableId,
+        reason,
+      }: {
+        id: string;
+        tableId: string | null;
+        reason: string | null;
+      }) => api.put<Order>(path(id, 'table'), { table_id: tableId, reason }),
+      onSuccess: withBoard,
     }),
     addLines: useMutation({
       mutationFn: ({

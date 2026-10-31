@@ -6,6 +6,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
 import { useState, type ReactNode } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
 
@@ -23,6 +24,7 @@ import { FormField } from '@/shared/ui/FormField';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { RowActions, type RowAction } from '@/shared/ui/RowActions';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { useToast } from '@/shared/ui/toast';
 
 import {
@@ -45,6 +47,7 @@ import {
   type TransitionAction,
 } from './api';
 import { OrderTicketDialog } from './OrderTicket';
+import { TablePicker, tableLabel, useCanChooseTable } from './tables';
 import {
   LineStatusBadge,
   MenuCart,
@@ -263,6 +266,107 @@ function CustomerDialog({ order, onClose }: { order: Order; onClose: () => void 
   );
 }
 
+/**
+ * Changement ou retrait de la table (R5-B, B-2) : commande ouverte « sur place », motif
+ * facultatif. Choisir une table exige la consultation des tables et le module ; le RETRAIT reste
+ * possible sans eux (B4). Même table : rien n'est envoyé. Le serveur revérifie tout.
+ */
+function TableDialog({ order, onClose }: { order: Order; onClose: () => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const canChoose = useCanChooseTable();
+  const [tableId, setTableId] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { setTable } = useOrderMutations();
+  const save = (next: string | null) => {
+    setError(null);
+    setTable.mutate(
+      { id: order.id, tableId: next, reason: reason.trim() || null },
+      {
+        onSuccess: () => {
+          toast.success(
+            t(next === null ? 'restaurantOrders.tableRemoved' : 'restaurantOrders.tableSet'),
+          );
+          onClose();
+        },
+        onError: (failure) => setError(orderError(t, failure)),
+      },
+    );
+  };
+  return (
+    <Dialog
+      header={t(order.table ? 'restaurantOrders.changeTable' : 'restaurantOrders.setTable')}
+      visible
+      onHide={onClose}
+      className="sm-dialog"
+    >
+      <div className="sm-form">
+        {order.table && (
+          <p className="sm-help">
+            {t('restaurantOrders.currentTable', { label: tableLabel(order.table) })}
+          </p>
+        )}
+        {canChoose ? (
+          <FormField id="order-new-table" label={t('restaurantOrders.newTable')}>
+            <TablePicker
+              id="order-new-table"
+              siteId={order.site_id}
+              value={tableId}
+              onChange={setTableId}
+              excludeId={order.table_id}
+            />
+          </FormField>
+        ) : (
+          <Message severity="info" text={t('restaurantOrders.tablesUnavailableRemoveOnly')} />
+        )}
+        <FormField
+          id="order-table-reason"
+          label={t('restaurantOrders.reasonOptional')}
+          help={t('restaurantOrders.tableReasonHelp')}
+        >
+          <InputTextarea
+            id="order-table-reason"
+            rows={2}
+            maxLength={500}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </FormField>
+        {error && <Message severity="error" text={error} />}
+        <div className="sm-dialog-actions">
+          <Button type="button" label={t('actions.cancel')} text onClick={onClose} />
+          {order.table_id !== null && (
+            <Button
+              type="button"
+              label={t('restaurantOrders.removeTable')}
+              severity="danger"
+              outlined
+              loading={setTable.isPending && setTable.variables?.tableId === null}
+              onClick={() => save(null)}
+            />
+          )}
+          {canChoose && (
+            <Button
+              type="button"
+              label={t('actions.save')}
+              disabled={tableId === null || tableId === order.table_id}
+              loading={setTable.isPending && setTable.variables?.tableId !== null}
+              onClick={() => save(tableId)}
+            />
+          )}
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** « T1 (Salle) » tel qu'enregistré dans l'évènement (libellés d'alors), sinon « sans table ». */
+function eventTable(t: TFunction, label: unknown, zone: unknown): string {
+  if (typeof label !== 'string') return t('restaurantOrders.noTable');
+  return typeof zone === 'string' ? `${label} (${zone})` : label;
+}
+
 /** Historique de la commande (ajout seul) : évènement, auteur, heure, motif, vente. */
 function OrderHistory({ order }: { order: Order }) {
   const { t } = useTranslation();
@@ -280,6 +384,20 @@ function OrderHistory({ order }: { order: Order }) {
           e.event_type === 'CUSTOMER_SET' && typeof e.data.customer_name === 'string'
             ? e.data.customer_name
             : null;
+        // Tables : libellés ENREGISTRÉS dans l'évènement (jamais le libellé actuel).
+        const tableChange =
+          e.event_type === 'TABLE_CHANGED'
+            ? t('restaurantOrders.tableChange', {
+                from: eventTable(t, e.data.previous_table_label, e.data.previous_zone_name),
+                to: eventTable(t, e.data.table_label, e.data.zone_name),
+              })
+            : null;
+        const initialTable =
+          e.event_type === 'CREATED' && typeof e.data.table_label === 'string'
+            ? t('restaurantOrders.tableNamed', {
+                label: eventTable(t, e.data.table_label, e.data.zone_name),
+              })
+            : null;
         return (
           <li key={e.id} data-testid="order-event">
             <strong>{t(`restaurantOrders.events.${e.event_type}`)}</strong>
@@ -290,6 +408,8 @@ function OrderHistory({ order }: { order: Order }) {
             {customerName && (
               <span>{` — ${t('restaurantOrders.customerNamed', { name: customerName })}`}</span>
             )}
+            {tableChange && <span>{` — ${tableChange}`}</span>}
+            {initialTable && <span>{` — ${initialTable}`}</span>}
             <small className="sm-help">
               {` ${formatDateTime(e.occurred_at, locale, timezone)}${
                 e.actor_name ? ` · ${e.actor_name}` : ''
@@ -316,6 +436,7 @@ export default function OrderPage() {
   const { id } = useParams();
   const [search] = useSearchParams();
   const { can, capabilities, hasModule } = useCapabilities();
+  const canChooseTable = useCanChooseTable();
   const { currency, locale, timezone } = capabilities.tenant;
   const money = (v: string) => formatMoney(v, currency, locale);
   const query = useOrder(id);
@@ -324,6 +445,7 @@ export default function OrderPage() {
   const [adding, setAdding] = useState(false);
   const [reassigning, setReassigning] = useState(false);
   const [choosingCustomer, setChoosingCustomer] = useState(false);
+  const [choosingTable, setChoosingTable] = useState(false);
   const [cancelling, setCancelling] = useState<OrderLine[] | 'order' | null>(null);
   const [settling, setSettling] = useState<string | null>(null);
   const [settleError, setSettleError] = useState<{
@@ -350,6 +472,13 @@ export default function OrderPage() {
     can(ORDER_CREATE) &&
     hasModule('customers') &&
     can('customers.customer.view');
+  // Table (R5) : commande ouverte « sur place » et `order.create` ; choisir une table exige en
+  // plus la consultation des tables, retirer la table actuelle reste toujours proposé (B4).
+  const canEditTable =
+    open &&
+    can(ORDER_CREATE) &&
+    order.service_mode === 'ON_SITE' &&
+    (canChooseTable || order.table_id !== null);
   const notify = {
     onSuccess: () => toast.success(t('restaurantOrders.updated')),
     onError: (error: unknown) => toast.error(orderError(t, error)),
@@ -533,6 +662,29 @@ export default function OrderPage() {
             <div>
               <dt>{t('restaurantOrders.callName')}</dt>
               <dd>{order.call_name}</dd>
+            </div>
+          )}
+          {(order.table || canEditTable) && (
+            <div>
+              <dt>{t('restaurantOrders.table')}</dt>
+              <dd className="sm-badges" data-testid="order-table">
+                {order.table ? tableLabel(order.table) : t('restaurantOrders.noTable')}
+                {order.table && !order.table.is_active && (
+                  <StatusBadge tone="warning" label={t('restaurantOrders.tableInactive')} />
+                )}
+                {canEditTable && (
+                  <Button
+                    type="button"
+                    icon="pi pi-th-large"
+                    label={t(
+                      order.table ? 'restaurantOrders.changeTable' : 'restaurantOrders.setTable',
+                    )}
+                    text
+                    size="small"
+                    onClick={() => setChoosingTable(true)}
+                  />
+                )}
+              </dd>
             </div>
           )}
           <div>
@@ -735,6 +887,7 @@ export default function OrderPage() {
       {choosingCustomer && (
         <CustomerDialog order={order} onClose={() => setChoosingCustomer(false)} />
       )}
+      {choosingTable && <TableDialog order={order} onClose={() => setChoosingTable(false)} />}
       {cancelling !== null && (
         <ReasonDialog
           header={t(

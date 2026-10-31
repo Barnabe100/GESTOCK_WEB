@@ -642,3 +642,42 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   et le module des commandes ; sinon nombre et ancienneté seuls (arbitrage 1 de B-3).
 - États chargement, erreur traduite (`site_access_denied`…), plan vide. Styles `sm-floor-*`
   (jetons existants, grille adaptative). Aucun changement backend.
+
+### R5-C / C-3 — la table dans les commandes (frontend seul)
+
+- **Contrat** : type `Order` complété de `table_id` et `table` (`{id, label, zone_name,
+  is_active}`, libellé et zone COURANTS) ; `OrderCreateInput.table_id` ; mutation
+  `PUT /restaurant/orders/{id}/table` (`{table_id | null, reason}`) ; création et changement de
+  table rafraîchissent aussi le plan de salle.
+- **Choisir une table** exige le module des tables et `restaurant.tables.table.view` (un module
+  planifié n'accorde aucune permission ; `hasModule` seul compte aussi les activations inertes).
+  Sans eux, aucune table n'est proposée, mais **le retrait reste possible** (B4).
+- **Saisie** : table facultative, tables ACTIVES du site, seulement « sur place » ; effacée au
+  changement de mode ou de site, jamais envoyée hors « sur place » (`table_id: null`) ;
+  avertissement non bloquant si la table a déjà des commandes en cours (A1, d'après le plan de
+  salle).
+- **Fiche** : table (libellé · zone) et « Table désactivée » ; « Associer / Changer de table »
+  pour une commande OUVERTE « sur place » avec `order.create` ; dialogue : nouvelle table (la
+  table actuelle n'est pas proposée), motif facultatif (A5), « Retirer la table » ; commande
+  finale, autre mode ou sans `order.create` : aucune action ; refus du serveur traduit dans le
+  dialogue (qui reste ouvert).
+- **Historique** : `TABLE_CHANGED` « T1 (Salle) → T2 » / « → sans table » et table initiale de
+  `CREATED`, avec les libellés ENREGISTRÉS dans l'évènement (jamais le libellé courant, A7 / B6).
+- **Listes** : colonne « Table » (À régler, Historique), table sur les cartes du suivi ; filtre
+  par table (B7) partagé par les trois onglets et porté par l'URL (`?table_id=`, lien « Voir les
+  commandes de la table » du plan de salle), visible avec la consultation des tables.
+- Test existant de la saisie mis à jour : le corps de la création porte désormais
+  `table_id: null` hors « sur place » (accepté par le serveur, valeur par défaut) ; fixture de
+  commande complétée des champs de `OrderOut` depuis B-3.
+
+### R5-C — bilan et limites
+
+- Livré : C-1 (`c5151b4`), C-2 (`e12e768`), C-3. Aucun changement backend, aucune migration,
+  aucune dépendance ; `restaurant.orders` et `restaurant.tables` restent `planned` (écrans
+  invisibles en production), politique E.1 inchangée.
+- **E2E toujours reportés** : impossibles tant que les modules sont `planned` (scénario à écrire
+  à leur passage à `available` : configuration → plan de salle → commande sur une table →
+  changement → règlement → table libérée). Vérification par Vitest (API simulée) seulement.
+- Limites connues : listes de choix (zones, tables, filtre) limitées à 100 éléments ; ticket de
+  retrait sans table (le `TicketOut` du serveur ne la porte pas) ; widget du tableau de bord
+  `restaurant.tables:occupied` non réalisé (C-4, non autorisé).

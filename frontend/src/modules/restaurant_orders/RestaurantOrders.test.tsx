@@ -77,6 +77,9 @@ const order = (over: Record<string, unknown> = {}) => ({
   customer_id: null,
   customer_name: null,
   call_name: 'Table 4',
+  // Contrat d'OrderOut depuis R5-B (B-3) : table facultative.
+  table_id: null,
+  table: null,
   status: 'OPEN',
   prep_status: 'RECEIVED',
   settlement_status: 'UNSETTLED',
@@ -363,6 +366,8 @@ describe('commandes de restauration — saisie (R2-E)', () => {
       service_mode: 'TAKEAWAY',
       customer_id: null,
       call_name: 'Table 4',
+      // À emporter : jamais de table (R5).
+      table_id: null,
       lines: [{ menu_item_id: 'i1', quantity: '2', note: 'Bien cuit' }],
       idempotency_key: expect.any(String),
     });
