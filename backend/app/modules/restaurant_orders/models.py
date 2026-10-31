@@ -129,6 +129,8 @@ class EventType(StrEnum):
     CUSTOMER_SET = "CUSTOMER_SET"
     # Changement de table (R5, O8 ; migration 0046) : tables nouvelle et ancienne, libellés.
     TABLE_CHANGED = "TABLE_CHANGED"
+    # Libération explicite par son responsable (migration 0047) : motif facultatif.
+    RELEASED = "RELEASED"
 
 
 class ActorKind(StrEnum):
@@ -162,7 +164,8 @@ class RestaurantSiteSettings(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         CheckConstraint(
             "claim_protection_minutes BETWEEN 0 AND 1440", name="claim_protection_range"
         ),
-        CheckConstraint("claim_cooldown_minutes BETWEEN 0 AND 1440", name="claim_cooldown_range"),
+        # Délai entre deux prises d'un même employé : 5 (défaut) ou 10 minutes (migration 0047).
+        CheckConstraint("claim_cooldown_minutes IN (5, 10)", name="claim_cooldown_choice"),
     )
 
     site_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
@@ -170,7 +173,7 @@ class RestaurantSiteSettings(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         str_enum(PaymentTiming, "restaurant_payment_timing"), nullable=False
     )
     claim_protection_minutes: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
-    claim_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    claim_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     qr_auto_accept: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 

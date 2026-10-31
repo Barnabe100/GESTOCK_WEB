@@ -70,6 +70,7 @@ function ReasonDialog({
   onConfirm,
   onClose,
   children,
+  optional = false,
 }: {
   header: string;
   message: string;
@@ -78,6 +79,8 @@ function ReasonDialog({
   onConfirm: (reason: string) => void;
   onClose: () => void;
   children?: ReactNode;
+  /** Motif facultatif (libération) : action non destructive, confirmable sans motif. */
+  optional?: boolean;
 }) {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
@@ -86,7 +89,7 @@ function ReasonDialog({
       <div className="sm-form">
         <p>{message}</p>
         {children}
-        <FormField id="order-reason" label={t('restaurantOrders.reason')} required>
+        <FormField id="order-reason" label={t('restaurantOrders.reason')} required={!optional}>
           <InputTextarea
             id="order-reason"
             rows={2}
@@ -101,8 +104,8 @@ function ReasonDialog({
           <Button
             type="button"
             label={confirmLabel}
-            severity="danger"
-            disabled={reason.trim() === ''}
+            severity={optional ? undefined : 'danger'}
+            disabled={!optional && reason.trim() === ''}
             loading={pending}
             onClick={() => onConfirm(reason.trim())}
           />
@@ -149,6 +152,35 @@ function AddLinesDialog({ order, onClose }: { order: Order; onClose: () => void 
         />
       </div>
     </Dialog>
+  );
+}
+
+/** Libération par son responsable : la commande redevient « à prendre » (motif facultatif). */
+function ReleaseDialog({ order, onClose }: { order: Order; onClose: () => void }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const { release } = useOrderMutations();
+  return (
+    <ReasonDialog
+      header={t('restaurantOrders.release')}
+      message={t('restaurantOrders.releaseHelp')}
+      confirmLabel={t('restaurantOrders.release')}
+      pending={release.isPending}
+      optional
+      onClose={onClose}
+      onConfirm={(reason) =>
+        release.mutate(
+          { id: order.id, reason: reason === '' ? null : reason },
+          {
+            onSuccess: () => {
+              toast.success(t('restaurantOrders.released'));
+              onClose();
+            },
+            onError: (error) => toast.error(orderError(t, error)),
+          },
+        )
+      }
+    />
   );
 }
 
@@ -444,6 +476,7 @@ export default function OrderPage() {
   const [ticket, setTicket] = useState(false);
   const [adding, setAdding] = useState(false);
   const [reassigning, setReassigning] = useState(false);
+  const [releasing, setReleasing] = useState(false);
   const [choosingCustomer, setChoosingCustomer] = useState(false);
   const [choosingTable, setChoosingTable] = useState(false);
   const [cancelling, setCancelling] = useState<OrderLine[] | 'order' | null>(null);
@@ -595,6 +628,15 @@ export default function OrderPage() {
                 outlined
                 loading={mutations.claim.isPending}
                 onClick={() => mutations.claim.mutate(order.id, notify)}
+              />
+            )}
+            {/* Seul le responsable libère ; le serveur revérifie (order_not_claimed_by_you). */}
+            {open && can(ORDER_CLAIM) && mine && (
+              <Button
+                icon="pi pi-user-minus"
+                label={t('restaurantOrders.release')}
+                outlined
+                onClick={() => setReleasing(true)}
               />
             )}
             {open && can(ORDER_REASSIGN) && (
@@ -884,6 +926,7 @@ export default function OrderPage() {
       {ticket && <OrderTicketDialog orderId={order.id} onClose={() => setTicket(false)} />}
       {adding && <AddLinesDialog order={order} onClose={() => setAdding(false)} />}
       {reassigning && <ReassignDialog order={order} onClose={() => setReassigning(false)} />}
+      {releasing && <ReleaseDialog order={order} onClose={() => setReleasing(false)} />}
       {choosingCustomer && (
         <CustomerDialog order={order} onClose={() => setChoosingCustomer(false)} />
       )}

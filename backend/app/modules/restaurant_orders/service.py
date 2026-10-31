@@ -14,9 +14,11 @@ D13, D14).
   refusée si une ligne est servie ; commande vide → ``order.cancel``.
 - **Prise en charge** (R2-C, D7) : « Prendre » une commande ouverte ; protection d'une
   commande prise (réglage du site, 0 = désactivée) ; délai entre deux prises d'un même employé
-  sur le site (dernière prise lue dans l'historique, seule l'action « Prendre » compte) ;
-  réattribution immédiate motivée par ``order.reassign`` vers un membre détenant
-  ``order.claim`` effectif sur le site (``assignee_not_eligible``). Responsable ≠ rôle.
+  sur le site (5 ou 10 minutes, défaut 5 ; dernière prise lue dans l'historique, seule l'action
+  « Prendre » compte) ; libération explicite par le seul responsable (motif facultatif,
+  ``RELEASED``, sans effet sur son délai) ; réattribution immédiate motivée par
+  ``order.reassign`` vers un membre détenant ``order.claim`` effectif sur le site
+  (``assignee_not_eligible``). Responsable ≠ rôle.
 - **Règlement T2** (R2-D, D6) : une transaction, tout ou rien — vente du canal
   ``RESTAURANT`` aux prix FIGÉS de la commande (``sales.api``), validée par le moteur commun
   (stock FEFO, lots, CMUP, crédit, caisse), paiements immédiats ; échec : commande intacte,
@@ -935,6 +937,54 @@ class OrderService:
             {
                 "previous_user_id": str(previous) if previous else None,
                 "previous_name": self._user_name(previous),
+            },
+        )
+        return order
+
+    def release(self, order_id: uuid.UUID, reason: str | None) -> RestaurantOrder:
+        """Libération explicite : le RESPONSABLE de la commande (et lui seul) la rend à nouveau
+        « à prendre » ; motif facultatif, évènement ``RELEASED`` et audit (auteur, heure, motif).
+
+        Seul le verrou de la commande est pris (aucun réglage lu) : aucun cycle avec ``claim``
+        (§7). Une prise concurrente par un collègue attend ce verrou puis voit la commande libre.
+        La libération ne remet PAS à zéro le délai entre prises de l'employé (lu dans les
+        ``CLAIMED`` de l'historique) : prendre puis libérer ne permet pas d'enchaîner les prises.
+        Un responsable de salle réattribue toujours avec ``order.reassign`` (motif obligatoire)."""
+        site_id = self._site_of(order_id)
+        require_site_permission(self.ctx, site_id, ORDER_CLAIM)
+        order = self._lock_order(order_id)
+        self._require_open(order)
+        if order.assigned_user_id != self.ctx.user.id:
+            raise ConflictError(
+                "Seul le responsable de la commande peut la libérer",
+                code="order_not_claimed_by_you",
+                extra={
+                    "assigned_user_id": (
+                        str(order.assigned_user_id) if order.assigned_user_id else None
+                    ),
+                    "assigned_name": self._user_name(order.assigned_user_id),
+                },
+            )
+        held_since = order.assigned_at
+        order.assigned_user_id = None
+        order.assigned_at = None
+        order.assigned_by = None
+        order.version += 1
+        self._event(
+            order,
+            EventType.RELEASED,
+            reason=reason,
+            data={"previous_user_id": str(self.ctx.user.id)},
+        )
+        self.db.flush()
+        self._audit(
+            "released",
+            order,
+            {
+                "reason": reason,
+                "previous_user_id": str(self.ctx.user.id),
+                "previous_name": self._user_name(self.ctx.user.id),
+                "held_since": held_since.isoformat() if held_since else None,
             },
         )
         return order

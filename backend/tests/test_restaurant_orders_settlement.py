@@ -840,12 +840,14 @@ def test_sales_never_depend_on_restaurant() -> None:
         assert "restaurant" not in path.read_text(encoding="utf-8"), path.name
 
 
-def test_production_registry_still_hides_settlement(provision: Any, api_for: Any) -> None:
+def test_production_registry_serves_settlement(provision: Any, api_for: Any) -> None:
+    """Livraison (0048) : la route de règlement est montée en production ; une commande
+    inconnue est refusée par le service, jamais par l'absence de route."""
     provision("ro-pay-prod", profile=MAQUIS)
     owner = api_for("owner@ro-pay-prod.example.com")
     response = owner.post(
         f"/restaurant/orders/{uuid.uuid4()}/settle", json={"idempotency_key": str(uuid.uuid4())}
     )
-    assert response.status_code == 404  # routes non montées (N1)
+    assert (response.status_code, response.json()["code"]) == (404, "order_not_found")
     caps = owner.get("/me/capabilities").json()
-    assert not [c for c in caps["permissions"] if c.startswith(f"{ORDERS}.")]
+    assert f"{ORDERS}.order.view" in caps["permissions"]

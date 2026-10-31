@@ -39,16 +39,18 @@ from app.shared.clock import utcnow
 from tests.conftest import PASSWORD, add_site, set_site_module
 
 MENU = "restaurant.menu"  # livré (R1)
-ORDERS = "restaurant.orders"  # planifié jusqu'à R2-E
+ORDERS = "restaurant.orders"  # livré (0048) ; SIMULÉ planifié ici (``orders_planned``)
 MAQUIS = "restaurant.maquis"
 
 Call = tuple[str, str, str]  # (module, site, profil)
 
 
 @pytest.fixture
-def setups() -> Iterator[list[Call]]:
+def setups(orders_planned: None) -> Iterator[list[Call]]:
     """Enregistre les appels du ``site_setup`` du menu (disponible) et des commandes
-    (planifiées) dans le registre du serveur, restauré à la fin du test."""
+    (planifiées : période « Bientôt disponible » SIMULÉE depuis leur livraison, 0048, pour
+    vérifier qu'un module planifié n'est jamais initialisé) dans le registre du serveur,
+    restauré à la fin du test."""
     calls: list[Call] = []
     registry = get_registry()
     originals = {code: registry.get(code) for code in (MENU, ORDERS)}
@@ -135,7 +137,7 @@ def test_profile_change_sets_up_modules_it_enables(
 
 
 def test_failing_setup_cancels_the_activation(
-    provision: Any, api_for: Any, owner_db: Session
+    orders_planned: None, provision: Any, api_for: Any, owner_db: Session
 ) -> None:
     t = provision("r2a-fail", profile=MAQUIS)
     owner = api_for("owner@r2a-fail.example.com")
@@ -154,6 +156,24 @@ def test_failing_setup_cancels_the_activation(
     assert (refused.status_code, refused.json()["code"]) == (422, "site_setup_failed")
     # Tout ou rien : l'activation n'est pas enregistrée.
     assert _activated(owner_db, t.site_id, MENU) is False
+
+
+def test_delivered_orders_are_set_up_with_the_menu(provision: Any, owner_db: Session) -> None:
+    """Registre de production (commandes livrées, 0048) : le premier site Maquis initialise le
+    menu ET les commandes (réglages créés à l'activation, délai entre prises 5 min)."""
+    t = provision("r2a-delivered", profile=MAQUIS)
+    owner_db.execute(text("ALTER TABLE restaurant_site_settings NO FORCE ROW LEVEL SECURITY"))
+    row = owner_db.execute(
+        text(
+            "SELECT claim_cooldown_minutes, payment_timing FROM restaurant_site_settings "
+            "WHERE site_id = :s"
+        ),
+        {"s": str(t.site_id)},
+    ).one()
+    owner_db.execute(text("ALTER TABLE restaurant_site_settings FORCE ROW LEVEL SECURITY"))
+    owner_db.commit()
+    assert tuple(row) == (5, "AT_END")
+    assert _activated(owner_db, t.site_id, ORDERS) is True
 
 
 # --- next_value ---------------------------------------------------------------------------------

@@ -41,11 +41,15 @@ export type TransitionAction = 'start' | 'ready' | 'revert' | 'serve';
 
 export const SERVICE_MODES: readonly ServiceMode[] = ['ON_SITE', 'COUNTER', 'TAKEAWAY'];
 
+/** Délai entre deux prises d'un même employé : 5 (défaut) ou 10 minutes, contrôlé par le serveur. */
+export const CLAIM_COOLDOWN_CHOICES = [5, 10] as const;
+export type ClaimCooldown = (typeof CLAIM_COOLDOWN_CHOICES)[number];
+
 export interface OrderSettings {
   site_id: string;
   payment_timing: PaymentTiming;
   claim_protection_minutes: number;
-  claim_cooldown_minutes: number;
+  claim_cooldown_minutes: ClaimCooldown;
   qr_auto_accept: boolean;
   updated_at: string;
 }
@@ -316,6 +320,12 @@ export function useOrderMutations() {
     }),
     claim: useMutation({
       mutationFn: (id: string) => api.post<Order>(path(id, 'claim')),
+      onSuccess,
+    }),
+    // Libération par le responsable de la commande (motif facultatif).
+    release: useMutation({
+      mutationFn: ({ id, reason }: { id: string; reason: string | null }) =>
+        api.post<Order>(path(id, 'release'), { reason }),
       onSuccess,
     }),
     setCustomer: useMutation({

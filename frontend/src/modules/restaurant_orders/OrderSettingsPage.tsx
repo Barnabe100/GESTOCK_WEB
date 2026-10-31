@@ -14,7 +14,14 @@ import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useToast } from '@/shared/ui/toast';
 
-import { useOrderMutations, useOrderSettings, type OrderSettings, type PaymentTiming } from './api';
+import {
+  CLAIM_COOLDOWN_CHOICES,
+  useOrderMutations,
+  useOrderSettings,
+  type ClaimCooldown,
+  type OrderSettings,
+  type PaymentTiming,
+} from './api';
 
 const TIMINGS: PaymentTiming[] = ['AT_END', 'AT_ORDER'];
 const MAX_MINUTES = 1440;
@@ -76,7 +83,7 @@ function SettingsForm({ settings }: { settings: OrderSettings }) {
   const { updateSettings } = useOrderMutations();
   const [timing, setTiming] = useState<PaymentTiming>(settings.payment_timing);
   const [protection, setProtection] = useState<number>(settings.claim_protection_minutes);
-  const [cooldown, setCooldown] = useState<number>(settings.claim_cooldown_minutes);
+  const [cooldown, setCooldown] = useState<ClaimCooldown>(settings.claim_cooldown_minutes);
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -138,13 +145,15 @@ function SettingsForm({ settings }: { settings: OrderSettings }) {
           help={t('restaurantOrders.settings.cooldownHelp')}
           required
         >
-          <InputNumber
-            inputId="order-settings-cooldown"
+          <SelectButton
+            id="order-settings-cooldown"
             value={cooldown}
-            min={0}
-            max={MAX_MINUTES}
-            suffix=" min"
-            onValueChange={(e) => setCooldown(e.value ?? 0)}
+            allowEmpty={false}
+            onChange={(e) => setCooldown(e.value as ClaimCooldown)}
+            options={CLAIM_COOLDOWN_CHOICES.map((v) => ({
+              value: v,
+              label: t('restaurantOrders.settings.minutes', { count: v }),
+            }))}
           />
         </FormField>
       </div>

@@ -103,7 +103,9 @@ def test_public_plans_follow_commercial_settings(
     ]
     assert standard["currency"] == "XOF" and standard["trial_days"] == 0
     assert standard["limits"] == {"max_sites": 1, "max_users": 5}
-    assert "pos" in standard["modules"] and "restaurant.tables" not in standard["modules"]
+    # Seuls les modules livrés sont annoncés : tables et commandes (0048), jamais la cuisine.
+    assert "pos" in standard["modules"] and "restaurant.tables" in standard["modules"]
+    assert "restaurant.kitchen" not in standard["modules"]
     assert entreprise["contact_required"] is True and entreprise["self_service"] is False
     assert entreprise["periods"] == [] and entreprise["limits"]["max_sites"] is None
     # Aucune donnée interne (structure, dates, statut technique) n'est exposée.

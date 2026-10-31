@@ -491,55 +491,87 @@ def lot_tracking_open(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
 
 
-# --- Commandes de restauration : registre de test (palier R2, N1) -------------------------------
+# --- Commandes et tables de restauration -------------------------------------------------------
+# Livrées (disponibles en production) depuis la migration 0048 : ``orders_available`` et
+# ``tables_available`` ne changent plus rien (fixtures conservées pour les tests existants).
+# ``orders_planned`` / ``tables_planned`` SIMULENT la période « Bientôt disponible » (module
+# planifié avec une activation inerte) pour continuer de vérifier les règles des modules
+# planifiés avec ces manifestes réels (permissions déclarées).
+
+
+@contextmanager
+def _module_status(code: str, status: Any) -> Iterator[None]:
+    import dataclasses
+
+    registry = get_registry()
+    original = registry.get(code)
+    registry._modules[code] = dataclasses.replace(original, status=status)
+    try:
+        yield
+    finally:
+        registry._modules[code] = original
 
 
 @pytest.fixture
 def orders_available() -> Iterator[None]:
-    """Registre du serveur où ``restaurant.orders`` est disponible, le temps du test : le registre
-    de production le garde PLANIFIÉ jusqu'au commit R2-E (ADR-0049, D14 N1)."""
-    import dataclasses
-
+    """Sans effet depuis la livraison (0048) : ``restaurant.orders`` est disponible."""
     from app.platform.registry import ModuleStatus
 
-    registry = get_registry()
-    original = registry.get("restaurant.orders")
-    registry._modules["restaurant.orders"] = dataclasses.replace(
-        original, status=ModuleStatus.AVAILABLE
-    )
-    try:
+    with _module_status("restaurant.orders", ModuleStatus.AVAILABLE):
         yield
-    finally:
-        registry._modules["restaurant.orders"] = original
 
 
 @pytest.fixture
 def oclient(settings: Settings, migrated: None, orders_available: None) -> Iterator[TestClient]:
-    """Application construite avec le registre de test (routes des commandes montées)."""
+    """Application construite avec le registre de production (commandes disponibles)."""
     with TestClient(create_app(settings)) as client:
         yield client
 
 
-# --- Tables et zones : registre de test (palier R5-A, A2) ---------------------------------------
+@pytest.fixture
+def tables_available(orders_available: None) -> Iterator[None]:
+    """Sans effet depuis la livraison (0048) : ``restaurant.tables`` est disponible."""
+    from app.platform.registry import ModuleStatus
+
+    with _module_status("restaurant.tables", ModuleStatus.AVAILABLE):
+        yield
 
 
 @pytest.fixture
-def tables_available(orders_available: None) -> Iterator[None]:
-    """Registre du serveur où ``restaurant.tables`` (et sa dépendance ``restaurant.orders``) est
-    disponible, le temps du test : le registre de production les garde PLANIFIÉS (A2)."""
-    import dataclasses
-
+def tables_planned() -> Iterator[None]:
+    """SIMULATION : ``restaurant.tables`` PLANIFIÉ le temps du test (commandes disponibles)."""
     from app.platform.registry import ModuleStatus
 
-    registry = get_registry()
-    original = registry.get("restaurant.tables")
-    registry._modules["restaurant.tables"] = dataclasses.replace(
-        original, status=ModuleStatus.AVAILABLE
-    )
-    try:
+    with _module_status("restaurant.tables", ModuleStatus.PLANNED):
         yield
-    finally:
-        registry._modules["restaurant.tables"] = original
+
+
+@pytest.fixture
+def orders_planned(tables_planned: None) -> Iterator[None]:
+    """SIMULATION : ``restaurant.orders`` (et ``restaurant.tables``, qui en dépend) PLANIFIÉS le
+    temps du test, comme pendant la période « Bientôt disponible »."""
+    from app.platform.registry import ModuleStatus
+
+    with _module_status("restaurant.orders", ModuleStatus.PLANNED):
+        yield
+
+
+@pytest.fixture
+def pclient(settings: Settings, migrated: None, tables_planned: None) -> Iterator[TestClient]:
+    """Application construite pendant la simulation ``tables_planned`` (routes des tables non
+    montées ; commandes disponibles)."""
+    with TestClient(create_app(settings)) as client:
+        yield client
+
+
+@pytest.fixture
+def planned_client(
+    settings: Settings, migrated: None, orders_planned: None
+) -> Iterator[TestClient]:
+    """Application construite pendant la simulation ``orders_planned`` (ni commandes ni tables
+    montées)."""
+    with TestClient(create_app(settings)) as client:
+        yield client
 
 
 @pytest.fixture

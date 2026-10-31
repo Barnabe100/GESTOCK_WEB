@@ -2417,7 +2417,8 @@
       "CLOSED": "Clôturée",
       "CANCELLED": "Commande annulée",
       "CUSTOMER_SET": "Client associé",
-      "TABLE_CHANGED": "Table modifiée"
+      "TABLE_CHANGED": "Table modifiée",
+      "RELEASED": "Libérée"
     },
     "table": "Table",
     "tableHelp": "Facultative, sur place seulement : tables actives du site.",
@@ -2489,17 +2490,22 @@
       "protection": "Protection d'une prise en charge",
       "protectionHelp": "Durée pendant laquelle un collègue ne peut pas reprendre la commande (0 à 1440 minutes).",
       "cooldown": "Délai entre deux prises",
-      "cooldownHelp": "Durée minimale entre deux prises par le même employé sur le site (0 à 1440 minutes).",
+      "cooldownHelp": "Durée minimale entre deux prises par le même employé sur le site : 5 ou 10 minutes. Distincte de la protection d'une commande déjà prise.",
       "qrAutoAccept": "Acceptation automatique des commandes QR",
       "qrLater": "(sans effet avant les commandes par QR code)",
       "updatedAt": "Dernière modification",
-      "saved": "Réglages enregistrés."
+      "saved": "Réglages enregistrés.",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes"
     },
     "setCustomer": "Associer un client",
     "changeCustomer": "Changer de client",
     "setCustomerHelp": "Le client est repris par la vente au règlement. L'associer ne donne aucun droit au crédit : le règlement applique les règles des ventes.",
     "currentCustomer": "Client actuel : {{name}}. Un motif est obligatoire pour le remplacer.",
     "customerSet": "Client associé à la commande.",
-    "customerNamed": "client {{name}}"
+    "customerNamed": "client {{name}}",
+    "release": "Libérer",
+    "releaseHelp": "La commande redevient « à prendre » : un collègue peut la prendre aussitôt. Votre délai entre deux prises n'est pas remis à zéro. Le motif est facultatif et journalisé.",
+    "released": "Commande libérée."
   }
 }

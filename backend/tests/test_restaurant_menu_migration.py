@@ -48,8 +48,10 @@ def _activations(conn: Any, site: uuid.UUID) -> dict[str, bool]:
 
 
 def test_migration_0041_disables_the_menu_on_existing_sites_only(
-    provision: Any, owner_db: Session, owner_engine: Engine, at_head: None
+    orders_planned: None, provision: Any, owner_db: Session, owner_engine: Engine, at_head: None
 ) -> None:
+    # Commandes SIMULÉES planifiées (état de l'époque) : aucun réglage créé par ``site_setup``,
+    # que la descente sous 0042 refuserait de perdre.
     site = provision("menu-mig", profile="restaurant.maquis", plan="ENTREPRISE").site_id
     owner_db.close()
     owner_engine.dispose()
@@ -95,7 +97,12 @@ def test_migration_0041_disables_the_menu_on_existing_sites_only(
 
 
 def test_migration_0041_downgrade_refuses_to_lose_a_menu(
-    provision: Any, api_for: Any, owner_db: Session, owner_engine: Engine, at_head: None
+    orders_planned: None,
+    provision: Any,
+    api_for: Any,
+    owner_db: Session,
+    owner_engine: Engine,
+    at_head: None,
 ) -> None:
     t = provision("menu-mig-data", profile="restaurant.maquis", plan="ENTREPRISE")
     owner = api_for("owner@menu-mig-data.example.com")

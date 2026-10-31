@@ -142,25 +142,35 @@ def _member(r: SimpleNamespace, email: str, template: str, **access: Any) -> Api
     return _api(r.client, email)
 
 
-# --- Production : le module reste planifié (N1) -------------------------------------------------
+# --- Production : module livré (migration 0048) -------------------------------------------------
 
 
-def test_production_registry_keeps_orders_planned(provision: Any, api_for: Any) -> None:
-    assert get_registry().get(ORDERS).status is ModuleStatus.PLANNED
+def test_production_registry_delivers_orders(provision: Any, api_for: Any) -> None:
+    """Registre de PRODUCTION (sans registre de test) : module disponible, routes montées,
+    activation par site explicite et réversible, permissions accordées selon les rôles."""
+    manifest = get_registry().get(ORDERS)
+    assert manifest.status is ModuleStatus.AVAILABLE
+    assert set(manifest.depends_on) == {"restaurant.menu", "sales"}
     t = provision("ro-prod", profile=MAQUIS)
     owner = api_for("owner@ro-prod.example.com")
-    assert owner.get("/restaurant/orders").status_code == 404  # routes non montées
-    assert owner.get(f"/restaurant/settings/{t.site_id}").status_code == 404
-    refused = set_site_module(owner, t.site_id, ORDERS, True)
-    assert _code(refused) == (422, "module_not_implemented")
-    modules = {m["code"]: m for m in owner.get(f"/sites/{t.site_id}/modules").json()}
-    assert modules[ORDERS]["status"] == "planned"
-    # Activation inerte (défaut du profil) : aucune permission accordée par un module planifié,
-    # ni à l'Administrateur (``*``), ni dans les rôles délégables.
+    site = str(t.site_id)
+    modules = {m["code"]: m for m in owner.get(f"/sites/{site}/modules").json()}
+    assert modules[ORDERS]["status"] == "available"
+    # Nouveau site : défaut de SON profil dans SON abonnement (Maquis : commandes proposées).
+    assert modules[ORDERS]["effective"] is True
+    assert owner.get("/restaurant/orders").status_code == 200  # routes montées
+    assert _ok(owner.get(f"/restaurant/settings/{site}"))["claim_cooldown_minutes"] == 5
     caps = owner.get("/me/capabilities").json()
-    assert not [c for c in caps["permissions"] if c.startswith("restaurant.orders.")]
+    assert f"{ORDERS}.order.claim" in caps["permissions"]
     delegable = {p["code"] for p in owner.get("/permissions/delegable").json()}
-    assert not [c for c in delegable if c.startswith("restaurant.orders.")]
+    assert f"{ORDERS}.order.release" not in delegable  # aucune permission nouvelle
+    assert {f"{ORDERS}.order.claim", f"{ORDERS}.order.reassign"} <= delegable
+    # Désactivation puis activation explicites sur le site.
+    assert set_site_module(owner, site, ORDERS, False).status_code == 204
+    scoped = Api(owner.client, owner.token, t.site_id)
+    assert _code(scoped.get("/restaurant/orders")) == (403, "module_unavailable")
+    assert set_site_module(owner, site, ORDERS, True).status_code == 204
+    assert scoped.get("/restaurant/orders").status_code == 200
 
 
 # --- Clé du compteur (D14) ----------------------------------------------------------------------
@@ -227,18 +237,20 @@ def test_settings_follow_the_profile_and_survive_deactivation(
     site = str(t.site_id)
     settings = _ok(owner.get(f"/restaurant/settings/{site}"))
     assert settings["payment_timing"] == "AT_ORDER"  # défaut du profil (D11)
-    assert (settings["claim_protection_minutes"], settings["claim_cooldown_minutes"]) == (5, 0)
+    # Protection 5 min ; délai entre deux prises 5 min par défaut (choix 5 ou 10).
+    assert (settings["claim_protection_minutes"], settings["claim_cooldown_minutes"]) == (5, 5)
     changed = _ok(
         owner.put(
             f"/restaurant/settings/{site}",
             json={
                 "payment_timing": "AT_END",
                 "claim_protection_minutes": 10,
-                "claim_cooldown_minutes": 2,
+                "claim_cooldown_minutes": 10,
             },
         )
     )
     assert changed["payment_timing"] == "AT_END"
+    assert changed["claim_cooldown_minutes"] == 10
     # Désactiver ne supprime rien ; réactiver retrouve les réglages (jamais écrasés).
     assert set_site_module(owner, site, ORDERS, False).status_code == 204
     assert owner_db.execute(

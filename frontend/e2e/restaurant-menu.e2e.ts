@@ -80,7 +80,9 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   page,
   request,
 }) => {
-  // État d'un site existant à la livraison (migration 0041) : menu désactivé.
+  // État d'un site existant à la livraison (migrations 0041 et 0048) : menu et commandes
+  // désactivés (les commandes, qui dépendent du menu, d'abord).
+  await api(request, 'put', `/sites/${world.site}/modules/restaurant.orders`, { enabled: false });
   await api(request, 'put', `/sites/${world.site}/modules/restaurant.menu`, { enabled: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginUi(page, EMAIL, PASSWORD, NAME);
@@ -91,8 +93,11 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   await expect(row.getByRole('switch')).toBeVisible();
   await row.getByRole('switch').click();
   await expect(row.getByTestId('module-state-active')).toBeVisible();
-  // Les commandes restent « à venir » : jamais activables (module non livré).
-  await expect(page.getByRole('row', { name: /^Commandes/ }).getByRole('switch')).toHaveCount(0);
+  // Commandes livrées (0048) : activables explicitement ; la cuisine reste « à venir ».
+  await expect(page.getByRole('row', { name: /^Commandes/ }).getByRole('switch')).toHaveCount(1);
+  await expect(
+    page.getByRole('row', { name: /^Postes de préparation|^Cuisine/ }).getByRole('switch'),
+  ).toHaveCount(0);
   await page.reload();
   await expect(menuLink).toHaveCount(1);
 });

@@ -99,27 +99,35 @@ def _member(r: SimpleNamespace, email: str, template: str, **access: Any) -> Api
     return _api(r.client, email)
 
 
-# --- Production : module planifié -----------------------------------------------------------
+# --- Production : module livré (0048) ------------------------------------------------------
 
 
-def test_production_registry_keeps_tables_planned_and_dependent_on_orders(
+def test_production_registry_delivers_tables_dependent_on_orders(
     provision: Any, api_for: Any
 ) -> None:
     manifest = get_registry().get(MODULE)
-    assert manifest.status is ModuleStatus.PLANNED
+    assert manifest.status is ModuleStatus.AVAILABLE
     assert manifest.depends_on == ("restaurant.orders",)
     # Les commandes ne dépendent jamais des tables (D1, A2).
     assert MODULE not in get_registry().get("restaurant.orders").depends_on
     t = provision("rt-prod", profile=RESTAURANT, plan="ENTREPRISE")
     owner = api_for("owner@rt-prod.example.com")
-    assert owner.get(TABLES).status_code == 404
-    assert owner.get(ZONES).status_code == 404
-    refused = set_site_module(owner, t.site_id, MODULE, True)
-    assert _code(refused) == (422, "module_not_implemented")
-    # Activation inerte d'un nouveau site Restaurant (défaut D11, politique E.1 conservée) :
-    # aucune permission accordée.
-    caps = Api(owner.client, owner.token, t.site_id).get("/me/capabilities").json()
-    assert not [p for p in caps["permissions"] if p.startswith("restaurant.tables.")]
+    scoped = Api(owner.client, owner.token, t.site_id)
+    # Nouveau site Restaurant : défaut de son profil (D11) ; routes montées, permissions
+    # accordées selon les rôles.
+    assert scoped.get(TABLES).status_code == 200
+    assert scoped.get(ZONES).status_code == 200
+    caps = scoped.get("/me/capabilities").json()
+    assert {"restaurant.tables.table.view", "restaurant.tables.table.manage"} <= set(
+        caps["permissions"]
+    )
+    # Désactivation et activation explicites sur le site (aucune autre voie).
+    assert set_site_module(owner, t.site_id, MODULE, False).status_code == 204
+    assert _code(scoped.get(TABLES)) == (403, "module_unavailable")
+    assert set_site_module(owner, t.site_id, MODULE, True).status_code == 204
+    assert scoped.get(TABLES).status_code == 200
+    # Les commandes désactivées : les tables (dépendantes) ne sont plus effectives.
+    assert set_site_module(owner, t.site_id, "restaurant.orders", False).status_code == 409
 
 
 # --- Zones ----------------------------------------------------------------------------------

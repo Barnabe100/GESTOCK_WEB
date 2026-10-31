@@ -20,10 +20,8 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     # depuis la Phase 3.0 (ADR-0023).
     _planned("payments", "sales"),
     _planned("reports"),
-    # Restauration (ADR-0049) : ``restaurant.menu`` est livré (palier R1, paquet
-    # ``restaurant_menu``) ; ``restaurant.orders`` a son manifeste réel (paquet
-    # ``restaurant_orders``, palier R2), toujours planifié jusqu'à R2-E ; ``restaurant.tables``
-    # a le sien (paquet ``restaurant_tables``, palier R5-A), planifié comme les commandes.
+    # Restauration (ADR-0049) : ``restaurant.menu`` (R1), ``restaurant.orders`` (R2) et
+    # ``restaurant.tables`` (R5) sont livrés dans leurs paquets ; restent planifiés :
     _planned("restaurant.kitchen", "restaurant.orders"),
     _planned("restaurant.qr", "restaurant.orders"),
     _planned("restaurant.recipes", "catalog", "stock"),

@@ -360,10 +360,10 @@ def test_refusals_never_leak_customer_data_without_customer_view(resto: SimpleNa
     assert owner_refusal.json()["customer_code"].startswith("CLI-")
 
 
-def test_production_mounts_no_order_route(app: Any, oclient: TestClient) -> None:
-    """N1 (R2-F) : avec le registre de production, AUCUNE route du module des commandes n'est
-    montée — association du client, membres éligibles et règlement compris ; le registre de
-    test les monte toutes (inventaire du schéma OpenAPI)."""
+def test_order_routes_follow_the_module_status(app: Any, planned_client: TestClient) -> None:
+    """Livraison (0048) : le registre de production monte TOUTES les routes des commandes —
+    association du client, membres éligibles, libération et règlement compris ; un module
+    planifié (période « Bientôt disponible », simulée) n'en monte aucune (inventaire OpenAPI)."""
 
     def order_paths(schema: dict[str, Any]) -> set[str]:
         return {
@@ -372,10 +372,11 @@ def test_production_mounts_no_order_route(app: Any, oclient: TestClient) -> None
             if path.startswith(("/api/v1/restaurant/orders", "/api/v1/restaurant/settings"))
         }
 
-    mounted = order_paths(oclient.app.openapi())  # type: ignore[attr-defined]
+    mounted = order_paths(app.openapi())
     assert {
         "/api/v1/restaurant/orders/{order_id}/customer",
         "/api/v1/restaurant/orders/{order_id}/assignees",
+        "/api/v1/restaurant/orders/{order_id}/release",
         "/api/v1/restaurant/orders/{order_id}/settle",
     } <= mounted
-    assert order_paths(app.openapi()) == set()
+    assert order_paths(planned_client.app.openapi()) == set()  # type: ignore[attr-defined]

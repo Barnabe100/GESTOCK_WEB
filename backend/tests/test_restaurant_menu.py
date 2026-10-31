@@ -447,7 +447,9 @@ def test_reads_and_writes_are_limited_to_sites_where_the_menu_is_effective(
     item_b = _ok(_item(r, on_b, r.coca, site=r.b), 201)["id"]
     _ok(_item(r, on_a, r.coca), 201)
     assert {s["site_id"] for s in _ok(r.owner.get(SECTIONS))["items"]} == {r.a, r.b}
-    # Menu désactivé sur B : configuration conservée, mais plus lisible ni modifiable.
+    # Menu désactivé sur B (après les commandes, qui en dépendent depuis leur livraison) :
+    # configuration conservée, mais plus lisible ni modifiable.
+    assert set_site_module(r.owner, r.b, "restaurant.orders", False).status_code == 204
     assert set_site_module(r.owner, r.b, "restaurant.menu", False).status_code == 204
     # Site sélectionné sans menu effectif : le module est indisponible (lecture comprise).
     on_b_selected = _selected(r.owner, r.b)
@@ -642,9 +644,10 @@ def _row(owner_db: Session, site: str, code: str) -> bool | None:
 
 
 def test_existing_site_state_menu_toggles_despite_inert_planned_orders(
-    resto: SimpleNamespace, owner_db: Session
+    orders_planned: None, resto: SimpleNamespace, owner_db: Session
 ) -> None:
-    """État d'un site existant après 0041 : menu ``false``, commandes ``true`` (défaut inerte
+    """Période « Bientôt disponible » des commandes (SIMULÉE depuis leur livraison, 0048) —
+    état d'un site existant après 0041 : menu ``false``, commandes ``true`` (défaut inerte
     de la période planifiée). Activer puis désactiver le menu fonctionne ; la ligne des
     commandes n'est pas touchée et les commandes restent inactivables."""
     r = resto
@@ -669,8 +672,10 @@ def test_existing_site_state_menu_toggles_despite_inert_planned_orders(
 
 
 def test_available_dependents_still_block_and_planned_ones_never_do(
-    resto: SimpleNamespace, owner_db: Session
+    orders_planned: None, resto: SimpleNamespace, owner_db: Session
 ) -> None:
+    """Commandes et tables simulées planifiées (comme à la livraison de R1) : seuls les
+    dépendants DISPONIBLES bloquent."""
     r = resto
     # Activation inerte héritée (site créé quand les recettes étaient activées par défaut, avant
     # D11) : un module planifié qui dépend du catalogue.

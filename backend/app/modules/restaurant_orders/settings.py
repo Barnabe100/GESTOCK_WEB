@@ -25,6 +25,9 @@ from app.platform.sequences.service import next_value
 from app.shared.ids import new_id
 
 MODULE = "restaurant.orders"
+# Délai entre deux prises d'un même employé sur un site (minutes) : choix du responsable.
+CLAIM_COOLDOWN_CHOICES = (5, 10)
+DEFAULT_CLAIM_COOLDOWN_MINUTES = 5
 ORDER_SEQUENCE_PREFIX = "ro"
 
 
@@ -67,7 +70,7 @@ def _insert_defaults(
             site_id=site_id,
             payment_timing=default_payment_timing(profile),
             claim_protection_minutes=5,
-            claim_cooldown_minutes=0,
+            claim_cooldown_minutes=DEFAULT_CLAIM_COOLDOWN_MINUTES,
             qr_auto_accept=False,
         )
         .on_conflict_do_nothing(

@@ -62,7 +62,7 @@ def _count(conn: Any, table: str) -> int:
 
 
 def test_migration_0042_disables_orders_on_existing_sites_only(
-    provision: Any, owner_db: Session, owner_engine: Engine, at_head: None
+    orders_planned: None, provision: Any, owner_db: Session, owner_engine: Engine, at_head: None
 ) -> None:
     # Registre de production : commandes planifiées, activées par défaut (inertes), aucun
     # réglage créé (``site_setup`` jamais appelé pour un module planifié).

@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -50,7 +50,8 @@ class SettingsUpdate(BaseModel):
 
     payment_timing: PaymentTiming
     claim_protection_minutes: Minutes = 5
-    claim_cooldown_minutes: Minutes = 0
+    # Délai entre deux prises d'un même employé : 5 ou 10 minutes seulement (défaut 5).
+    claim_cooldown_minutes: Literal[5, 10] = 5
 
 
 # --- Saisie -------------------------------------------------------------------------------------
@@ -119,6 +120,12 @@ class OrderReassign(BaseModel):
 
     assignee_user_id: uuid.UUID
     reason: Required500
+
+
+class OrderRelease(BaseModel):
+    """Libération d'une commande par son responsable ; motif facultatif."""
+
+    reason: Optional500 = None
 
 
 class OrderCustomerSet(BaseModel):

@@ -99,8 +99,15 @@ def test_new_sites_receive_the_tenant_profile_never_derived_from_kind(
 
 
 def test_migration_backfills_every_site_with_its_tenant_current_profile(
-    provision: Any, api_for: Any, owner_db: Session, owner_engine: Engine, at_head: None
+    orders_planned: None,
+    provision: Any,
+    api_for: Any,
+    owner_db: Session,
+    owner_engine: Engine,
+    at_head: None,
 ) -> None:
+    # Commandes SIMULÉES planifiées (état de l'époque) : un site de restauration provisionné ici
+    # ne reçoit aucun réglage de commandes, que la descente sous 0042 refuserait de perdre.
     alpha = provision("mig-alpha", profile="retail.alimentation")
     beta = provision("mig-beta", profile="restaurant.maquis")
     api = api_for(_owner("mig-alpha"))

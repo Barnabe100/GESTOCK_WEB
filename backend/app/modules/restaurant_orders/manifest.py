@@ -39,7 +39,7 @@ from app.platform.member_notifications.service import (
     register_notification_receivers,
     register_notification_resolver,
 )
-from app.platform.registry import AccessKind, ModuleManifest, ModuleStatus, PermissionDef
+from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, W, A = AccessKind.READ, AccessKind.WRITE, AccessKind.ADMIN
 
@@ -72,10 +72,8 @@ register_notification_receivers(KIND_ORDER_READY, READY_RECEIVER_PERMISSIONS)
 
 MANIFEST = ModuleManifest(
     code="restaurant.orders",
-    # N1 (ADR-0049, D14) : le module reste PLANIFIÉ dans le registre de production jusqu'au
-    # commit R2-E (règlement et interface livrés) — routes non montées, activation refusée
-    # (``module_not_implemented``) ; les tests intermédiaires utilisent un registre de test.
-    status=ModuleStatus.PLANNED,
+    # Livré (disponible) avec les tables, migration 0048 : activations héritées de la période
+    # « Bientôt disponible » remises à ``false`` sur les sites existants (activation explicite).
     # Menu : lignes issues du menu du site. Ventes : règlement (R2-D). Tables, postes, caisse,
     # clients, POS : enrichissements facultatifs, testés par capacité (D1).
     depends_on=("restaurant.menu", "sales"),

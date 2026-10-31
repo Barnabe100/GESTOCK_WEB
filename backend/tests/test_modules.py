@@ -21,9 +21,12 @@ def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) 
     assert modules["restaurant.qr"]["in_profile"] is True
     assert modules["restaurant.qr"]["in_plan"] is False
     assert modules["pos"]["enabled"] is True and modules["pos"]["status"] == "available"
-    # Palier R1 (ADR-0049) : le menu est livré ; les autres modules restaurant restent planifiés.
-    assert modules["restaurant.menu"]["status"] == "available"
-    assert modules["restaurant.orders"]["status"] == "planned"
+    # ADR-0049 : menu (R1), commandes (R2) et tables (R5) livrés ; cuisine, QR et recettes
+    # restent planifiés.
+    for code in ("restaurant.menu", "restaurant.orders", "restaurant.tables"):
+        assert modules[code]["status"] == "available", code
+    for code in ("restaurant.kitchen", "restaurant.qr", "restaurant.recipes"):
+        assert modules[code]["status"] == "planned", code
     assert modules["users"]["core"] is True
     assert "stock" in modules
 

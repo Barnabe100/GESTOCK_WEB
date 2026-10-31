@@ -266,6 +266,8 @@ function serveDetail(
   });
 }
 
+const TAKEN = '2026-10-10T08:05:00Z';
+
 const renderDetail = (permissions: string[], route = '/restaurant/orders/o1') =>
   renderWithCapabilities(withToast(<OrderPage />), {
     permissions,
@@ -452,6 +454,55 @@ describe('commandes de restauration — fiche (R2-E)', () => {
     );
   });
 
+  it('libération : bouton réservé au responsable, motif facultatif, refus du serveur affiché', async () => {
+    // Commande prise par un collègue : « Prendre » proposé, jamais « Libérer ».
+    serveDetail(order({ assigned_user_id: 'u-other', assigned_name: 'Awa', assigned_at: TAKEN }));
+    renderDetail(STAFF);
+    expect(await screen.findByRole('button', { name: 'Prendre' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Libérer' })).toBeNull();
+    cleanup();
+    fetchMock.mockReset();
+    // Commande prise par l'utilisateur : « Libérer », sans motif obligatoire.
+    serveDetail(order({ assigned_user_id: 'u-me', assigned_name: 'Moi', assigned_at: TAKEN }));
+    renderDetail(STAFF);
+    fireEvent.click(await screen.findByRole('button', { name: 'Libérer' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Libérer' });
+    expect(within(dialog).getByText(/délai entre deux prises n'est pas remis à zéro/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Libérer' }));
+    await waitFor(() =>
+      expect(calls('POST')).toEqual([['/api/v1/restaurant/orders/o1/release', { reason: null }]]),
+    );
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'success', summary: 'Commande libérée.' }),
+      ),
+    );
+  });
+
+  it('libération refusée par le serveur : message traduit, motif transmis', async () => {
+    serveDetail(order({ assigned_user_id: 'u-me', assigned_name: 'Moi', assigned_at: TAKEN }), () =>
+      jsonResponse({ status: 409, title: 'Refus', code: 'order_not_claimed_by_you' }, 409),
+    );
+    renderDetail(STAFF);
+    fireEvent.click(await screen.findByRole('button', { name: 'Libérer' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Libérer' });
+    fireEvent.change(within(dialog).getByLabelText(/Motif/), { target: { value: ' Pause ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Libérer' }));
+    await waitFor(() =>
+      expect(calls('POST')).toEqual([
+        ['/api/v1/restaurant/orders/o1/release', { reason: 'Pause' }],
+      ]),
+    );
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'error',
+          summary: 'Seul le responsable de la commande peut la libérer.',
+        }),
+      ),
+    );
+  });
+
   it('consultation seule : aucune action d’écriture', async () => {
     serveDetail(order());
     renderDetail([VIEW]);
@@ -591,7 +642,7 @@ describe('commandes de restauration — réglages (R2-E)', () => {
       site_id: 's1',
       payment_timing: 'AT_END',
       claim_protection_minutes: 5,
-      claim_cooldown_minutes: 0,
+      claim_cooldown_minutes: 5,
       qr_auto_accept: false,
       updated_at: '2026-10-10T08:00:00Z',
     };
@@ -606,13 +657,21 @@ describe('commandes de restauration — réglages (R2-E)', () => {
     expect(protection.value).toBe('5 min');
     expect(calls()[0]?.[0]).toBe('/api/v1/restaurant/settings/s1');
     expect(screen.getByText(/Acceptation automatique des commandes QR/)).toBeTruthy();
+    // Délai entre deux prises : choix 5 ou 10 minutes seulement (aucune saisie libre).
+    const cooldown = screen.getByText('5 minutes').closest('.p-selectbutton') as HTMLElement;
+    expect(
+      within(cooldown)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['5 minutes', '10 minutes']);
     fireEvent.click(screen.getByText('À la commande'));
+    fireEvent.click(screen.getByText('10 minutes'));
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
     await waitFor(() =>
       expect(calls('PUT')).toEqual([
         [
           '/api/v1/restaurant/settings/s1',
-          { payment_timing: 'AT_ORDER', claim_protection_minutes: 5, claim_cooldown_minutes: 0 },
+          { payment_timing: 'AT_ORDER', claim_protection_minutes: 5, claim_cooldown_minutes: 10 },
         ],
       ]),
     );

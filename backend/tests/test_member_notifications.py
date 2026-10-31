@@ -509,15 +509,19 @@ def test_visibility_follows_site_access_and_permission(
     assert len(_rows(owner_engine, order["id"])) == 3  # historique intact
 
 
-# --- Production : module planifié ---------------------------------------------------------------
+# --- Production : module livré (0048) et notifications génériques -------------------------------
 
 
-def test_production_keeps_orders_planned_and_mounts_generic_notifications(
+def test_production_mounts_orders_and_generic_notifications(
     app: Any, provision: Any, api_for: Any
 ) -> None:
-    assert get_registry().get(ORDERS).status is ModuleStatus.PLANNED
+    assert get_registry().get(ORDERS).status is ModuleStatus.AVAILABLE
     paths = set(app.openapi()["paths"])
-    assert not [p for p in paths if p.startswith("/api/v1/restaurant/orders")]
+    assert {
+        "/api/v1/restaurant/orders",
+        "/api/v1/restaurant/orders/{order_id}/claim",
+        "/api/v1/restaurant/orders/{order_id}/release",
+    } <= paths
     assert {
         "/api/v1/member-notifications",
         "/api/v1/member-notifications/unread-count",
@@ -561,15 +565,15 @@ def test_every_base_role_able_to_receive_can_read() -> None:
     assert set(receivers) == {"administrator", "manager", "seller", "waiter"}
 
 
-def test_production_custom_roles_and_order_permissions(
-    provision: Any, api_for: Any, client: TestClient
+def test_planned_orders_custom_roles_and_order_permissions(
+    provision: Any, api_for: Any, client: TestClient, orders_planned: None
 ) -> None:
-    """Comportement EXISTANT constaté (antérieur à R4, non modifié) : en production, le module
-    étant planifié avec une activation inerte, le PROPRIÉTAIRE (exempté du contrôle
-    anti-escalade) peut enregistrer des permissions des commandes dans un rôle personnalisé ;
-    un administrateur non propriétaire ne le peut pas (``permission_escalation``). Ces
-    permissions n'ont aucun effet tant que le module est planifié (capacités filtrées) : personne
-    ne devient destinataire avant l'activation."""
+    """Comportement constaté pendant la période « Bientôt disponible » (SIMULÉE depuis la
+    livraison, 0048) : le module étant planifié avec une activation inerte, le PROPRIÉTAIRE
+    (exempté du contrôle anti-escalade) peut enregistrer des permissions des commandes dans un
+    rôle personnalisé ; un administrateur non propriétaire ne le peut pas
+    (``permission_escalation``). Ces permissions n'ont aucun effet tant que le module est
+    planifié (capacités filtrées) : personne ne devient destinataire avant l'activation."""
     t = provision("ro-notif-custom", profile=MAQUIS)
     owner = api_for("owner@ro-notif-custom.example.com")
     order_perms = [f"{P}.view", f"{P}.serve"]

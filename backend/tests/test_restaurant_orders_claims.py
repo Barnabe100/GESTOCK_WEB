@@ -5,6 +5,7 @@ Tous les contrôles sont exercés par l'API (appels directs, sans interface) ave
 test où ``restaurant.orders`` est disponible (N1) ; la production le garde planifié.
 """
 
+import dataclasses
 import threading
 import uuid
 from types import SimpleNamespace
@@ -15,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.platform.registry import ModuleStatus, get_registry
+from app.platform.registry import ModuleRegistry, ModuleStatus, get_registry
 from tests.conftest import PASSWORD, Api, add_site, set_site_module
 from tests.test_restaurant_orders import MAQUIS, ORDERS, _api, _code, _line, _menu, _ok, _order
 
@@ -46,7 +47,7 @@ def _roles(r: SimpleNamespace) -> dict[str, str]:
     return {x["template_code"] or x["name"]: x["id"] for x in r.owner.get("/roles").json()}
 
 
-def _settings(r: SimpleNamespace, protection: int = 5, cooldown: int = 0) -> None:
+def _settings(r: SimpleNamespace, protection: int = 5, cooldown: int = 5) -> None:
     _ok(
         r.owner.put(
             f"/restaurant/settings/{r.site}",
@@ -62,6 +63,18 @@ def _settings(r: SimpleNamespace, protection: int = 5, cooldown: int = 0) -> Non
 def _events(api: Api, order_id: str, kind: str) -> list[dict[str, Any]]:
     events = _ok(api.get(f"/restaurant/orders/{order_id}/events"))
     return [e for e in events if e["event_type"] == kind]
+
+
+def _age_claims(owner_db: Session, user_id: str, minutes: int = 11) -> None:
+    """Délai entre prises écoulé pour un employé : ses prises vieillies dans l'historique."""
+    owner_db.execute(
+        text(
+            "UPDATE restaurant_order_events SET occurred_at = occurred_at - make_interval("
+            "mins => :m) WHERE event_type = 'CLAIMED' AND actor_user_id = :u"
+        ),
+        {"m": minutes, "u": user_id},
+    )
+    owner_db.commit()
 
 
 def _audit(api: Api, action: str) -> list[dict[str, Any]]:
@@ -118,8 +131,9 @@ def test_claim_protection_and_takeover(resto: SimpleNamespace, owner_db: Session
     assert claims[1]["data"]["previous_user_id"] == alice.user_id
     audits = _audit(r.owner, "restaurant_order.claimed")
     assert {a["data"]["previous_name"] for a in audits} == {None, "alice"}
-    # Protection désactivée (0) : prise immédiate par un autre employé.
+    # Protection désactivée (0) : prise immédiate par un autre employé (délai d'Alice écoulé).
     _settings(r, protection=0)
+    _age_claims(owner_db, alice.user_id)
     assert _ok(alice.api.post(f"{base}/claim"))["assigned_user_id"] == alice.user_id
 
 
@@ -352,6 +366,134 @@ def test_reassignment_is_immediate_justified_and_checked(
     assert _code(reassign(manager.api, bruno.user_id)) == (409, "order_cancelled")
 
 
+# --- Libération explicite -----------------------------------------------------------------------
+
+
+def test_release_by_the_holder_only_traced_and_without_cooldown_reset(
+    resto: SimpleNamespace,
+) -> None:
+    r = resto
+    roles = _roles(r)
+    alice = _join(r, "alice@ro-claim.example.com", [roles["seller"]])
+    bruno = _join(r, "bruno@ro-claim.example.com", [roles["seller"]])
+    viewer = _join(r, "lecteur@ro-claim.example.com", [roles["viewer"]])
+    order = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    other = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    base = f"/restaurant/orders/{order['id']}"
+
+    # Commande libre : rien à libérer.
+    free = alice.api.post(f"{base}/release", json={})
+    assert _code(free) == (409, "order_not_claimed_by_you")
+    assert free.json()["assigned_name"] is None
+    taken = _ok(alice.api.post(f"{base}/claim"))
+    # Ni un collègue, ni le gérant (qui réattribue avec un motif), ni un lecteur.
+    refused = bruno.api.post(f"{base}/release", json={})
+    assert _code(refused) == (409, "order_not_claimed_by_you")
+    assert refused.json()["assigned_name"] == "alice"
+    assert _code(r.owner.post(f"{base}/release", json={}))[1] == "order_not_claimed_by_you"
+    assert _code(viewer.api.post(f"{base}/release", json={})) == (403, "permission_denied")
+    assert _ok(r.owner.get(base))["assigned_user_id"] == alice.user_id
+
+    released = _ok(alice.api.post(f"{base}/release", json={"reason": "  Pause  "}))
+    assert (released["assigned_user_id"], released["assigned_at"]) == (None, None)
+    assert released["version"] == taken["version"] + 1
+    event = _events(r.owner, order["id"], "RELEASED")[0]
+    assert (event["actor_user_id"], event["reason"]) == (alice.user_id, "Pause")
+    assert event["data"] == {"previous_user_id": alice.user_id}
+    audit = _audit(r.owner, "restaurant_order.released")[0]
+    assert (audit["data"]["reason"], audit["data"]["previous_name"]) == ("Pause", "alice")
+    assert audit["data"]["held_since"]
+    # Libre : un collègue la prend aussitôt (aucune protection résiduelle).
+    assert _ok(bruno.api.post(f"{base}/claim"))["assigned_user_id"] == bruno.user_id
+    # La libération ne remet pas à zéro le délai d'Alice (5 min par défaut).
+    assert _code(alice.api.post(f"/restaurant/orders/{other['id']}/claim")) == (
+        409,
+        "claim_cooldown_active",
+    )
+    bare = _ok(bruno.api.post(f"{base}/release", json={}))
+    assert bare["assigned_user_id"] is None
+    assert _events(r.owner, order["id"], "RELEASED")[1]["reason"] is None
+    # Commande finale : plus de libération (le gérant n'a encore rien pris : aucun délai).
+    other_base = f"/restaurant/orders/{other['id']}"
+    _ok(r.owner.post(f"{other_base}/claim"))
+    _ok(r.owner.post(f"{other_base}/cancel", json={"reason": "Erreur"}))
+    assert _code(r.owner.post(f"{other_base}/release", json={})) == (409, "order_cancelled")
+
+
+def test_release_scope_follows_sites_and_companies(
+    resto: SimpleNamespace, provision: Any, oclient: TestClient
+) -> None:
+    r = resto
+    order = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    base = f"/restaurant/orders/{order['id']}"
+    _ok(r.owner.post(f"{base}/claim"))
+    other = _ok(
+        add_site(r.owner, "Maquis 2", "MAQ2", "restaurant", business_profile_code=MAQUIS), 201
+    )
+    selected = Api(r.owner.client, r.owner.token, uuid.UUID(other["id"]))
+    assert _code(selected.post(f"{base}/release", json={})) == (403, "site_mismatch")
+    provision("ro-claim-4", profile=MAQUIS, plan="ENTREPRISE")
+    stranger = _api(oclient, "owner@ro-claim-4.example.com")
+    assert _code(stranger.post(f"{base}/release", json={})) == (404, "order_not_found")
+    assert _ok(r.owner.get(base))["assigned_user_id"] is not None
+
+
+def test_simultaneous_release_and_claims_stay_consistent(
+    resto: SimpleNamespace, owner_db: Session
+) -> None:
+    r = resto
+    seller = _roles(r)["seller"]
+    alice = _join(r, "alice@ro-claim.example.com", [seller])
+    order = _ok(_order(r.owner, r.site, [_line(r.menu.unit)]), 201)
+    base = f"/restaurant/orders/{order['id']}"
+    _ok(alice.api.post(f"{base}/claim"))
+    # Deux libérations simultanées par le responsable : exactement une réussit.
+    results = _race([lambda: alice.api.post(f"{base}/release", json={})] * 2)
+    assert sorted(res.status_code for res in results) == [200, 409]
+    assert len(_events(r.owner, order["id"], "RELEASED")) == 1
+    # Libération concurrente de prises par des collègues (protection de 5 min active) : un
+    # collègue ne peut réussir que si la libération a réussi ; au plus un responsable ; l'état
+    # final et l'historique concordent (l'historique est trié par heure de la requête, l'ordre
+    # des écritures suit le verrou de la commande).
+    _age_claims(owner_db, alice.user_id)
+    _ok(alice.api.post(f"{base}/claim"))
+    others = [_join(r, f"serveur{i}@ro-claim.example.com", [seller]) for i in range(4)]
+    calls = [lambda: alice.api.post(f"{base}/release", json={})]
+    calls += [lambda m=m: m.api.post(f"{base}/claim") for m in others]
+    results = _race(calls)
+    assert all(res.status_code in (200, 409) for res in results)
+    winners = [res.json()["assigned_user_id"] for res in results[1:] if res.status_code == 200]
+    losers = {_code(res) for res in results[1:] if res.status_code == 409}
+    assert losers <= {(409, "order_claim_protected")}
+    assert len(winners) <= 1
+    final = _ok(r.owner.get(base))["assigned_user_id"]
+    released = results[0].status_code == 200
+    assert len(_events(r.owner, order["id"], "RELEASED")) == 1 + int(released)
+    claims = [e["actor_user_id"] for e in _events(r.owner, order["id"], "CLAIMED")]
+    if winners:
+        assert released and final == winners[0] and claims.count(winners[0]) == 1
+    else:
+        assert final == (None if released else alice.user_id)
+    assert len(claims) == 2 + len(winners)
+
+
+def test_cooldown_setting_accepts_only_5_or_10_minutes(resto: SimpleNamespace) -> None:
+    r = resto
+    assert _ok(r.owner.get(f"/restaurant/settings/{r.site}"))["claim_cooldown_minutes"] == 5
+    for value in (0, 1, 7, 15, 1440):
+        response = r.owner.put(
+            f"/restaurant/settings/{r.site}",
+            json={"payment_timing": "AT_END", "claim_cooldown_minutes": value},
+        )
+        assert response.status_code == 422, value
+    for value in (10, 5):
+        _settings(r, cooldown=value)
+        assert _ok(r.owner.get(f"/restaurant/settings/{r.site}"))["claim_cooldown_minutes"] == value
+    # Sans valeur explicite : 5 minutes (défaut), jamais « aucun délai ».
+    saved = _ok(r.owner.put(f"/restaurant/settings/{r.site}", json={"payment_timing": "AT_END"}))
+    assert saved["claim_cooldown_minutes"] == 5
+
+
 # --- Modèles Serveur et Préparateur -------------------------------------------------------------
 
 
@@ -434,14 +576,22 @@ def test_template_refused_when_a_custom_role_has_its_name(
 
 
 def test_planned_filter_only_removes_planned_permissions() -> None:
-    registry = get_registry()  # registre de production
+    production = get_registry()
+    # Production : commandes et tables livrées, aucun module planifié ne déclare de permission.
+    assert not [
+        m.code for m in production.all() if m.status is ModuleStatus.PLANNED and m.permissions
+    ]
+    # Filtre exercé sur un registre où ces deux modules seraient encore planifiés (manifestes
+    # réels, permissions déclarées) : leurs permissions ne sont jamais accordées.
+    registry = ModuleRegistry(
+        [
+            dataclasses.replace(m, status=ModuleStatus.PLANNED)
+            if m.code in (ORDERS, "restaurant.tables")
+            else m
+            for m in production.all()
+        ]
+    )
     modules = registry.all()
-    planned_with_permissions = {
-        m.code for m in modules if m.status is ModuleStatus.PLANNED and m.permissions
-    }
-    # Modules planifiés au manifeste réel (permissions déclarées, jamais accordées) : les
-    # commandes (R2) et les tables (R5-A, A2).
-    assert planned_with_permissions == {ORDERS, "restaurant.tables"}
     every = [m.code for m in modules]
     features = {f for m in modules for f in m.features}
     expected = {

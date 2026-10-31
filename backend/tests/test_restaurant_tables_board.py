@@ -400,8 +400,11 @@ def test_board_is_isolated_between_companies(
     assert _code(r.owner.get(BOARD, params={"site_id": other_site})) == (403, "site_access_denied")
 
 
-def test_board_is_not_exposed_in_production(provision: Any, api_for: Any) -> None:
-    """Registre de production : tables (et commandes) planifiées, route non montée."""
-    provision("rtb-prod", profile=RESTAURANT, plan="ENTREPRISE")
+def test_board_is_served_in_production(provision: Any, api_for: Any) -> None:
+    """Registre de production (livraison 0048) : route montée ; le site reste obligatoire."""
+    t = provision("rtb-prod", profile=RESTAURANT, plan="ENTREPRISE")
     owner = api_for("owner@rtb-prod.example.com")
-    assert owner.get(BOARD).status_code == 404
+    assert owner.get(BOARD).status_code == 422  # site obligatoire
+    board = owner.get(BOARD, params={"site_id": str(t.site_id)})
+    assert board.status_code == 200, board.text
+    assert board.json()["tables"] == []

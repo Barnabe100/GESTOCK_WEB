@@ -721,3 +721,49 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   les sous-menus refermés). E2E : aide `followMenu` (ouvre le tiroir et la rubrique, puis suit
   l'entrée) et `sideMenu` dans `e2e/support.ts` ; les assertions d'absence ou de présence d'une
   entrée portent sur le menu, sous-menus refermés compris (`includeHidden`).
+
+## Livraison de `restaurant.orders` et `restaurant.tables` (étape 1 de la finalisation)
+
+Décisions validées par l'utilisateur (audit des modules métier) : tables et commandes passent à
+`available` après E2E ; libération explicite ; délai entre deux prises 5 min par défaut, 5 ou 10 ;
+photos du menu, paiements électroniques et automobile reportés. À reporter dans `RESTAURANT.md`
+(§2, §5, §8, §11, §12), `API.md`, `DATA_MODEL.md`, ADR-0049 (décisions de livraison) et
+`CLAUDE.md` (phase en cours) :
+
+- **Libération** : `POST /restaurant/orders/{id}/release` (`{reason?}`, motif facultatif, 500
+  caractères), permission EXISTANTE `restaurant.orders.order.claim` sur le site de la commande ;
+  seul le RESPONSABLE libère (`409 order_not_claimed_by_you`, aussi pour une commande libre ;
+  `assigned_name` joint) ; commande finale : `order_closed` / `order_cancelled`. Effets :
+  responsable, heure et auteur de la prise remis à `NULL`, `version + 1`, évènement `RELEASED`
+  (auteur, heure, motif, `previous_user_id`), audit `restaurant_order.released` (motif, nom,
+  `held_since`). Verrou de la commande seul (aucun cycle avec la prise, §7). La libération NE
+  remet PAS à zéro le délai entre prises de l'employé (lu dans ses `CLAIMED`). Le gérant
+  continue de réattribuer avec `order.reassign` (motif obligatoire) ; aucune libération d'autrui.
+- **Délai entre deux prises** (≠ protection d'une commande prise, inchangée : 0 à 1440, défaut
+  5) : `claim_cooldown_minutes` ∈ {5, 10}, défaut 5 (réglages créés à l'activation, API
+  `Literal[5, 10]`, contrainte `claim_cooldown_choice`). Toujours appliqué sous le verrou
+  consultatif de l'employé (prises simultanées : une seule réussit).
+- **Migration 0047** : type d'évènement `RELEASED` ; contrainte du délai remplacée ; valeurs
+  existantes ramenées sans assouplir (0 à 5 → 5, au-delà → 10) ; descente refusée si une
+  libération existe.
+- **Migration 0048** (aucun schéma) : activations héritées de `restaurant.orders` et
+  `restaurant.tables` remises à `false` sur les sites EXISTANTS (activation explicite par
+  `organization.module.manage` sur le site) ; nouveaux sites : défauts de LEUR profil dans LEUR
+  abonnement (Restaurant : commandes et tables ; Maquis, Bar… : commandes, tables facultatives).
+  Descente sans effet. Manifestes sans `status=PLANNED` ; plans STANDARD et ENTREPRISE
+  inchangés (les deux incluent déjà les deux modules).
+- **Interface** : bouton « Libérer » sur la fiche (responsable seulement, dialogue au motif
+  facultatif, refus traduit), réglage du délai par choix 5 / 10 minutes, évènement « Libérée ».
+- **Historique** : trié par heure de la REQUÊTE (`occurred_at`, puis identifiant) ; deux actions
+  concurrentes peuvent y apparaître dans l'ordre de leurs requêtes, l'ordre d'écriture suivant le
+  verrou de la commande (comportement existant, constaté par le test de concurrence
+  libération / prises).
+- **Tests** : registre de test sans effet (`orders_available`, `tables_available`) ;
+  `orders_planned` / `tables_planned` / `planned_client` / `pclient` SIMULENT la période
+  « Bientôt disponible » pour garder la couverture des règles des modules planifiés ; E2E
+  `restaurant-tables.e2e.ts`, `restaurant-orders.e2e.ts`, appui `restaurant-support.ts` ;
+  `profiles.e2e.ts` et `restaurant-menu.e2e.ts` alignés (assertion obsolète de
+  `profiles.e2e.ts:188` remplacée : `/restaurant/tables` s'ouvre, `/restaurant/kitchen`
+  « Page introuvable »).
+- **Correctif barre latérale** (refonte `318c9b1`) : transition de largeur de `.sm-sidebar`
+  retirée (barre écrasée pendant un redimensionnement, constatée en capture pleine page).

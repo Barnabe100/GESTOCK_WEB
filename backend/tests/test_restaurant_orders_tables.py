@@ -162,13 +162,13 @@ def test_tables_unavailable_when_the_module_is_not_effective_on_the_site(
 
 
 def test_planned_tables_module_is_never_effective(
-    provision: Any, oclient: TestClient, owner_db: Session
+    provision: Any, pclient: TestClient, owner_db: Session
 ) -> None:
-    """Registre où seules les commandes sont disponibles (tables PLANIFIÉES, comme en
-    production) : l'activation inerte du profil Restaurant (E.1) ne rend jamais une table
-    rattachable."""
+    """Tables PLANIFIÉES (période « Bientôt disponible », simulée depuis la livraison 0048),
+    commandes disponibles : l'activation inerte du profil Restaurant (E.1) ne rend jamais une
+    table rattachable."""
     t = provision("rot-planned", profile=RESTAURANT, plan="ENTREPRISE")
-    owner = _api(oclient, "owner@rot-planned.example.com")
+    owner = _api(pclient, "owner@rot-planned.example.com")
     site = str(t.site_id)
     assert (
         owner_db.execute(
@@ -397,12 +397,12 @@ def test_association_needs_the_tables_module_but_removal_does_not(
 
 
 def test_removal_with_a_planned_tables_module(
-    provision: Any, oclient: TestClient, owner_db: Session
+    provision: Any, pclient: TestClient, owner_db: Session
 ) -> None:
-    """Registre de production pour les tables (PLANIFIÉES) : une table rattachée (données
-    simulées) se retire ; aucune ne s'associe."""
+    """Tables PLANIFIÉES (simulation) : une table rattachée (données simulées) se retire ;
+    aucune ne s'associe."""
     t = provision("rot-plan2", profile=RESTAURANT, plan="ENTREPRISE")
-    owner = _api(oclient, "owner@rot-plan2.example.com")
+    owner = _api(pclient, "owner@rot-plan2.example.com")
     site = str(t.site_id)
     table = uuid.uuid4()
     owner_db.execute(

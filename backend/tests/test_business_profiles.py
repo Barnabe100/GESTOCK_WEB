@@ -232,17 +232,20 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     assert caps["profile"]["sector"]["code"] == "restaurant"
     assert caps["profile"]["ux_profile"] == "restaurant.default"
     groups = _groups(caps)
-    # Palier R1 (ADR-0049) : seul le menu est livré — la rubrique « Restaurant » ne montre que
-    # lui ; salle, tables, commandes, cuisine : planifiés, jamais proposés.
-    assert groups["restaurant"] == ["restaurant.menu"]
+    # ADR-0049 : menu (R1), commandes (R2) et tables (R5, livrés par 0048) — activés par défaut
+    # sur un nouveau site Restaurant ; cuisine, recettes et QR : planifiés, jamais proposés.
+    assert groups["restaurant"] == ["restaurant.tables", "restaurant.orders", "restaurant.menu"]
     assert list(groups) == ["home", "restaurant", "sales", "cash", "stock", "admin"]
     assert groups["stock"] == ["catalog", "stock", "inventory_count", "alerts", "suppliers"]
-    assert not [w for w in caps["ux"]["dashboard"]["widgets"] if w.startswith("restaurant.")]
+    # Indicateurs déclarés par le profil pour les modules effectifs seulement (jamais la cuisine,
+    # planifiée) ; l'interface n'affiche que ceux qu'elle implémente.
+    restaurant_widgets = [
+        w for w in caps["ux"]["dashboard"]["widgets"] if w.startswith("restaurant.")
+    ]
+    assert restaurant_widgets == ["restaurant.tables:occupied", "restaurant.orders:in_progress"]
     assert caps["ux"]["dashboard"]["widgets"][:2] == ["sales:today", "cash_register:open_sessions"]
     # « À venir » : modules planifiés du profil, dans l'ordre de sa navigation.
     assert caps["ux"]["upcoming"] == [
-        "restaurant.tables",
-        "restaurant.orders",
         "restaurant.kitchen",
         "restaurant.recipes",
         "restaurant.qr",
@@ -251,10 +254,11 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     ]
     assert caps["ux"]["theme"] == {"accent": "orange", "density": "comfortable", "icon": None}
     assert caps["terminology"]["fr"]["catalog"]["items"] == "Produits"
-    # Aucune route planifiée n'est servie ; le menu livré l'est.
+    # Aucune route planifiée n'est servie ; les modules livrés le sont.
     owner = api_for("owner@resto.example.com")
-    assert owner.get("/restaurant/tables").status_code == 404
-    assert owner.get("/restaurant/menu/sections").status_code == 200
+    assert owner.get("/restaurant/kitchen").status_code == 404
+    for path in ("/restaurant/menu/sections", "/restaurant/orders", "/restaurant/tables"):
+        assert owner.get(path).status_code == 200, path
 
 
 @pytest.mark.parametrize(

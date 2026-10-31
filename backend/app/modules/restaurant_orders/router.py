@@ -36,6 +36,7 @@ from app.modules.restaurant_orders.schemas import (
     OrderCustomerSet,
     OrderOut,
     OrderReassign,
+    OrderRelease,
     OrderSettle,
     OrderTableSet,
     SettingsOut,
@@ -222,6 +223,17 @@ def cancel_order(
 def claim_order(order_id: uuid.UUID, ctx: OrderClaimer, db: DbSession) -> OrderOut:
     service = _service(db, ctx)
     service.claim(order_id)
+    db.commit()
+    return service.detail(order_id)
+
+
+@router.post("/orders/{order_id}/release", response_model=OrderOut)
+def release_order(
+    order_id: uuid.UUID, body: OrderRelease, ctx: OrderClaimer, db: DbSession
+) -> OrderOut:
+    """Libération par le responsable de la commande (motif facultatif)."""
+    service = _service(db, ctx)
+    service.release(order_id, body.reason)
     db.commit()
     return service.detail(order_id)
 

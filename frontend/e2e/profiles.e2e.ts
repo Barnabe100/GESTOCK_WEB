@@ -148,14 +148,16 @@ test.describe('Profils d’activité', () => {
   }) => {
     const caps = await capabilities(request, await tokenFor(request, EMAIL, PASSWORD, RESTO));
     expect(caps.profile.code).toBe('restaurant.restaurant');
-    // Palier R1 (ADR-0049) : seul le menu est livré — la rubrique « Restaurant » ne contient que
-    // lui ; tables, commandes, cuisine restent planifiées.
+    // ADR-0049 : menu, commandes et tables livrés (0048) — activés par défaut par le profil
+    // Restaurant sur un NOUVEAU site ; cuisine, QR et recettes restent planifiés.
     expect(caps.ux.navigation.find((g) => g.group === 'restaurant')?.modules).toEqual([
+      'restaurant.tables',
+      'restaurant.orders',
       'restaurant.menu',
     ]);
-    expect(caps.ux.upcoming).toEqual(
-      expect.arrayContaining(['restaurant.tables', 'restaurant.kitchen']),
-    );
+    expect(caps.ux.upcoming).toEqual(expect.arrayContaining(['restaurant.kitchen']));
+    expect(caps.ux.upcoming).not.toContain('restaurant.tables');
+    expect(caps.ux.upcoming).not.toContain('restaurant.orders');
 
     await loginUi(page, EMAIL, PASSWORD, RESTO);
     await expect(page.getByTestId('business-profile')).toHaveText('Restaurant');
@@ -170,21 +172,23 @@ test.describe('Profils d’activité', () => {
       'Administration',
     ]);
     const restaurantLinks = sidebar(page).locator('ul[aria-labelledby="nav-restaurant"] a');
-    await expect(restaurantLinks).toHaveText(['Menu']);
+    await expect(restaurantLinks).toHaveText(['Tables', 'Commandes', 'Menu']);
     const stockLinks = sidebar(page).locator('ul[aria-labelledby="nav-stock"] a');
     await expect(stockLinks.first()).toHaveText('Produits');
     const links = await sidebar(page).getByRole('link', { includeHidden: true }).allTextContents();
-    expect(links.join(' | ')).not.toMatch(/Tables|Cuisine|Salle|Commandes/);
+    expect(links.join(' | ')).not.toMatch(/Cuisine|Recettes/);
 
-    // Annoncées « à venir », sans lien.
+    // Annoncées « à venir », sans lien ; les modules livrés n'y figurent plus.
     const upcoming = page.getByRole('list', { name: 'À venir pour votre activité' });
-    await expect(upcoming).toContainText('Tables');
     await expect(upcoming).toContainText('Cuisine');
+    await expect(upcoming).not.toContainText('Tables');
     await expect(upcoming.getByRole('link')).toHaveCount(0);
     await expect(page.getByText('Produits en rupture')).toBeVisible();
 
-    // Aucune route fictive : l'adresse d'un module planifié n'existe pas.
+    // Module livré : sa page s'ouvre (plan de salle). Module planifié : aucune route fictive.
     await page.goto('/restaurant/tables');
+    await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible();
+    await page.goto('/restaurant/kitchen');
     await expect(page.getByRole('main').getByText('Page introuvable')).toBeVisible();
   });
 

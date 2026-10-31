@@ -284,6 +284,7 @@
   "customer_unavailable": "Ce client n'est pas disponible.",
   "order_claim_protected": "Commande prise par {{assigned_name}} : protection en cours.",
   "claim_cooldown_active": "Délai entre deux prises en cours : réessayez dans un instant.",
+  "order_not_claimed_by_you": "Seul le responsable de la commande peut la libérer.",
   "assignee_not_eligible": "Ce membre ne peut pas prendre de commande sur ce site.",
   "sale_origin_unavailable": "Cette vente provient d'un document qui ne permet pas son annulation ici.",
   "sale_origin_active": "Une vente active existe déjà pour ce document.",
