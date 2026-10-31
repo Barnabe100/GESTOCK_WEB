@@ -16,6 +16,9 @@ export const TABLE_MANAGE = 'restaurant.tables.table.manage';
 export const SORT_ORDER_MAX = 100_000;
 export const SEATS_MAX = 999;
 
+/** Plan de salle actualisé toutes les 15 s (même rythme que le suivi des commandes). */
+export const BOARD_REFRESH_MS = 15_000;
+
 export interface Zone {
   id: string;
   site_id: string;
@@ -43,6 +46,47 @@ export interface Table {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** État d'une table calculé par le SERVEUR (priorité : Occupée > À régler > Libre). */
+export type TableState = 'FREE' | 'OCCUPIED' | 'TO_SETTLE';
+
+/** Commande occupant une table : détail fourni seulement avec la lecture des commandes. */
+export interface BoardOrder {
+  id: string;
+  business_date: string;
+  daily_number: number;
+  call_name: string | null;
+  status: string;
+  prep_status: string;
+  settlement_status: string;
+  /** Ouverte, non réglée et tout servi : n'attend plus que son règlement. */
+  to_settle: boolean;
+  created_at: string;
+}
+
+export interface BoardTable {
+  id: string;
+  label: string;
+  seats: number | null;
+  zone_id: string | null;
+  zone_name: string | null;
+  /** Une table inactive n'est listée que si elle est encore occupée (situation anormale). */
+  is_active: boolean;
+  state: TableState;
+  order_count: number;
+  occupied_since: string | null;
+  /** `null` sans `restaurant.orders.order.view` sur le site. */
+  orders: BoardOrder[] | null;
+}
+
+export interface Board {
+  site_id: string;
+  site_name: string;
+  orders_visible: boolean;
+  counts: { free: number; occupied: number; to_settle: number };
+  /** Ordre du serveur : zones dans leur ordre (sans zone en dernier), puis tables. */
+  tables: BoardTable[];
 }
 
 export interface ZoneCreateInput {
@@ -76,6 +120,7 @@ export const tableKeys = {
   all: ['restaurant.tables'] as const,
   zones: ['restaurant.tables', 'zones'] as const,
   tables: ['restaurant.tables', 'tables'] as const,
+  board: ['restaurant.tables', 'board'] as const,
 };
 
 export function useZones(query: string, enabled = true) {
@@ -93,6 +138,17 @@ export function useTables(query: string, enabled = true) {
     queryFn: ({ signal }) => api.get<Page<Table>>(`/restaurant/tables?${query}`, signal),
     placeholderData: keepPreviousData,
     enabled,
+  });
+}
+
+/** Plan de salle d'UN site (`GET /restaurant/tables/board`), actualisé périodiquement. */
+export function useBoard(siteId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [...tableKeys.board, siteId],
+    queryFn: ({ signal }) =>
+      api.get<Board>(`/restaurant/tables/board?site_id=${siteId ?? ''}`, signal),
+    refetchInterval: BOARD_REFRESH_MS,
+    enabled: enabled && siteId !== null,
   });
 }
 

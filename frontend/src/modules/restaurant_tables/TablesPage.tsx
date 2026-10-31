@@ -42,38 +42,11 @@ import {
   type Table,
   type Zone,
 } from './api';
+import { FloorPlan } from './FloorPlan';
+import { SiteDropdown, useDefaultSite } from './sites';
 
 /** Valeur du filtre de zone désignant les tables sans zone (`without_zone=true`). */
 const WITHOUT_ZONE = '__without_zone__';
-
-/** Site d'une nouvelle saisie : le site sélectionné, sinon le seul site, sinon à choisir. */
-function useDefaultSite(): { siteId: string | null; chooseSite: boolean } {
-  const { capabilities, siteId } = useCapabilities();
-  const only = capabilities.sites.length === 1 ? (capabilities.sites[0]?.id ?? null) : null;
-  return { siteId: siteId ?? only, chooseSite: siteId === null && capabilities.sites.length > 1 };
-}
-
-function SiteDropdown({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: string | null;
-  onChange: (value: string | null) => void;
-}) {
-  const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
-  return (
-    <Dropdown
-      inputId={id}
-      value={value}
-      onChange={(e) => onChange(e.value as string | null)}
-      options={capabilities.sites.map((s) => ({ value: s.id, label: s.name }))}
-      placeholder={t('stock.chooseSite')}
-    />
-  );
-}
 
 function SortOrderInput({
   id,
@@ -753,6 +726,9 @@ export default function TablesPage() {
         }
       />
       <TabView>
+        <TabPanel header={t('restaurantTables.floorPlanTab')}>
+          <FloorPlan />
+        </TabPanel>
         <TabPanel header={t('restaurantTables.tablesTab')}>
           <TablesTab onEdit={setTable} onNew={() => setTable(null)} />
         </TabPanel>

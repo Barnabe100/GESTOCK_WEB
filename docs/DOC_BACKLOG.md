@@ -625,3 +625,20 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
   l'éditeur de rôles).
 - **Non couvert** (sous-paliers suivants) : plan de salle (C-2), table dans les commandes (C-3),
   widget du tableau de bord (C-4). E2E impossibles tant que les modules sont `planned`.
+
+### R5-C / C-2 — plan de salle (frontend seul)
+
+- **Onglet « Plan de salle »**, par défaut, dans la page Tables (`FloorPlan.tsx`) :
+  `GET /restaurant/tables/board?site_id=` pour UN site (site sélectionné, sinon seul site, sinon
+  choisi : aucun appel avant le choix) ; actualisé toutes les 15 s (`BOARD_REFRESH_MS`).
+- Cartes groupées par zone **dans l'ordre du serveur** (sans zone en dernier) ; état Libre /
+  Occupée / À régler et compteurs **tels que calculés par le serveur** (aucun recalcul dans
+  React) ; places, nombre de commandes et début d'occupation (fuseau du tenant) ; avertissement
+  informatif si plusieurs commandes (A1) ; table inactive encore occupée signalée (situation
+  anormale, arbitrage 4 de B-3).
+- Détail des commandes (numéro, nom d'appel, statut si non ouverte, préparation ou « tout servi,
+  à régler ») seulement si le serveur le fournit (`orders_visible`) ; liens vers la fiche et vers
+  la liste filtrée (`/restaurant/orders?table_id=`) seulement avec `restaurant.orders.order.view`
+  et le module des commandes ; sinon nombre et ancienneté seuls (arbitrage 1 de B-3).
+- États chargement, erreur traduite (`site_access_denied`…), plan vide. Styles `sm-floor-*`
+  (jetons existants, grille adaptative). Aucun changement backend.

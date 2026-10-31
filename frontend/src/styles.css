@@ -2689,6 +2689,69 @@ a {
   gap: var(--sm-space-2);
 }
 
+/* Plan de salle (R5-C2) : cartes des tables groupées par zone, grille adaptative. */
+.sm-floor-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-3);
+  margin-top: var(--sm-space-3);
+}
+
+.sm-floor-zone h2 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-md);
+}
+
+.sm-floor-tables,
+.sm-floor-orders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sm-floor-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--sm-space-2);
+}
+
+.sm-floor-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-1);
+  padding: var(--sm-space-2) var(--sm-space-3);
+  background: var(--sm-surface);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  min-width: 0;
+}
+
+.sm-floor-table-label {
+  font-size: var(--sm-text-md);
+}
+
+.sm-floor-warning {
+  color: var(--sm-warning-fg);
+}
+
+.sm-floor-orders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-1);
+  font-size: var(--sm-text-sm);
+}
+
+.sm-floor-orders li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sm-space-1);
+}
+
+.sm-floor-link {
+  font-size: var(--sm-text-sm);
+}
+
 .sm-order-number {
   font-size: var(--sm-text-lg);
   font-weight: var(--sm-weight-bold);

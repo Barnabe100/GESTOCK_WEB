@@ -92,6 +92,16 @@ describe('zones et tables (palier R5-C1)', () => {
     fetchMock.mockImplementation(async (url, init) => {
       const u = String(url);
       if ((init?.method ?? 'GET') !== 'GET') return write(u, init as RequestInit);
+      // Plan de salle (onglet par défaut, C-2) : couvert par FloorPlan.test.tsx.
+      if (u.includes('/restaurant/tables/board')) {
+        return jsonResponse({
+          site_id: 's1',
+          site_name: 'Boutique',
+          orders_visible: true,
+          counts: { free: 0, occupied: 0, to_settle: 0 },
+          tables: [],
+        });
+      }
       if (u.includes('/restaurant/tables/zones')) {
         // Liste des zones actives (choix d'une zone) : seulement les actives.
         return pageOf(u.includes('status=active') ? [zone()] : zones());
@@ -105,7 +115,10 @@ describe('zones et tables (palier R5-C1)', () => {
     const wrap = (node: ReactNode) => (
       <ToastContext.Provider value={toast}>{node}</ToastContext.Provider>
     );
-    return renderWithCapabilities(wrap(<TablesPage />), { permissions, ...options });
+    const view = renderWithCapabilities(wrap(<TablesPage />), { permissions, ...options });
+    // Le plan de salle est l'onglet par défaut (C-2) : ces tests portent sur la configuration.
+    fireEvent.click(screen.getByRole('tab', { name: 'Tables' }));
+    return view;
   };
   const row = (text: string) => screen.getByText(text).closest('tr') as HTMLElement;
   const pick = (container: HTMLElement, label: RegExp, option: string) => {
