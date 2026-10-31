@@ -502,7 +502,8 @@ a {
      supérieure (900) pour que son panneau contextuel ne passe jamais dessous ; le tiroir
      (1000) et les surcouches PrimeReact restent au-dessus. */
   z-index: 950;
-  transition: width var(--sm-transition);
+  /* Aucune transition de largeur : une interpolation pendant un redimensionnement (passage par le
+     tiroir, capture pleine page) affichait une barre écrasée. */
 }
 
 .sm-sidebar-compact {
@@ -693,7 +694,6 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sm-sidebar,
   .sm-nav-main,
   .sm-nav-caret {
     transition: none;
