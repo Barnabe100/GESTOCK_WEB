@@ -1,10 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  assortArticles,
   apiToken,
+  assortArticles,
   bearer,
   createMember,
+  followMenu,
   loginUi,
   OWNER,
   STANDARD_OWNER,
@@ -101,8 +102,7 @@ test.describe('Inventaires', () => {
     await loginUi(page, OWNER.email, OWNER.password);
 
     // Stock ▸ Inventaires.
-    const menu = page.getByRole('navigation', { name: 'Menu' });
-    await menu.getByRole('link', { name: 'Inventaires', exact: true }).click();
+    await followMenu(page, 'Inventaires');
     await expect(page.getByRole('heading', { name: 'Inventaires' })).toBeVisible();
     await page.getByRole('button', { name: 'Nouvel inventaire' }).first().click();
     await expect(page.getByRole('heading', { name: 'Nouvel inventaire' })).toBeVisible();
@@ -182,10 +182,7 @@ test.describe('Inventaires', () => {
     const draft = await draftByApi(request, s);
     const seller = await createMember(request, s.token, 'seller', PASSWORD_MEMBER);
     await loginUi(page, seller, PASSWORD_MEMBER);
-    await page
-      .getByRole('navigation', { name: 'Menu' })
-      .getByRole('link', { name: 'Inventaires', exact: true })
-      .click();
+    await followMenu(page, 'Inventaires');
     await expect(page.getByRole('heading', { name: 'Inventaires' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Nouvel inventaire' })).toHaveCount(0);
     await page.goto(`/inventories/${draft.id}`);
@@ -254,10 +251,7 @@ test.describe('Inventaires', () => {
 
   test('plan STANDARD : inventaires disponibles', async ({ page, request }) => {
     await loginUi(page, STANDARD_OWNER.email, STANDARD_OWNER.password, STANDARD_OWNER.tenant);
-    await page
-      .getByRole('navigation', { name: 'Menu' })
-      .getByRole('link', { name: 'Inventaires', exact: true })
-      .click();
+    await followMenu(page, 'Inventaires');
     await expect(page.getByRole('heading', { name: 'Inventaires' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Nouvel inventaire' }).first()).toBeVisible();
     const s = await setup(request, STANDARD_OWNER);

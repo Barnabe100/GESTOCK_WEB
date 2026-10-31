@@ -58,6 +58,8 @@
     "createCompany": "Créer votre entreprise"
   },
   "layout": {
+    "collapseMenu": "Réduire le menu",
+    "expandMenu": "Développer le menu",
     "site": "Site",
     "allSites": "Tous les sites",
     "referenceProfile": "Profil de référence (tous les sites)",

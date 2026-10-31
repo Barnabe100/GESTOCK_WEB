@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import {
   assortArticles,
   bearer,
+  followMenu,
   loginUi,
   OWNER,
   provisionTenant,
@@ -113,7 +114,7 @@ test.describe('Profils d’activité', () => {
     // Point de vente en tête de la rubrique des ventes.
     const salesLinks = sidebar(page).locator('ul[aria-labelledby="nav-sales"] a');
     await expect(salesLinks.first()).toHaveText('Point de vente');
-    await salesLinks.first().click();
+    await followMenu(page, 'Point de vente');
 
     await expect(page.getByRole('heading', { name: 'Point de vente' })).toBeVisible();
     if (await page.getByText('Choisissez le site de vente pour commencer.').isVisible()) {
@@ -172,7 +173,7 @@ test.describe('Profils d’activité', () => {
     await expect(restaurantLinks).toHaveText(['Menu']);
     const stockLinks = sidebar(page).locator('ul[aria-labelledby="nav-stock"] a');
     await expect(stockLinks.first()).toHaveText('Produits');
-    const links = await sidebar(page).getByRole('link').allTextContents();
+    const links = await sidebar(page).getByRole('link', { includeHidden: true }).allTextContents();
     expect(links.join(' | ')).not.toMatch(/Tables|Cuisine|Salle|Commandes/);
 
     // Annoncées « à venir », sans lien.
@@ -198,10 +199,10 @@ test.describe('Profils d’activité', () => {
       'Stock',
       'Ventes et clients',
     ]);
-    await sidebar(page).getByRole('link', { name: 'Stock par site' }).click();
+    await followMenu(page, 'Stock par site');
     await expect(page.getByRole('heading', { name: 'Stock par site' })).toBeVisible();
     await openMenu(page);
-    await sidebar(page).getByRole('link', { name: 'Point de vente', exact: true }).click();
+    await followMenu(page, 'Point de vente');
     await expect(page.getByRole('heading', { name: 'Point de vente' })).toBeVisible();
   });
 
@@ -254,6 +255,8 @@ test.describe('Profils d’activité', () => {
       await expect(page.getByTestId('business-profile')).toHaveText(label);
       expect(await overflow()).toBe(false);
       await openMenu(page);
+      // Tiroir : la rubrique se déplie sur place, au toucher.
+      await sidebar(page).getByRole('button', { name: 'Ventes et clients', exact: true }).click();
       await expect(
         sidebar(page).getByRole('link', { name: 'Point de vente', exact: true }),
       ).toBeVisible();

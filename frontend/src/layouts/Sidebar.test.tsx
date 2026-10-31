@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -73,7 +73,8 @@ function renderSidebar(permissions: string[]) {
       </CapabilitiesContext.Provider>
     </MemoryRouter>,
   );
-  return screen.getAllByRole('link').map((link) => link.textContent);
+  // Destinations, y compris celles des sous-menus refermés (présentes dans le DOM, masquées).
+  return screen.getAllByRole('link', { hidden: true }).map((link) => link.textContent);
 }
 
 describe('menu dynamique', () => {
@@ -174,9 +175,14 @@ describe('coquille selon le profil UX', () => {
     expect(screen.getByTestId('business-profile').textContent).toBe('Grossiste');
     expect(shell.querySelector('.sm-brand-profile .pi-truck')).not.toBeNull();
     // Rubriques dans l'ordre du profil, titres accessibles (texte, pas seulement icône).
-    const titles = screen.getAllByRole('list').map((list) => list.getAttribute('aria-labelledby'));
+    const titles = screen
+      .getAllByRole('list', { hidden: true })
+      .map((list) => list.getAttribute('aria-labelledby'));
     expect(titles).toEqual([null, 'nav-stock', 'nav-sales', 'nav-admin']);
-    expect(screen.getByText('Stock', { selector: 'p' })).toBeTruthy();
+    const nav = within(screen.getByRole('navigation', { name: 'Menu' }));
+    expect(
+      nav.getAllByRole('button').map((b) => b.querySelector('.sm-nav-group-title')?.textContent),
+    ).toEqual(['Stock', 'Ventes et clients', 'Administration']);
   });
 
   it('vue « Tous les sites » : profil présenté comme profil de référence, jamais commun', () => {
@@ -224,7 +230,7 @@ describe('coquille selon le profil UX', () => {
         ux_profile: 'restaurant.default',
       },
     );
-    const links = screen.getAllByRole('link').map((link) => link.textContent);
+    const links = screen.getAllByRole('link', { hidden: true }).map((link) => link.textContent);
     expect(links.join(' ')).not.toMatch(/Tables|Cuisine|Salle/);
     expect(links).toContain('Ventes');
   });

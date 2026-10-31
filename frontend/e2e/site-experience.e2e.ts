@@ -1,6 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-import { bearer, createActiveSite, loginUi, provisionTenant, siteIdsOf, tokenFor } from './support';
+import {
+  bearer,
+  createActiveSite,
+  loginUi,
+  menuEntry,
+  provisionTenant,
+  siteIdsOf,
+  tokenFor,
+} from './support';
 
 /**
  * Palier E — Profil, modules, navigation, tableau de bord et thème du SITE actif, sur une
@@ -40,6 +48,9 @@ async function setup(request: APIRequestContext, prefix: string) {
   return { name, email, token };
 }
 
+/** Entrée « Point de vente » du menu latéral (présente même sous-menu refermé). */
+const posInMenu = (page: Page) => menuEntry(page, 'Point de vente');
+
 async function selectSite(page: Page, label: string) {
   await page.locator('.p-dropdown', { has: page.locator('#site-selector') }).click();
   await page.getByRole('option', { name: new RegExp(`^${label}`) }).click();
@@ -59,13 +70,13 @@ test('changer de site change profil, menu, thème, tableau de bord et modules', 
   await expect(page.getByTestId('business-profile-scope')).toHaveText(
     'Profil du site Site principal',
   );
-  await expect(page.getByRole('link', { name: 'Point de vente' })).toBeVisible();
+  await expect(posInMenu(page)).toHaveCount(1);
   const storeAccent = await shell.getAttribute('data-accent');
   await expect(page.getByTestId('site-hero')).toContainText('Site principal');
 
   await selectSite(page, 'Dépôt Central');
   await expect(page.getByTestId('business-profile')).toHaveText('Entrepôt');
-  await expect(page.getByRole('link', { name: 'Point de vente' })).toHaveCount(0);
+  await expect(posInMenu(page)).toHaveCount(0);
   expect(await shell.getAttribute('data-accent')).not.toBe(storeAccent);
   await expect(page.getByTestId('site-hero')).toContainText('Dépôt Central');
   await expect(page.getByTestId('site-hero-profile')).toHaveText('Entrepôt');

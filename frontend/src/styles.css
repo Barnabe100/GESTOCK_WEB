@@ -495,6 +495,215 @@ a {
   color: var(--sm-accent-strong);
 }
 
+/* --- Barre latérale par rubriques (refonte UX) : rubriques, panneau contextuel, mode compact --- */
+
+.sm-sidebar {
+  /* Barre « sticky » = contexte d'empilement propre : placée au-dessus du contenu et de la barre
+     supérieure (900) pour que son panneau contextuel ne passe jamais dessous ; le tiroir
+     (1000) et les surcouches PrimeReact restent au-dessus. */
+  z-index: 950;
+  transition: width var(--sm-transition);
+}
+
+.sm-sidebar-compact {
+  --sm-sidebar-width: 4.5rem;
+}
+
+.sm-sidebar-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.sm-sidebar-compact .sm-brand {
+  flex-direction: column;
+  padding: var(--sm-space-3) var(--sm-space-2);
+  gap: var(--sm-space-2);
+}
+
+.sm-sidebar-compact .sm-brand-text {
+  display: none;
+}
+
+.sm-sidebar-compact .sm-sidebar-toggle {
+  margin-left: 0;
+}
+
+.sm-nav-main-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sm-nav-main {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sm-space-3);
+  width: 100%;
+  padding: 0.55rem var(--sm-space-3);
+  border: 0;
+  border-radius: var(--sm-radius);
+  background: transparent;
+  color: var(--sm-text);
+  font: inherit;
+  font-size: var(--sm-text-sm);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--sm-transition),
+    color var(--sm-transition);
+}
+
+.sm-nav-main > .pi:first-child {
+  flex-shrink: 0;
+  width: 1.125rem;
+  font-size: 1rem;
+  text-align: center;
+  color: var(--sm-text-muted);
+}
+
+.sm-nav-main:hover,
+.sm-nav-open > .sm-nav-main {
+  background: var(--sm-surface-hover);
+}
+
+.sm-nav-main:focus-visible,
+.sm-nav a:focus-visible {
+  outline: none;
+  box-shadow: var(--sm-focus-ring);
+}
+
+.sm-nav-main.active {
+  background: var(--sm-accent-soft);
+  color: var(--sm-accent-strong);
+  font-weight: var(--sm-weight-bold);
+}
+
+.sm-nav-main.active > .pi:first-child {
+  color: var(--sm-accent-strong);
+}
+
+.sm-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Libellé de rubrique dans son bouton : même aspect que les entrées (titres en capitales
+   réservés au panneau). */
+.sm-nav-main .sm-nav-group-title {
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.sm-nav-caret {
+  font-size: 0.75rem;
+  color: var(--sm-text-muted);
+  transition: transform var(--sm-transition);
+}
+
+.sm-nav-open > .sm-nav-main .pi-angle-down {
+  transform: rotate(180deg);
+}
+
+/* Panneau contextuel adjacent à la barre (position fixe calculée à l'ouverture). */
+.sm-nav-flyout {
+  position: fixed;
+  z-index: 1100;
+  min-width: 14rem;
+  max-width: 18rem;
+  max-height: calc(100vh - var(--sm-space-4));
+  overflow-y: auto;
+  margin-left: var(--sm-space-1);
+  padding: var(--sm-space-2);
+  background: var(--sm-surface);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  box-shadow: var(--sm-shadow-lg);
+  animation: sm-flyout-in 120ms ease-out;
+}
+
+.sm-nav-flyout[hidden],
+.sm-nav-inline[hidden] {
+  display: none;
+}
+
+.sm-nav-flyout-title {
+  margin: 0 0 var(--sm-space-1);
+  padding: var(--sm-space-1) var(--sm-space-3);
+  font-size: var(--sm-text-xs);
+  font-weight: var(--sm-weight-bold);
+  color: var(--sm-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Tiroir : entrées dépliées sous leur rubrique, en retrait. */
+.sm-nav-inline {
+  padding: 2px 0 var(--sm-space-1) calc(var(--sm-space-3) + 1.125rem);
+}
+
+@keyframes sm-flyout-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Mode compact : icônes seules (libellés conservés pour les lecteurs d'écran). */
+.sm-sidebar-nav[data-mode='compact'] {
+  padding: var(--sm-space-3) var(--sm-space-2);
+}
+
+.sm-sidebar-nav[data-mode='compact'] .sm-nav-main {
+  justify-content: center;
+  padding: 0.6rem;
+}
+
+.sm-sidebar-nav[data-mode='compact'] .sm-nav-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.sm-sidebar-nav[data-mode='compact'] .sm-nav-caret {
+  position: absolute;
+  right: 2px;
+  font-size: 0.55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sm-sidebar,
+  .sm-nav-main,
+  .sm-nav-caret {
+    transition: none;
+  }
+
+  .sm-nav-flyout {
+    animation: none;
+  }
+}
+
 .sm-main {
   flex: 1;
   min-width: 0;
@@ -1112,6 +1321,28 @@ a {
 
   .sm-menu-toggle {
     display: inline-flex;
+  }
+
+  /* Tiroir : toujours développé (le mode compact ne concerne que l'ordinateur). */
+  .sm-sidebar-compact {
+    --sm-sidebar-width: 16rem;
+  }
+
+  .sm-sidebar {
+    width: min(var(--sm-sidebar-width), 85vw);
+  }
+
+  .sm-sidebar-toggle {
+    display: none;
+  }
+
+  .sm-sidebar-compact .sm-brand {
+    flex-direction: row;
+    padding: var(--sm-space-4);
+  }
+
+  .sm-sidebar-compact .sm-brand-text {
+    display: block;
   }
 
   .sm-dashboard-grid {

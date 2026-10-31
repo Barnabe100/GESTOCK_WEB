@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
-import { bearer, loginUi, OWNER, provisionTenant, siteIdsOf, tokenFor } from './support';
+import { bearer, loginUi, menuEntry, OWNER, provisionTenant, siteIdsOf, tokenFor } from './support';
 
 /**
  * Palier R1 (ADR-0049) — menu des sites de restauration : activation explicite sur un site
@@ -84,7 +84,8 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   await api(request, 'put', `/sites/${world.site}/modules/restaurant.menu`, { enabled: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginUi(page, EMAIL, PASSWORD, NAME);
-  await expect(page.locator('.sm-sidebar').getByRole('link', { name: 'Menu' })).toHaveCount(0);
+  const menuLink = menuEntry(page, 'Menu');
+  await expect(menuLink).toHaveCount(0);
   await page.goto('/organization/modules');
   const row = page.getByRole('row', { name: /^Menu/ });
   await expect(row.getByRole('switch')).toBeVisible();
@@ -93,7 +94,7 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   // Les commandes restent « à venir » : jamais activables (module non livré).
   await expect(page.getByRole('row', { name: /^Commandes/ }).getByRole('switch')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('.sm-sidebar').getByRole('link', { name: 'Menu' })).toBeVisible();
+  await expect(menuLink).toHaveCount(1);
 });
 
 test('sections et présentations : unité de base, conditionnement ; sans prix non proposé', async ({

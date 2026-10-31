@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState, type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -150,7 +150,11 @@ function SwitchTo() {
   );
 }
 
-const menu = () => screen.getAllByRole('link').map((link) => link.textContent);
+// Destinations du menu, y compris celles des sous-menus refermés (présentes, masquées).
+const menu = () =>
+  within(screen.getByRole('navigation', { name: 'Menu' }))
+    .getAllByRole('link', { hidden: true })
+    .map((link) => link.textContent);
 
 describe('expérience par site (palier E)', () => {
   beforeEach(() =>

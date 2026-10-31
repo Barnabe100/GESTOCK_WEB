@@ -39,6 +39,44 @@ export async function loginUi(page: Page, email: string, password: string, tenan
   await expect(home).toBeVisible();
 }
 
+/** Menu latéral : rubriques dont les entrées sont dans un sous-menu, refermé par défaut. */
+export const sideMenu = (page: Page) => page.getByRole('navigation', { name: 'Menu' });
+
+/** Libellé exact (espaces de mise en page ignorés). */
+const exactText = (name: string) =>
+  new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
+
+/**
+ * Entrée du menu latéral par son libellé EXACT, présente même dans un sous-menu refermé (un lien
+ * masqué n'a pas de nom accessible pour Playwright : `getByRole` ne le trouverait pas).
+ */
+export function menuEntry(page: Page, name: string) {
+  return sideMenu(page)
+    .locator('a')
+    .filter({ hasText: exactText(name) });
+}
+
+/**
+ * Suit une entrée du menu latéral comme un utilisateur : ouvre au besoin le tiroir (tablette,
+ * mobile) puis la rubrique qui la contient, et clique l'entrée.
+ */
+export async function followMenu(page: Page, name: string) {
+  const menu = sideMenu(page);
+  const toggle = page.getByRole('button', { name: 'Menu', exact: true }).first();
+  if ((await toggle.isVisible()) && (await page.locator('.sm-shell.sm-menu-open').count()) === 0)
+    await toggle.click();
+  const entry = menuEntry(page, name);
+  if (!(await entry.isVisible())) {
+    // Bouton de la rubrique contenant l'entrée (localisateur interne relatif à la rubrique).
+    await menu
+      .locator('li.sm-nav-section')
+      .filter({ has: page.locator('a').filter({ hasText: exactText(name) }) })
+      .locator(':scope > button')
+      .click();
+  }
+  await entry.click();
+}
+
 interface Session {
   access_token: string;
   tenant_id: string | null;

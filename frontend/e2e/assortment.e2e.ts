@@ -6,6 +6,7 @@ import {
   bearer,
   createActiveSite,
   createMember,
+  followMenu,
   loginUi,
   OWNER,
   tokenFor,
@@ -144,8 +145,7 @@ async function sitesOf(request: APIRequestContext, w: World, articleId: string) 
 }
 
 async function openAssortment(page: Page) {
-  const menu = page.getByRole('navigation', { name: 'Menu' });
-  await menu.getByRole('link', { name: 'Assortiment des sites', exact: true }).click();
+  await followMenu(page, 'Assortiment des sites');
   await expect(page.getByRole('heading', { name: 'Assortiment des sites' })).toBeVisible();
 }
 
@@ -207,7 +207,7 @@ test.describe('Assortiment par site — Recette, étape 1', () => {
     await loginUi(page, OWNER.email, OWNER.password);
     // Menu : Articles → Assortiment des sites → Catégories.
     const menu = page.getByRole('navigation', { name: 'Menu' });
-    const links = await menu.getByRole('link').allTextContents();
+    const links = await menu.getByRole('link', { includeHidden: true }).allTextContents();
     const at = (label: string) => links.findIndex((l) => l.trim() === label);
     expect(at('Articles')).toBeGreaterThanOrEqual(0);
     expect(at('Assortiment des sites')).toBe(at('Articles') + 1);

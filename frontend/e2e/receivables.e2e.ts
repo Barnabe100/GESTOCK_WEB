@@ -1,11 +1,12 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  assortArticles,
   apiToken,
+  assortArticles,
   bearer,
   createActiveSite,
   ensureCashOpen,
+  followMenu,
   loginUi,
   OWNER,
   SALE_NUMBER,
@@ -130,7 +131,7 @@ const amount = (text: string) =>
 
 /** Créances filtrées par la recherche (numéro de vente ou client). */
 async function openReceivables(page: Page, search: string) {
-  await page.getByRole('link', { name: 'Créances', exact: true }).click();
+  await followMenu(page, 'Créances');
   await expect(page.getByRole('heading', { name: 'Créances' })).toBeVisible();
   await page.getByRole('searchbox').fill(search);
 }

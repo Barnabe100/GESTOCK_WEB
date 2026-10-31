@@ -1,10 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  assortArticles,
   apiToken,
+  assortArticles,
   bearer,
   ensureCashOpen,
+  followMenu,
   loginUi,
   OWNER,
   paymentMethodId,
@@ -124,8 +125,7 @@ const amount = (text: string) =>
 async function openPos(page: Page, s: Setup) {
   await loginUi(page, OWNER.email, OWNER.password);
   // Menu « Ventes et clients » (lien direct sur mobile, où la barre latérale est repliée).
-  const link = page.getByRole('link', { name: 'Point de vente', exact: true });
-  if ((page.viewportSize()?.width ?? 0) > 800) await link.click();
+  if ((page.viewportSize()?.width ?? 0) > 800) await followMenu(page, 'Point de vente');
   else await page.goto('/pos');
   await expect(page.getByRole('heading', { name: 'Point de vente' })).toBeVisible();
   if (await page.getByText('Choisissez le site de vente pour commencer.').isVisible()) {

@@ -3,15 +3,18 @@ import { ConfirmDialog } from 'primereact/confirmdialog';
 import { Dropdown } from 'primereact/dropdown';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NavLink, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { useAuth } from '@/core/auth/AuthContext';
+import { tabStorage } from '@/core/auth/storage';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { profileLabel } from '@/core/capabilities/profile';
-import { buildNavigationSections, buildTopbarItems } from '@/core/modules/registry';
+import { buildTopbarItems } from '@/core/modules/registry';
 import type { FrontendModule } from '@/core/modules/types';
 import { resolveBusinessProfileTheme } from '@/core/theme/businessProfileTheme';
 import { ProfileIllustration } from '@/shared/ui/ProfileIllustration';
+
+import { SidebarNav } from './SidebarNav';
 
 const ALL_SITES = '__all__';
 
@@ -24,44 +27,8 @@ function initials(name: string): string {
     .join('');
 }
 
-/** Menu construit à partir des capacités : rubriques et ordre du profil UX du tenant. */
-export function Sidebar({
-  modules,
-  onNavigate,
-}: {
-  modules: readonly FrontendModule[];
-  onNavigate?: () => void;
-}) {
-  const { t } = useTranslation();
-  const { capabilities } = useCapabilities();
-  const sections = useMemo(
-    () => buildNavigationSections(modules, capabilities),
-    [modules, capabilities],
-  );
-  return (
-    <nav aria-label={t('layout.menu')} className="sm-sidebar-nav">
-      {sections.map(({ group, items }) => (
-        <div key={group} className="sm-nav-group">
-          {group !== 'home' && (
-            <p className="sm-nav-group-title" id={`nav-${group}`}>
-              {t(`navGroups.${group}`)}
-            </p>
-          )}
-          <ul className="sm-nav" aria-labelledby={group !== 'home' ? `nav-${group}` : undefined}>
-            {items.map((item) => (
-              <li key={item.key}>
-                <NavLink to={item.path} end={item.path === '/'} onClick={onNavigate}>
-                  <i className={item.icon} aria-hidden />
-                  <span>{t(item.labelKey)}</span>
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </nav>
-  );
-}
+/** Menu de la barre latérale (rubriques et sous-menus) : voir `SidebarNav`. */
+export const Sidebar = SidebarNav;
 
 export function AppLayout({
   modules,
@@ -75,6 +42,13 @@ export function AppLayout({
   const navigate = useNavigate();
   const { capabilities, siteId, setSiteId } = useCapabilities();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Barre latérale compacte (icônes seules) : préférence de l'onglet, comme le site choisi.
+  const [compact, setCompact] = useState(tabStorage.getSidebarCompact);
+  const toggleCompact = () => {
+    const next = !compact;
+    setCompact(next);
+    tabStorage.setSidebarCompact(next);
+  };
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -108,7 +82,7 @@ export function AppLayout({
 
   return (
     <div
-      className={`sm-shell${menuOpen ? ' sm-menu-open' : ''}`}
+      className={`sm-shell${menuOpen ? ' sm-menu-open' : ''}${compact ? ' sm-sidebar-compact' : ''}`}
       data-accent={theme.colors.accent}
       data-density={theme.density}
       data-profile-theme={theme.fallback ? 'neutral' : 'profile'}
@@ -136,8 +110,21 @@ export function AppLayout({
               <span>{theme.labels.profile ?? t('layout.unknownProfile')}</span>
             </small>
           </div>
+          <Button
+            type="button"
+            icon={compact ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'}
+            text
+            rounded
+            className="sm-sidebar-toggle"
+            aria-label={t(compact ? 'layout.expandMenu' : 'layout.collapseMenu')}
+            aria-controls="app-sidebar"
+            aria-expanded={!compact}
+            tooltip={compact ? t('layout.expandMenu') : undefined}
+            tooltipOptions={{ position: 'right' }}
+            onClick={toggleCompact}
+          />
         </div>
-        <Sidebar modules={modules} onNavigate={() => setMenuOpen(false)} />
+        <SidebarNav modules={modules} compact={compact} onNavigate={() => setMenuOpen(false)} />
       </aside>
       <div className="sm-backdrop" aria-hidden onClick={() => setMenuOpen(false)} />
       <div className="sm-main">

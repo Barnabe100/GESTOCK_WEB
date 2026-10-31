@@ -1,9 +1,11 @@
 /**
- * Préférences de navigation propres à l'onglet (sessionStorage) : entreprise et site choisis.
- * Ce ne sont PAS des éléments de sécurité : le backend revalide tout à chaque requête.
+ * Préférences de navigation propres à l'onglet (sessionStorage) : entreprise et site choisis,
+ * barre latérale compacte ou développée. Ce ne sont PAS des éléments de sécurité : le backend
+ * revalide tout à chaque requête.
  */
 const TENANT_KEY = 'sm.tenantId';
 const SITE_KEY_PREFIX = 'sm.siteId.';
+const SIDEBAR_KEY = 'sm.sidebar';
 
 function safe<T>(fn: () => T, fallback: T): T {
   try {
@@ -26,5 +28,12 @@ export const tabStorage = {
     safe(() => {
       if (siteId) sessionStorage.setItem(SITE_KEY_PREFIX + tenantId, siteId);
       else sessionStorage.removeItem(SITE_KEY_PREFIX + tenantId);
+    }, undefined),
+  /** Barre latérale compacte (icônes seules) ; défaut : développée. */
+  getSidebarCompact: () => safe(() => sessionStorage.getItem(SIDEBAR_KEY) === 'compact', false),
+  setSidebarCompact: (compact: boolean) =>
+    safe(() => {
+      if (compact) sessionStorage.setItem(SIDEBAR_KEY, 'compact');
+      else sessionStorage.removeItem(SIDEBAR_KEY);
     }, undefined),
 };

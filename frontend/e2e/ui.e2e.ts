@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { apiToken, assortArticles, bearer, loginUi, OWNER } from './support';
+import { apiToken, assortArticles, bearer, followMenu, loginUi, OWNER } from './support';
 
 /**
  * Phase 2.5-B — Design System : navigation groupée, tableau de bord, conventions de liste
@@ -51,10 +51,10 @@ test.describe('Design System', () => {
 
     await loginUi(page, OWNER.email, OWNER.password);
 
-    // Navigation groupée par domaine.
+    // Navigation groupée par domaine : une rubrique par domaine, entrées dans son sous-menu.
     const menu = page.getByRole('navigation', { name: 'Menu' });
     for (const group of ['Catalogue', 'Stock', 'Ventes et clients', 'Administration']) {
-      await expect(menu.getByText(group, { exact: true })).toBeVisible();
+      await expect(menu.getByRole('button', { name: group, exact: true })).toBeVisible();
     }
 
     // Tableau de bord : indicateurs et actions rapides selon les droits du propriétaire.
@@ -62,7 +62,7 @@ test.describe('Design System', () => {
     await expect(page.getByRole('navigation', { name: 'Actions rapides' })).toBeVisible();
 
     // Liste standard : recherche, aucun résultat, réinitialisation.
-    await menu.getByRole('link', { name: 'Catégories', exact: true }).click();
+    await followMenu(page, 'Catégories');
     await expect(page.getByRole('heading', { name: 'Catégories' })).toBeVisible();
     const search = page.getByRole('searchbox').or(page.getByLabel('Rechercher…'));
     const reset = page.getByRole('button', { name: 'Réinitialiser' });
@@ -87,7 +87,7 @@ test.describe('Design System', () => {
     await expect(row.getByText('Inactif', { exact: true })).toBeVisible();
 
     // Entrée de stock saisie par l'interface, validée après confirmation.
-    await menu.getByRole('link', { name: 'Entrées de stock', exact: true }).click();
+    await followMenu(page, 'Entrées de stock');
     await expect(page.getByRole('heading', { name: 'Entrées de stock' })).toBeVisible();
     await page.getByRole('button', { name: 'Nouvelle entrée' }).first().click();
     await expect(page.getByRole('heading', { name: 'Nouvelle entrée' })).toBeVisible();
@@ -112,7 +112,7 @@ test.describe('Design System', () => {
     await expect(page.getByText('Validé', { exact: true })).toBeVisible();
 
     // Le niveau de stock reflète l'entrée.
-    await menu.getByRole('link', { name: 'Stock par site', exact: true }).click();
+    await followMenu(page, 'Stock par site');
     await page.getByLabel('Rechercher…').fill(reference);
     // Une ligne par site (entreprise multi-sites, ordre non garanti) : celle du site choisi.
     const levelRow = page.getByRole('row').filter({ hasText: reference });

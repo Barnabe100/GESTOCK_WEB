@@ -681,3 +681,43 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
 - Limites connues : listes de choix (zones, tables, filtre) limitées à 100 éléments ; ticket de
   retrait sans table (le `TicketOut` du serveur ne la porte pas) ; widget du tableau de bord
   `restaurant.tables:occupied` non réalisé (C-4, non autorisé).
+
+## Refonte UX de la barre latérale (frontend seul)
+
+À reporter dans `DESIGN_SYSTEM.md` (navigation) lors d'une prochaine mise à jour autorisée.
+
+- **Présentation seulement** : rubriques, ordre et entrées viennent toujours de
+  `buildNavigationSections` (modules effectifs et implémentés, permissions, fonctionnalités,
+  profil UX du site actif). Registre des modules, règles de disponibilité, routes, URL, site
+  choisi : inchangés. Aucune rubrique ajoutée (pas de « Tiers » : la répartition reste celle des
+  rubriques `navGroups` existantes), aucun module `planned` affiché.
+- **Rubriques** (`layouts/SidebarNav.tsx`) : « Tableau de bord » = lien direct ; chaque autre
+  rubrique = bouton natif (icône, libellé, flèche indicatrice de sous-menu, `aria-expanded`,
+  `aria-controls`) ; la rubrique de la page courante est mise en évidence et la page courante
+  porte `aria-current="page"`. Icônes : **PrimeIcons** (système du projet, aucune dépendance
+  Lucide) — Tableau de bord `pi-objects-column`, Catalogue `pi-box`, Stock `pi-warehouse`,
+  Ventes `pi-shopping-cart`, Caisse `pi-wallet`, Restaurant `pi-shop` (pas d'icône
+  « couverts »), Rapports `pi-chart-bar`, Atelier `pi-wrench`, Administration `pi-cog` ;
+  repli `pi-folder`.
+- **Ordinateur** (pointeur précis, `(hover: hover) and (pointer: fine)`) : panneau contextuel
+  adjacent (position fixe, au-dessus du contenu : `.sm-sidebar` `z-index: 950`) ouvert au
+  survol ; fermeture et bascule vers une autre rubrique **différées de 250 ms** (le panneau reste
+  ouvert pendant le trajet du curseur, même en diagonale à travers d'autres rubriques). Clic :
+  ouvre et **épingle** (ne se ferme plus au départ du curseur), second clic, `Échap` (focus rendu
+  au bouton), clic extérieur ou navigation referment. Écran tactile sans survol : clic seulement.
+- **Mode compact** : bascule en haut de la barre (« Réduire / Développer le menu »), largeur
+  4,5 rem (le contenu reprend la place), icônes seules, libellés conservés pour les lecteurs
+  d'écran ; infobulle (PrimeReact `Tooltip`) au survol d'un lien direct et au focus **clavier**
+  d'une rubrique ; au survol d'une rubrique, son panneau s'ouvre, titré par son nom (aucune
+  infobulle superposée).
+- **Tablette / mobile** (≤ 1024 px, tiroir existant) : toujours développé (bascule masquée),
+  rubriques dépliées sur place au toucher, celle de la page courante dépliée d'office, tiroir
+  refermé après le choix d'une destination ; largeur bornée à 85 vw, aucun débordement.
+- **Persistance** : mécanisme existant réutilisé (`tabStorage`, `sessionStorage`, clé
+  `sm.sidebar`) — préférence conservée dans l'onglet comme le site choisi, perdue à la fermeture
+  de l'onglet (aucun stockage nouveau).
+- Tests : `layouts/SidebarNav.test.tsx` (14 tests : points 1 à 13 et accessibilité) ;
+  `Sidebar.test.tsx` et `SiteExperience.test.tsx` adaptés (entrées présentes mais masquées dans
+  les sous-menus refermés). E2E : aide `followMenu` (ouvre le tiroir et la rubrique, puis suit
+  l'entrée) et `sideMenu` dans `e2e/support.ts` ; les assertions d'absence ou de présence d'une
+  entrée portent sur le menu, sous-menus refermés compris (`includeHidden`).

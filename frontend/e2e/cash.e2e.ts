@@ -1,10 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  assortArticles,
   apiToken,
+  assortArticles,
   bearer,
   createActiveSite,
+  followMenu,
   loginUi,
   OWNER,
   SALE_NUMBER,
@@ -130,7 +131,7 @@ test.describe('Caisse', () => {
     await loginUi(page, OWNER.email, OWNER.password);
 
     // 1. Création du poste de caisse (ordinateur du dépôt, dont la caisse est activée).
-    await page.getByRole('link', { name: 'Postes de caisse', exact: true }).click();
+    await followMenu(page, 'Postes de caisse');
     await expect(page.getByRole('heading', { name: 'Postes de caisse' })).toBeVisible();
     await expect(page.getByTestId(`cash-site-${s.depot}`)).toContainText('Caisse activée');
     await page.getByRole('button', { name: 'Nouveau poste' }).first().click();

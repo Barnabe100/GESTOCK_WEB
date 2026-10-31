@@ -1,11 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  assortArticles,
   apiToken,
+  assortArticles,
   bearer,
   createMember,
+  followMenu,
   loginUi,
+  menuEntry,
   OWNER,
   SALE_NUMBER,
   unique,
@@ -89,7 +91,7 @@ async function pick(page: Page, inputId: string, text: string) {
 /** Saisie d'une vente d'un article (quantité 3), client facultatif : brouillon non numéroté. */
 async function enterSale(page: Page, stocked: Stocked, customer?: string) {
   const { reference } = stocked;
-  await page.getByRole('link', { name: 'Ventes', exact: true }).click();
+  await followMenu(page, 'Ventes');
   await expect(page.getByRole('heading', { name: 'Ventes' })).toBeVisible();
   await page.getByRole('button', { name: 'Nouvelle vente' }).first().click();
   await expect(page.getByRole('heading', { name: 'Nouvelle vente' })).toBeVisible();
@@ -154,20 +156,20 @@ test.describe('Ventes', () => {
 
     // Stock : 10 − 3 = 7 (API et écran).
     expect(await stockOf(request, stocked)).toBe('7.000');
-    await page.getByRole('link', { name: 'Stock par site', exact: true }).click();
+    await followMenu(page, 'Stock par site');
     await page.getByRole('searchbox').fill(reference);
     await expect(
       page.getByRole('row').filter({ hasText: reference }).filter({ hasText: stocked.siteName }),
     ).toContainText('7');
 
     // Journal des mouvements : sortie de type Vente, rattachée au numéro de la vente.
-    await page.getByRole('link', { name: 'Mouvements', exact: true }).click();
+    await followMenu(page, 'Mouvements');
     const movement = page.getByRole('row').filter({ hasText: number });
     await expect(movement).toContainText('Vente');
     await expect(movement).toContainText('-3');
 
     // Audit : validation tracée avec le numéro définitif (le brouillon n'en a pas).
-    await page.getByRole('link', { name: "Journal d'audit", exact: true }).click();
+    await followMenu(page, "Journal d'audit");
     await expect(
       page.getByRole('row').filter({ hasText: 'sale.validated' }).filter({ hasText: number }),
     ).toBeVisible();
@@ -199,7 +201,7 @@ test.describe('Ventes', () => {
     const number = await validateSale(page, 'Mobile Money');
     await expect(page.getByText('Ordinaire', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Annuler la vente' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Rôles', exact: true })).toHaveCount(0);
+    await expect(menuEntry(page, 'Rôles')).toHaveCount(0);
 
     // Le backend refuse l'annulation au Vendeur, quel que soit l'écran.
     const sellerToken = await apiToken(request, email, password);
