@@ -11,6 +11,7 @@ import { posModule } from '@/modules/pos';
 import { receivablesModule } from '@/modules/receivables';
 import { restaurantMenuModule } from '@/modules/restaurant_menu';
 import { restaurantOrdersModule } from '@/modules/restaurant_orders';
+import { restaurantTablesModule } from '@/modules/restaurant_tables';
 import { salesModule } from '@/modules/sales';
 import { stockModule } from '@/modules/stock';
 import { subscriptionModule } from '@/modules/subscription';
@@ -35,6 +36,7 @@ export const FRONTEND_MODULES: readonly FrontendModule[] = [
   alertsModule,
   restaurantMenuModule,
   restaurantOrdersModule,
+  restaurantTablesModule,
   organizationModule,
   usersModule,
   subscriptionModule,

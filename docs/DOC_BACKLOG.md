@@ -593,3 +593,35 @@ stade ; `restaurant.orders` et `restaurant.tables` restent `planned` ; politique
 - **État** : aucune migration en R5-B ; politique E.1 d'ADR-0048 inchangée ; modules
   `restaurant.orders` et `restaurant.tables` toujours `planned` en production ; interface en
   R5-C (non commencée).
+
+## R5-C — interface des tables et du plan de salle
+
+### R5-C / C-1 — configuration des zones et des tables (frontend seul)
+
+- **Module frontend `restaurant_tables`** (`frontend/src/modules/restaurant_tables/`), inscrit au
+  registre (`app/modules.ts`) : entrée « Tables » (`nav.restaurantTables`, rubrique
+  « restaurant », déjà placée par le profil UX Restaurant), route `/restaurant/tables`
+  (`restaurant.tables.table.view`). Affiché seulement si le backend déclare le module
+  **disponible** : il reste invisible en production tant que `restaurant.tables` est `planned`
+  (test de registre ajouté).
+- **Page en deux onglets** (sur le modèle du menu) : « Tables » (recherche, filtre d'état, filtre
+  de zone avec « Sans zone » → `without_zone=true`, tri serveur par libellé, zone, places, ordre,
+  site) et « Zones » (recherche, filtre d'état, tables actives / total). Création, modification,
+  activation et désactivation (confirmation pour désactiver) avec
+  `restaurant.tables.table.manage` ; lecture seule sinon (le backend reste la frontière de
+  sécurité). Site d'une nouvelle saisie : site sélectionné, sinon seul site, sinon choisi.
+- **Contrats** : `PUT /restaurant/tables/{id}` avec le corps COMPLET (`zone_id`, `label`,
+  `seats`, `sort_order`) ; `PUT /restaurant/tables/zones/{id}` (`name`, `sort_order`). La zone
+  actuelle d'une table reste proposée même désactivée (le serveur accepte de la conserver et
+  refuse seulement d'en choisir une autre inactive) ; changer de site à la création efface la
+  zone choisie. Bornes reprises du serveur : libellé 40, nom de zone 100, places 1 à 999, ordre 0
+  à 100 000 ; unicités et protections laissées au serveur, refus traduits.
+- **Traductions** : les dix codes d'erreur des tables et des zones (`zone_not_found`,
+  `table_not_found`, `zone_name_taken`, `table_label_taken`, `zone_has_active_tables`,
+  `table_has_open_orders`, `zone_inactive`, `table_not_allowed_for_mode`, `tables_unavailable`,
+  `table_inactive`) ; les trois derniers serviront en C-3. Libellés des permissions
+  `restaurant.tables.table.view` / `.manage` ajoutés au catalogue `permissions` (exigés par le
+  test du registre `app/modules.test.ts`, qui a détecté leur absence ; utilisés aussi par
+  l'éditeur de rôles).
+- **Non couvert** (sous-paliers suivants) : plan de salle (C-2), table dans les commandes (C-3),
+  widget du tableau de bord (C-4). E2E impossibles tant que les modules sont `planned`.

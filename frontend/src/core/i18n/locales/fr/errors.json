@@ -287,5 +287,15 @@
   "assignee_not_eligible": "Ce membre ne peut pas prendre de commande sur ce site.",
   "sale_origin_unavailable": "Cette vente provient d'un document qui ne permet pas son annulation ici.",
   "sale_origin_active": "Une vente active existe déjà pour ce document.",
-  "customer_change_reason_required": "Motif obligatoire pour remplacer le client de la commande."
+  "customer_change_reason_required": "Motif obligatoire pour remplacer le client de la commande.",
+  "zone_not_found": "Zone introuvable.",
+  "table_not_found": "Table introuvable sur ce site.",
+  "zone_name_taken": "Une zone de ce nom existe déjà sur ce site.",
+  "table_label_taken": "Une table de ce libellé existe déjà sur ce site.",
+  "zone_has_active_tables": "Cette zone contient encore des tables actives : désactivez-les ou changez-les de zone d'abord.",
+  "table_has_open_orders": "Des commandes en cours sont rattachées à cette table : terminez-les ou changez-les de table avant de la désactiver.",
+  "zone_inactive": "Cette zone est désactivée : choisissez une zone active ou réactivez-la d'abord.",
+  "table_not_allowed_for_mode": "Une table ne peut être associée qu'à une commande sur place.",
+  "tables_unavailable": "Les tables ne sont pas disponibles sur ce site.",
+  "table_inactive": "Cette table est désactivée : choisissez une table active."
 }

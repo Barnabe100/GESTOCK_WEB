@@ -103,7 +103,8 @@
     "stockLots": "Lots",
     "assortment": "Assortiment des sites",
     "restaurantMenu": "Menu",
-    "restaurantOrders": "Commandes"
+    "restaurantOrders": "Commandes",
+    "restaurantTables": "Tables"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -570,7 +571,9 @@
     "restaurant.orders.order.cancel": "Annuler une commande ou une ligne non préparée",
     "restaurant.orders.order.cancel_prepared": "Annuler une ligne en préparation ou prête",
     "restaurant.orders.order.reassign": "Réattribuer une commande",
-    "restaurant.orders.settings.manage": "Gérer les réglages des commandes du site"
+    "restaurant.orders.settings.manage": "Gérer les réglages des commandes du site",
+    "restaurant.tables.table.view": "Consulter les tables et les zones",
+    "restaurant.tables.table.manage": "Gérer les tables et les zones"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -2216,6 +2219,47 @@
       "packaging_inactive": "conditionnement désactivé",
       "packaging_price_not_set": "prix du conditionnement non configuré"
     }
+  },
+  "restaurantTables": {
+    "title": "Tables",
+    "subtitle": "Tables et zones (salle, terrasse…) de chaque site. Une table désactivée reste enregistrée mais ne peut plus être associée à une commande.",
+    "tablesTab": "Tables",
+    "zonesTab": "Zones",
+    "newTable": "Nouvelle table",
+    "editTable": "Modifier la table",
+    "newZone": "Nouvelle zone",
+    "editZone": "Modifier la zone",
+    "label": "Libellé",
+    "labelHelp": "Unique sur le site, sans distinction de majuscules (ex. T1, Terrasse 4).",
+    "zone": "Zone",
+    "zoneHelp": "Facultative : uniquement les zones actives du site.",
+    "noZone": "Sans zone",
+    "withoutZone": "Sans zone",
+    "allZones": "Toutes les zones",
+    "noActiveZone": "Aucune zone active sur ce site.",
+    "inactiveZoneOption": "{{name}} (zone désactivée)",
+    "zoneInactive": "Zone désactivée",
+    "zoneName": "Nom de la zone",
+    "zoneNameHelp": "Unique sur le site, sans distinction de majuscules (ex. Salle, Terrasse).",
+    "seats": "Places",
+    "seatsHelp": "Facultatif : de 1 à {{max}}.",
+    "seatsInvalid": "Nombre de places compris entre 1 et {{max}}.",
+    "sortOrder": "Ordre d'affichage",
+    "sortOrderHelp": "Les plus petits nombres apparaissent en premier.",
+    "activeTables": "Tables actives",
+    "activeOfTotal": "{{active}} / {{total}}",
+    "status": "Statut",
+    "tableSaved": "Table enregistrée",
+    "zoneSaved": "Zone enregistrée",
+    "statusChanged": "Statut modifié",
+    "deactivateTableTitle": "Désactiver la table",
+    "deactivateTableConfirm": "Désactiver « {{name}} » ? Elle reste enregistrée mais ne pourra plus être associée à une commande. Impossible tant qu'une commande en cours y est rattachée.",
+    "deactivateZoneTitle": "Désactiver la zone",
+    "deactivateZoneConfirm": "Désactiver la zone « {{name}} » ? Impossible tant qu'elle contient des tables actives.",
+    "searchTables": "Rechercher une table…",
+    "searchZones": "Rechercher une zone…",
+    "noTables": "Aucune table.",
+    "noZones": "Aucune zone."
   },
   "restaurantOrders": {
     "title": "Commandes",
