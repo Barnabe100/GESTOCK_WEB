@@ -1,6 +1,6 @@
 """Moyens de paiement configurables (Lot 1, ADR-0037).
 
-Chaque entreprise configure ses moyens (« Espèces », « Orange Money », « Wave »…). Le **type**
+Chaque entreprise configure ses moyens (« Espèces », « Mobile Money », « Virement »…). Le **type**
 (``CASH``, ``MOBILE_MONEY``, ``CARD``, ``BANK_TRANSFER``, ``OTHER``) gouverne le comportement —
 jamais le libellé : seul ``CASH`` rend la monnaie et passe par la caisse du site. Saisie manuelle
 (montant, référence) ; le mode ``API`` est réservé à une intégration future qui ne changera pas

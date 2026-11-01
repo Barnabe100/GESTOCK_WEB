@@ -239,7 +239,8 @@ class SaleLine(IdMixin, TenantScopedMixin, Base):
 
 class PaymentMethod(StrEnum):
     """Catégorie de moyen de paiement (code technique, indépendant de la langue). Le détail
-    d'un fournisseur (Orange Money, Wave…) va dans ``provider``, sans nouveau code."""
+    d'un opérateur est une DONNÉE (catalogue ou opérateur personnalisé, ADR-0051), jamais un
+    nouveau code."""
 
     CASH = "CASH"
     MOBILE_MONEY = "MOBILE_MONEY"
@@ -250,7 +251,8 @@ class PaymentMethod(StrEnum):
 
 class PaymentIntegration(StrEnum):
     """Mode de saisie d'un moyen de paiement : manuel (montant + référence) ; ``API`` réservé à
-    une intégration future (Orange Money, cartes…), sans changer le modèle du paiement."""
+    une intégration future (passerelle d'un opérateur, cartes…), sans changer le modèle du
+    paiement."""
 
     MANUAL = "MANUAL"
     API = "API"
@@ -354,8 +356,8 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
 
 
 class ConfiguredPaymentMethod(IdMixin, TenantScopedMixin, TimestampMixin, Base):
-    """Moyen de paiement configuré par l'entreprise (Lot 1, ADR-0037) : libellé libre (« Orange
-    Money », « Wave »…), **type** qui gouverne le comportement (``CASH`` : monnaie et caisse),
+    """Moyen de paiement configuré par l'entreprise (Lot 1, ADR-0037) : libellé libre (« Mobile
+    Money », « Virement »…), **type** qui gouverne le comportement (``CASH`` : monnaie et caisse),
     saisie manuelle (intégration API future), référence obligatoire ou non. Jamais supprimé :
     désactivé. Disponible sur tous les sites, sauf désactivation pour un site."""
 

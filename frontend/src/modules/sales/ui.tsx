@@ -10,9 +10,10 @@ import type { PaymentStatus, SaleLine, SalePaymentStatus } from './api';
 
 /**
  * Messages d'erreur : stock insuffisant détaillé, prix modifiés listés, limite de crédit
- * (montants renvoyés par le serveur, formatés dans la devise du tenant).
+ * (montants renvoyés par le serveur, formatés dans la devise du tenant, toujours fournie par
+ * l'appelant depuis les capacités : aucune devise par défaut, ADR-0051).
  */
-export function saleError(t: TFunction, error: unknown, locale = 'fr', currency = 'XOF'): string {
+export function saleError(t: TFunction, error: unknown, locale: string, currency: string): string {
   if (error instanceof ApiError && error.code === 'sale_prices_changed') {
     const articles = Array.isArray(error.extra.articles) ? error.extra.articles.join(', ') : '';
     return t('errors:sale_prices_changed', { articles });

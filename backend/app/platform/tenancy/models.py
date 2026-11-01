@@ -34,9 +34,11 @@ class Tenant(IdMixin, TimestampMixin, Base):
     business_profile_code: Mapped[str] = mapped_column(
         String(50), ForeignKey("business_profiles.code", ondelete="RESTRICT"), nullable=False
     )
-    currency: Mapped[str] = mapped_column(String(3), default="XOF", nullable=False)
+    # Devise et fuseau : TOUJOURS fournis à la création, issus du référentiel du pays (ou
+    # choisis et validés) ; aucune valeur nationale par défaut (ADR-0051, D4).
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
     locale: Mapped[str] = mapped_column(String(10), default="fr", nullable=False)
-    timezone: Mapped[str] = mapped_column(String(64), default="Africa/Ouagadougou", nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # --- Entreprise (Phase 3.2) : informations persistantes, reprises par les reçus et les
     # futurs documents. ``name`` est la raison sociale. Pays obligatoire pour tout nouveau

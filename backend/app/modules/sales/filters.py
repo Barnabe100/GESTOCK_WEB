@@ -29,7 +29,7 @@ class SaleFilters:
     mine: bool = False
     article_id: uuid.UUID | None = None
     # Référence article (référence ou code-barres) et référence de paiement (n° de
-    # transaction, ex. Orange Money) : deux critères distincts.
+    # transaction, ex. mobile money) : deux critères distincts.
     article_reference: str | None = None
     payment_reference: str | None = None
 

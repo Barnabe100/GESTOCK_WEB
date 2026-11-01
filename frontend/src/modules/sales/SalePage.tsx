@@ -246,7 +246,7 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
         await draft.persist(values);
         toast.success(t('sales.draftSaved'));
       } catch (error) {
-        toast.error(saleError(t, error, locale));
+        toast.error(saleError(t, error, locale, currency));
       }
     }),
   );
@@ -627,7 +627,10 @@ function CancelDialog({ sale, onClose }: { sale: Sale; onClose: () => void }) {
           toast.success(t('sales.cancelled', { number: sale.number ?? t('sales.draftNumber') }));
           onClose();
         },
-        onError: (error) => toast.error(saleError(t, error, capabilities.tenant.locale)),
+        onError: (error) =>
+          toast.error(
+            saleError(t, error, capabilities.tenant.locale, capabilities.tenant.currency),
+          ),
       },
     );
   return (

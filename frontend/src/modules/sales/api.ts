@@ -335,7 +335,7 @@ export function usePaymentMutations(saleId: string) {
 
 export type PaymentIntegration = 'MANUAL' | 'API';
 
-/** Moyen configuré par l'entreprise (« Espèces », « Orange Money »…). */
+/** Moyen configuré par l'entreprise (« Espèces », « Mobile Money »…). */
 export interface ConfiguredPaymentMethod {
   id: string;
   label: string;

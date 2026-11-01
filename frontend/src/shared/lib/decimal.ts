@@ -13,7 +13,7 @@ export function normalizeDecimal(input: string, maxDecimals: number): string | n
 
 /**
  * Affichage d'un montant dans la devise du tenant. Montant entier : format usuel de la devise
- * (XOF sans décimales) ; montant avec centimes : 2 décimales, jamais arrondi à l'affichage.
+ * (sans décimales pour une devise qui n'en a pas) ; montant avec centimes : 2 décimales, jamais arrondi à l'affichage.
  */
 export function formatMoney(
   value: string | null | undefined,
