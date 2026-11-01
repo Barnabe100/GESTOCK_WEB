@@ -56,10 +56,17 @@ class TenantFiltered:
 
 TENANT_KEY = "tenant_id"
 USER_KEY = "user_id"
+# Accès public par QR Code (R7, ADR-0052) : EMPREINTE du jeton présenté (jamais le jeton). Les
+# politiques ``qr_token_lookup`` / ``qr_tracking_lookup`` ne rendent visible que la ligne dont
+# l'empreinte est égale à cette valeur ; vide : aucune ligne (aucun contournement de la RLS).
+QR_TOKEN_KEY = "qr_token_hash"
+QR_TRACKING_KEY = "qr_tracking_hash"
 
 _SET_CONTEXT_SQL = text(
     "SELECT set_config('app.tenant_id', :tenant_id, true), "
-    "set_config('app.user_id', :user_id, true)"
+    "set_config('app.user_id', :user_id, true), "
+    "set_config('app.qr_token_hash', :qr_token_hash, true), "
+    "set_config('app.qr_tracking_hash', :qr_tracking_hash, true)"
 )
 
 
@@ -71,6 +78,8 @@ def _apply_context(session: Session, connection: Connection) -> None:
         {
             "tenant_id": str(tenant_id) if tenant_id else "",
             "user_id": str(user_id) if user_id else "",
+            "qr_token_hash": session.info.get(QR_TOKEN_KEY) or "",
+            "qr_tracking_hash": session.info.get(QR_TRACKING_KEY) or "",
         },
     )
 
@@ -104,12 +113,18 @@ def set_db_context(
     *,
     tenant_id: uuid.UUID | None | Any = ...,
     user_id: uuid.UUID | None | Any = ...,
+    qr_token_hash: str | None | Any = ...,
+    qr_tracking_hash: str | None | Any = ...,
 ) -> None:
     """Définit le contexte RLS de la session (et l'applique à la transaction en cours)."""
     if tenant_id is not ...:
         session.info[TENANT_KEY] = tenant_id
     if user_id is not ...:
         session.info[USER_KEY] = user_id
+    if qr_token_hash is not ...:
+        session.info[QR_TOKEN_KEY] = qr_token_hash
+    if qr_tracking_hash is not ...:
+        session.info[QR_TRACKING_KEY] = qr_tracking_hash
     if session.in_transaction():
         _apply_context(session, session.connection())
 

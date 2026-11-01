@@ -67,6 +67,7 @@ __all__ = [
     "register_table_directory",
     "route_order_lines",
     "set_order_priority",
+    "table_directory",
 ]
 
 

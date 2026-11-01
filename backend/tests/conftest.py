@@ -120,6 +120,9 @@ def settings() -> Settings:
         # Inscriptions de test nombreuses depuis la même adresse ; limite testée à part.
         signup_rate_limit_attempts=10_000,
         sales_contact_email="ventes@technova.example",
+        # Adresse publique des QR Codes (R7) : configuration explicite, domaine autorisé.
+        public_app_url="https://app.stockmanager.test",
+        public_allowed_hosts=["app.stockmanager.test"],
     )
 
 
@@ -550,6 +553,23 @@ def kitchen_available() -> Iterator[None]:
 @pytest.fixture
 def kclient(settings: Settings, migrated: None, kitchen_available: None) -> Iterator[TestClient]:
     """Application construite avec le registre de test (routes de la cuisine montées)."""
+    with TestClient(create_app(settings)) as client:
+        yield client
+
+
+@pytest.fixture
+def qr_available(kitchen_available: None) -> Iterator[None]:
+    """Registre du serveur où ``restaurant.qr`` est disponible, le temps du test : le registre de
+    production le garde PLANIFIÉ pendant le développement de R7 (ADR-0052)."""
+    from app.platform.registry import ModuleStatus
+
+    with _module_status("restaurant.qr", ModuleStatus.AVAILABLE):
+        yield
+
+
+@pytest.fixture
+def qrclient(settings: Settings, migrated: None, qr_available: None) -> Iterator[TestClient]:
+    """Application construite avec le registre de test (routes QR montées, publiques comprises)."""
     with TestClient(create_app(settings)) as client:
         yield client
 
