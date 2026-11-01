@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
+import { accountText } from '@/modules/sales/api';
 import { RECEIPT_PRINT } from '@/modules/sales/receipt/api';
 import { ReceiptDialog, useReceiptPrinting } from '@/modules/sales/receipt/ReceiptDialog';
 import { SalePaymentBadge, soldQuantity } from '@/modules/sales/ui';
@@ -79,7 +80,25 @@ export function PosReceipt({
             </tr>
             {completed.map((p) => (
               <tr key={p.id}>
-                <td>{p.method_label}</td>
+                <td>
+                  {p.method_label}
+                  {/* R6.5 : opérateur et identifiant utilisés (instantané renvoyé par le serveur). */}
+                  {p.provider_label && (
+                    <span className="sm-receipt-account" data-testid="receipt-provider">
+                      {p.provider_label}
+                    </span>
+                  )}
+                  {p.account_identifier_type && p.account_value && (
+                    <span className="sm-receipt-account" data-testid="receipt-account">
+                      {accountText(t, {
+                        identifier_type: p.account_identifier_type,
+                        custom_label: p.account_label ?? null,
+                        value: p.account_value,
+                        holder_name: p.account_holder ?? null,
+                      })}
+                    </span>
+                  )}
+                </td>
                 <td className="sm-num">{money(p.amount)}</td>
               </tr>
             ))}
