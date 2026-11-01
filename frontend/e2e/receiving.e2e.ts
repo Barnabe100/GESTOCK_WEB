@@ -69,12 +69,7 @@ test('administration : opérateur personnalisé, identifiants communs et du site
   method = methods.find((m) => m.label === 'Paiement mobile')?.id ?? '';
 
   // Identifiants : un commun à tous les sites, un propre au site (portées distinguées).
-  await row
-    .getByRole('button', { name: /Identifiants de réception|Plus/ })
-    .first()
-    .click();
-  const item = page.getByRole('menuitem', { name: 'Identifiants de réception' });
-  if (await item.isVisible()) await item.click();
+  await row.getByRole('button', { name: 'Identifiants de réception' }).click();
   const accounts = page.getByRole('dialog', { name: /Identifiants de réception/ });
   for (const [scope, type, value] of [
     ['Tous les sites', 'Code marchand', '445566'],

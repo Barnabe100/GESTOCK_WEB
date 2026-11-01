@@ -165,6 +165,8 @@ describe('paiements sur la fiche vente', () => {
     expect(await within(dialog).findByText('Référence de la transaction obligatoire')).toBeTruthy();
     expect(posts(fetchMock)).toHaveLength(0);
     fireEvent.change(within(dialog).getByLabelText(/^Référence/), { target: { value: 'OM-1' } });
+    // R6.5 : confirmation manuelle explicite de la réception des fonds (hors espèces).
+    fireEvent.click(within(dialog).getByLabelText("J'ai vérifié que les fonds ont bien été reçus"));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer le paiement' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     const [url, init] = posts(fetchMock)[0] ?? [];

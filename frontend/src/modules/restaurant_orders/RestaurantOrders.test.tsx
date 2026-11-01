@@ -550,6 +550,8 @@ describe('commandes de restauration — fiche (R2-E)', () => {
           amount_received: '10000',
           reference: null,
           cash_register_id: null,
+          payment_method_account_id: null,
+          received_confirmed: false,
         },
       ],
       credit_override: null,

@@ -130,6 +130,8 @@ describe('enregistrer un paiement sur la fiche vente (R6.5)', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer un paiement' }));
     const dialog = await screen.findByRole('dialog');
+    // Moyens du site chargés (serveur) avant le choix.
+    await waitFor(() => expect(dialog.querySelector('#payment-method')).not.toBeNull());
     fireEvent.click(dialog.querySelector('#payment-method')?.closest('.p-dropdown') as Element);
     fireEvent.click(
       screen.getAllByRole('option', { name: 'Mobile Money', hidden: true }).at(-1) as Element,
@@ -232,7 +234,7 @@ describe('point de vente : identifiant et confirmation par paiement (R6.5)', () 
       payment_method_id: 'pm2',
       payment_method_account_id: 'a1',
       received_confirmed: true,
-      amount: '10000.00',
+      amount: '10000',
     });
   });
 });
@@ -292,7 +294,7 @@ describe('administration des moyens de réception (R6.5)', () => {
     page();
     const row = (await screen.findByText('Carte EUR')).closest('tr') as HTMLElement;
     expect(text(row)).toContain('International · EUR');
-    expect(text(screen.getByText('Mobile Money').closest('tr'))).toContain('Opérateur Local');
+    expect(screen.getByRole('row', { name: /Opérateur Local/ })).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Nouveau moyen' })[0]!);
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText(/^Libellé/), { target: { value: 'Mobile 2' } });
@@ -331,10 +333,8 @@ describe('administration des moyens de réception (R6.5)', () => {
       account({ id: 'a2', shared: false, site_id: 's1', site_name: 'Boutique', value: '777' }),
     ]);
     page();
-    const row = (await screen.findByText('Mobile Money')).closest('tr') as HTMLElement;
-    fireEvent.click(within(row).getByRole('button', { name: /Identifiants de réception|Plus/ }));
-    const menu = screen.queryByRole('menuitem', { name: 'Identifiants de réception' });
-    if (menu) fireEvent.click(menu);
+    const row = await screen.findByRole('row', { name: /Opérateur Local/ });
+    fireEvent.click(within(row).getByRole('button', { name: 'Identifiants de réception' }));
     const dialog = await screen.findByRole('dialog', { name: /Identifiants de réception/ });
     const shared = (await within(dialog).findByText('123456')).closest('tr') as HTMLElement;
     expect(text(shared)).toContain('Tous les sites');

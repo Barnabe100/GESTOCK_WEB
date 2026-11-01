@@ -84,6 +84,11 @@ describe('moyens de paiement configurables', () => {
       kind: 'MOBILE_MONEY',
       reference_required: true,
       sort_order: 100,
+      // R6.5 : aucun opérateur, pays de l'entreprise (inconnu ici : international), devise.
+      provider_code: null,
+      provider_name: null,
+      country_code: null,
+      currency: 'XOF',
     });
   });
 
@@ -105,7 +110,9 @@ describe('moyens de paiement configurables', () => {
 
     render();
     const wave = (await screen.findByText('Wave')).closest('tr') as HTMLElement;
-    fireEvent.click(within(wave).getByRole('button', { name: 'Disponibilité par site' }));
+    // R6.5 : action rangée dans le menu « Plus » (identifiants de réception en accès direct).
+    fireEvent.click(within(wave).getByRole('button', { name: "Plus d'actions" }));
+    fireEvent.click((await screen.findAllByText('Disponibilité par site')).at(-1)!);
     const sites = await screen.findByRole('dialog', { name: /Disponibilité de « Wave »/ });
     expect((within(sites).getByLabelText('Boutique') as HTMLInputElement).checked).toBe(true);
     expect((within(sites).getByLabelText('Dépôt') as HTMLInputElement).checked).toBe(false);

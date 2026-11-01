@@ -282,6 +282,10 @@ describe('point de vente', () => {
     fireEvent.change(within(dialog).getByLabelText('Référence du paiement 1'), {
       target: { value: 'OM-9' },
     });
+    // R6.5 : choisir le moyen ne suffit pas, la réception est confirmée explicitement.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
+    expect(within(dialog).getByText('Confirmez la réception effective des fonds.')).toBeTruthy();
+    fireEvent.click(within(dialog).getByLabelText("J'ai vérifié que les fonds ont bien été reçus"));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer' }));
     fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
     const confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });

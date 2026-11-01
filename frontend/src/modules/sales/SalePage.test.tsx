@@ -268,6 +268,9 @@ describe('saisie et consultation d’une vente', () => {
           amount_received: '5000',
           reference: null,
           cash_register_id: null,
+          // R6.5 : espèces — aucun identifiant de réception, aucune confirmation à cocher.
+          payment_method_account_id: null,
+          received_confirmed: false,
         },
       ],
       credit_override: null,
