@@ -415,9 +415,30 @@ catalogue ; téléphone local conservé tel quel (indicatif affiché, jamais ajo
 international « + » vérifié contre le pays de rattachement ; **hors espèces, confirmation
 MANUELLE explicite** (`received_confirmed`, `confirmed_by` / `confirmed_at` ; espèces :
 l'enregistrement vaut confirmation) ; instantané des coordonnées sur le paiement, lu par le reçu ;
-aucune permission nouvelle. **Prochain lot : R7 — Menu QR Code et commandes clients** (audit et
-plan à présenter avant toute implémentation), puis R8 recettes, puis cadrage R9 rapports. Ne pas
-commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+aucune permission nouvelle. **R7 livré — commandes par QR Code**
+([ADR-0052](docs/adr/0052-commandes-par-qr-code.md), migrations 0056 à 0058, module
+`restaurant.qr` dans STANDARD et ENTREPRISE, activation explicite par site ; validation
+fonctionnelle globale sur Ubuntu attendue) : points QR de table ou de comptoir, jeton de 256 bits
+**empreinte seule**, QR (SVG Segno) affiché à l'émission seulement, réimprimer = régénérer
+(confirmation, anciens QR invalides) ; adresses publiques construites par
+`app/core/public_urls.py` seulement (`SM_PUBLIC_APP_URL` contrôlée contre
+`SM_PUBLIC_ALLOWED_HOSTS`, jamais `Host` / `X-Forwarded-Host`) ; secret dans le **fragment** `#`,
+effacé par `history.replaceState`, envoyé en en-tête (`X-QR-Token`, `X-QR-Tracking`) ; routeur
+public des modules (`public_router`, `/api/v1/public/…`) ; **aucun contournement de la RLS** :
+politiques `qr_token_lookup` / `qr_tracking_lookup` puis contexte de l'entreprise DU POINT ; garde
+unique à chaque appel (`restaurant_qr/access.py`), refus identique `404 qr_unavailable` ; moteur
+de commandes UNIQUE (`PublicOrderService`, acteur `PUBLIC`, « à confirmer » sauf
+`qr_auto_accept`) ; plafonds par site (30 / 20 / 3 ; plateforme 100 / 99 / 20), idempotence
+limitée au point et à la même requête (nouveau secret de suivi au rejeu), aucun champ de
+décision accepté du public ; limitation de fréquence en empreintes **HMAC**
+(`SM_RATE_LIMIT_HMAC_KEY`) et proxies de confiance (`SM_TRUSTED_PROXIES`) ;
+`restaurant.orders.order.confirm` (rien avant la confirmation, refus motivé, notification
+`restaurant.order.qr_received`) ; suivi 12 h après la fin ; téléphone effacé à 30 jours par
+`stockmanager notifications purge` (rôle de purge) ; aucun paiement électronique dans le parcours
+QR. Pages publiques `/q`, `/q/track` : application distincte (sans session, CSP sans ressource
+tierce). **Prochain lot : R8 recettes** (audit et plan à présenter avant toute implémentation,
+après validation de R7), puis cadrage R9 rapports. Ne pas commencer un nouveau module métier
+sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

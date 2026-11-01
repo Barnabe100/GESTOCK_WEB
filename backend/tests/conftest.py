@@ -559,11 +559,19 @@ def kclient(settings: Settings, migrated: None, kitchen_available: None) -> Iter
 
 @pytest.fixture
 def qr_available(kitchen_available: None) -> Iterator[None]:
-    """Registre du serveur où ``restaurant.qr`` est disponible, le temps du test : le registre de
-    production le garde PLANIFIÉ pendant le développement de R7 (ADR-0052)."""
+    """Sans effet depuis la livraison (0058) : ``restaurant.qr`` est disponible."""
     from app.platform.registry import ModuleStatus
 
     with _module_status("restaurant.qr", ModuleStatus.AVAILABLE):
+        yield
+
+
+@pytest.fixture
+def qr_planned() -> Iterator[None]:
+    """SIMULATION : ``restaurant.qr`` PLANIFIÉ le temps du test (période « Bientôt disponible »)."""
+    from app.platform.registry import ModuleStatus
+
+    with _module_status("restaurant.qr", ModuleStatus.PLANNED):
         yield
 
 
@@ -572,6 +580,31 @@ def qrclient(settings: Settings, migrated: None, qr_available: None) -> Iterator
     """Application construite avec le registre de test (routes QR montées, publiques comprises)."""
     with TestClient(create_app(settings)) as client:
         yield client
+
+
+@pytest.fixture
+def standard_without_qr(owner_engine: Engine, migrated: None) -> Iterator[None]:
+    """CAS CONSTRUIT : offre STANDARD d'AVANT R7 (sans ``restaurant.qr``) le temps du test.
+
+    Depuis R7 (ADR-0052 Q1), STANDARD et ENTREPRISE contiennent les mêmes modules : les tests de
+    la règle « un module hors de l'offre n'est jamais effectif » utilisent ce cas construit."""
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM plan_modules WHERE plan_code = 'STANDARD' "
+                "AND module_code = 'restaurant.qr'"
+            )
+        )
+    try:
+        yield
+    finally:
+        with owner_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO plan_modules (plan_code, module_code) "
+                    "VALUES ('STANDARD', 'restaurant.qr') ON CONFLICT DO NOTHING"
+                )
+            )
 
 
 @pytest.fixture

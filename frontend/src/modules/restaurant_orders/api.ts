@@ -23,6 +23,8 @@ export const ORDER_CANCEL = 'restaurant.orders.order.cancel';
 export const ORDER_CANCEL_PREPARED = 'restaurant.orders.order.cancel_prepared';
 export const ORDER_REASSIGN = 'restaurant.orders.order.reassign';
 export const SETTINGS_MANAGE = 'restaurant.orders.settings.manage';
+/** Commandes reçues par QR Code (R7) : confirmer ou refuser (motif obligatoire). */
+export const ORDER_CONFIRM = 'restaurant.orders.order.confirm';
 /** Règlement : permissions EXISTANTES des ventes (aucune permission propre aux commandes). */
 export const SETTLE_PERMISSIONS = ['sales.sale.create', 'sales.sale.validate'] as const;
 
@@ -36,7 +38,8 @@ export type SettlementStatus = 'UNSETTLED' | 'SETTLED';
 export type LineStatus = 'RECEIVED' | 'IN_PREPARATION' | 'READY' | 'SERVED' | 'CANCELLED';
 export type PrepStatus = 'RECEIVED' | 'IN_PREPARATION' | 'READY' | 'SERVED' | 'NONE';
 export type OrderChannel = 'STAFF' | 'POS' | 'QR';
-export type OrderStateFilter = 'active' | 'closed' | 'cancelled' | 'all';
+/** `active` = à confirmer + ouvertes ; `open` = ouvertes seulement ; `pending` = à confirmer (R7). */
+export type OrderStateFilter = 'active' | 'open' | 'pending' | 'closed' | 'cancelled' | 'all';
 export type TransitionAction = 'start' | 'ready' | 'revert' | 'serve';
 
 export const SERVICE_MODES: readonly ServiceMode[] = ['ON_SITE', 'COUNTER', 'TAKEAWAY'];
@@ -113,6 +116,8 @@ export interface Order {
   customer_id: string | null;
   customer_name: string | null;
   call_name: string | null;
+  /** Téléphone laissé par le client d'une commande QR (R7) ; effacé après 30 jours. */
+  contact_phone?: string | null;
   /** Table « sur place » (R5) ; lue même si le module des tables n'est plus effectif. */
   table_id: string | null;
   table: OrderTable | null;
@@ -334,6 +339,16 @@ export function useOrderMutations() {
       mutationFn: (id: string) => api.post<Order>(path(id, 'claim')),
       onSuccess,
     }),
+    // Commandes QR (R7) : « à confirmer » → ouverte, ou refus motivé (définitif).
+    confirm: useMutation({
+      mutationFn: (id: string) => api.post<Order>(path(id, 'confirm')),
+      onSuccess,
+    }),
+    reject: useMutation({
+      mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+        api.post<Order>(path(id, 'reject'), { reason }),
+      onSuccess,
+    }),
     // Libération par le responsable de la commande (motif facultatif).
     release: useMutation({
       mutationFn: ({ id, reason }: { id: string; reason: string | null }) =>
@@ -375,7 +390,7 @@ export function useOrderMutations() {
         input: Pick<
           OrderSettings,
           'payment_timing' | 'claim_protection_minutes' | 'claim_cooldown_minutes'
-        >;
+        > & { qr_auto_accept?: boolean };
       }) => api.put<OrderSettings>(`/restaurant/settings/${siteId}`, input),
       onSuccess,
     }),

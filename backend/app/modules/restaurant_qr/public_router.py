@@ -27,6 +27,7 @@ from app.modules.restaurant_qr.public_service import (
     public_menu,
     public_tracking,
 )
+from app.platform.audit.service import RequestMeta
 from app.platform.context import DbSession, MetaDep, NowDep, RegistryDep, SettingsDep
 from app.platform.ratelimit.service import RateLimiter
 
@@ -35,6 +36,13 @@ public_router = APIRouter(tags=["public.restaurant.qr"])
 TokenHeader = Annotated[str | None, Header(alias="X-QR-Token")]
 TrackingHeader = Annotated[str | None, Header(alias="X-QR-Tracking")]
 READ_BUCKET = "qr.read.ip"
+
+
+def public_meta(meta: RequestMeta) -> RequestMeta:
+    """Minimisation (R7) : l'adresse IP et le navigateur d'un client ANONYME ne sont jamais
+    écrits dans l'audit de l'entreprise (la limitation de fréquence n'utilise qu'une empreinte
+    HMAC de l'adresse)."""
+    return RequestMeta(ip_address=None, user_agent=None)
 
 
 def secure_headers(response: Response) -> None:
@@ -68,7 +76,7 @@ def get_public_menu(
 ) -> PublicMenuOut:
     secure_headers(response)
     count_read(db, settings, request, now)
-    access = resolve_access(db, registry, token, meta, now)
+    access = resolve_access(db, registry, token, public_meta(meta), now)
     return public_menu(db, access)
 
 
@@ -89,7 +97,12 @@ def post_public_order(
     secure_headers(response)
     placed = place_order(
         PlaceOrderContext(
-            db=db, settings=settings, registry=registry, request=request, meta=meta, now=now
+            db=db,
+            settings=settings,
+            registry=registry,
+            request=request,
+            meta=public_meta(meta),
+            now=now,
         ),
         token,
         body,
@@ -114,4 +127,4 @@ def get_public_tracking(
     """Suivi temporaire d'UNE commande (secret du lien, en-tête ``X-QR-Tracking``)."""
     secure_headers(response)
     count_read(db, settings, request, now)
-    return public_tracking(db, registry, settings, secret, meta, now)
+    return public_tracking(db, registry, settings, secret, public_meta(meta), now)

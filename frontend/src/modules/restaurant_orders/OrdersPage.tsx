@@ -34,6 +34,7 @@ import {
   type OrderStateFilter,
   type PrepStatus,
 } from './api';
+import { QrDecisionActions } from './qr';
 import { tableLabel, useCanChooseTable } from './tables';
 import { OrderStatusBadge, PrepBadge, SettlementBadge } from './ui';
 
@@ -164,8 +165,9 @@ function BoardColumn({
   showSite: boolean;
 }) {
   const { t } = useTranslation();
+  // Commandes OUVERTES seulement : une commande QR « à confirmer » a son propre onglet (R7).
   const params = new URLSearchParams({
-    state: 'active',
+    state: 'open',
     prep_status: prep,
     limit: '100',
     sort: 'created_at',
@@ -194,6 +196,48 @@ function BoardColumn({
   );
 }
 
+/**
+ * Commandes reçues par QR Code « à confirmer » (R7, ADR-0052), de la plus ancienne à la plus
+ * récente, actualisées toutes les 15 s : rien n'est préparé ni pris en charge avant la décision.
+ */
+function ToConfirm({ tableId }: TableFilterProps) {
+  const { t } = useTranslation();
+  const { capabilities } = useCapabilities();
+  const { currency, locale, timezone } = capabilities.tenant;
+  const params = new URLSearchParams({ state: 'pending', limit: '100', sort: 'created_at' });
+  if (tableId) params.set('table_id', tableId);
+  const orders = useOrders(params.toString());
+  const items = orders.data?.items ?? [];
+  if (orders.isPending) return <LoadingState />;
+  if (items.length === 0) {
+    return <ListEmpty filtered={tableId !== null} title={t('restaurantOrders.qr.noPending')} />;
+  }
+  return (
+    <ul className="sm-qr-pending" aria-label={t('restaurantOrders.qr.pendingList')}>
+      {items.map((order) => (
+        <li key={order.id} className="sm-qr-pending-item">
+          <Link to={`/restaurant/orders/${order.id}`} className="sm-order-number">
+            {orderNumber(order)}
+          </Link>
+          <span>
+            {order.table
+              ? t('restaurantOrders.tableNamed', { label: tableLabel(order.table) })
+              : t(`restaurantOrders.serviceModes.${order.service_mode}`)}
+            {order.call_name ? ` · ${order.call_name}` : ''}
+          </span>
+          <span className="sm-help">
+            {formatDateTime(order.created_at, locale, timezone)} ·{' '}
+            {formatMoney(order.total, currency, locale)}
+          </span>
+          <span className="sm-qr-pending-actions">
+            <QrDecisionActions order={order} compact />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Commandes en cours non réglées, de la plus ancienne à la plus récente (limites de V1). */
 function ToSettle({ tableId, onChange }: TableFilterProps) {
   const { t } = useTranslation();
@@ -206,7 +250,7 @@ function ToSettle({ tableId, onChange }: TableFilterProps) {
   const debounced = useDebouncedValue(search);
   const orders = useOrders(
     toQueryString(table, {
-      state: 'active',
+      state: 'open',
       settlement_status: 'UNSETTLED',
       unsettled_served: servedOnly ? 'true' : null,
       search: debounced,
@@ -333,7 +377,7 @@ function History({ tableId, onChange }: TableFilterProps) {
             setState(e.value as OrderStateFilter);
             setTable((s) => ({ ...s, first: 0 }));
           }}
-          options={(['closed', 'cancelled', 'active', 'all'] as const).map((v) => ({
+          options={(['closed', 'cancelled', 'active', 'pending', 'all'] as const).map((v) => ({
             value: v,
             label: t(`restaurantOrders.stateFilter.${v}`),
           }))}
@@ -403,7 +447,7 @@ function History({ tableId, onChange }: TableFilterProps) {
 export default function OrdersPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { can } = useCapabilities();
+  const { can, hasModule } = useCapabilities();
   // Filtre par table porté par l'URL : lien « Voir les commandes de la table » du plan de salle.
   const [params, setParams] = useSearchParams();
   const tableId = params.get('table_id');
@@ -449,6 +493,11 @@ export default function OrdersPage() {
         <TabPanel header={t('restaurantOrders.tabs.board')}>
           <Board {...filter} />
         </TabPanel>
+        {hasModule('restaurant.qr') && (
+          <TabPanel header={t('restaurantOrders.tabs.toConfirm')}>
+            <ToConfirm {...filter} />
+          </TabPanel>
+        )}
         <TabPanel header={t('restaurantOrders.tabs.toSettle')}>
           <ToSettle {...filter} />
         </TabPanel>

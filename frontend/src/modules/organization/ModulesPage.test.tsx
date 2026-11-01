@@ -107,7 +107,7 @@ describe('modules du site : états (paliers C et E)', () => {
       ['Stock', 'active'],
       ['Point de vente', 'blocked'],
       ['Alertes', 'inactive'],
-      ['Menu QR', 'notInPlan'],
+      ['Commandes par QR Code', 'notInPlan'],
       ['Tables', 'planned'],
       ['Inventaires', 'notInProfile'],
     ] as const) {
@@ -117,7 +117,7 @@ describe('modules du site : états (paliers C et E)', () => {
       // Jamais d'interrupteur pour une activation impossible.
       expect(hasSwitch).toBe(['active', 'blocked', 'inactive'].includes(state));
     }
-    expect(within(stateOf('Menu QR')).getByText(/offre supérieure/)).toBeTruthy();
+    expect(within(stateOf('Commandes par QR Code')).getByText(/offre supérieure/)).toBeTruthy();
   });
 
   it('module désactivé : activation par le mécanisme existant, portée dans l’URL', async () => {

@@ -290,8 +290,10 @@ describe('commandes de restauration — suivi (R2-E)', () => {
     expect(text(card)).toContain('Table 4');
     expect(text(card)).toContain('Non réglée');
     const urls = calls().map(([u]) => u);
+    // Colonnes de suivi : commandes OUVERTES seulement (une commande QR « à confirmer » a son
+    // propre onglet, R7).
     for (const prep of ['RECEIVED', 'IN_PREPARATION', 'READY']) {
-      expect(urls.some((u) => u.includes(`state=active&prep_status=${prep}`))).toBe(true);
+      expect(urls.some((u) => u.includes(`state=open&prep_status=${prep}`))).toBe(true);
     }
     // Consultation seule : ni saisie, ni réglages.
     expect(screen.queryByRole('button', { name: 'Nouvelle commande' })).toBeNull();
@@ -310,7 +312,7 @@ describe('commandes de restauration — suivi (R2-E)', () => {
     await waitFor(() =>
       expect(
         calls().some(
-          ([u]) => u.includes('state=active') && u.includes('settlement_status=UNSETTLED'),
+          ([u]) => u.includes('state=open') && u.includes('settlement_status=UNSETTLED'),
         ),
       ).toBe(true),
     );
@@ -673,7 +675,13 @@ describe('commandes de restauration — réglages (R2-E)', () => {
       expect(calls('PUT')).toEqual([
         [
           '/api/v1/restaurant/settings/s1',
-          { payment_timing: 'AT_ORDER', claim_protection_minutes: 5, claim_cooldown_minutes: 10 },
+          {
+            payment_timing: 'AT_ORDER',
+            claim_protection_minutes: 5,
+            claim_cooldown_minutes: 10,
+            // QR Code effectif sur le site (R7) : acceptation automatique modifiable.
+            qr_auto_accept: false,
+          },
         ],
       ]),
     );
@@ -682,6 +690,28 @@ describe('commandes de restauration — réglages (R2-E)', () => {
         expect.objectContaining({ severity: 'success', summary: 'Réglages enregistrés.' }),
       ),
     );
+  });
+
+  it('sans QR Code effectif : acceptation automatique ni affichée ni envoyée', async () => {
+    const settings = {
+      site_id: 's1',
+      payment_timing: 'AT_END',
+      claim_protection_minutes: 5,
+      claim_cooldown_minutes: 5,
+      qr_auto_accept: false,
+      updated_at: '2026-10-10T08:00:00Z',
+    };
+    fetchMock.mockImplementation(async () => jsonResponse(settings));
+    renderWithCapabilities(withToast(<OrderSettingsPage />), {
+      permissions: [VIEW, 'restaurant.orders.settings.manage'],
+      sites: [SITES[0] as (typeof SITES)[number]],
+      absentModules: ['restaurant.qr'],
+    });
+    await screen.findByLabelText(/Protection/);
+    expect(screen.queryByText(/Acceptation automatique des commandes QR/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(calls('PUT')).toHaveLength(1));
+    expect(calls('PUT')[0]?.[1]).not.toHaveProperty('qr_auto_accept');
   });
 });
 

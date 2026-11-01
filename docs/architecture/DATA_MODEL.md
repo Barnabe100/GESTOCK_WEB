@@ -319,6 +319,20 @@ réglages existe (condition et tests : [`RESTAURANT.md`](RESTAURANT.md) §11).
 Migrations 0049 (schéma ; descente refusée avec des données de cuisine) et 0050 (livraison :
 activations existantes remises à `false`).
 
+### Commandes par QR Code (palier R7, isolées par RLS, [ADR-0052](../adr/0052-commandes-par-qr-code.md))
+
+| Table / colonnes | Contenu | Contraintes notables |
+|---|---|---|
+| `restaurant_qr_points` | `tenant_id`, `site_id`, `kind` (`TABLE` \| `COUNTER`), `table_id`, `label`, `token_hash` (SHA-256), `token_generated_at` / `_by`, `is_active`, `created_by` | `kind_target` (table XOR libellé) ; FK composite vers la table du même site ; un point actif par table ; libellé unique par site (casse ignorée) ; `token_hash` unique sur la plateforme, format contrôlé ; politique `qr_token_lookup` (`SELECT` de la seule ligne de `app.qr_token_hash`) ; `UPDATE` des colonnes de libellé, de jeton et d'état ; jamais supprimé |
+| `restaurant_qr_site_settings` | `tenant_id`, `site_id` (unique), `max_lines`, `max_quantity_per_line`, `max_pending_per_point`, `customer_name_mode`, `customer_phone_mode`, `updated_by` | plafonds de la plateforme (`CHECK` 1..100, 1..99, 1..20) ; créés par `site_setup` |
+| `restaurant_qr_orders` | `tenant_id`, `site_id`, `point_id`, `order_id` (unique), `client_key`, `request_hash`, `tracking_hash`, `tracking_issued_at`, `created_at` | `UNIQUE (tenant_id, point_id, client_key)` ; FK composites vers le point et la commande du même site ; `tracking_hash` unique ; politique `qr_tracking_lookup` ; `UPDATE` de `tracking_hash`, `tracking_issued_at` seulement |
+| `restaurant_orders` (+) | `contact_phone` (≤ 30) | effacé à 30 jours par le rôle `stockmanager_purge` (lecture limitée aux colonnes utiles des commandes finies depuis plus de 30 jours, `UPDATE (contact_phone)` vers `NULL` seulement) ; déclencheur des états finaux : seul cet effacement est admis sur une commande finie |
+
+Migrations 0056 (points), 0057 (réglages, commandes QR, téléphone, purge, déclencheur ; descentes
+refusées dès qu'une donnée serait perdue) et 0058 (livraison : activations existantes remises à
+`false`). Aucune nouvelle table de plateforme : la limitation de fréquence réutilise
+`rate_limit_hits` (clés en empreinte HMAC).
+
 ### Créances (Phase 2.8) : aucune table
 
 Une créance ouverte est une vente `VALIDATED` dont le reste dû (`total` − paiements

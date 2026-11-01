@@ -39,7 +39,7 @@ BUSINESS_MODULES: tuple[ModuleManifest, ...] = (
     RESTAURANT_ORDERS,
     RESTAURANT_TABLES,
     RESTAURANT_KITCHEN,
-    # Palier R7 (ADR-0052) : manifeste réel, planifié pendant son développement.
+    # Palier R7 (ADR-0052) : livré par la migration 0058.
     RESTAURANT_QR,
     *PLANNED_MODULES,
 )

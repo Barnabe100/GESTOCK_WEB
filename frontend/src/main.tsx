@@ -13,11 +13,14 @@ const render = (app: ReactNode) => createRoot(root).render(<StrictMode>{app}</St
 
 // Console TechNova (ADR-0031) : application distincte, chargée à la demande ; l'application des
 // entreprises n'en embarque pas le code (et inversement).
-if (
-  window.location.pathname === '/tech-admin' ||
-  window.location.pathname.startsWith('/tech-admin/')
-) {
+const { pathname } = window.location;
+if (pathname === '/tech-admin' || pathname.startsWith('/tech-admin/')) {
   void import('@/console/ConsoleApp').then(({ ConsoleApp }) => render(<ConsoleApp />));
+} else if (pathname === '/q' || pathname === '/q/' || pathname === '/q/track') {
+  // Commandes par QR Code (R7, ADR-0052) : pages PUBLIQUES distinctes, sans session.
+  void import('@/modules/restaurant_qr/public/PublicQrApp').then(({ PublicQrApp }) =>
+    render(<PublicQrApp />),
+  );
 } else {
   void import('@/app/App').then(({ App }) => render(<App />));
 }

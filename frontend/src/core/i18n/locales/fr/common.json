@@ -108,7 +108,8 @@
     "restaurantOrders": "Commandes",
     "restaurantTables": "Tables",
     "restaurantKitchen": "Cuisine",
-    "restaurantStations": "Postes de préparation"
+    "restaurantStations": "Postes de préparation",
+    "restaurantQr": "QR Codes"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -141,7 +142,7 @@
     "restaurant.tables": "Tables",
     "restaurant.orders": "Commandes",
     "restaurant.kitchen": "Cuisine",
-    "restaurant.qr": "Menu QR",
+    "restaurant.qr": "Commandes par QR Code",
     "restaurant.recipes": "Recettes",
     "receivables": "Créances",
     "automobile.workshop": "Atelier (ordres de réparation)",
@@ -581,7 +582,11 @@
     "restaurant.kitchen.station.view": "Consulter les postes de préparation et l'écran cuisine",
     "restaurant.kitchen.station.manage": "Gérer les postes de préparation et leurs affectations",
     "restaurant.kitchen.line.route": "Changer le poste de préparation d'une ligne",
-    "restaurant.kitchen.priority.set": "Changer la priorité d'une commande"
+    "restaurant.kitchen.priority.set": "Changer la priorité d'une commande",
+    "restaurant.qr.point.view": "Consulter les QR Codes des tables et des comptoirs",
+    "restaurant.qr.point.manage": "Créer, désactiver et régénérer les QR Codes",
+    "restaurant.qr.settings.manage": "Modifier les réglages des commandes par QR Code",
+    "restaurant.orders.order.confirm": "Confirmer ou refuser les commandes reçues par QR Code"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -2305,8 +2310,22 @@
     "subtitle": "Commandes du restaurant : suivi en cuisine et au service, règlement et historique. Le numéro du jour identifie la commande auprès du client.",
     "tabs": {
       "board": "Suivi",
+      "toConfirm": "À confirmer",
       "toSettle": "À régler",
       "history": "Historique"
+    },
+    "qr": {
+      "confirm": "Confirmer",
+      "reject": "Refuser",
+      "confirmOrder": "Confirmer la commande n° {{number}}",
+      "rejectOrder": "Refuser la commande n° {{number}}",
+      "rejectTitle": "Refuser la commande n° {{number}}",
+      "rejectHelp": "Le refus est définitif. Le motif est conservé dans l'historique et affiché au client sur son suivi.",
+      "confirmed": "Commande confirmée : elle suit maintenant le circuit habituel.",
+      "rejected": "Commande refusée.",
+      "noPending": "Aucune commande à confirmer.",
+      "pendingList": "Commandes reçues par QR Code à confirmer",
+      "contactPhone": "Téléphone du client"
     },
     "columns": {
       "RECEIVED": "Reçues",
@@ -2326,6 +2345,7 @@
     "businessDate": "Date",
     "stateFilter": {
       "active": "En cours",
+      "pending": "À confirmer",
       "closed": "Clôturées",
       "cancelled": "Annulées ou refusées",
       "all": "Toutes"
@@ -2502,7 +2522,7 @@
       "cooldown": "Délai entre deux prises",
       "cooldownHelp": "Durée minimale entre deux prises par le même employé sur le site : 5 ou 10 minutes. Distincte de la protection d'une commande déjà prise.",
       "qrAutoAccept": "Acceptation automatique des commandes QR",
-      "qrLater": "(sans effet avant les commandes par QR code)",
+      "qrAutoAcceptHelp": "Désactivée (recommandé) : chaque commande passée par QR Code attend la confirmation du personnel. Activée : elle est ouverte directement.",
       "updatedAt": "Dernière modification",
       "saved": "Réglages enregistrés.",
       "minutes_one": "{{count}} minute",
@@ -2641,5 +2661,106 @@
     "phoneHelpCountry": "Numéro local, ou international commençant par « +{{code}} ». Espaces, points et tirets sont retirés ; aucun indicatif n'est jamais ajouté.",
     "attachmentCountry": "Pays de rattachement",
     "attachmentCountryHelp": "Par défaut celui du moyen. Un numéro international doit commencer par l'indicatif de ce pays ; un numéro local est affiché avec cet indicatif, sans le modifier."
+  },
+  "restaurantQr": {
+    "title": "QR Codes",
+    "subtitle": "QR Codes des tables et des comptoirs : vos clients consultent le menu et commandent depuis leur téléphone, sans compte. Chaque commande est confirmée par le personnel, sauf acceptation automatique.",
+    "tabs": {
+      "points": "Points QR",
+      "settings": "Réglages"
+    },
+    "newPoint": "Nouveau QR Code",
+    "kind": "Type",
+    "kinds": {
+      "TABLE": "Table",
+      "COUNTER": "Comptoir"
+    },
+    "table": "Table",
+    "chooseTable": "Choisissez une table active",
+    "label": "Nom du point",
+    "labelHelp": "Exemple : Comptoir, Bar, Vente à emporter.",
+    "generate": "Générer le QR Code",
+    "rename": "Renommer",
+    "saved": "Point QR enregistré.",
+    "search": "Nom du point…",
+    "noPoints": "Aucun QR Code.",
+    "point": "Point",
+    "generatedAt": "QR Code généré le",
+    "status": "État",
+    "tableInactive": "Table désactivée",
+    "regenerate": "Régénérer",
+    "regenerateTitle": "Régénérer le QR Code",
+    "regenerateConfirm": "Un nouveau QR Code sera créé pour « {{name}} ». Tous les anciens QR Codes imprimés de ce point deviendront immédiatement invalides. Les suivis des commandes déjà passées restent disponibles.",
+    "deactivateTitle": "Désactiver le QR Code",
+    "deactivateConfirm": "Les clients ne pourront plus consulter le menu ni commander avec le QR Code de « {{name}} » tant qu'il est désactivé.",
+    "statusChanged": "État du QR Code modifié.",
+    "issuedTitle": "QR Code — {{name}}",
+    "issuedWarning": "Imprimez ou téléchargez ce QR Code maintenant : il ne pourra plus être affiché. Pour le réimprimer plus tard, il faudra le régénérer (les anciens deviendront invalides).",
+    "qrAlt": "QR Code à scanner",
+    "tableCaption": "Table {{label}}",
+    "scanHelp": "Scannez pour voir le menu et commander",
+    "layout": "Format d'impression",
+    "layouts": {
+      "table": "Carte de table (A6)",
+      "poster": "Affiche de comptoir (A4)"
+    },
+    "copyLink": "Copier le lien",
+    "copied": "Lien copié.",
+    "copyFailed": "Copie impossible : utilisez le téléchargement.",
+    "downloadSvg": "Télécharger (SVG)",
+    "print": "Imprimer",
+    "settingsHelp": "Réglages des commandes par QR Code du site. Les plafonds limitent les abus ; ils restent toujours sous les plafonds de la plateforme.",
+    "maxLines": "Articles différents par commande",
+    "maxQuantity": "Quantité par article",
+    "maxPending": "Commandes en attente par QR Code",
+    "platformMax": "Au plus {{max}} (plafond de la plateforme).",
+    "nameMode": "Nom du client",
+    "phoneMode": "Téléphone du client",
+    "phoneModeHelp": "Ne le demandez que s'il est utile au service. Il est effacé automatiquement 30 jours après la fin de la commande.",
+    "modes": {
+      "HIDDEN": "Non demandé",
+      "OPTIONAL": "Facultatif",
+      "REQUIRED": "Obligatoire"
+    },
+    "settingsSaved": "Réglages QR enregistrés."
+  },
+  "qrPublic": {
+    "loading": "Chargement du menu…",
+    "menuStale": "Connexion instable : le menu affiché peut ne pas être à jour.",
+    "emptyMenu": "Aucun article n'est proposé pour le moment.",
+    "table": "Table {{label}}",
+    "soldOut": "Épuisé",
+    "less": "Retirer un {{name}}",
+    "more": "Ajouter un {{name}}",
+    "notePlaceholder": "Instruction (facultative)",
+    "note": "Instruction pour {{name}}",
+    "cart": "Votre commande",
+    "name": "Votre nom",
+    "phone": "Votre téléphone",
+    "phoneHelp": "Utilisé seulement pour cette commande ; effacé automatiquement après 30 jours.",
+    "tooManyLines": "Trop d'articles différents : au plus {{max}}.",
+    "total": "Total",
+    "send": "Envoyer la commande",
+    "noPayment": "Aucun paiement en ligne : vous réglez auprès du personnel. Votre commande sera confirmée par l'établissement.",
+    "tracking": "Suivi de votre commande",
+    "orderNumber": "Numéro de votre commande",
+    "statuses": {
+      "PENDING_CONFIRMATION": "En attente de confirmation par l'établissement",
+      "OPEN": "Confirmée — en cours",
+      "CLOSED": "Terminée",
+      "CANCELLED": "Annulée",
+      "REJECTED": "Refusée"
+    },
+    "lineStatuses": {
+      "RECEIVED": "Reçu",
+      "IN_PREPARATION": "En préparation",
+      "READY": "Prêt",
+      "SERVED": "Servi",
+      "CANCELLED": "Annulé"
+    },
+    "rejectedBecause": "Motif : {{reason}}",
+    "remainingDue": "Reste à régler",
+    "payOnSite": "Le règlement se fait auprès du personnel de l'établissement.",
+    "trackingEnds": "Ce suivi reste disponible quelques heures après la fin de la commande."
   }
 }

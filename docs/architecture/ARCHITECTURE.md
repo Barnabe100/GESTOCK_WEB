@@ -364,11 +364,24 @@ Une transition invalide est refusée par le backend, quel que soit le client.
 - **Audit** : journal `audit_log` (tenant, site, utilisateur, action, entité,
   avant/après, IP, horodatage) alimenté explicitement par les services pour les
   actions sensibles (connexion, droits, stock, ventes, caisse, annulations).
-- **Endpoints publics** (menu QR, palier R7, [ADR-0049](../adr/0049-restauration-commandes.md)) :
-  espace `/api/v1/public/…`, accès par jeton aléatoire **opaque** par point d'accès (stocké
-  haché, révocable par rotation ; entreprise et site déduits du jeton seulement), périmètre
-  minimal en lecture + création et suivi de commande, limitation de fréquence persistante,
-  aucune donnée de stock, de coût ni de caisse.
+- **Endpoints publics** (commandes par QR Code, palier R7 livré,
+  [ADR-0052](../adr/0052-commandes-par-qr-code.md)) : routeur public des modules
+  (`/api/v1/public/<module>`, monté pour un module disponible seulement, sans membre) ; jeton
+  aléatoire de 256 bits par point (table ou comptoir), **empreinte seule** en base, révocable
+  par régénération ; le secret voyage dans le **fragment** de l'adresse (`#`, jamais envoyé
+  au serveur), puis dans un en-tête (`X-QR-Token`, `X-QR-Tracking`) ; **aucun contournement de
+  la RLS** : politiques `qr_token_lookup` / `qr_tracking_lookup` (lecture de la seule ligne
+  dont l'empreinte est fixée par le serveur pour la transaction), puis contexte de l'entreprise
+  DU POINT ; garde unique à chaque appel (point, entreprise, site, abonnement du site, modules,
+  table), refus identique `404 qr_unavailable` ; périmètre : menu public, création d'une
+  commande « à confirmer », suivi temporaire ; limitation de fréquence persistante (empreintes
+  HMAC des adresses IP, proxies de confiance déclarés) ; en-têtes `no-store`, `no-referrer`,
+  `nosniff`, `noindex` ; pages publiques distinctes de l'application des entreprises (aucune
+  session, CSP sans ressource tierce, jeton effacé de l'adresse par `history.replaceState`) ;
+  aucune donnée de stock, de coût ni de caisse ; aucun paiement électronique.
+- **Adresses publiques** : construites par `app/core/public_urls.py` seulement, depuis
+  `SM_PUBLIC_APP_URL` contrôlée au démarrage contre `SM_PUBLIC_ALLOWED_HOSTS` (https hors
+  développement) — jamais depuis `Host`, `X-Forwarded-Host` ni une adresse du navigateur.
 - **Validation** : toute entrée validée par Pydantic ; erreurs au format
   *Problem Details* (RFC 9457).
 - **Limitation de débit (production)** : à configurer au niveau du reverse proxy, par
@@ -566,6 +579,22 @@ travail : une requête = une transaction, commit à la fin si succès).
 - **Production (à définir)** : reverse proxy (TLS) servant la SPA statique et relayant
   `/api` vers FastAPI (Uvicorn/Gunicorn), PostgreSQL managé ou dédié avec sauvegardes,
   secrets par variables d'environnement.
+- **Reverse proxy et adresse IP du client** (R7) : l'application lit `X-Forwarded-For`
+  uniquement si la connexion vient d'un proxy déclaré dans `SM_TRUSTED_PROXIES` (adresses ou
+  réseaux CIDR) ; sinon l'adresse de la connexion fait foi. En production : déclarer l'adresse
+  du proxy, servir les pages `/q` et `/q/track` avec l'en-tête
+  `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
+  'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';
+  object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` et
+  `Referrer-Policy: no-referrer` (la page pose aussi une CSP équivalente par balise).
+- **Adresse publique des QR Codes** : `SM_PUBLIC_APP_URL` (ex. développement
+  `http://localhost:5173` par défaut, test `https://test.<domaine>`, production
+  `https://app.<domaine>`) et `SM_PUBLIC_ALLOWED_HOSTS` ; sans adresse hors développement, la
+  génération d'un QR Code est refusée (`503 public_url_not_configured`).
+- **Tâche quotidienne de conservation** : `stockmanager notifications purge` (rôle
+  `stockmanager_purge`) — notifications des membres et téléphones des clients des commandes QR
+  de plus de 30 jours ; à planifier (cron / minuterie systemd) et à superviser (code de sortie
+  non nul en cas d'échec).
 - Configuration par variables d'environnement préfixées `SM_` (backend) et `VITE_` (frontend).
 
 ## 12. Qualité

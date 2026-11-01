@@ -254,3 +254,37 @@ RLS ni dupliquer le moteur.
   régénération et à la désactivation du point, motif de refus affiché et motif d'annulation
   masqué, expiration 11 h / 13 h et commande en cours jamais expirée, reste à régler lu sur la
   vente, module et abonnement, politique de lecture par empreinte).
+
+## R7-F — interfaces, activation, offres, livraison (migration 0058)
+
+- **Livraison** : manifeste `restaurant.qr` disponible ; migration 0058 : activations héritées
+  de la période « Bientôt disponible » remises à `false` sur les sites existants (activation
+  explicite par `organization.module.manage` sur le site) ; descente sans effet.
+- **Offres (Q1)** : `restaurant.qr` ajouté à STANDARD dans `plans.toml` (`stockmanager catalog
+  sync`), ENTREPRISE inchangée (l'incluait déjà) ; aucune autre règle commerciale modifiée
+  (modules, limites et fonctionnalités de STANDARD vérifiés par test). Licences : modules figés
+  à l'émission ; un site STANDARD licencié avant R7 obtient le module à sa licence suivante, à sa
+  date de début (renouvellement contigu) — vérifié par test sur les deux dates.
+- **Interface des entreprises** : page « QR Codes » (`/restaurant/qr`, `point.view`) : points
+  (création table / comptoir, renommage, activation, désactivation confirmée, régénération avec
+  le texte de confirmation exigé) et réglages QR du site ; fenêtre d'émission : avertissement
+  « ne pourra plus être affiché », image par `<img>` (SVG du serveur, aucun script), carte de
+  table A6 ou affiche A4 (impression navigateur, `@page` injectée), téléchargement SVG, copie du
+  lien (jamais affiché en clair). Commandes : onglet « À confirmer » (15 s), boutons Confirmer /
+  Refuser (motif obligatoire) sur la file et la fiche, colonnes de suivi et « À régler » limitées
+  aux commandes ouvertes, téléphone du client sur la fiche, acceptation automatique dans les
+  réglages des commandes (si le QR est effectif).
+- **Pages publiques** (`/q`, `/q/track`) : application distincte chargée à la demande (comme la
+  console) — aucune session, aucun appel d'authentification ; secret lu dans le fragment, gardé
+  pour l'onglet (`sessionStorage`) et effacé de l'adresse avant tout affichage ; CSP par balise
+  (aucune ressource tierce) et `referrer = no-referrer` (aussi posé globalement dans
+  `index.html`) ; requêtes sans cookie ni jeton de session (`credentials: 'omit'`) ; mobile
+  d'abord ; menu actualisé toutes les 30 s, suivi toutes les 15 s ; même clé d'idempotence tant
+  que le contenu n'a pas changé (renvoi après une coupure), nouvelle sinon ; total indicatif
+  (centimes), le serveur fait foi ; aucun paiement.
+- **Nouveau QR scanné dans le même onglet** : seul le fragment change (aucun rechargement) ;
+  la page écoute `hashchange`, lit le nouveau secret, l'efface de l'adresse et repart d'un
+  panier vide (page indexée par le secret) — défaut trouvé par l'E2E, couvert par Vitest et E2E.
+- **Minimisation de l'audit public** : les entrées d'audit écrites par l'acteur `PUBLIC`
+  (commande QR reçue) ne conservent ni l'adresse IP ni l'agent utilisateur du client
+  (`public_meta`) ; l'adresse ne sert qu'aux compteurs de fréquence, sous empreinte HMAC.

@@ -15,18 +15,26 @@ def _by_code(api: Any) -> dict[str, dict[str, Any]]:
     return {m["code"]: m for m in api.get("/modules").json()}
 
 
-def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) -> None:
+def test_module_listing_reflects_profile_and_plan(
+    provision: Any, api_for: Any, standard_without_qr: None
+) -> None:
+    # Cas construit : STANDARD sans ``restaurant.qr`` (depuis R7, les deux offres l'incluent).
     provision("resto", profile="restaurant.restaurant", plan="STANDARD")
     modules = _by_code(api_for("owner@resto.example.com"))
     assert modules["restaurant.qr"]["in_profile"] is True
     assert modules["restaurant.qr"]["in_plan"] is False
     assert modules["pos"]["enabled"] is True and modules["pos"]["status"] == "available"
-    # ADR-0049 / ADR-0050 : menu (R1), commandes (R2), tables (R5) et cuisine (R6) livrés ; QR et
-    # recettes restent planifiés.
-    for code in ("restaurant.menu", "restaurant.orders", "restaurant.tables", "restaurant.kitchen"):
+    # ADR-0049 / ADR-0050 / ADR-0052 : menu (R1), commandes (R2), tables (R5), cuisine (R6) et QR
+    # (R7) livrés ; les recettes restent planifiées.
+    for code in (
+        "restaurant.menu",
+        "restaurant.orders",
+        "restaurant.tables",
+        "restaurant.kitchen",
+        "restaurant.qr",
+    ):
         assert modules[code]["status"] == "available", code
-    for code in ("restaurant.qr", "restaurant.recipes"):
-        assert modules[code]["status"] == "planned", code
+    assert modules["restaurant.recipes"]["status"] == "planned"
     assert modules["users"]["core"] is True
     assert "stock" in modules
 
@@ -42,10 +50,14 @@ def test_toggle_optional_module_on_a_site(provision: Any, api_for: Any) -> None:
     caps = api.get("/me/capabilities").json()
     assert "alerts" in {m["code"] for m in caps["modules"]}
     # Module optionnel « Bientôt disponible » (palier E.1) : jamais activé.
-    assert _by_code(api)["restaurant.qr"]["enabled"] is False
-    refused = set_site_module(api, t.site_id, "restaurant.qr", True)
+    assert _by_code(api)["restaurant.recipes"]["enabled"] is False
+    refused = set_site_module(api, t.site_id, "restaurant.recipes", True)
     assert (refused.status_code, refused.json()["code"]) == (422, "module_not_implemented")
+    assert _by_code(api)["restaurant.recipes"]["enabled"] is False
+    # Module optionnel livré (R7) : désactivé à la création, activable explicitement.
     assert _by_code(api)["restaurant.qr"]["enabled"] is False
+    assert set_site_module(api, t.site_id, "restaurant.qr", True).status_code == 204
+    assert _by_code(api)["restaurant.qr"]["enabled"] is True
 
 
 def test_tenant_level_toggle_is_retired(provision: Any, api_for: Any) -> None:
@@ -56,7 +68,8 @@ def test_tenant_level_toggle_is_retired(provision: Any, api_for: Any) -> None:
     assert _by_code(api)["pos"]["enabled"] is True
 
 
-def test_toggle_rules(provision: Any, api_for: Any) -> None:
+def test_toggle_rules(provision: Any, api_for: Any, standard_without_qr: None) -> None:
+    # Cas construit : STANDARD sans ``restaurant.qr`` (module hors de l'offre).
     r = provision("resto", profile="restaurant.restaurant", plan="STANDARD")
     q = provision("quinc", profile="retail.quincaillerie")
     resto = api_for("owner@resto.example.com")

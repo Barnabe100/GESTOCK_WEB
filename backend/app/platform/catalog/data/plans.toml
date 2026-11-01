@@ -18,7 +18,10 @@ modules = [
   "catalog", "suppliers", "customers", "stock", "inventory_count", "sales", "receivables", "payments",
   "cash_register", "pos", "reports", "alerts",
   "restaurant.menu", "restaurant.tables", "restaurant.orders", "restaurant.kitchen",
-  "restaurant.recipes",
+  # Commandes par QR Code (R7, ADR-0052 Q1) : aussi dans STANDARD (ENTREPRISE inchangée). Une
+  # licence fige les modules à son émission : un site STANDARD déjà licencié l'obtient à sa
+  # licence suivante (renouvellement).
+  "restaurant.recipes", "restaurant.qr",
 ]
 features = []
 

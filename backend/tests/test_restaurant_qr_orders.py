@@ -146,6 +146,15 @@ def test_counter_order_goes_through_the_single_engine_pending_confirmation(
     audit = _ok(r.owner.get("/audit-logs", params={"action": "restaurant_order.created"}))
     assert audit["total"] == 1 and audit["items"][0]["user_id"] is None
     assert secret not in str(audit)
+    # Minimisation : ni l'adresse IP ni le navigateur d'un client anonyme dans l'audit.
+    meta = owner_db.execute(
+        text(
+            "SELECT ip_address, user_agent FROM audit_logs "
+            "WHERE action = 'restaurant_order.created' AND tenant_id = :t"
+        ),
+        {"t": r.tenant},
+    ).one()
+    assert tuple(meta) == (None, None)
 
 
 def test_table_point_attaches_its_table_and_auto_accept_opens_the_order(

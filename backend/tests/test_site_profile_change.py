@@ -598,8 +598,9 @@ def test_concurrent_change_and_module_toggle(world: World, app: Any, owner_db: S
 
 
 def test_profile_partially_outside_the_plan(
-    provision: Any, api_for: Any, owner_db: Session
+    provision: Any, api_for: Any, owner_db: Session, standard_without_qr: None
 ) -> None:
+    # Cas construit : STANDARD sans ``restaurant.qr`` (depuis R7, les deux offres l'incluent).
     t = provision("standard", profile=ORIGIN, plan="STANDARD")
     owner = api_for("owner@standard.example.com")
     site = str(t.site_id)

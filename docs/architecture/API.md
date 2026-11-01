@@ -533,6 +533,38 @@ Routage automatique à la création et à l'ajout de lignes (élément → secti
 une fois par ligne, seulement si la cuisine est effective sur le site ; `OrderOut.priority`,
 `LineOut.station_id` / `station_name` ; avis « prête » par poste (`part`, `station_name`).
 
+### Commandes par QR Code (module `restaurant.qr`) — palier R7
+
+Décisions : [ADR-0052](../adr/0052-commandes-par-qr-code.md) ; livré par la migration 0058
+(activation explicite par site ; offres STANDARD et ENTREPRISE).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/restaurant/qr/points` (`site_id?`, `kind?`, `status?`, recherche, tri) | `restaurant.qr.point.view` | Points des sites lisibles — jamais le jeton, son empreinte ni l'adresse |
+| POST | `/restaurant/qr/points` (`site_id`, `kind` = `TABLE` + `table_id` \| `COUNTER` + `label`) | `restaurant.qr.point.manage` sur le site | `201` : `{point, url, svg}` émis UNE fois (`no-store`) ; `404 table_not_found`, `422 table_inactive`, `422 qr_tables_unavailable`, `409 qr_point_table_taken`, `409 qr_point_label_taken`, `503 public_url_not_configured` |
+| PUT | `/restaurant/qr/points/{id}` (`label`) | idem | Libellé d'un comptoir (`422 qr_point_label_not_editable` pour une table) |
+| POST | `/restaurant/qr/points/{id}/activate` \| `/deactivate` | idem | Réactivation d'un point de table : table active, sans autre point actif |
+| POST | `/restaurant/qr/points/{id}/regenerate` (`confirm_invalidation: true`) | idem | Nouveau jeton (`{point, url, svg}`), anciens QR invalides immédiatement |
+| GET, PUT | `/restaurant/qr/settings` (`site_id`) | `point.view` / `restaurant.qr.settings.manage` | Plafonds (lignes, quantité, commandes en attente par point) bornés par la plateforme ; nom / téléphone : `HIDDEN` \| `OPTIONAL` \| `REQUIRED` |
+| POST | `/restaurant/orders/{id}/confirm` | `restaurant.orders.order.confirm` | « À confirmer » → ouverte ; `409 order_not_pending` |
+| POST | `/restaurant/orders/{id}/reject` (`reason`) | idem | Refus motivé, définitif |
+| GET | `/restaurant/orders?state=pending\|open` | `restaurant.orders.order.view` | « À confirmer » ; ouvertes seulement |
+
+Toute action sur une commande à confirmer (prise, préparation, lignes, règlement…) :
+`409 order_pending_confirmation`. `PUT /restaurant/settings/{site_id}` accepte `qr_auto_accept`.
+`OrderOut.contact_phone` (téléphone du client, effacé à 30 jours).
+
+**Routes publiques** (`/api/v1/public/restaurant/qr`, sans authentification ; réponses `no-store`,
+`no-referrer`, `nosniff`, `noindex`) :
+
+| Méthode | Chemin | En-tête | Rôle |
+|---|---|---|---|
+| GET | `/menu` | `X-QR-Token` | Établissement, site, point, devise, sections et éléments (nom, conditionnement, description, prix, disponibilité), règles de saisie (`ordering`) |
+| POST | `/orders` (`client_key` UUID v4, `lines[]` : `menu_item_id`, `quantity` entière, `note` ; `customer_name`, `customer_phone`) | `X-QR-Token` | `201` (ou `200` rejouée) : `daily_number`, `status`, `tracking_url`, `replayed` ; tout autre champ refusé (`422`) ; `422 qr_order_item_unavailable` (identifiants seuls), `qr_order_too_many_lines`, `qr_order_quantity_too_large`, `qr_order_name_required`, `qr_order_phone_required`, `qr_order_phone_invalid` ; `409 qr_order_pending_limit`, `qr_order_key_reused`, `qr_order_already_sent` ; `429 rate_limited` |
+| GET | `/track` | `X-QR-Tracking` | État, lignes, total, reste à régler, motif d'un refus, `available_until` ; `404 qr_tracking_unavailable` |
+
+Tout refus d'accès : `404 qr_unavailable` (réponse identique quel que soit le motif).
+
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 
 API séparée de celle des entreprises (`app.console.main`, rôle SQL dédié), réservée aux

@@ -3,17 +3,17 @@ from app.modules.restaurant_qr.permissions import POINT_MANAGE, POINT_VIEW, SETT
 from app.modules.restaurant_qr.public_router import public_router
 from app.modules.restaurant_qr.router import router
 from app.modules.restaurant_qr.settings import site_setup
-from app.platform.registry import AccessKind, ModuleManifest, ModuleStatus, PermissionDef
+from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
 
 R, A = AccessKind.READ, AccessKind.ADMIN
 
 # Palier R7 (ADR-0052) : commandes par QR Code d'un site. Dépend des commandes (une commande QR
 # est une commande du moteur unique, canal ``QR``) ; les tables sont facultatives (point de
-# comptoir sans table). PLANIFIÉ pendant son développement (routes non montées en production,
-# permissions non accordées) ; livré par la migration 0058.
+# comptoir sans table). Livré (disponible) par la migration 0058 : activations héritées de la
+# période « Bientôt disponible » remises à ``false`` sur les sites existants (activation
+# explicite par site).
 MANIFEST = ModuleManifest(
     code="restaurant.qr",
-    status=ModuleStatus.PLANNED,
     depends_on=("restaurant.orders",),
     permissions=(
         PermissionDef(POINT_VIEW, R),

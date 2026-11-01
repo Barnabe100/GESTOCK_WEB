@@ -99,7 +99,10 @@ def test_writes_on_a_site_follow_its_profile_server_side(world: World, owner_db:
     assert revalidated.json()["site_id"] == world.site2
 
 
-def test_the_plan_still_bounds_every_site(provision: Any, api_for: Any, owner_db: Session) -> None:
+def test_the_plan_still_bounds_every_site(
+    provision: Any, api_for: Any, owner_db: Session, standard_without_qr: None
+) -> None:
+    # Cas construit : STANDARD sans ``restaurant.qr`` (depuis R7, les deux offres l'incluent).
     t = provision("plan-borne", profile="restaurant.maquis", plan="ENTREPRISE")
     owner = api_for("owner@plan-borne.example.com")
     standard = add_site(owner, "Annexe", "ANX", plan="STANDARD")

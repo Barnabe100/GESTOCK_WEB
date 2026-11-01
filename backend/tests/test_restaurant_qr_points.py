@@ -423,9 +423,10 @@ def test_app_role_privileges_and_forced_rls(owner_db: Session, settings: Setting
         )
 
 
-def test_production_registry_keeps_qr_planned(
-    provision: Any, settings: Settings, migrated: None
+def test_planned_qr_mounts_no_route(
+    provision: Any, settings: Settings, migrated: None, qr_planned: None
 ) -> None:
+    """SIMULATION de la période « Bientôt disponible » : aucune route montée."""
     with TestClient(create_app(settings)) as client:
         provision("rq-prod", profile="restaurant.restaurant", plan="ENTREPRISE")
         owner = _api(client, "owner@rq-prod.example.com")

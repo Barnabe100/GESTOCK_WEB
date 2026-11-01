@@ -42,9 +42,29 @@ livrés ; à vérifier dans l'environnement Ubuntu complet.
 | E-4 | `onboarding.e2e.ts` @mobile | limitation de fréquence persistante de l'inscription publique (`429 rate_limited`) épuisée par les tests d'inscription précédents de la même exécution | base de test neuve, ou exécution isolée du projet mobile |
 | E-5 | `signup.e2e.ts` @mobile | idem (`429`) | idem |
 
+## R7-1 — supervision de la tâche quotidienne de conservation (exploitation)
+
+- **Statut** : À FAIRE PAR L'EXPLOITATION (hors du code).
+- `stockmanager notifications purge` efface désormais AUSSI les téléphones des clients des
+  commandes QR finies depuis plus de 30 jours (décision Q13, ADR-0052). Le code, les droits SQL
+  (rôle `stockmanager_purge`) et les tests sont livrés ; la **planification** (cron ou minuterie
+  systemd, quotidienne) et la **supervision** (alerte sur code de sortie non nul, consultation
+  des compteurs affichés) relèvent de l'environnement de production et ne peuvent pas être
+  vérifiées depuis le dépôt. Exemple de minuterie et de vérification : guide de mise à jour R7.
+
+## R7-2 — en-têtes de sécurité des pages publiques en production
+
+- **Statut** : À CONFIGURER au reverse proxy de production (aucun serveur web de production dans
+  le dépôt).
+- La page publique pose sa CSP par balise et `referrer = no-referrer` ; l'API publique renvoie
+  `no-store`, `no-referrer`, `nosniff`, `noindex`. En production, servir aussi `/q` et
+  `/q/track` avec l'en-tête CSP et `frame-ancestors 'none'` (non applicable par balise), et
+  déclarer le proxy dans `SM_TRUSTED_PROXIES` (`ARCHITECTURE.md` §11).
+
 ## Historique
 
 | Date | Entrée | Évènement |
 |---|---|---|
 | 2026-11-01 | A-1 | ouverte (R6.5) ; course `/sales/new` → `/sales/{id}` corrigée dans le test (`986a1c0`) ; échec résiduel 1/21 |
 | 2026-11-01 | E-1 à E-5 | consignées (exécutions complètes R6 et R6.5) |
+| 2026-11-01 | R7-1, R7-2 | consignées (livraison R7 : actions d'exploitation) |

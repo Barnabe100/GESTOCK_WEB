@@ -58,11 +58,11 @@ def resto(provision: Any, api_for: Any) -> SimpleNamespace:
 
 
 def test_the_registry_declares_planned_modules() -> None:
-    assert "restaurant.qr" in PLANNED and "restaurant.recipes" in PLANNED
+    assert "restaurant.recipes" in PLANNED
     assert "pos" not in PLANNED and "alerts" not in PLANNED
-    # Livrés (0048, 0050) : plus jamais « Bientôt disponible ».
+    # Livrés (0048, 0050, 0058) : plus jamais « Bientôt disponible ».
     assert "restaurant.orders" not in PLANNED and "restaurant.tables" not in PLANNED
-    assert "restaurant.kitchen" not in PLANNED
+    assert "restaurant.kitchen" not in PLANNED and "restaurant.qr" not in PLANNED
 
 
 def test_available_module_in_profile_and_plan_is_activated(resto: SimpleNamespace) -> None:
@@ -75,21 +75,24 @@ def test_available_module_in_profile_and_plan_is_activated(resto: SimpleNamespac
 def test_planned_module_offered_by_profile_and_plan_is_refused(
     resto: SimpleNamespace, owner_db: Session
 ) -> None:
-    before = _site_modules(resto.owner, resto.site)["restaurant.qr"]
+    before = _site_modules(resto.owner, resto.site)["restaurant.recipes"]
     assert (before["status"], before["in_profile"], before["in_plan"]) == ("planned", True, True)
     assert before["activated_for_site"] is False
-    refused = set_site_module(resto.owner, resto.site, "restaurant.qr", True)
+    refused = set_site_module(resto.owner, resto.site, "restaurant.recipes", True)
     assert refused.status_code == 422
     assert refused.json()["code"] == "module_not_implemented"
-    assert _site_modules(resto.owner, resto.site)["restaurant.qr"]["activated_for_site"] is False
+    assert (
+        _site_modules(resto.owner, resto.site)["restaurant.recipes"]["activated_for_site"] is False
+    )
     row = owner_db.execute(
         text(
-            "SELECT enabled FROM site_modules WHERE site_id = :s AND module_code = 'restaurant.qr'"
+            "SELECT enabled FROM site_modules WHERE site_id = :s "
+            "AND module_code = 'restaurant.recipes'"
         ),
         {"s": resto.site},
     ).scalar_one_or_none()
     assert row is False
-    assert "restaurant.qr" not in _activation_audits(owner_db, resto.tenant)
+    assert "restaurant.recipes" not in _activation_audits(owner_db, resto.tenant)
 
 
 def test_every_planned_module_is_refused_on_every_path(resto: SimpleNamespace) -> None:
@@ -123,13 +126,15 @@ def test_forged_direct_request_is_refused(
     # Requête directe, hors interface, avec des champs inventés : seul ``enabled`` est lu ; le
     # statut du module vient du registre du serveur.
     forged = client.put(
-        f"/api/v1/sites/{resto.site}/modules/restaurant.qr",
+        f"/api/v1/sites/{resto.site}/modules/restaurant.recipes",
         headers={"Authorization": f"Bearer {resto.owner.token}", "X-Site-Id": str(resto.site)},
         json={"enabled": True, "status": "available", "in_plan": True, "effective": True},
     )
     assert (forged.status_code, forged.json()["code"]) == (422, "module_not_implemented")
-    assert _site_modules(resto.owner, resto.site)["restaurant.qr"]["activated_for_site"] is False
-    assert "restaurant.qr" not in _activation_audits(owner_db, resto.tenant)
+    assert (
+        _site_modules(resto.owner, resto.site)["restaurant.recipes"]["activated_for_site"] is False
+    )
+    assert "restaurant.recipes" not in _activation_audits(owner_db, resto.tenant)
 
 
 def test_planned_module_can_still_be_disabled(resto: SimpleNamespace) -> None:
@@ -146,7 +151,9 @@ def test_planned_module_can_still_be_disabled(resto: SimpleNamespace) -> None:
     assert refused.json()["code"] == "module_not_implemented"
 
 
-def test_out_of_plan_and_not_in_profile_keep_their_code(provision: Any, api_for: Any) -> None:
+def test_out_of_plan_and_not_in_profile_keep_their_code(
+    provision: Any, api_for: Any, standard_without_qr: None
+) -> None:
     standard = provision("resto-std-e1", profile="restaurant.restaurant", plan="STANDARD")
     owner = api_for("owner@resto-std-e1.example.com")
     out_of_plan = set_site_module(owner, standard.site_id, "restaurant.qr", True)
@@ -162,13 +169,13 @@ def test_out_of_plan_and_not_in_profile_keep_their_code(provision: Any, api_for:
 
 def test_planned_module_stays_visible_and_consultable(resto: SimpleNamespace) -> None:
     caps_before = _caps(resto.owner, resto.site)
-    set_site_module(resto.owner, resto.site, "restaurant.qr", True)
+    set_site_module(resto.owner, resto.site, "restaurant.recipes", True)
     site_modules = _site_modules(resto.owner, resto.site)
-    assert site_modules["restaurant.qr"]["status"] == "planned"
     assert site_modules["restaurant.recipes"]["status"] == "planned"
+    assert site_modules["restaurant.qr"]["status"] == "available"  # livré (0058)
     assert site_modules["restaurant.orders"]["status"] == "available"
     summary = {m["code"]: m for m in resto.owner.get("/modules").json()}
-    assert summary["restaurant.qr"]["status"] == "planned"
+    assert summary["restaurant.recipes"]["status"] == "planned"
     assert summary["pos"]["status"] == "available" and summary["pos"]["effective"] is True
     # Capacités inchangées par le refus.
     caps_after = _caps(resto.owner, resto.site)
@@ -182,7 +189,7 @@ def test_refusal_on_one_site_never_touches_another(resto: SimpleNamespace) -> No
     annex = other.json()["id"]
     before = _site_modules(resto.owner, annex)
     caps_before = _caps(resto.owner, annex)
-    refused = set_site_module(resto.owner, resto.site, "restaurant.qr", True)
+    refused = set_site_module(resto.owner, resto.site, "restaurant.recipes", True)
     assert refused.json()["code"] == "module_not_implemented"
     assert _site_modules(resto.owner, annex) == before
     assert _caps(resto.owner, annex)["modules"] == caps_before["modules"]
@@ -196,8 +203,8 @@ def test_rbac_is_checked_before_the_planned_rule(
 ) -> None:
     owner_ns = SimpleNamespace(owner=resto.owner)
     seller = member(owner_ns, client, "vendeur@resto-e1.example.com", "seller")  # type: ignore[arg-type]
-    denied = set_site_module(seller, resto.site, "restaurant.qr", True)
+    denied = set_site_module(seller, resto.site, "restaurant.recipes", True)
     assert (denied.status_code, denied.json()["code"]) == (403, "permission_denied")
     viewer = member(owner_ns, client, "consultant@resto-e1.example.com", "viewer")  # type: ignore[arg-type]
-    refused = set_site_module(viewer, resto.site, "restaurant.qr", True)
+    refused = set_site_module(viewer, resto.site, "restaurant.recipes", True)
     assert (refused.status_code, refused.json()["code"]) == (403, "permission_denied")

@@ -60,6 +60,7 @@ import {
   toLineInputs,
   type CartLine,
 } from './ui';
+import { QrDecisionActions } from './qr';
 
 const OPEN_LINE = (l: OrderLine) => l.status !== 'SERVED' && l.status !== 'CANCELLED';
 
@@ -646,6 +647,8 @@ export default function OrderPage() {
         ]}
         actions={
           <>
+            {/* Commande QR à confirmer (R7) : rien d'autre avant la décision. */}
+            <QrDecisionActions order={order} />
             <Button
               icon="pi pi-print"
               label={t('restaurantOrders.ticket.open')}
@@ -757,6 +760,12 @@ export default function OrderPage() {
             <div>
               <dt>{t('restaurantOrders.callName')}</dt>
               <dd>{order.call_name}</dd>
+            </div>
+          )}
+          {order.contact_phone && (
+            <div>
+              <dt>{t('restaurantOrders.qr.contactPhone')}</dt>
+              <dd>{order.contact_phone}</dd>
             </div>
           )}
           {(order.table || canEditTable) && (

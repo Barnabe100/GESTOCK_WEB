@@ -510,11 +510,14 @@ def test_plans_list_and_read_only_structure(admin: TestClient) -> None:
     assert "stock.transfer.create" in permissions
     modules = {m["code"]: m for m in entreprise["modules"]}
     assert modules["stock"]["status"] == "available"
-    assert modules["restaurant.qr"]["status"] == "planned"
+    assert modules["restaurant.recipes"]["status"] == "planned"
+    assert modules["restaurant.qr"]["status"] == "available"  # livré (R7, 0058)
     assert any(m["core"] for m in modules.values())
 
     structure = _get(admin, "/plans/STANDARD").json()["structure"]
     assert structure["limits"] == {"max_sites": 1, "max_users": 5}
+    # R7 (ADR-0052 Q1) : commandes par QR Code dans les deux offres.
+    assert "restaurant.qr" in {m["code"] for m in structure["modules"]}
     assert "stock.transfer.create" not in {p["code"] for p in structure["permissions"]}
     assert _get(admin, "/plans/INCONNU").status_code == 404
 

@@ -237,7 +237,7 @@ def test_a_token_only_opens_its_own_site_and_company(
 
 
 def test_public_routes_are_not_mounted_while_qr_is_planned(
-    settings: Settings, migrated: None
+    settings: Settings, migrated: None, qr_planned: None
 ) -> None:
     with TestClient(create_app(settings)) as client:
         assert client.get(MENU, headers={"X-QR-Token": new_secret()}).status_code == 404

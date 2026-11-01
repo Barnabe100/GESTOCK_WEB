@@ -6,8 +6,10 @@
 > R3 ; R2-A livré : socle de plateforme ; R2-B livré : migration 0042 et moteur T1 ; R2-C livré : prise en charge, réattribution, modèles Serveur et Préparateur ; R2-D livré : migration 0043, règlement T2, Z3 ; R2-E livré : interface — suivi, saisie, fiche, règlement, réglages, ticket 80 mm sans prix) ; `restaurant.orders` reste `planned` jusqu'à la
 > validation de R2-E (décision de l'utilisateur). Les autres modules `restaurant.*` restent `planned` (palier E.1) jusqu'à la livraison
 > de leur palier.
-> **Aucun palier ne commence sans validation explicite.** Les numéros de migration des paliers
-> suivants sont indicatifs.
+> **État au 2026-11-01** : menu (R1), commandes et règlement (R2), notifications (R4), tables
+> (R5), cuisine (R6, ADR-0050) et **commandes par QR Code (R7, [ADR-0052](../adr/0052-commandes-par-qr-code.md),
+> migrations 0056 à 0058)** livrés ; `restaurant.recipes` (R8) reste planifié.
+> **Aucun palier ne commence sans validation explicite.**
 
 ## 1. Vocabulaire
 
@@ -289,7 +291,10 @@ partage de clé sur la ligne du site : ce n'est jamais un verrou « gratuit ».
 | Désactivation d'une table / d'une zone | table (exclusif) puis comptage des commandes en cours / zone (exclusif) ; rattacher une table à une zone : zone en partage |
 
 Le verrou **exclusif** du site n'est jamais pris par une opération sur une commande ; le
-**partage de clé** l'est (explicitement ou par une clé étrangère). Point QR (R7) : non implémenté.
+**partage de clé** l'est (explicitement ou par une clé étrangère). Commande QR (R7) : compteurs
+de limitation validés d'abord, puis verrou consultatif du **point** → réglages QR du site
+(partage) → mêmes verrous que toute création (site en partage de clé → réglages des commandes
+→ table → commande) ; confirmation / refus : verrou de la commande.
 
 **Cycle d'interblocage confirmé puis corrigé (B-4, commit `6b25162`).** Avant le correctif, trois
 opérations sur la même commande fermaient un cycle (`40P01`, erreur 500) : (1) le règlement ou le
@@ -357,13 +362,39 @@ clé anti-doublon, résolution calculée à la lecture, interrogation 10–15 s,
 (rôle de purge : `SELECT (id, created_at)` + `DELETE` des lignes de plus de 30 jours sous une
 politique restrictive). Une annulation de vente ou de paiement ne notifie personne.
 
-## 10. QR
+## 10. QR (livré, palier R7 — [ADR-0052](../adr/0052-commandes-par-qr-code.md))
 
-Voir ADR-0049 D9. Espace `/api/v1/public/…` ; entreprise et site déduits du jeton haché
-(politique `qr_token_lookup`) ; limitation de fréquence persistante (`RateLimiter`) ; idempotence
-de la création ; plafonds (O9) ; réponses sans coût, stock, caisse ni donnée interne ; module
-effectif et site actif revérifiés à chaque appel. Un site STANDARD déjà licencié n'obtient le QR
-qu'à sa prochaine licence.
+- **Module** `restaurant.qr` (paquet `restaurant_qr`), dépend des commandes ; tables facultatives ;
+  offres STANDARD et ENTREPRISE ; facultatif dans les profils de restauration ; livré par 0058
+  (sites existants désactivés jusqu'à activation explicite).
+- **Points** : table (table active du même site, un point actif par table) ou comptoir ; jeton de
+  256 bits, empreinte seule ; QR Code (SVG Segno, correction Q) affiché à la création ou à la
+  régénération seulement ; réimprimer = régénérer (confirmation, anciens QR invalides
+  immédiatement) ; impression carte de table A6 ou affiche A4 ; permissions
+  `restaurant.qr.point.view|manage`.
+- **Accès public** (`/api/v1/public/restaurant/qr/…`) : jeton dans le fragment de l'adresse puis
+  dans l'en-tête `X-QR-Token` ; garde unique à chaque appel (point, entreprise, site, abonnement
+  du site, modules, table) ; politique `qr_token_lookup` (aucun contournement de la RLS) ; refus
+  identique `404 qr_unavailable` ; limitation de fréquence (empreintes HMAC, proxies de
+  confiance) ; en-têtes `no-store`, `no-referrer`.
+- **Menu public** : nom, conditionnement, description, prix, disponibilité (épuisé visible) ;
+  motifs internes masqués ; jamais de stock ni de coût.
+- **Commande** : moteur UNIQUE (`PublicOrderService`, acteur `PUBLIC`, canal `QR`) ; « à
+  confirmer » sauf acceptation automatique (`qr_auto_accept`) ; plafonds réglables par site
+  (`restaurant_qr_site_settings` : 30 lignes, 20 unités, 3 en attente par point ; plafonds de la
+  plateforme 100 / 99 / 20, `restaurant.qr.settings.manage`) ; nom et téléphone demandés selon le
+  site ; idempotence limitée au point et à la même requête (nouveau secret de suivi au rejeu) ;
+  aucun champ de décision accepté ; refus assainis.
+- **Confirmation** : `restaurant.orders.order.confirm` (Administrateur, Gestionnaire, Vendeur,
+  Serveur) ; refus motivé ; rien avant la confirmation (`order_pending_confirmation`) ; rien en
+  cuisine ; notification `restaurant.order.qr_received` ; onglet « À confirmer » des commandes.
+- **Suivi** (`/q/track`) : secret distinct, haché, politique `qr_tracking_lookup` ; disponible
+  pendant la commande puis 12 h après sa fin ; état, lignes, total, reste à régler, motif d'un
+  refus ; maintenu après régénération du point ; aucun paiement.
+- **Téléphone** : effacé 30 jours après la fin par `stockmanager notifications purge` (rôle
+  `stockmanager_purge`, politiques de 0057).
+- **Licences** : la licence en vigueur fige les modules ; un site STANDARD déjà licencié obtient
+  le QR à sa licence suivante (à sa date de début).
 
 ## 11. Plan de migrations
 
@@ -372,11 +403,17 @@ qu'à sa prochaine licence.
 | 0041 | R1 (livrée) | menu (contrainte `NULLS NOT DISTINCT`, FK composite), RLS, droits ; remise à `false` de `restaurant.menu` ; descente refusée si un menu a été saisi |
 | 0042 | R2 (R2-B, livrée) | réglages, commandes, lignes, évènements, CHECK des motifs, déclencheur d'états finaux, index d'ancienneté, `business_profiles.module_settings`, `UNIQUE (tenant_id, site_id, id)` des éléments de menu ; remise à `false` de `restaurant.orders` ; descente refusée si une commande ou des réglages existent |
 | 0043 | R2 (R2-D, livrée) | origine des ventes, index partiel, déclencheur d'origine, canal `RESTAURANT`, FK `restaurant_orders.sale_id` ; descente refusée si une vente issue d'une commande existe |
-| 0044 | R4 | `member_notifications`, politiques RLS, droits du rôle de purge |
-| 0045 | R5 | zones, tables, FK `restaurant_orders.table_id` ; remise à `false` de `restaurant.tables` |
-| 0046 | R6 | postes, affectations, `station_id` ; remise à `false` de `restaurant.kitchen` |
-| 0047 | R7 | points QR, `qr_token_lookup`, champs publics ; remise à `false` de `restaurant.qr` |
-| 0048 | R8 | recettes et source des mouvements de consommation |
+| 0044 | R2-E (livrée) | association tardive d'un client (Z1) |
+| 0045 | R4 (livrée) | `member_notifications`, politiques RLS, droits du rôle de purge |
+| 0046 | R5 (livrée) | zones, tables, FK `restaurant_orders.table_id` |
+| 0047 | R5 (livrée) | libération explicite, délai entre prises 5 ou 10 minutes |
+| 0048 | R2 / R5 (livrée) | livraison de `restaurant.orders` et `restaurant.tables` (activations remises à `false`) |
+| 0049, 0050 | R6 (livrées) | cuisine : postes, affectations, `station_id`, priorité ; livraison |
+| 0051 à 0055 | R6.5 (livrées) | moyens de réception internationaux (ADR-0051) |
+| 0056 | R7-A (livrée) | `restaurant_qr_points`, politique `qr_token_lookup` |
+| 0057 | R7-C / R7-E (livrée) | réglages QR, `restaurant_qr_orders` (`qr_tracking_lookup`), `contact_phone`, purge des téléphones, déclencheur des états finaux |
+| 0058 | R7-F (livrée) | livraison de `restaurant.qr` (activations remises à `false`) |
+| à venir | R8 | recettes et source des mouvements de consommation |
 
 Hors migrations (données versionnées, à la livraison de chaque palier) : passage de `planned` à
 un manifeste réel, dépendances (D1), modèles de rôles (`auto_provision`), profils (D11,
@@ -464,7 +501,7 @@ remontée, `alembic check` ; tests de migration sur le modèle de `test_site_mod
 | — | Intégration du canal POS à l'écran du point de vente (reportée, D14, Q2) | après R2 |
 | O7 | Perte de stock d'une ligne préparée puis annulée | R6 |
 | O8 | Déplacement d'une commande entre tables | R5 |
-| O9 | Plafonds QR (lignes, quantités, commandes ouvertes par point) | R7 |
+| O9 | ~~Plafonds QR~~ — tranché (ADR-0052 Q4) : réglables par site (30 / 20 / 3), plafonds de la plateforme 100 / 99 / 20 | R7 |
 | O10 | Source des mouvements des recettes (garde d'unicité) | R8 |
 | — | Procédure de perte (Z1) et remboursement d'espèces après clôture (W1) | à concevoir séparément |
 | — | Addition scindée, remises, options payantes | après V1 |
@@ -493,7 +530,7 @@ remontée, `alembic check` ; tests de migration sur le modèle de `test_site_mod
 - **R5 Tables** : occupation exacte ; un site sans tables n'est pas affecté.
 - **R6 Postes** : routage et un avis par poste ; un site sans poste inchangé ; activation par
   l'Administrateur.
-- **R7 QR** : batterie de sécurité verte ; confirmation par défaut ; QR dans STANDARD.
+- **R7 QR** (livré) : batterie de sécurité verte ; confirmation par défaut ; QR dans STANDARD et ENTREPRISE ; voir ADR-0052 pour les résultats.
 - **R8 Recettes** : consommation par `StockService.consume` ; CMUP et lots inchangés ; garde
   d'unicité résolue.
 - **R9 Consolidation** : E2E des trois canaux rejoués deux fois ; isolation, concurrence, CI

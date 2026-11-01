@@ -3286,3 +3286,196 @@ a {
   display: block;
   font-size: 9pt;
 }
+
+/* --- Commandes par QR Code (palier R7, ADR-0052) -------------------------------------------- */
+
+/* File « À confirmer » de l'écran des commandes. */
+.sm-qr-pending {
+  display: grid;
+  gap: var(--sm-space-2, 0.5rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-qr-pending-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sm-space-2, 0.5rem) var(--sm-space-3, 0.75rem);
+  align-items: center;
+  padding: var(--sm-space-3, 0.75rem);
+  border: 1px solid var(--sm-border, #dfe3e8);
+  border-radius: var(--sm-radius, 8px);
+  background: var(--sm-surface, #fff);
+}
+
+.sm-qr-pending-actions {
+  display: flex;
+  gap: var(--sm-space-2, 0.5rem);
+  margin-left: auto;
+}
+
+/* Aperçu et impression du QR Code (carte de table A6, affiche A4). */
+.sm-qr-preview {
+  display: flex;
+  justify-content: center;
+}
+
+.sm-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  color: #000;
+  background: #fff;
+  text-align: center;
+}
+
+.sm-qr-card p {
+  margin: 0;
+}
+
+.sm-qr-card-establishment {
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.sm-qr-card-code {
+  width: 60mm;
+  height: 60mm;
+  image-rendering: pixelated;
+}
+
+.sm-qr-card-poster .sm-qr-card-code {
+  width: 120mm;
+  height: 120mm;
+}
+
+.sm-qr-card-poster .sm-qr-card-establishment {
+  font-size: 2rem;
+}
+
+.sm-qr-card-point {
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.sm-qr-preview .sm-qr-card-code {
+  width: 12rem;
+  height: 12rem;
+}
+
+/* Pages publiques : mobile d'abord, colonne unique, cibles tactiles larges. */
+.sm-qr-public {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem;
+  padding-bottom: 6rem;
+}
+
+.sm-qr-public-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.4rem;
+}
+
+.sm-qr-section ul,
+.sm-qr-cart ul,
+.sm-qr-tracking-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-qr-item {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--sm-border, #dfe3e8);
+}
+
+.sm-qr-item-error {
+  border-left: 4px solid var(--sm-danger-fg);
+  padding-left: 0.5rem;
+}
+
+.sm-qr-item-head {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.sm-qr-item-soldout {
+  color: var(--sm-text-muted, #6b7280);
+  font-style: italic;
+}
+
+.sm-qr-qty {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sm-qr-qty-value {
+  min-width: 2rem;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.sm-qr-note,
+.sm-qr-field .p-inputtext {
+  width: 100%;
+}
+
+.sm-qr-cart {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--sm-border, #dfe3e8);
+  border-radius: var(--sm-radius, 8px);
+  background: var(--sm-surface, #fff);
+}
+
+.sm-qr-field {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+
+.sm-qr-cart-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.sm-qr-tracking {
+  text-align: center;
+}
+
+.sm-qr-tracking-number {
+  margin: 0;
+  font-weight: 800;
+  font-size: 3rem;
+  line-height: 1.1;
+}
+
+.sm-qr-tracking-status {
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.sm-qr-tracking-lines li {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--sm-border, #dfe3e8);
+  text-align: left;
+}
+
+.sm-qr-line-cancelled {
+  text-decoration: line-through;
+  opacity: 0.7;
+}

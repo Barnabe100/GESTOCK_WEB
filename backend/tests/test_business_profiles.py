@@ -234,7 +234,8 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     assert caps["profile"]["ux_profile"] == "restaurant.default"
     groups = _groups(caps)
     # ADR-0049 / ADR-0050 : menu (R1), commandes (R2), tables (R5, 0048) et cuisine (R6, 0050)
-    # — activés par défaut sur un nouveau site Restaurant ; recettes et QR : planifiés.
+    # — activés par défaut sur un nouveau site Restaurant ; QR (R7, 0058) : livré mais
+    # facultatif (non activé) ; recettes : planifiées.
     assert groups["restaurant"] == [
         "restaurant.tables",
         "restaurant.orders",
@@ -257,7 +258,6 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     # « À venir » : modules planifiés du profil, dans l'ordre de sa navigation.
     assert caps["ux"]["upcoming"] == [
         "restaurant.recipes",
-        "restaurant.qr",
         "reports",
         "payments",
     ]

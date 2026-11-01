@@ -1,6 +1,7 @@
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
+import { InputSwitch } from 'primereact/inputswitch';
 import { Message } from 'primereact/message';
 import { SelectButton } from 'primereact/selectbutton';
 import { useState } from 'react';
@@ -29,8 +30,8 @@ const MAX_MINUTES = 1440;
 /**
  * Réglages des commandes d'UN site (`restaurant.orders.settings.manage`, revérifiée par le
  * serveur pour ce site) : moment du paiement (appliqué aux commandes créées ENSUITE), protection
- * d'une prise en charge et délai entre deux prises. L'acceptation automatique des commandes QR
- * est sans effet avant le palier QR : affichée, non modifiable.
+ * d'une prise en charge et délai entre deux prises ; acceptation automatique des commandes QR
+ * (R7), modifiable quand les commandes par QR Code sont effectives.
  */
 export default function OrderSettingsPage() {
   const { t } = useTranslation();
@@ -78,9 +79,11 @@ export default function OrderSettingsPage() {
 function SettingsForm({ settings }: { settings: OrderSettings }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { capabilities } = useCapabilities();
+  const { capabilities, hasModule } = useCapabilities();
   const { locale, timezone } = capabilities.tenant;
   const { updateSettings } = useOrderMutations();
+  const qrEffective = hasModule('restaurant.qr');
+  const [autoAccept, setAutoAccept] = useState<boolean>(settings.qr_auto_accept);
   const [timing, setTiming] = useState<PaymentTiming>(settings.payment_timing);
   const [protection, setProtection] = useState<number>(settings.claim_protection_minutes);
   const [cooldown, setCooldown] = useState<ClaimCooldown>(settings.claim_cooldown_minutes);
@@ -95,6 +98,7 @@ function SettingsForm({ settings }: { settings: OrderSettings }) {
           payment_timing: timing,
           claim_protection_minutes: protection,
           claim_cooldown_minutes: cooldown,
+          ...(qrEffective ? { qr_auto_accept: autoAccept } : {}),
         },
       },
       {
@@ -156,15 +160,21 @@ function SettingsForm({ settings }: { settings: OrderSettings }) {
             }))}
           />
         </FormField>
+        {qrEffective && (
+          <FormField
+            id="order-settings-qr-auto"
+            label={t('restaurantOrders.settings.qrAutoAccept')}
+            help={t('restaurantOrders.settings.qrAutoAcceptHelp')}
+          >
+            <InputSwitch
+              inputId="order-settings-qr-auto"
+              checked={autoAccept}
+              onChange={(e) => setAutoAccept(e.value)}
+            />
+          </FormField>
+        )}
       </div>
       <dl className="sm-details">
-        <div>
-          <dt>{t('restaurantOrders.settings.qrAutoAccept')}</dt>
-          <dd>
-            {settings.qr_auto_accept ? t('common.yes') : t('common.no')}{' '}
-            <small className="sm-help">{t('restaurantOrders.settings.qrLater')}</small>
-          </dd>
-        </div>
         <div>
           <dt>{t('restaurantOrders.settings.updatedAt')}</dt>
           <dd>{formatDateTime(settings.updated_at, locale, timezone)}</dd>

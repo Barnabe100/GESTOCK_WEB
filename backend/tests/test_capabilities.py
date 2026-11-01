@@ -52,7 +52,10 @@ def test_profiles_drive_modules_navigation_and_terminology(provision: Any, api_f
         )
 
 
-def test_plan_filters_modules(provision: Any, api_for: Any, owner_db: Session) -> None:
+def test_plan_filters_modules(
+    provision: Any, api_for: Any, owner_db: Session, standard_without_qr: None
+) -> None:
+    # Cas construit : STANDARD sans ``restaurant.qr`` (depuis R7, les deux offres l'incluent).
     std = provision("std", profile="restaurant.restaurant", plan="STANDARD")
     ent = provision("ent", profile="restaurant.restaurant", plan="ENTREPRISE")
     # restaurant.qr est optionnel dans le profil : on l'active dans les deux tenants.
