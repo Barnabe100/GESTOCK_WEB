@@ -215,7 +215,8 @@ def test_catalog_api_lists_sectors_and_profiles_with_default_configuration(
     ]
     assert "restaurant.tables:occupied" in detail["ux"]["dashboard"]["widgets"]
     assert detail["ux"]["theme"]["accent"] == "orange"
-    assert "restaurant.kitchen" in detail["upcoming"]
+    assert "restaurant.kitchen" not in detail["upcoming"]
+    assert "restaurant.recipes" in detail["upcoming"]
 
     unknown = owner.get("/business-profiles/restaurant.inconnu")
     assert unknown.status_code == 404
@@ -232,21 +233,29 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     assert caps["profile"]["sector"]["code"] == "restaurant"
     assert caps["profile"]["ux_profile"] == "restaurant.default"
     groups = _groups(caps)
-    # ADR-0049 : menu (R1), commandes (R2) et tables (R5, livrés par 0048) — activés par défaut
-    # sur un nouveau site Restaurant ; cuisine, recettes et QR : planifiés, jamais proposés.
-    assert groups["restaurant"] == ["restaurant.tables", "restaurant.orders", "restaurant.menu"]
+    # ADR-0049 / ADR-0050 : menu (R1), commandes (R2), tables (R5, 0048) et cuisine (R6, 0050)
+    # — activés par défaut sur un nouveau site Restaurant ; recettes et QR : planifiés.
+    assert groups["restaurant"] == [
+        "restaurant.tables",
+        "restaurant.orders",
+        "restaurant.kitchen",
+        "restaurant.menu",
+    ]
     assert list(groups) == ["home", "restaurant", "sales", "cash", "stock", "admin"]
     assert groups["stock"] == ["catalog", "stock", "inventory_count", "alerts", "suppliers"]
-    # Indicateurs déclarés par le profil pour les modules effectifs seulement (jamais la cuisine,
-    # planifiée) ; l'interface n'affiche que ceux qu'elle implémente.
+    # Indicateurs déclarés par le profil pour les modules effectifs seulement ; l'interface
+    # n'affiche que ceux qu'elle implémente.
     restaurant_widgets = [
         w for w in caps["ux"]["dashboard"]["widgets"] if w.startswith("restaurant.")
     ]
-    assert restaurant_widgets == ["restaurant.tables:occupied", "restaurant.orders:in_progress"]
+    assert restaurant_widgets == [
+        "restaurant.tables:occupied",
+        "restaurant.orders:in_progress",
+        "restaurant.kitchen:ready",
+    ]
     assert caps["ux"]["dashboard"]["widgets"][:2] == ["sales:today", "cash_register:open_sessions"]
     # « À venir » : modules planifiés du profil, dans l'ordre de sa navigation.
     assert caps["ux"]["upcoming"] == [
-        "restaurant.kitchen",
         "restaurant.recipes",
         "restaurant.qr",
         "reports",
@@ -256,8 +265,13 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     assert caps["terminology"]["fr"]["catalog"]["items"] == "Produits"
     # Aucune route planifiée n'est servie ; les modules livrés le sont.
     owner = api_for("owner@resto.example.com")
-    assert owner.get("/restaurant/kitchen").status_code == 404
-    for path in ("/restaurant/menu/sections", "/restaurant/orders", "/restaurant/tables"):
+    assert owner.get("/restaurant/recipes").status_code == 404
+    for path in (
+        "/restaurant/menu/sections",
+        "/restaurant/orders",
+        "/restaurant/tables",
+        "/restaurant/kitchen/stations",
+    ):
         assert owner.get(path).status_code == 200, path
 
 

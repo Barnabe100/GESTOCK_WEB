@@ -58,10 +58,11 @@ def resto(provision: Any, api_for: Any) -> SimpleNamespace:
 
 
 def test_the_registry_declares_planned_modules() -> None:
-    assert "restaurant.qr" in PLANNED and "restaurant.kitchen" in PLANNED
+    assert "restaurant.qr" in PLANNED and "restaurant.recipes" in PLANNED
     assert "pos" not in PLANNED and "alerts" not in PLANNED
-    # Livrés (0048) : plus jamais « Bientôt disponible ».
+    # Livrés (0048, 0050) : plus jamais « Bientôt disponible ».
     assert "restaurant.orders" not in PLANNED and "restaurant.tables" not in PLANNED
+    assert "restaurant.kitchen" not in PLANNED
 
 
 def test_available_module_in_profile_and_plan_is_activated(resto: SimpleNamespace) -> None:
@@ -164,7 +165,7 @@ def test_planned_module_stays_visible_and_consultable(resto: SimpleNamespace) ->
     set_site_module(resto.owner, resto.site, "restaurant.qr", True)
     site_modules = _site_modules(resto.owner, resto.site)
     assert site_modules["restaurant.qr"]["status"] == "planned"
-    assert site_modules["restaurant.kitchen"]["status"] == "planned"
+    assert site_modules["restaurant.recipes"]["status"] == "planned"
     assert site_modules["restaurant.orders"]["status"] == "available"
     summary = {m["code"]: m for m in resto.owner.get("/modules").json()}
     assert summary["restaurant.qr"]["status"] == "planned"

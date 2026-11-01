@@ -21,11 +21,11 @@ def test_module_listing_reflects_profile_and_plan(provision: Any, api_for: Any) 
     assert modules["restaurant.qr"]["in_profile"] is True
     assert modules["restaurant.qr"]["in_plan"] is False
     assert modules["pos"]["enabled"] is True and modules["pos"]["status"] == "available"
-    # ADR-0049 : menu (R1), commandes (R2) et tables (R5) livrés ; cuisine, QR et recettes
-    # restent planifiés.
-    for code in ("restaurant.menu", "restaurant.orders", "restaurant.tables"):
+    # ADR-0049 / ADR-0050 : menu (R1), commandes (R2), tables (R5) et cuisine (R6) livrés ; QR et
+    # recettes restent planifiés.
+    for code in ("restaurant.menu", "restaurant.orders", "restaurant.tables", "restaurant.kitchen"):
         assert modules[code]["status"] == "available", code
-    for code in ("restaurant.kitchen", "restaurant.qr", "restaurant.recipes"):
+    for code in ("restaurant.qr", "restaurant.recipes"):
         assert modules[code]["status"] == "planned", code
     assert modules["users"]["core"] is True
     assert "stock" in modules

@@ -1,8 +1,8 @@
 """Palier R6 (ADR-0050) — cuisine : postes de préparation, affectations du menu, routage des
 lignes, priorités, écran cuisine, avis par poste.
 
-Exercé par l'API avec le registre de test où ``restaurant.kitchen`` est disponible (fixture
-``kclient``) ; le registre de production le garde planifié pendant le développement.
+Exercé par l'API (fixture ``kclient`` : registre de test, sans effet depuis la livraison du
+module par la migration 0050, où ``restaurant.kitchen`` est disponible en production).
 """
 
 import threading
@@ -655,20 +655,67 @@ def test_rls_composite_fks_and_sql_privileges(
 # --- Production : module planifié pendant le développement --------------------------------------
 
 
-def test_production_registry_keeps_the_kitchen_planned(provision: Any, api_for: Any) -> None:
+def test_production_registry_delivers_the_kitchen(provision: Any, api_for: Any) -> None:
+    # Livré (0050) : disponible, dépendance vers les commandes seulement (jamais l'inverse).
     manifest = get_registry().get(KITCHEN)
-    assert manifest.status is ModuleStatus.PLANNED
+    assert manifest.status is ModuleStatus.AVAILABLE
     assert manifest.depends_on == ("restaurant.orders",)
     assert KITCHEN not in get_registry().get("restaurant.orders").depends_on
+    # Nouveau site Restaurant : activée par le profil ; nouveau site Maquis : facultative,
+    # désactivée, activable explicitement (aucune activation implicite).
     t = provision("rk-prod", profile=RESTAURANT, plan="ENTREPRISE")
     owner = api_for("owner@rk-prod.example.com")
-    assert owner.get(STATIONS).status_code == 404  # routes non montées
-    assert _code(set_site_module(owner, t.site_id, KITCHEN, True)) == (
-        422,
-        "module_not_implemented",
-    )
+    assert owner.get(f"{STATIONS}?site_id={t.site_id}").status_code == 200
     caps = Api(owner.client, owner.token, t.site_id).get("/me/capabilities").json()
-    assert not [p for p in caps["permissions"] if p.startswith("restaurant.kitchen.")]
+    assert {
+        "restaurant.kitchen.station.view",
+        "restaurant.kitchen.station.manage",
+        "restaurant.kitchen.line.route",
+        "restaurant.kitchen.priority.set",
+    } <= set(caps["permissions"])
+    m = provision("rk-prod-m", profile="restaurant.maquis", plan="STANDARD")
+    maquis = api_for("owner@rk-prod-m.example.com")
+    modules = {x["code"]: x for x in maquis.get(f"/sites/{m.site_id}/modules").json()}
+    assert modules[KITCHEN]["effective"] is False
+    assert _code(maquis.get(f"{BOARD}?site_id={m.site_id}"))[0] == 403
+    assert set_site_module(maquis, m.site_id, KITCHEN, True).status_code == 204
+    assert maquis.get(f"{BOARD}?site_id={m.site_id}").status_code == 200
+
+
+def test_migration_0050_disables_the_kitchen_on_existing_sites_only(
+    provision: Any, owner_db: Session, owner_engine: Engine
+) -> None:
+    from alembic import command
+
+    from tests.test_restaurant_menu_migration import _activations, _alembic
+
+    site = provision("rk-deliv", profile=RESTAURANT, plan="ENTREPRISE").site_id
+    owner_db.close()
+    owner_engine.dispose()
+    try:
+        command.downgrade(_alembic(), "0049")
+        with owner_engine.begin() as conn:
+            # Période « Bientôt disponible » : activation héritée du profil, inerte.
+            conn.execute(
+                text(
+                    "UPDATE site_modules SET enabled = true WHERE site_id = :s AND module_code = :k"
+                ),
+                {"s": site, "k": KITCHEN},
+            )
+            before = _activations(conn, site)
+            assert before[KITCHEN] is True
+        owner_engine.dispose()
+        command.upgrade(_alembic(), "0050")
+        with owner_engine.begin() as conn:
+            after = _activations(conn, site)
+            assert after[KITCHEN] is False
+            # Rien d'autre ne change (menu, commandes, tables, modules planifiés…).
+            assert {k: v for k, v in after.items() if k != KITCHEN} == {
+                k: v for k, v in before.items() if k != KITCHEN
+            }
+    finally:
+        owner_engine.dispose()
+        command.upgrade(_alembic(), "head")
 
 
 def test_migration_0049_downgrade_refuses_to_lose_kitchen_data(

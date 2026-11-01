@@ -583,11 +583,9 @@ def test_template_refused_when_a_custom_role_has_its_name(
 
 def test_planned_filter_only_removes_planned_permissions() -> None:
     production = get_registry()
-    # Production : commandes et tables livrées ; seul un module planifié à manifeste réel (la
-    # cuisine pendant son développement, R6) peut déclarer des permissions, jamais accordées.
-    assert {
-        m.code for m in production.all() if m.status is ModuleStatus.PLANNED and m.permissions
-    } <= {"restaurant.kitchen"}
+    # Production : commandes, tables (0048) et cuisine (0050) livrées ; aucun module planifié
+    # ne déclare de permissions.
+    assert not [m for m in production.all() if m.status is ModuleStatus.PLANNED and m.permissions]
     # Filtre exercé sur un registre où ces deux modules seraient encore planifiés (manifestes
     # réels, permissions déclarées) : leurs permissions ne sont jamais accordées.
     registry = ModuleRegistry(
