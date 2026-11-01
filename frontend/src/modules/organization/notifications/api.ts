@@ -13,7 +13,14 @@ export interface MemberNotification {
   site: { id: string; name: string; code: string };
   entity_type: string;
   entity_id: string;
-  payload: { daily_number?: number; line_count?: number; business_date?: string };
+  payload: {
+    daily_number?: number;
+    line_count?: number;
+    business_date?: string;
+    /** Commande prête à un poste seulement (cuisine). */
+    part?: boolean;
+    station_name?: string | null;
+  };
   created_at: string;
   read_at: string | null;
   resolved: boolean | null;

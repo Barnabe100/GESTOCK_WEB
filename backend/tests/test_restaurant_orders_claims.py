@@ -516,6 +516,9 @@ def test_waiter_and_preparer_templates_on_demand(resto: SimpleNamespace) -> None
         f"{P}.serve",
         # Zones et tables (palier R5-A) : consultation.
         "restaurant.tables.table.view",
+        # Cuisine (R6, ADR-0050 K5) : écran et priorité.
+        "restaurant.kitchen.station.view",
+        "restaurant.kitchen.priority.set",
         # R4 (ADR-0049 D8, RESTAURANT.md §8) : lire ses notifications.
         "organization.notification.view",
     }
@@ -525,6 +528,9 @@ def test_waiter_and_preparer_templates_on_demand(resto: SimpleNamespace) -> None
         f"{P}.view",
         f"{P}.prepare",
         "restaurant.tables.table.view",
+        # Cuisine (R6) : écran et correction du poste d'une ligne.
+        "restaurant.kitchen.station.view",
+        "restaurant.kitchen.line.route",
         "organization.notification.view",
     }
     again = r.owner.post("/roles/from-template", json={"template_code": "waiter"})
@@ -577,10 +583,11 @@ def test_template_refused_when_a_custom_role_has_its_name(
 
 def test_planned_filter_only_removes_planned_permissions() -> None:
     production = get_registry()
-    # Production : commandes et tables livrées, aucun module planifié ne déclare de permission.
-    assert not [
+    # Production : commandes et tables livrées ; seul un module planifié à manifeste réel (la
+    # cuisine pendant son développement, R6) peut déclarer des permissions, jamais accordées.
+    assert {
         m.code for m in production.all() if m.status is ModuleStatus.PLANNED and m.permissions
-    ]
+    } <= {"restaurant.kitchen"}
     # Filtre exercé sur un registre où ces deux modules seraient encore planifiés (manifestes
     # réels, permissions déclarées) : leurs permissions ne sont jamais accordées.
     registry = ModuleRegistry(

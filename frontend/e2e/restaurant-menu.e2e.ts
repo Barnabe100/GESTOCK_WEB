@@ -93,11 +93,10 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   await expect(row.getByRole('switch')).toBeVisible();
   await row.getByRole('switch').click();
   await expect(row.getByTestId('module-state-active')).toBeVisible();
-  // Commandes livrées (0048) : activables explicitement ; la cuisine reste « à venir ».
+  // Commandes (0048) et cuisine (0050) livrées : activables explicitement ; recettes à venir.
   await expect(page.getByRole('row', { name: /^Commandes/ }).getByRole('switch')).toHaveCount(1);
-  await expect(
-    page.getByRole('row', { name: /^Postes de préparation|^Cuisine/ }).getByRole('switch'),
-  ).toHaveCount(0);
+  await expect(page.getByRole('row', { name: /^Cuisine/ }).getByRole('switch')).toHaveCount(1);
+  await expect(page.getByRole('row', { name: /^Recettes/ }).getByRole('switch')).toHaveCount(0);
   await page.reload();
   await expect(menuLink).toHaveCount(1);
 });

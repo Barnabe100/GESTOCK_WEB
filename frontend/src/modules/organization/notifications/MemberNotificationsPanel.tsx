@@ -36,10 +36,14 @@ export function memberNotificationText(
   t: (key: string, options?: Record<string, unknown>) => string,
   n: MemberNotification,
 ): string {
-  return t(`memberNotifications.kinds.${n.kind}`, {
+  // Partie d'une commande prête à UN poste (cuisine, ADR-0050 K4) : variante nommant le poste.
+  const station = n.payload.part === true ? n.payload.station_name : undefined;
+  const key = station ? `${n.kind}_station` : n.kind;
+  return t(`memberNotifications.kinds.${key}`, {
     number: n.payload.daily_number,
     count: n.payload.line_count ?? 0,
     site: n.site.name,
+    station,
     defaultValue: t('memberNotifications.unknownKind', { site: n.site.name }),
   });
 }

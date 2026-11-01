@@ -148,14 +148,16 @@ test.describe('Profils d’activité', () => {
   }) => {
     const caps = await capabilities(request, await tokenFor(request, EMAIL, PASSWORD, RESTO));
     expect(caps.profile.code).toBe('restaurant.restaurant');
-    // ADR-0049 : menu, commandes et tables livrés (0048) — activés par défaut par le profil
-    // Restaurant sur un NOUVEAU site ; cuisine, QR et recettes restent planifiés.
+    // ADR-0049 / ADR-0050 : menu, commandes, tables (0048) et cuisine (0050) livrés — activés
+    // par défaut par le profil Restaurant sur un NOUVEAU site ; QR et recettes restent planifiés.
     expect(caps.ux.navigation.find((g) => g.group === 'restaurant')?.modules).toEqual([
       'restaurant.tables',
       'restaurant.orders',
+      'restaurant.kitchen',
       'restaurant.menu',
     ]);
-    expect(caps.ux.upcoming).toEqual(expect.arrayContaining(['restaurant.kitchen']));
+    expect(caps.ux.upcoming).toEqual(expect.arrayContaining(['restaurant.recipes']));
+    expect(caps.ux.upcoming).not.toContain('restaurant.kitchen');
     expect(caps.ux.upcoming).not.toContain('restaurant.tables');
     expect(caps.ux.upcoming).not.toContain('restaurant.orders');
 
@@ -172,15 +174,22 @@ test.describe('Profils d’activité', () => {
       'Administration',
     ]);
     const restaurantLinks = sidebar(page).locator('ul[aria-labelledby="nav-restaurant"] a');
-    await expect(restaurantLinks).toHaveText(['Tables', 'Commandes', 'Menu']);
+    await expect(restaurantLinks).toHaveText([
+      'Tables',
+      'Commandes',
+      'Cuisine',
+      'Postes de préparation',
+      'Menu',
+    ]);
     const stockLinks = sidebar(page).locator('ul[aria-labelledby="nav-stock"] a');
     await expect(stockLinks.first()).toHaveText('Produits');
     const links = await sidebar(page).getByRole('link', { includeHidden: true }).allTextContents();
-    expect(links.join(' | ')).not.toMatch(/Cuisine|Recettes/);
+    expect(links.join(' | ')).not.toMatch(/Recettes/);
 
     // Annoncées « à venir », sans lien ; les modules livrés n'y figurent plus.
     const upcoming = page.getByRole('list', { name: 'À venir pour votre activité' });
-    await expect(upcoming).toContainText('Cuisine');
+    await expect(upcoming).toContainText('Recettes');
+    await expect(upcoming).not.toContainText('Cuisine');
     await expect(upcoming).not.toContainText('Tables');
     await expect(upcoming.getByRole('link')).toHaveCount(0);
     await expect(page.getByText('Produits en rupture')).toBeVisible();
@@ -189,6 +198,8 @@ test.describe('Profils d’activité', () => {
     await page.goto('/restaurant/tables');
     await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible();
     await page.goto('/restaurant/kitchen');
+    await expect(page.getByRole('heading', { name: 'Cuisine', exact: true })).toBeVisible();
+    await page.goto('/restaurant/recipes');
     await expect(page.getByRole('main').getByText('Page introuvable')).toBeVisible();
   });
 

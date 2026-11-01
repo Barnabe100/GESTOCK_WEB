@@ -298,5 +298,10 @@
   "zone_inactive": "Cette zone est désactivée : choisissez une zone active ou réactivez-la d'abord.",
   "table_not_allowed_for_mode": "Une table ne peut être associée qu'à une commande sur place.",
   "tables_unavailable": "Les tables ne sont pas disponibles sur ce site.",
-  "table_inactive": "Cette table est désactivée : choisissez une table active."
+  "table_inactive": "Cette table est désactivée : choisissez une table active.",
+  "station_name_taken": "Un poste de ce nom existe déjà sur ce site.",
+  "station_not_found": "Poste de préparation introuvable.",
+  "station_inactive": "Ce poste de préparation est désactivé.",
+  "station_has_open_lines": "Des lignes en cours sont routées vers ce poste : servez-les, annulez-les ou changez-les de poste d'abord.",
+  "station_route_changed": "Affectation modifiée en même temps : réessayez."
 }

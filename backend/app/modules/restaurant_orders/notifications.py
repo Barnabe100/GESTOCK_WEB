@@ -2,8 +2,10 @@
 portés par le mécanisme générique de la plateforme (``app.platform.member_notifications``).
 
 - **Quand** : transition « prête » (évènement ``READY``) laissant TOUTE la commande prête (sans
-  postes de préparation, R6 non livré : un avis par commande). Une transition répétée légitime
-  (lignes ajoutées puis prêtes, correction « prête → en préparation → prête ») est un nouvel
+  ligne routée vers un poste : un avis par commande) ; avec des lignes routées (R6, ADR-0050 K4) :
+  un avis par poste (« Sans poste » compris) dont toutes les lignes actives sont prêtes. Une
+  transition répétée légitime (lignes ajoutées puis prêtes, correction « prête → en préparation
+  → prête ») est un nouvel
   évènement, donc un nouvel avis ; rejouer l'émission d'un même évènement ne crée rien.
 - **Destinataires** : le responsable de la commande ET les membres du site détenant
   EFFECTIVEMENT ``restaurant.orders.order.serve`` (capacités résolues pour CE site : appartenance
@@ -77,9 +79,14 @@ def notify_order_ready(
     lines: Sequence[RestaurantOrderLine],
     event_id: uuid.UUID,
     now: datetime,
+    *,
+    part: bool = False,
+    station_name: str | None = None,
 ) -> list[uuid.UUID]:
-    """Avis de l'évènement ``READY`` ``event_id`` (la commande entière est prête)."""
+    """Avis de l'évènement ``READY`` ``event_id`` : la commande entière est prête, ou (``part``,
+    R6) la partie d'un poste — ``station_name`` (``None`` : « Sans poste »)."""
     ready = [line for line in lines if line.status is LineStatus.READY]
+    station = {"part": True, "station_name": station_name} if part else {}
     return notify_members(
         db,
         ctx,
@@ -95,6 +102,7 @@ def notify_order_ready(
             "business_date": order.business_date.isoformat(),
             "line_count": len(ready),
             "line_ids": [str(line.id) for line in ready],
+            **station,
         },
         now=now,
     )

@@ -113,9 +113,13 @@ def test_base_roles(owner: Api) -> None:
         "restaurant.orders.order.prepare",
         "restaurant.orders.order.serve",
         "restaurant.orders.order.cancel",
-        # Zones et tables (palier R5-A) : consultation seulement, sans effet tant que le module
-        # est planifié.
+        # Zones et tables (palier R5-A) : consultation seulement.
         "restaurant.tables.table.view",
+        # Cuisine (R6, ADR-0050 K5) : écran, priorité, poste d'une ligne ; sans effet tant que
+        # le module est planifié.
+        "restaurant.kitchen.station.view",
+        "restaurant.kitchen.priority.set",
+        "restaurant.kitchen.line.route",
         "organization.notification.view",  # ses notifications (palier R4, ADR-0049 D8)
     }
     viewer = set(roles["viewer"]["permission_codes"])

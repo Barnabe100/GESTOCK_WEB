@@ -54,7 +54,7 @@ exclude = [
 
 [roles.seller]
 name = "Vendeur"
-description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients, des créances, du menu (avec « épuisé ») et des tables, commandes de restauration (saisie, prise en charge, préparation, service, annulation des lignes reçues), sans annulation de ventes ni de documents validés."
+description = "Vente comptant sans crédit (ses propres ventes : création, modification et validation, encaissement, impression et réimpression des reçus, ouverture et clôture de caisse, point de vente), consultation des articles, du stock, des alertes, des inventaires, des clients, des créances, du menu (avec « épuisé ») et des tables, commandes de restauration (saisie, prise en charge, préparation, service, annulation des lignes reçues), cuisine (écran, priorité, poste d'une ligne), sans annulation de ventes ni de documents validés."
 permissions = [
   "catalog.article.view",
   "catalog.category.view",
@@ -81,6 +81,11 @@ permissions = [
   "restaurant.orders.order.cancel",
   # Zones et tables (R5) : consultation seulement (configuration : Administrateur, Gestionnaire).
   "restaurant.tables.table.view",
+  # Cuisine (R6, ADR-0050 K5) : écran, priorité, correction du poste d'une ligne ; jamais la
+  # configuration des postes.
+  "restaurant.kitchen.station.view",
+  "restaurant.kitchen.priority.set",
+  "restaurant.kitchen.line.route",
   "subscription.activation.check",
   "organization.notification.view",
 ]
@@ -92,7 +97,7 @@ permissions = [
 
 [roles.waiter]
 name = "Serveur"
-description = "Restauration : consultation du menu (avec « épuisé »), des tables et des commandes, saisie, prise en charge, service et remise des commandes ; aucun encaissement, aucune annulation."
+description = "Restauration : consultation du menu (avec « épuisé »), des tables, des commandes et de l'écran cuisine, saisie, prise en charge, priorité, service et remise des commandes ; aucun encaissement, aucune annulation."
 auto_provision = false
 permissions = [
   "restaurant.menu.view",
@@ -102,12 +107,14 @@ permissions = [
   "restaurant.orders.order.claim",
   "restaurant.orders.order.serve",
   "restaurant.tables.table.view",
+  "restaurant.kitchen.station.view",
+  "restaurant.kitchen.priority.set",
   "organization.notification.view",
 ]
 
 [roles.preparer]
 name = "Préparateur"
-description = "Restauration : consultation du menu (avec « épuisé »), des tables et des commandes, préparation (en préparation, prête, correction) ; ni saisie, ni service, ni encaissement, ni annulation."
+description = "Restauration : consultation du menu (avec « épuisé »), des tables, des commandes et de l'écran cuisine, préparation (en préparation, prête, correction), poste d'une ligne ; ni saisie, ni service, ni encaissement, ni annulation."
 auto_provision = false
 permissions = [
   "restaurant.menu.view",
@@ -115,6 +122,8 @@ permissions = [
   "restaurant.orders.order.view",
   "restaurant.orders.order.prepare",
   "restaurant.tables.table.view",
+  "restaurant.kitchen.station.view",
+  "restaurant.kitchen.line.route",
   "organization.notification.view",
 ]
 

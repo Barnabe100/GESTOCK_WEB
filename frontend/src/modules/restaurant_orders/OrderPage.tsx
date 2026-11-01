@@ -13,6 +13,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '@/core/api/client';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import type { CreditOverride, ExpiredLotOverride, ImmediatePayment } from '@/modules/sales/api';
+import { PriorityBadge } from '@/modules/restaurant_kitchen/ui';
 import { CustomerPicker, type CustomerOption } from '@/modules/sales/CustomerPicker';
 import { ReceiptDialog } from '@/modules/sales/receipt/ReceiptDialog';
 import { SalePaymentBadge, saleError } from '@/modules/sales/ui';
@@ -46,6 +47,7 @@ import {
   type OrderLine,
   type TransitionAction,
 } from './api';
+import { PriorityDialog, RouteLinesDialog, useKitchenOnOrder } from './kitchen';
 import { OrderTicketDialog } from './OrderTicket';
 import { TablePicker, tableLabel, useCanChooseTable } from './tables';
 import {
@@ -430,6 +432,23 @@ function OrderHistory({ order }: { order: Order }) {
                 label: eventTable(t, e.data.table_label, e.data.zone_name),
               })
             : null;
+        // Cuisine (R6) : priorité et poste ENREGISTRÉS dans l'évènement.
+        const priorityChange =
+          e.event_type === 'PRIORITY_CHANGED' && typeof e.data.priority === 'string'
+            ? t('restaurantKitchen.priorityChange', {
+                from: t(`restaurantKitchen.priorities.${String(e.data.previous)}`),
+                to: t(`restaurantKitchen.priorities.${e.data.priority}`),
+              })
+            : null;
+        const stationChange =
+          e.event_type === 'LINES_ROUTED'
+            ? t('restaurantKitchen.stationNamed', {
+                name:
+                  typeof e.data.station_name === 'string'
+                    ? e.data.station_name
+                    : t('restaurantKitchen.noStation'),
+              })
+            : null;
         return (
           <li key={e.id} data-testid="order-event">
             <strong>{t(`restaurantOrders.events.${e.event_type}`)}</strong>
@@ -442,6 +461,8 @@ function OrderHistory({ order }: { order: Order }) {
             )}
             {tableChange && <span>{` — ${tableChange}`}</span>}
             {initialTable && <span>{` — ${initialTable}`}</span>}
+            {priorityChange && <span>{` — ${priorityChange}`}</span>}
+            {stationChange && <span>{` — ${stationChange}`}</span>}
             <small className="sm-help">
               {` ${formatDateTime(e.occurred_at, locale, timezone)}${
                 e.actor_name ? ` · ${e.actor_name}` : ''
@@ -469,6 +490,7 @@ export default function OrderPage() {
   const [search] = useSearchParams();
   const { can, capabilities, hasModule } = useCapabilities();
   const canChooseTable = useCanChooseTable();
+  const kitchen = useKitchenOnOrder();
   const { currency, locale, timezone } = capabilities.tenant;
   const money = (v: string) => formatMoney(v, currency, locale);
   const query = useOrder(id);
@@ -487,6 +509,8 @@ export default function OrderPage() {
     expiredShortages: ExpiredShortage[];
   } | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [routing, setRouting] = useState<OrderLine[] | null>(null);
+  const [prioritizing, setPrioritizing] = useState(false);
 
   if (query.isPending) return <LoadingState />;
   if (query.isError) return <Message severity="error" text={orderError(t, query.error)} />;
@@ -556,6 +580,13 @@ export default function OrderPage() {
       icon: 'pi pi-send',
       hidden: !(open && l.status === 'READY' && can(ORDER_SERVE)),
       onClick: () => transition('serve', [l.id]),
+    },
+    {
+      key: 'route',
+      label: t('restaurantKitchen.changeStation'),
+      icon: 'pi pi-sitemap',
+      hidden: !(open && kitchen.canRoute),
+      onClick: () => setRouting([l]),
     },
     {
       key: 'cancel',
@@ -696,6 +727,28 @@ export default function OrderPage() {
               <SettlementBadge order={order} />
             </dd>
           </div>
+          {kitchen.effective && (
+            <div>
+              <dt>{t('restaurantKitchen.priority')}</dt>
+              <dd className="sm-badges" data-testid="order-priority">
+                {(order.priority ?? 'NORMAL') === 'NORMAL' ? (
+                  t('restaurantKitchen.priorities.NORMAL')
+                ) : (
+                  <PriorityBadge priority={order.priority ?? 'NORMAL'} />
+                )}
+                {open && kitchen.canPrioritize && (
+                  <Button
+                    type="button"
+                    icon="pi pi-sort-amount-up"
+                    label={t('restaurantKitchen.changePriority')}
+                    text
+                    size="small"
+                    onClick={() => setPrioritizing(true)}
+                  />
+                )}
+              </dd>
+            </div>
+          )}
           <div>
             <dt>{t('restaurantOrders.serviceMode')}</dt>
             <dd>{t(`restaurantOrders.serviceModes.${order.service_mode}`)}</dd>
@@ -903,6 +956,12 @@ export default function OrderPage() {
             bodyClassName="sm-num"
             body={(l: OrderLine) => money(l.line_total)}
           />
+          {(kitchen.effective || lines.some((l) => l.station_name)) && (
+            <Column
+              header={t('restaurantKitchen.station')}
+              body={(l: OrderLine) => l.station_name ?? t('restaurantKitchen.noStation')}
+            />
+          )}
           <Column
             header={t('restaurantOrders.state')}
             body={(l: OrderLine) => <LineStatusBadge status={l.status} order={order} />}
@@ -931,6 +990,10 @@ export default function OrderPage() {
         <CustomerDialog order={order} onClose={() => setChoosingCustomer(false)} />
       )}
       {choosingTable && <TableDialog order={order} onClose={() => setChoosingTable(false)} />}
+      {routing && (
+        <RouteLinesDialog order={order} lines={routing} onClose={() => setRouting(null)} />
+      )}
+      {prioritizing && <PriorityDialog order={order} onClose={() => setPrioritizing(false)} />}
       {cancelling !== null && (
         <ReasonDialog
           header={t(

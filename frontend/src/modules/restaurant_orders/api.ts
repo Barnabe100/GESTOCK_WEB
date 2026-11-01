@@ -71,6 +71,9 @@ export interface OrderLine {
   line_total: string;
   note: string | null;
   status: LineStatus;
+  /** Poste de préparation (R6) : nom COURANT ; `null` = « Sans poste ». */
+  station_id?: string | null;
+  station_name?: string | null;
   created_at: string;
   prepared_at: string | null;
   ready_at: string | null;
@@ -96,6 +99,9 @@ export interface OrderTable {
   is_active: boolean;
 }
 
+/** Priorité de préparation (R6, ADR-0050) : jamais confondue avec l'ancienneté. */
+export type OrderPriority = 'NORMAL' | 'HIGH' | 'URGENT';
+
 export interface Order {
   id: string;
   site_id: string;
@@ -114,6 +120,8 @@ export interface Order {
   prep_status: PrepStatus;
   settlement_status: SettlementStatus;
   payment_timing: PaymentTiming;
+  /** Priorité (R6) ; `NORMAL` sans cuisine. */
+  priority?: OrderPriority;
   assigned_user_id: string | null;
   assigned_name: string | null;
   assigned_at: string | null;
@@ -259,7 +267,11 @@ export function fetchTicket(orderId: string): Promise<OrderTicket> {
 /** Écritures : le serveur fait foi ; commande, listes et historique rafraîchis. */
 export function useOrderMutations() {
   const qc = useQueryClient();
-  const onSuccess = () => void qc.invalidateQueries({ queryKey: orderKeys.all });
+  // L'écran cuisine (R6) suit les lignes des commandes : rafraîchi avec elles.
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: orderKeys.all });
+    void qc.invalidateQueries({ queryKey: ['restaurant.kitchen', 'board'] });
+  };
   // Une commande occupe sa table : le plan de salle est rafraîchi avec les commandes.
   const withBoard = () => {
     onSuccess();

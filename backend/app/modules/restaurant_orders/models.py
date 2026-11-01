@@ -81,6 +81,18 @@ FINAL_ORDER_STATUSES = (OrderStatus.CLOSED, OrderStatus.CANCELLED, OrderStatus.R
 ACTIVE_ORDER_STATUSES = (OrderStatus.PENDING_CONFIRMATION, OrderStatus.OPEN)
 
 
+class OrderPriority(StrEnum):
+    """Priorité de préparation (R6, ADR-0050 K3) : jamais confondue avec l'ancienneté."""
+
+    NORMAL = "NORMAL"
+    HIGH = "HIGH"
+    URGENT = "URGENT"
+
+
+# Rang de classement (écran cuisine : priorité décroissante, puis ancienneté).
+PRIORITY_RANK = {OrderPriority.NORMAL: 0, OrderPriority.HIGH: 1, OrderPriority.URGENT: 2}
+
+
 class SettlementStatus(StrEnum):
     UNSETTLED = "UNSETTLED"
     SETTLED = "SETTLED"  # vente issue de la commande validée (R2-D)
@@ -131,6 +143,9 @@ class EventType(StrEnum):
     TABLE_CHANGED = "TABLE_CHANGED"
     # Libération explicite par son responsable (migration 0047) : motif facultatif.
     RELEASED = "RELEASED"
+    # Cuisine (R6, migration 0049) : priorité modifiée ; poste des lignes corrigé à la main.
+    PRIORITY_CHANGED = "PRIORITY_CHANGED"
+    LINES_ROUTED = "LINES_ROUTED"
 
 
 class ActorKind(StrEnum):
@@ -289,6 +304,13 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     cancel_reason: Mapped[str | None] = mapped_column(String(500))
+    # Priorité de préparation (R6, ADR-0050 K3) ; modifiée par le seul service des commandes.
+    priority: Mapped[OrderPriority] = mapped_column(
+        str_enum(OrderPriority, "restaurant_order_priority"),
+        default=OrderPriority.NORMAL,
+        server_default=OrderPriority.NORMAL.value,
+        nullable=False,
+    )
     # Informatif (P-7) : incrémenté à chaque écriture, jamais exigé en entrée.
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
@@ -339,8 +361,25 @@ class RestaurantOrderLine(IdMixin, TenantScopedMixin, Base):
             "status <> 'SERVED' OR (served_at IS NOT NULL AND served_by IS NOT NULL)",
             name="served_complete",
         ),
+        # Poste de préparation (R6, migration 0049) : du MÊME site, jamais supprimé.
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id", "station_id"],
+            [
+                "restaurant_prep_stations.tenant_id",
+                "restaurant_prep_stations.site_id",
+                "restaurant_prep_stations.id",
+            ],
+            ondelete="RESTRICT",
+        ),
         Index("ix_restaurant_order_lines_order", "tenant_id", "order_id"),
         Index("ix_restaurant_order_lines_article", "tenant_id", "site_id", "article_id"),
+        Index(
+            "ix_restaurant_order_lines_station",
+            "tenant_id",
+            "site_id",
+            "station_id",
+            postgresql_where=text("station_id IS NOT NULL"),
+        ),
     )
 
     order_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
@@ -362,6 +401,8 @@ class RestaurantOrderLine(IdMixin, TenantScopedMixin, Base):
     status: Mapped[LineStatus] = mapped_column(
         str_enum(LineStatus, "restaurant_line_status"), nullable=False
     )
+    # Poste de préparation (R6) : posé UNE fois au routage, corrigé à la main seulement.
+    station_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

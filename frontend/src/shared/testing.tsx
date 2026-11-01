@@ -39,6 +39,7 @@ export function renderWithCapabilities(
     subscriptionStatus = 'active',
     extraRoutes = [],
     mainSiteId = null,
+    absentModules = [],
   }: {
     permissions: string[];
     /** Sites accessibles (profil du site facultatif : profils par site). */
@@ -59,6 +60,8 @@ export function renderWithCapabilities(
     extraRoutes?: { path: string; element: ReactNode }[];
     /** Site principal calculé par le serveur (`main_site_id`). */
     mainSiteId?: string | null;
+    /** Modules NON effectifs pour `hasModule` (par défaut : tous effectifs). */
+    absentModules?: string[];
   },
 ) {
   const caps = {
@@ -96,7 +99,7 @@ export function renderWithCapabilities(
           capabilities: caps,
           can: (p) => set.has(p),
           isRestricted: () => false,
-          hasModule: () => true,
+          hasModule: (code) => !absentModules.includes(code),
           siteId: null,
           setSiteId: () => undefined,
         }}

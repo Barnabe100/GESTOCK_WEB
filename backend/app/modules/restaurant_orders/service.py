@@ -56,6 +56,7 @@ from app.modules.restaurant_orders.models import (
     EventType,
     LineStatus,
     OrderChannel,
+    OrderPriority,
     OrderStatus,
     PaymentTiming,
     PrepStatus,
@@ -104,6 +105,7 @@ from app.modules.restaurant_orders.sites import (
     readable_site_ids,
     require_site_permission,
 )
+from app.modules.restaurant_orders.station_port import KITCHEN_MODULE, StationRef, station_router
 from app.modules.restaurant_orders.table_port import TABLES_MODULE, TableRef, table_directory
 from app.modules.sales.api import (
     ORIGIN_RESTAURANT_ORDER,
@@ -193,6 +195,8 @@ def prep_status(lines: Sequence[RestaurantOrderLine]) -> PrepStatus:
 @dataclass(frozen=True)
 class PreparedLine:
     menu_item_id: uuid.UUID
+    # Section du menu de l'élément (routage vers un poste, R6).
+    section_id: uuid.UUID
     article_id: uuid.UUID
     packaging_id: uuid.UUID | None
     label: str
@@ -485,6 +489,7 @@ class OrderService:
             prepared.append(
                 PreparedLine(
                     menu_item_id=item.id,
+                    section_id=item.section_id,
                     article_id=item.article_id,
                     packaging_id=item.packaging_id,
                     label=item.display_name or item.designation,
@@ -500,9 +505,45 @@ class OrderService:
             )
         return prepared
 
+    def _route(
+        self, site_id: uuid.UUID, prepared: Sequence[PreparedLine]
+    ) -> dict[uuid.UUID, StationRef]:
+        """Poste de chaque élément (R6, ADR-0050 K2) si la cuisine est EFFECTIVE sur le site
+        (capacités recalculées après le verrou du site) : affectation de l'élément, sinon de sa
+        section ; sinon « Sans poste ». Les postes retenus sont pris en partage."""
+        if KITCHEN_MODULE not in self._fresh_site_modules(site_id):
+            return {}
+        router = station_router(self.db, self.ctx)
+        if router is None:
+            return {}
+        return router.route(site_id, {p.menu_item_id: p.section_id for p in prepared})
+
+    @staticmethod
+    def _routing_data(
+        lines: Sequence[RestaurantOrderLine], stations: dict[uuid.UUID, StationRef]
+    ) -> dict[str, Any]:
+        """Poste de chaque ligne routée, gardé par l'évènement de création ou d'ajout."""
+        routed = {
+            str(line.line_no): stations[line.menu_item_id].name
+            for line in lines
+            if line.menu_item_id in stations
+        }
+        return {"stations": routed} if routed else {}
+
+    def _station_names(self, station_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        router = station_router(self.db, self.ctx) if station_ids else None
+        if router is None:
+            return {}
+        return {sid: ref.name for sid, ref in router.names(station_ids).items()}
+
     def _add_lines(
-        self, order: RestaurantOrder, prepared: Sequence[PreparedLine], start: int
+        self,
+        order: RestaurantOrder,
+        prepared: Sequence[PreparedLine],
+        start: int,
+        stations: dict[uuid.UUID, StationRef] | None = None,
     ) -> list[RestaurantOrderLine]:
+        routes = stations or {}
         created = [
             RestaurantOrderLine(
                 tenant_id=self.ctx.tenant_id,
@@ -522,6 +563,7 @@ class OrderService:
                 line_total=p.line_total,
                 note=p.note,
                 status=LineStatus.RECEIVED,
+                station_id=routes[p.menu_item_id].id if p.menu_item_id in routes else None,
                 created_at=self.now,
             )
             for index, p in enumerate(prepared)
@@ -587,6 +629,7 @@ class OrderService:
         )
         customer_name = self._customer(site_id, data.customer_id)
         prepared = self._prepare_lines(site_id, data.lines)
+        stations = self._route(site_id, prepared)
         day = business_date(self.ctx.tenant.timezone, self.now)
         order = RestaurantOrder(
             tenant_id=self.ctx.tenant_id,
@@ -609,10 +652,11 @@ class OrderService:
         )
         self.db.add(order)
         self.db.flush()
-        lines = self._add_lines(order, prepared, 1)
+        lines = self._add_lines(order, prepared, 1, stations)
         created: dict[str, Any] = {"channel": channel.value}
         if table is not None:
             created |= self._table_data(table)
+        created |= self._routing_data(lines, stations)
         self._event(order, EventType.CREATED, lines, data=created)
         self._audit(
             "created",
@@ -669,8 +713,17 @@ class OrderService:
         self._require_unsettled(order)
         lines = self._lock_lines(order)
         prepared = self._prepare_lines(order.site_id, data.lines)
-        added = self._add_lines(order, prepared, max((li.line_no for li in lines), default=0) + 1)
-        self._event(order, EventType.LINES_ADDED, added, idempotency_key=data.idempotency_key)
+        stations = self._route(order.site_id, prepared)
+        added = self._add_lines(
+            order, prepared, max((li.line_no for li in lines), default=0) + 1, stations
+        )
+        self._event(
+            order,
+            EventType.LINES_ADDED,
+            added,
+            data=self._routing_data(added, stations) or None,
+            idempotency_key=data.idempotency_key,
+        )
         self._touch(order, [*lines, *added])
         self.db.flush()
         self._audit("lines_added", order, {"lines": self._lines_audit(added)})
@@ -755,7 +808,26 @@ class OrderService:
             else:
                 line.served_at = self.now
                 line.served_by = self.ctx.user.id
-        event_id = self._event(order, rule.event, targets)
+        # R6 (ADR-0050 K4) : commande dont des lignes sont routées vers des postes — un évènement
+        # PAR POSTE (« Sans poste » compris) ; sinon un seul évènement, comme avant.
+        per_station = any(
+            line.station_id is not None for line in lines if line.status is not LineStatus.CANCELLED
+        )
+        groups: dict[uuid.UUID | None, list[RestaurantOrderLine]] = {}
+        for line in targets:
+            groups.setdefault(line.station_id if per_station else None, []).append(line)
+        names = self._station_names({sid for sid in groups if sid is not None})
+        events: list[tuple[uuid.UUID | None, uuid.UUID]] = []
+        for station_id, group in groups.items():
+            data = (
+                {
+                    "station_id": str(station_id) if station_id else None,
+                    "station_name": names.get(station_id) if station_id else None,
+                }
+                if per_station
+                else None
+            )
+            events.append((station_id, self._event(order, rule.event, group, data=data)))
         self._touch(order, lines)
         self.db.flush()
         self._audit(
@@ -763,9 +835,109 @@ class OrderService:
             order,
             {"lines": [li.line_no for li in targets], "status": rule.target.value},
         )
-        if rule.event is EventType.READY and order.prep_status is PrepStatus.READY:
-            # R4 (D8) : toute la commande est prête — avis en dernier, sans verrou (§7).
-            notify_order_ready(self.db, self.ctx, order, lines, event_id, self.now)
+        if rule.event is EventType.READY:
+            # R4 (D8) : avis en dernier, sans verrou (§7). Sans poste : toute la commande prête.
+            # Avec postes (R6) : un avis par poste dont toutes les lignes actives sont prêtes.
+            if not per_station:
+                if order.prep_status is PrepStatus.READY:
+                    notify_order_ready(self.db, self.ctx, order, lines, events[0][1], self.now)
+            else:
+                for station_id, event_id in events:
+                    part = [
+                        li
+                        for li in lines
+                        if li.station_id == station_id and li.status not in FINAL_LINE_STATUSES
+                    ]
+                    if part and all(li.status is LineStatus.READY for li in part):
+                        notify_order_ready(
+                            self.db,
+                            self.ctx,
+                            order,
+                            part,
+                            event_id,
+                            self.now,
+                            part=True,
+                            station_name=names.get(station_id) if station_id else None,
+                        )
+        return order
+
+    # --- Cuisine (R6, ADR-0050) : priorité et correction du poste --------------------------------
+
+    def set_priority(
+        self, order_id: uuid.UUID, priority: OrderPriority, reason: str | None, permission: str
+    ) -> RestaurantOrder:
+        """Priorité d'une commande ouverte (``permission`` : celle du module appelant, revérifiée
+        pour le site de la commande) ; même priorité : rien ne change. Évènement et audit."""
+        order = self._lock_order(order_id)
+        require_site_permission(self.ctx, order.site_id, permission)
+        self._require_open(order)
+        if order.priority is priority:
+            return order
+        previous = order.priority
+        order.priority = priority
+        order.version += 1
+        self._event(
+            order,
+            EventType.PRIORITY_CHANGED,
+            reason=reason,
+            data={"previous": previous.value, "priority": priority.value},
+        )
+        self.db.flush()
+        self._audit(
+            "priority_changed",
+            order,
+            {"previous": previous.value, "priority": priority.value, "reason": reason},
+        )
+        return order
+
+    def route_lines(
+        self,
+        order_id: uuid.UUID,
+        line_ids: Sequence[uuid.UUID],
+        station: StationRef | None,
+        reason: str | None,
+        permission: str,
+    ) -> RestaurantOrder:
+        """Correction manuelle du poste de lignes NON finales d'une commande ouverte (poste du
+        même site, ou « Sans poste ») ; le poste est validé et verrouillé par l'appelant (module
+        de la cuisine). Lignes déjà à ce poste : rien ne change. Évènement et audit."""
+        order = self._lock_order(order_id)
+        require_site_permission(self.ctx, order.site_id, permission)
+        self._require_open(order)
+        if station is not None and station.site_id != order.site_id:
+            raise NotFoundError("Poste introuvable", code="station_not_found")
+        lines = self._lock_lines(order)
+        selected = self._select(lines, line_ids)
+        final = [li for li in selected if li.status in FINAL_LINE_STATUSES]
+        if final:
+            raise ConflictError(
+                "Une ligne servie ou annulée ne change plus de poste",
+                code="order_line_final",
+                extra={"lines": [_line_state(li) for li in final]},
+            )
+        target = station.id if station is not None else None
+        changed = [li for li in selected if li.station_id != target]
+        if not changed:
+            return order
+        names = self._station_names({li.station_id for li in changed if li.station_id})
+        previous = {
+            str(li.line_no): names.get(li.station_id) if li.station_id else None for li in changed
+        }
+        for line in changed:
+            line.station_id = target
+        order.version += 1
+        data = {
+            "station_id": str(target) if target else None,
+            "station_name": station.name if station is not None else None,
+            "previous": previous,
+        }
+        self._event(order, EventType.LINES_ROUTED, changed, reason=reason, data=data)
+        self.db.flush()
+        self._audit(
+            "lines_routed",
+            order,
+            {"lines": [li.line_no for li in changed], "reason": reason, **data},
+        )
         return order
 
     # --- Annulations --------------------------------------------------------------------------
@@ -1406,6 +1578,13 @@ class OrderService:
         table_ids = {o.table_id for o in orders if o.table_id is not None}
         directory = table_directory(self.db, self.ctx) if table_ids else None
         tables = directory.labels(table_ids) if directory is not None else {}
+        stations = (
+            self._station_names(
+                {li.station_id for own in lines.values() for li in own if li.station_id}
+            )
+            if with_lines
+            else {}
+        )
         result: list[OrderOut] = []
         for order in orders:
             own = lines[order.id]
@@ -1439,6 +1618,7 @@ class OrderService:
                     prep_status=order.prep_status,
                     settlement_status=order.settlement_status,
                     payment_timing=order.payment_timing,
+                    priority=order.priority,
                     assigned_user_id=order.assigned_user_id,
                     assigned_name=users.get(order.assigned_user_id)
                     if order.assigned_user_id
@@ -1468,7 +1648,18 @@ class OrderService:
                     cancelled_at=order.cancelled_at,
                     cancel_reason=order.cancel_reason,
                     version=order.version,
-                    lines=[LineOut.model_validate(li) for li in own] if with_lines else None,
+                    lines=[
+                        LineOut.model_validate(li).model_copy(
+                            update={
+                                "station_name": stations.get(li.station_id)
+                                if li.station_id
+                                else None
+                            }
+                        )
+                        for li in own
+                    ]
+                    if with_lines
+                    else None,
                 )
             )
         return result

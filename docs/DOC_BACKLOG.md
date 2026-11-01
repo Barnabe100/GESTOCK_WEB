@@ -767,3 +767,55 @@ photos du menu, paiements électroniques et automobile reportés. À reporter da
   « Page introuvable »).
 - **Correctif barre latérale** (refonte `318c9b1`) : transition de largeur de `.sm-sidebar`
   retirée (barre écrasée pendant un redimensionnement, constatée en capture pleine page).
+
+## Palier R6 — module Cuisine (`restaurant.kitchen`, ADR-0050)
+
+Décisions détaillées dans [ADR-0050](adr/0050-cuisine-postes-de-preparation.md). À reporter
+dans `RESTAURANT.md` (§2, §5, §8, §11, §12, §13), `API.md`, `DATA_MODEL.md` et `CLAUDE.md`
+(phase en cours) :
+
+- **Données (migration 0049)** : `restaurant_prep_stations` (poste d'UN site, nom 100 unique
+  par site sans casse, ordre d'affichage, désactivation, jamais supprimé) ;
+  `restaurant_station_routes` (affectation d'une section OU d'un élément du menu à un poste,
+  une par cible, tenue par le module Cuisine : aucune écriture dans les tables du menu) ;
+  `restaurant_order_lines.station_id` (FK composite site, `RESTRICT`) ;
+  `restaurant_orders.priority` (`NORMAL` / `HIGH` / `URGENT`) ; types d'évènement
+  `PRIORITY_CHANGED` et `LINES_ROUTED`. RLS `ENABLE` + `FORCE`, droits minimaux (colonnes
+  modifiables listées), descente refusée dès qu'une donnée de cuisine serait perdue.
+- **Routage** : par le port `restaurant_orders/station_port.py` (les commandes ne dépendent
+  pas de la cuisine), seulement si la cuisine est EFFECTIVE sur le site ; à la création et à
+  l'ajout de lignes, UNE fois par ligne : affectation de l'élément, sinon de sa section, sinon
+  « Sans poste » ; poste désactivé ignoré ; postes verrouillés en partage. Correction manuelle
+  `PUT /restaurant/kitchen/orders/{id}/route` (lignes non finales, poste actif du MÊME site ou
+  aucun, motif facultatif, évènement `LINES_ROUTED`, audit `restaurant_order.lines_routed`).
+- **Priorité** : `PUT /restaurant/kitchen/orders/{id}/priority` (commande ouverte, motif
+  facultatif, évènement `PRIORITY_CHANGED`, audit) ; écran trié par priorité décroissante PUIS
+  ancienneté (réception), l'ancienneté restant affichée : priorité ≠ ancienneté.
+- **Écran cuisine** `GET /restaurant/kitchen/board?site_id=…[&station_id=…|&unrouted=true]` :
+  tickets = commande ouverte × poste ; colonne = état de la ligne la MOINS avancée (Reçue, En
+  préparation, Prête) ; table ou mode, nom d'appel, lignes et quantités, note, heure de
+  réception, temps écoulé (calculé par l'écran), poste, responsable ; actualisation toutes les
+  10 s ; exige aussi `restaurant.orders.order.view` sur le site. Préparer reste l'action des
+  commandes (`order.prepare`, lignes du ticket) ; SERVIR reste au service (écran des
+  commandes), cohérent avec le fonctionnement des serveurs.
+- **Multi-postes** : la commande n'est prête que lorsque toutes ses lignes non finales le sont
+  (règle existante) ; un évènement de préparation par poste et une notification « prête » PAR
+  POSTE (`part = true`, `station_name`) quand toutes les lignes de CE poste le sont.
+- **Désactivation** : poste refusé tant que des lignes en cours y sont routées
+  (`409 station_has_open_lines`, verrou exclusif) ; module refusé avec des lignes routées en
+  cours (`409 module_has_open_operations`, empreinte `site_footprint`).
+- **Permissions** : `restaurant.kitchen.station.view` (read), `.station.manage` (admin),
+  `.line.route` (write), `.priority.set` (write) ; Administrateur et Gestionnaire : toutes ;
+  Vendeur : écran, priorité, poste d'une ligne ; Serveur : écran, priorité ; Préparateur :
+  écran, poste d'une ligne ; Consultant : écran (`*.view`).
+- **Interface** : pages « Cuisine » (`/restaurant/kitchen`, trois colonnes, une sous l'autre
+  sous 800 px, filtre par poste mémorisé dans le navigateur) et « Postes de préparation »
+  (`/restaurant/kitchen/stations` : onglets Postes et Affectations du menu) ; fiche d'une
+  commande : priorité, colonne « Poste », action « Changer de poste », historique.
+- **Livraison (migration 0050)** : aucun schéma ; activations héritées de `restaurant.kitchen`
+  remises à `false` sur les sites EXISTANTS (activation explicite) ; nouveaux sites : défauts
+  de leur profil (Restaurant, Pizzeria, Traiteur, Restauration rapide : activée ; Maquis, Bar,
+  Café… : facultative). Plans STANDARD et ENTREPRISE inchangés (incluent déjà le module).
+- **Non livré dans R6** : indicateur `restaurant.kitchen:ready` du tableau de bord (déclaré par
+  le profil UX, aucun widget implémenté — comme ceux des tables et des commandes), affectation
+  de membres à un poste (reportée, ADR-0050 K1), impression de bons par poste.

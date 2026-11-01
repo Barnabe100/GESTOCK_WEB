@@ -106,7 +106,9 @@
     "assortment": "Assortiment des sites",
     "restaurantMenu": "Menu",
     "restaurantOrders": "Commandes",
-    "restaurantTables": "Tables"
+    "restaurantTables": "Tables",
+    "restaurantKitchen": "Cuisine",
+    "restaurantStations": "Postes de préparation"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -575,7 +577,11 @@
     "restaurant.orders.order.reassign": "Réattribuer une commande",
     "restaurant.orders.settings.manage": "Gérer les réglages des commandes du site",
     "restaurant.tables.table.view": "Consulter les tables et les zones",
-    "restaurant.tables.table.manage": "Gérer les tables et les zones"
+    "restaurant.tables.table.manage": "Gérer les tables et les zones",
+    "restaurant.kitchen.station.view": "Consulter les postes de préparation et l'écran cuisine",
+    "restaurant.kitchen.station.manage": "Gérer les postes de préparation et leurs affectations",
+    "restaurant.kitchen.line.route": "Changer le poste de préparation d'une ligne",
+    "restaurant.kitchen.priority.set": "Changer la priorité d'une commande"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -1860,7 +1866,9 @@
       "restaurant": {
         "order": {
           "ready_one": "Commande n° {{number}} prête : {{count}} article à servir ({{site}})",
-          "ready_other": "Commande n° {{number}} prête : {{count}} articles à servir ({{site}})"
+          "ready_other": "Commande n° {{number}} prête : {{count}} articles à servir ({{site}})",
+          "ready_station_one": "Commande n° {{number}}, poste {{station}} prêt : {{count}} article à servir ({{site}})",
+          "ready_station_other": "Commande n° {{number}}, poste {{station}} prêt : {{count}} articles à servir ({{site}})"
         }
       }
     }
@@ -2418,7 +2426,9 @@
       "CANCELLED": "Commande annulée",
       "CUSTOMER_SET": "Client associé",
       "TABLE_CHANGED": "Table modifiée",
-      "RELEASED": "Libérée"
+      "RELEASED": "Libérée",
+      "PRIORITY_CHANGED": "Priorité modifiée",
+      "LINES_ROUTED": "Poste de préparation modifié"
     },
     "table": "Table",
     "tableHelp": "Facultative, sur place seulement : tables actives du site.",
@@ -2507,5 +2517,77 @@
     "release": "Libérer",
     "releaseHelp": "La commande redevient « à prendre » : un collègue peut la prendre aussitôt. Votre délai entre deux prises n'est pas remis à zéro. Le motif est facultatif et journalisé.",
     "released": "Commande libérée."
+  },
+  "restaurantKitchen": {
+    "title": "Cuisine",
+    "subtitle": "Tickets à préparer par poste, classés par priorité puis par ancienneté. Actualisé automatiquement.",
+    "station": "Poste",
+    "allStations": "Tous les postes",
+    "noStation": "Sans poste",
+    "inactiveStation": "{{name}} (poste désactivé)",
+    "chooseSite": "Choisissez un site pour afficher sa cuisine.",
+    "counts": "Résumé de la cuisine",
+    "count": {
+      "RECEIVED_one": "{{count}} en attente",
+      "RECEIVED_other": "{{count}} en attente",
+      "IN_PREPARATION_one": "{{count}} en préparation",
+      "IN_PREPARATION_other": "{{count}} en préparation",
+      "READY_one": "{{count}} prêt",
+      "READY_other": "{{count}} prêts"
+    },
+    "columns": {
+      "RECEIVED": "En attente",
+      "IN_PREPARATION": "En préparation",
+      "READY": "Prêtes"
+    },
+    "emptyColumn": "Aucun ticket.",
+    "ticketOf": "Commande {{number}} — {{station}}",
+    "table": "Table {{label}}",
+    "received": "Reçue à {{time}}",
+    "elapsed_one": "depuis {{count}} min",
+    "elapsed_other": "depuis {{count}} min",
+    "awaitingPayment": "Paiement à la commande : à régler avant la préparation.",
+    "revertLine": "Remettre « {{name}} » en préparation",
+    "priority": "Priorité",
+    "priorities": {
+      "NORMAL": "Normale",
+      "HIGH": "Élevée",
+      "URGENT": "Urgente"
+    },
+    "priorityOf": "Priorité de la commande {{number}}",
+    "prioritySaved": "Priorité enregistrée.",
+    "changePriority": "Changer la priorité",
+    "priorityHelp": "La priorité classe les tickets de la cuisine avant l'ancienneté, qui reste affichée. Motif facultatif, journalisé.",
+    "changeStation": "Changer de poste",
+    "changeStationHelp": "Seules les lignes non servies ni annulées changent de poste. Le motif est facultatif et journalisé.",
+    "newStationFor": "Nouveau poste",
+    "lineRouted": "Poste de préparation modifié.",
+    "stationOfLine": "Poste de « {{name}} »",
+    "stationsTitle": "Postes de préparation",
+    "stationsSubtitle": "Postes de chaque site (Grillades, Boissons…) et affectation des sections et éléments du menu. Un élément sans affectation suit sa section, sinon « Sans poste ».",
+    "stationsTab": "Postes",
+    "routesTab": "Affectations du menu",
+    "newStation": "Nouveau poste",
+    "editStation": "Modifier le poste",
+    "stationName": "Nom du poste",
+    "stationNameHelp": "Unique sur le site, sans distinction de majuscules (ex. Grillades, Boissons).",
+    "sortOrder": "Ordre d'affichage",
+    "sortOrderHelp": "Les plus petits nombres apparaissent en premier.",
+    "routeCount": "Affectations",
+    "status": "Statut",
+    "stationSaved": "Poste enregistré",
+    "statusChanged": "Statut modifié",
+    "deactivateTitle": "Désactiver le poste",
+    "deactivateConfirm": "Désactiver « {{name}} » ? Ses affectations ne seront plus utilisées. Impossible tant que des lignes en cours y sont routées.",
+    "searchStations": "Rechercher un poste…",
+    "noStations": "Aucun poste.",
+    "routesHelp": "Affectez une section entière ou un élément précis à un poste. L'affectation de l'élément l'emporte sur celle de sa section ; sans affectation, les lignes arrivent « Sans poste ».",
+    "noStationsForRoutes": "Créez d'abord des postes actifs sur ce site.",
+    "noMenu": "Aucune section de menu sur ce site.",
+    "stationOf": "Poste de {{name}}",
+    "inherited": "Suit la section ({{name}})",
+    "routeSaved": "Affectation enregistrée",
+    "priorityChange": "{{from}} → {{to}}",
+    "stationNamed": "vers {{name}}"
   }
 }

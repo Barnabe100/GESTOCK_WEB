@@ -3095,3 +3095,164 @@ a {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --- Écran cuisine (palier R6, ADR-0050 K4) -------------------------------------------------- */
+
+/* Barre d'outils : site, poste, compteurs ; retour à la ligne sur tablette. */
+.sm-kitchen-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sm-space-3);
+}
+
+/* Trois colonnes sur ordinateur et tablette en paysage, une sous l'autre en dessous de 800 px. */
+.sm-kitchen-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sm-space-3);
+  margin-top: var(--sm-space-3);
+}
+
+.sm-kitchen-column {
+  background: var(--sm-surface-subtle);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  padding: var(--sm-space-3);
+  min-width: 0;
+}
+
+.sm-kitchen-column h2 {
+  margin: 0 0 var(--sm-space-2);
+  font-size: var(--sm-text-md);
+}
+
+.sm-kitchen-column > ul,
+.sm-kitchen-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-2);
+}
+
+/* Ticket : la priorité se lit sur le bord gauche (jamais seulement par la couleur : badge). */
+.sm-kitchen-ticket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm-space-2);
+  padding: var(--sm-space-2) var(--sm-space-3);
+  background: var(--sm-surface);
+  border: 1px solid var(--sm-border);
+  border-left-width: 4px;
+  border-radius: var(--sm-radius);
+}
+
+.sm-kitchen-priority-high {
+  border-left-color: var(--sm-warning-fg);
+}
+
+.sm-kitchen-priority-urgent {
+  border-left-color: var(--sm-danger-fg);
+  background: var(--sm-danger-bg);
+}
+
+.sm-kitchen-ticket-head,
+.sm-kitchen-ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+}
+
+.sm-kitchen-ticket-head .sm-order-number {
+  font-size: var(--sm-text-lg);
+  font-weight: 700;
+}
+
+.sm-kitchen-ticket-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sm-space-1) var(--sm-space-3);
+  font-size: var(--sm-text-sm);
+}
+
+/* Lignes : quantité, libellé (note sous le libellé), statut, action ; cibles tactiles larges. */
+.sm-kitchen-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sm-space-2);
+  min-height: 2.5rem;
+}
+
+.sm-kitchen-qty {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sm-kitchen-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sm-kitchen-note {
+  color: var(--sm-warning-fg);
+  font-style: italic;
+}
+
+.sm-kitchen-line-ready .sm-kitchen-label {
+  color: var(--sm-text-muted);
+}
+
+.sm-kitchen-ticket-actions .p-button {
+  min-height: 2.75rem;
+}
+
+.sm-kitchen-priority {
+  min-width: 9rem;
+}
+
+/* Affectations du menu : une ligne par section, puis ses éléments en retrait. */
+.sm-kitchen-routes {
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius-lg);
+  padding: var(--sm-space-2) var(--sm-space-3);
+}
+
+.sm-kitchen-routes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--sm-space-3);
+}
+
+.sm-kitchen-route-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+  padding: var(--sm-space-1) 0;
+}
+
+.sm-kitchen-route-row .p-dropdown {
+  min-width: 14rem;
+}
+
+@media (max-width: 800px) {
+  .sm-kitchen-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sm-kitchen-ticket-actions .p-button {
+    flex: 1 1 auto;
+  }
+
+  .sm-kitchen-route-row .p-dropdown {
+    width: 100%;
+  }
+}

@@ -538,6 +538,23 @@ def tables_available(orders_available: None) -> Iterator[None]:
 
 
 @pytest.fixture
+def kitchen_available() -> Iterator[None]:
+    """Registre du serveur où ``restaurant.kitchen`` est disponible, le temps du test : le
+    registre de production le garde PLANIFIÉ pendant le développement de R6 (ADR-0050 K7)."""
+    from app.platform.registry import ModuleStatus
+
+    with _module_status("restaurant.kitchen", ModuleStatus.AVAILABLE):
+        yield
+
+
+@pytest.fixture
+def kclient(settings: Settings, migrated: None, kitchen_available: None) -> Iterator[TestClient]:
+    """Application construite avec le registre de test (routes de la cuisine montées)."""
+    with TestClient(create_app(settings)) as client:
+        yield client
+
+
+@pytest.fixture
 def tables_planned() -> Iterator[None]:
     """SIMULATION : ``restaurant.tables`` PLANIFIÉ le temps du test (commandes disponibles)."""
     from app.platform.registry import ModuleStatus

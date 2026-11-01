@@ -9,6 +9,7 @@ from app.modules.restaurant_orders.models import (
     EventType,
     LineStatus,
     OrderChannel,
+    OrderPriority,
     OrderStatus,
     PaymentTiming,
     PrepStatus,
@@ -165,6 +166,9 @@ class LineOut(BaseModel):
     line_total: Money
     note: str | None
     status: LineStatus
+    # Poste de préparation (R6) : identifiant et nom COURANT ; ``None`` = « Sans poste ».
+    station_id: uuid.UUID | None = None
+    station_name: str | None = None
     created_at: datetime
     prepared_at: datetime | None
     ready_at: datetime | None
@@ -210,6 +214,8 @@ class OrderOut(BaseModel):
     prep_status: PrepStatus
     settlement_status: SettlementStatus
     payment_timing: PaymentTiming
+    # Priorité de préparation (R6, ADR-0050 K3) ; ``NORMAL`` sans cuisine.
+    priority: OrderPriority = OrderPriority.NORMAL
     assigned_user_id: uuid.UUID | None
     assigned_name: str | None
     # Heure de la dernière prise ou réattribution (début de la protection, D7).
