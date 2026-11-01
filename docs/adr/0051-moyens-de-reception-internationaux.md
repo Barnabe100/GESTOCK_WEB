@@ -1,6 +1,9 @@
 # ADR-0051 — Moyens de réception indépendants du pays, de l'opérateur et de la devise
 
-- **Statut** : Proposée (correction stratégique « portée internationale », en attente de validation)
+- **Statut** : Proposée — orientation validée par l'utilisateur le 2026-11-01 (décisions D1 à D5
+  ci-dessous) ; validation finale attendue avant l'implémentation
+- **Lot** : **R6.5**, distinct, réalisé APRÈS la validation fonctionnelle de R6 (Cuisine) sur
+  Ubuntu et AVANT R7 (Menu QR Code, numérotation inchangée)
 - **Date** : 2026-11-01
 - **Prolonge** : [ADR-0037](0037-encaissement.md) (moyens de paiement configurables), ADR-0020
   (paiements des ventes), ADR-0032 (paiements d'abonnement), référentiel des pays (Phase 3.2,
@@ -27,10 +30,40 @@ des constantes métier.
 | Identifiants de réception (téléphone, code marchand, code agent, compte…) | **Absents** | Non (exigences 5, 7) |
 | Passerelles | `integration_mode = API` réservé, aucune dépendance | Oui (point d'extension) |
 | Textes d'interface | Exemples burkinabè dans les aides (`labelPlaceholder`, `providerPlaceholder`, `paymentReferenceHelp` : « Orange Money, Moov Money, Wave… ») | À neutraliser |
-| Devise par défaut du modèle `Tenant` | `default="XOF"` sur la colonne (l'inscription fixe pourtant la devise depuis le pays) | À retirer |
+| Devise `XOF` codée en dur | `Tenant.currency` : `default="XOF"` (`platform/tenancy/models.py`, l'inscription fixe pourtant la devise depuis le pays) ; `saleError(…, currency = 'XOF')` (`frontend/src/modules/sales/ui.tsx`) ; commentaire de `shared/lib/decimal.ts` ; données de test | À retirer (D4) |
 | Pays | Référentiel ISO 3166-1 complet (249 codes, devise ISO 4217, indicatif E.164, fuseau) | Oui, réutilisable |
 
-## Décisions proposées
+## Décisions de l'utilisateur (2026-11-01)
+
+- **D1 — Feuille de route** : lot distinct **R6.5** après la validation de R6 sur Ubuntu, avant
+  R7 (Menu QR Code). R6.5 commence par un audit de l'existant, puis une implémentation
+  progressive et testée.
+- **D2 — Catalogue** :
+  - catalogue initial géré par TechNova, opérateurs et établissements associés à leurs pays et
+    devises ;
+  - **aucune liste exhaustive figée** : les opérateurs burkinabè sont ajoutés progressivement,
+    après vérification de leurs types d'identifiants ;
+  - **aucun opérateur obligatoire**, et le catalogue n'est **jamais une condition** pour
+    enregistrer un moyen : une entreprise peut toujours enregistrer un opérateur personnalisé
+    absent du catalogue ;
+  - plusieurs identifiants possibles pour un même opérateur et un même site.
+- **D3 — Affichage (V1)** :
+  - identifiants de réception affichés sur l'**écran de caisse** (POS et dialogue
+    d'encaissement), lors du choix du moyen de règlement ;
+  - identifiants affichés sur le **reçu**, avec un **instantané** des informations réellement
+    utilisées, figé sur le paiement ;
+  - **aucun paiement dans le parcours du Menu QR** (traité par R7, sans paiement intégré pour
+    l'instant).
+- **D4 — Devises** :
+  - un moyen peut être configuré dans une devise différente de celle de l'entreprise ;
+  - il n'encaisse une vente que si **sa devise est celle de la vente** (refus serveur sinon) ;
+  - **aucune conversion automatique** dans cette version ;
+  - toute dépendance à `XOF` codée en dur est supprimée : la devise par défaut de l'entreprise
+    provient du **référentiel du pays**, comme aujourd'hui à l'inscription.
+- **D5 — Préservation** : fonctionnalités existantes, règles multi-tenant, RLS et RBAC conservées ;
+  modifications locales non liées au développement préservées.
+
+## Décisions proposées (amendées par D1 à D5)
 
 ### M1 — Trois notions distinctes
 
@@ -53,16 +86,23 @@ des constantes métier.
   que des instructions éventuelles traduites.
 - Ajouter un pays ou un opérateur = **ajouter des données**, jamais du code. La première
   commercialisation renseigne les opérateurs du Burkina Faso dans ce fichier.
-- Un moyen peut aussi désigner un **opérateur libre** (nom saisi) lorsqu'il n'est pas au
-  catalogue : aucune liste fermée n'est imposée à l'entreprise.
+- Un moyen peut aussi désigner un **opérateur personnalisé** (nom saisi) lorsqu'il n'est pas au
+  catalogue, ou aucun opérateur (espèces, autre…) : aucune liste fermée, aucun opérateur
+  obligatoire, le catalogue n'est jamais requis pour enregistrer un moyen (D2).
+- Le catalogue initial reste volontairement **minimal et non exhaustif** ; une entrée n'y est
+  ajoutée qu'après vérification de ses types d'identifiants (D2).
 
 ### M3 — Pays et devise d'un moyen
 
 - `country_code` (référentiel `geo_countries`, facultatif : moyen international) et `currency`
   (ISO 4217, par défaut la devise de l'entreprise).
-- Ventes mono-devise (devise de l'entreprise figée) : un moyen d'une autre devise est enregistré
-  mais **refusé à l'encaissement** par le serveur (`payment_method_currency_mismatch`) tant que
-  le multidevise n'existe pas. Aucune conversion n'est supposée.
+- Règle validée (D4) : un moyen dans une autre devise peut être enregistré, mais il n'encaisse
+  une vente que si sa devise est **celle de la vente**. Le serveur refuse sinon
+  (`payment_method_currency_mismatch`), à l'encaissement comme au point de vente. Aujourd'hui,
+  la devise d'une vente est celle de l'entreprise, figée. Aucune conversion automatique n'est
+  faite.
+- La devise par défaut d'un nouveau moyen est celle de l'entreprise, issue du référentiel du pays
+  (D4).
 
 ### M4 — Identifiants de réception
 
@@ -76,7 +116,8 @@ des constantes métier.
   - instructions ;
   - ordre d'affichage et état actif ;
   - désactivation au lieu de la suppression.
-- Plusieurs opérateurs et plusieurs identifiants par site.
+- Plusieurs opérateurs par site, et plusieurs identifiants pour un même opérateur et un même
+  site (D2).
 - **Aucun format universel** :
   - un format n'est contrôlé que s'il est déclaré par l'opérateur du catalogue pour ce type
     d'identifiant ;
@@ -86,8 +127,12 @@ des constantes métier.
     longueur nationale.
 - RLS `ENABLE` + `FORCE`, FK composites `(tenant_id, …)`, audit avant / après, permission
   existante `sales.payment_method.manage` (revérifiée pour le site d'un identifiant de site).
-- Le paiement conserve un **instantané** (opérateur, identifiant utilisé) comme `method_label`
-  aujourd'hui.
+- Le paiement conserve un **instantané** des informations réellement utilisées (opérateur, type
+  et valeur de l'identifiant, titulaire), comme `method_label` aujourd'hui. Le reçu est construit
+  par le serveur depuis cet instantané, jamais depuis la configuration courante (D3,
+  ADR-0047).
+- Affichage V1 (D3) : écran de caisse (POS et dialogue d'encaissement) à la sélection du moyen ;
+  reçu. Rien dans le Menu QR (R7).
 
 ### M5 — Internationalisation
 
@@ -109,8 +154,11 @@ des constantes métier.
 ### M7 — Corrections immédiates sans changement de schéma
 
 - Neutraliser les exemples d'opérateurs des textes d'interface.
-- Retirer la valeur par défaut `XOF` du modèle `Tenant` : la devise vient toujours du pays choisi
-  et est validée à l'inscription.
+- Retirer toute dépendance à `XOF` codée en dur (D4) : valeur par défaut du modèle `Tenant`
+  (la devise vient toujours du référentiel du pays, validée à l'inscription), paramètre par
+  défaut de `saleError` (devise lue dans les capacités), commentaires ; les données de test
+  gardent une devise explicite.
+- Ces corrections font partie de R6.5 et ne sont pas appliquées avant son lancement (D1).
 
 ## Conséquences
 
@@ -121,11 +169,12 @@ des constantes métier.
 - Les paiements d'abonnement (ADR-0032, champ `provider` libre) pourront utiliser le même
   catalogue.
 
-## Questions ouvertes (à valider avant toute implémentation)
+## Questions ouvertes
 
-1. Périmètre : cette refonte est-elle **l'étape R7**, ou un lot distinct à placer avant R7 ?
-2. Liste initiale des opérateurs et établissements du Burkina Faso à inscrire au catalogue (noms,
-   types d'identifiants), à fournir ou confirmer par TechNova.
-3. Affichage des identifiants de réception : sur le reçu, au point de vente, sur le futur menu
-   QR ?
-4. Moyen dans une autre devise : refus à l'encaissement (proposé) ou interdiction dès la saisie ?
+Les questions de la première version sont tranchées par D1 à D4. Restent à préciser lors de
+l'audit de R6.5 :
+
+1. Contenu exact du catalogue initial : entrées vérifiées par TechNova, ajoutées progressivement
+   (D2).
+2. Langues des libellés traduits au-delà du français (l'interface n'existe aujourd'hui qu'en
+   français).
