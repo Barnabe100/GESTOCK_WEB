@@ -36,7 +36,9 @@ UPDATABLE = (
     "label, integration_mode, reference_required, is_active, sort_order, updated_at, "
     "provider_code, provider_name, country_code, currency"
 )
-PREVIOUS_UPDATABLE = "label, integration_mode, reference_required, is_active, sort_order, updated_at"
+PREVIOUS_UPDATABLE = (
+    "label, integration_mode, reference_required, is_active, sort_order, updated_at"
+)
 
 
 def _app_role() -> str:
