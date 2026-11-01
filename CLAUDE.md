@@ -354,7 +354,7 @@ distinctes ; un commit par sous-étape R2-A à R2-F, chaque sous-étape sur vali
 un site à son activation, idempotent, jamais d'écrasement, jamais un module planifié),
 `module_settings` des profils (format et validation ; colonne en 0042), `auto_provision` des
 modèles de rôles, compteur brut `next_value`, profils de restauration D11 (nouveaux sites
-seulement) ; `restaurant.orders` reste `planned` en production jusqu'à la validation de R2-E (N1) ;
+seulement) ; `restaurant.orders` était `planned` jusqu'à sa livraison (0048) ;
 **R2-B livré** — moteur de commandes sans règlement (paquet `restaurant_orders`, migration 0042) :
 `restaurant_site_settings` (créés à l'activation, conservés par une désactivation),
 `restaurant_orders` / `restaurant_order_lines` (prix figés, aucune vente ni stock) /
@@ -390,9 +390,34 @@ inchangés), canal `RESTAURANT` « Restauration », erreurs traduites ; filtre
 `settlement_status` ; `weighted_unit_price` (calculé) sur les lignes de vente et du reçu : prix
 moyen pondéré signalé, total exact ; association tardive du client (Z1 : `PUT
 /restaurant/orders/{id}/customer`, commande ouverte non réglée, `order.create`, motif pour un
-remplacement, évènement `CUSTOMER_SET`, migration 0044 ; aucun droit au crédit) ; **`restaurant.orders` reste `planned`** jusqu'à la
-validation de R2-E (décision de l'utilisateur) ; **ne pas commencer R2-F sans validation
-explicite**. Ne pas commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
+remplacement, évènement `CUSTOMER_SET`, migration 0044 ; aucun droit au crédit). **Commandes et
+tables livrées** (migrations 0045 à 0048 ; `available`, activation EXPLICITE par site : sites
+existants remis à `false`) : R4 notifications des membres, R5 zones / tables / plan de salle,
+libération d'une commande par son responsable (`POST /restaurant/orders/{id}/release`), délai
+entre deux prises 5 ou 10 minutes. **R6 livré — Cuisine** (`restaurant.kitchen`,
+[ADR-0050](docs/adr/0050-cuisine-postes-de-preparation.md), migrations 0049 / 0050) : postes de
+préparation par site, affectations de sections / éléments du menu (tenues par la cuisine),
+routage automatique UNE fois par ligne (élément → section → « Sans poste ») par un port des
+commandes, correction manuelle motivée, priorité normale / élevée / urgente (avant l'ancienneté),
+écran cuisine (tickets commande × poste, 10 s), avis « prête » par poste ; servir reste au
+service ; permissions `restaurant.kitchen.station.view|station.manage|line.route|priority.set`.
+**R6.5 livré — moyens de réception internationaux**
+([ADR-0051](docs/adr/0051-moyens-de-reception-internationaux.md), migrations 0051 à 0055,
+[`PAYMENTS.md`](docs/architecture/PAYMENTS.md) §2 bis) : pays, opérateur, type, devise et
+identifiant = DONNÉES (aucun opérateur, `XOF` ni fuseau national dans le code, test statique) ;
+catalogue TechNova `payment_providers.toml` → `ref_payment_providers` (vide au départ, jamais
+requis ; opérateur personnalisé toujours possible) ; moyen = opérateur + pays + devise ; **un
+moyen n'encaisse une vente que dans SA devise** (`payment_method_currency_mismatch`, aucune
+conversion, contrôle unique `resolve_method` : ventes, POS, règlement des commandes) ;
+identifiants de réception (`payment_method_accounts`) propres à un site OU communs (commun :
+permission sur TOUS les sites), sans limite, formats contrôlés seulement par une règle du
+catalogue ; téléphone local conservé tel quel (indicatif affiché, jamais ajouté) ou
+international « + » vérifié contre le pays de rattachement ; **hors espèces, confirmation
+MANUELLE explicite** (`received_confirmed`, `confirmed_by` / `confirmed_at` ; espèces :
+l'enregistrement vaut confirmation) ; instantané des coordonnées sur le paiement, lu par le reçu ;
+aucune permission nouvelle. **Prochain lot : R7 — Menu QR Code et commandes clients** (audit et
+plan à présenter avant toute implémentation), puis R8 recettes, puis cadrage R9 rapports. Ne pas
+commencer un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils

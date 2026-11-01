@@ -246,6 +246,20 @@ colonnes d'annulation (Lot 1). Détails : [`PAYMENTS.md`](PAYMENTS.md).
 | `payment_method_sites` | `tenant_id`, `payment_method_id`, `site_id`, `is_enabled`, `updated_at`, `updated_by` | PK `(payment_method_id, site_id)` ; FK composites vers le moyen et le site ; ligne absente = disponible |
 | `cash_site_settings` | `tenant_id`, `site_id` (PK), `enabled`, `updated_at`, `updated_by` | FK composite vers `sites` ; absente = caisse non activée ; verrou exclusif à la désactivation |
 
+Moyens de réception internationaux (R6.5, migrations 0051 à 0055,
+[ADR-0051](../adr/0051-moyens-de-reception-internationaux.md)) :
+
+| Table / colonnes | Contenu | Contraintes notables |
+|---|---|---|
+| `ref_payment_providers` (plateforme, hors tenant) | `code` (PK), `name`, `names` / `instructions` (traductions JSONB), `kinds`, `countries` (vide = international), `currencies`, `identifiers` (types acceptés et règles facultatives), `is_active` | synchronisée par `catalog sync` ; rôle applicatif : `SELECT` seul ; désactivée, jamais supprimée |
+| `payment_methods` (+) | `provider_code` (FK `ref_payment_providers`), `provider_name`, `country_code` (FK `geo_countries`, `NULL` = international), `currency` | `one_provider` (au plus un des deux), `provider_name_not_blank`, `iso_currency` ; colonnes ajoutées aux droits `UPDATE` |
+| `payment_method_accounts` | `tenant_id`, `payment_method_id`, `site_id` (`NULL` = commun), `identifier_type` (`PHONE`, `MERCHANT_CODE`, `AGENT_CODE`, `ACCOUNT_NUMBER`, `CUSTOM`), `country_code` (rattachement), `custom_label`, `value`, `holder_name`, `instructions`, `sort_order`, `is_active`, `created_by`, `updated_by` | RLS `ENABLE` + `FORCE` ; FK composites vers le moyen et le site ; `custom_has_label`, `value_not_blank` ; index unique partiel des identifiants actifs (`NULLS NOT DISTINCT`) ; `SELECT, INSERT`, `UPDATE` des seules colonnes descriptives et d'état ; aucune suppression |
+| `payments` (+) | `currency`, `confirmed_by`, `confirmed_at`, `payment_method_account_id` (FK composite), `provider_label`, `account_identifier_type`, `account_label`, `account_value`, `account_holder`, `account_country_code` | `completed_is_confirmed` (`status = 'PENDING' OR confirmed_at IS NOT NULL`), `iso_currency` ; insertion seulement (paiement immuable) ; reprise : paiements existants confirmés par leur auteur à leur date |
+
+Toutes ces migrations refusent leur descente dès qu'une donnée serait perdue. `tenants.currency`
+et `tenants.timezone` n'ont plus de valeur par défaut nationale côté modèle : toujours fournies
+depuis le référentiel des pays.
+
 Numéros de vente : `document_sequences` (clé `{site_id}:sale:{année}`, `BIGINT`) ;
 `site_has_numbers` fige le code d'un site qui a émis un numéro.
 
@@ -292,6 +306,18 @@ numéros : `document_sequences`, clé `ro:{site_id}:{AAAAMMJJ}` (48 caractères)
 `restaurant.orders` remis à `false` dans `site_modules` (D10) ; colonne
 `business_profiles.module_settings` ; retour arrière refusé dès qu'une commande ou une ligne de
 réglages existe (condition et tests : [`RESTAURANT.md`](RESTAURANT.md) §11).
+
+### Cuisine (palier R6, isolée par RLS, [ADR-0050](../adr/0050-cuisine-postes-de-preparation.md))
+
+| Table / colonnes | Contenu | Contraintes notables |
+|---|---|---|
+| `restaurant_prep_stations` | `tenant_id`, `site_id`, `name` (≤ 100), `sort_order`, `is_active` | nom unique par site (casse ignorée) ; jamais supprimé ; `UPDATE` de `name`, `sort_order`, `is_active`, `updated_at` |
+| `restaurant_station_routes` | `tenant_id`, `site_id`, `station_id`, `section_id` OU `menu_item_id` | `one_target` ; une affectation par cible (index partiels) ; FK composites vers le poste et le menu du même site ; `DELETE` permis (retrait) |
+| `restaurant_order_lines` (+) | `station_id` | FK composite `(tenant_id, site_id, station_id)` `RESTRICT` |
+| `restaurant_orders` (+) | `priority` (`NORMAL`, `HIGH`, `URGENT`) | défaut `NORMAL` ; évènements `PRIORITY_CHANGED`, `LINES_ROUTED` |
+
+Migrations 0049 (schéma ; descente refusée avec des données de cuisine) et 0050 (livraison :
+activations existantes remises à `false`).
 
 ### Créances (Phase 2.8) : aucune table
 

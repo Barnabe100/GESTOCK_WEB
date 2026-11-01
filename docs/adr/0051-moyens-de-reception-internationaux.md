@@ -1,7 +1,8 @@
 # ADR-0051 — Moyens de réception indépendants du pays, de l'opérateur et de la devise
 
-- **Statut** : Proposée — orientation validée par l'utilisateur le 2026-11-01 (décisions D1 à D5
-  ci-dessous) ; validation finale attendue avant l'implémentation
+- **Statut** : Acceptée — orientation validée le 2026-11-01 (décisions D1 à D5), livraison R6.5
+  validée par l'utilisateur le 2026-11-01 avec deux clarifications (confirmation, numéros de
+  téléphone : section « Clarifications de clôture »)
 - **Lot** : **R6.5**, distinct, réalisé APRÈS la validation fonctionnelle de R6 (Cuisine) sur
   Ubuntu et AVANT R7 (Menu QR Code, numérotation inchangée)
 - **Date** : 2026-11-01
@@ -162,7 +163,7 @@ des constantes métier.
 
 ## Implémentation R6.5 (2026-11-01)
 
-Livrée par étapes A à G (statut de l'ADR inchangé jusqu'à la validation de la livraison) :
+Livrée par étapes A à G, puis clarification du téléphone (validation de la livraison) :
 
 | Étape | Contenu | Migration |
 | --- | --- | --- |
@@ -172,6 +173,8 @@ Livrée par étapes A à G (statut de l'ADR inchangé jusqu'à la validation de 
 | D | `payment_method_accounts` : identifiants propres à un site ou communs, sans limite | 0053 |
 | E | Paiements : confirmation manuelle (`confirmed_by` / `confirmed_at`), devise, instantané des coordonnées | 0054 |
 | F | Interface : administration (opérateur, pays, devise, identifiants par portée, accès depuis la page Sites), caisse (identifiant, confirmation), reçu, historique | — |
+| G | Vérification globale, documentation | — |
+| Clarif. | Pays de rattachement des identifiants, numéros locaux / internationaux, instantané du pays sur le paiement | 0055 |
 
 Précisions de mise en œuvre (fidèles aux décisions D1 à D5) :
 
@@ -188,14 +191,63 @@ Précisions de mise en œuvre (fidèles aux décisions D1 à D5) :
 - **Portées** : identifiant propre à un site géré avec `sales.payment_method.manage` sur CE site ;
   identifiant commun géré seulement avec la permission sur TOUS les sites ; lecture limitée aux
   identifiants communs et aux sites accessibles (autres : introuvables).
-- **Formats** : téléphone = séparateurs retirés, « + » initial conservé, **aucun indicatif ajouté**
-  (pas de règle nationale supposée) ; règle de longueur ou de motif appliquée seulement si
-  l'opérateur du catalogue la déclare ; types acceptés limités par le catalogue s'il en déclare.
+- **Formats** : règle de longueur ou de motif appliquée seulement si l'opérateur du catalogue la
+  déclare ; types acceptés limités par le catalogue s'il en déclare. Téléphone : voir
+  « Clarifications de clôture ».
 - **Devise** : contrôlée dans `resolve_method` (point unique des ventes, du POS et du règlement
   des commandes) ; la liste par site renvoie `unavailable_reason = currency_mismatch` ; la
   compatibilité « par type » ne choisit jamais un moyen d'une autre devise.
 - **Capacités** : `tenant.country_code` ajouté (pays proposé par défaut d'un nouveau moyen).
 - **Permissions** : aucune nouvelle.
+
+## Clarifications de clôture (validation du 2026-11-01)
+
+### C1 — Confirmation des paiements
+
+- **Espèces** : l'enregistrement vaut confirmation ; aucune case supplémentaire.
+- **Hors espèces** : confirmation explicite obligatoire (`received_confirmed`) après vérification
+  effective de la réception des fonds ; choisir le moyen ou l'identifiant n'en tient jamais lieu.
+- Dans les deux cas, l'utilisateur ayant confirmé (`confirmed_by`) et la date / heure de
+  confirmation (`confirmed_at`, UTC, affichée dans le fuseau du tenant) restent historisés sur le
+  paiement (contrainte `completed_is_confirmed`).
+
+### C2 — Numéros de téléphone : local, international, pays de rattachement
+
+Comportement retenu (migration **0055**, cohérent avec M4 et D3 : aucun format universel) :
+
+1. **Pays de rattachement** : chaque identifiant porte `country_code` (référentiel des pays), par
+   défaut celui du moyen, modifiable, `NULL` = international. Les identifiants existants sont
+   repris avec le pays de leur moyen.
+2. **Saisie** : séparateurs (espaces, points, tirets, parenthèses) retirés ; rien d'autre n'est
+   réécrit (un préfixe « 00 » n'est pas converti en « + » : le numéro est alors traité comme une
+   forme locale, conservée telle quelle).
+3. **Forme internationale** (« + » suivi de 15 chiffres au plus, E.164) : conservée telle quelle ;
+   si le pays de rattachement déclare un indicatif, le numéro doit commencer par cet indicatif
+   (`422 payment_account_invalid`, `reason = phone_country_mismatch`, avec `country_code` et
+   `calling_code`). **L'indicatif n'est jamais ajouté une seconde fois.**
+4. **Forme locale** (sans « + ») : conservée **telle quelle**, sans longueur imposée ;
+   l'indicatif du pays de rattachement n'est **jamais ajouté** au numéro enregistré ; il est
+   seulement **affiché à côté** (« 70112233 · BF +226 ») dans l'administration, à la caisse et
+   sur le reçu.
+5. **Aucun format national imposé** : la seule règle supplémentaire possible est celle qu'un
+   opérateur vérifié du catalogue déclare (longueur, motif) ; sans règle fiable, contrôle
+   générique seulement.
+6. **Instantané** : le paiement fige `account_country_code` avec la valeur ; l'historique et le
+   reçu affichent l'indicatif de ce pays, même si l'identifiant change ensuite.
+7. La descente de 0055 est refusée si un identifiant a un pays différent de celui de son moyen
+   ou si un paiement porte un pays d'identifiant (aucune perte silencieuse).
+
+### C3 — Résultats de validation (2026-11-01)
+
+- Backend : 1 476 tests réussis à la livraison (`986a1c0`) ; après la clarification C2
+  (`38137bf`) : `tests/test_receiving_methods.py` 23 réussis ; suite complète **1 479 réussis**
+  (0 échec, 43 min).
+- Frontend : Vitest 536 réussis ; E2E `receiving.e2e.ts` 5 / 5.
+- E2E complets : 171 réussis, 6 échecs **non masqués** — 5 liés à l'environnement (service de
+  signature, limitation de fréquence) et 1 intermittent (`lots-3ha.e2e.ts`), consignés dans
+  [`SUIVI_TECHNIQUE.md`](../SUIVI_TECHNIQUE.md) (A-1, E-1 à E-5) ; A-1 à résoudre avant la
+  campagne de validation sur Ubuntu.
+- CI GitHub Actions verte sur `986a1c0` (run 41308912290).
 
 ## Conséquences
 

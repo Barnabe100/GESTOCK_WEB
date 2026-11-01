@@ -376,6 +376,26 @@ Règles : [`PAYMENTS.md`](PAYMENTS.md) ; décisions : [ADR-0037](../adr/0037-enc
 | PATCH | `/payment-methods/{id}` | `sales.payment_method.manage` | `label`, `reference_required`, `is_active`, `sort_order` (type immuable : `422`) |
 | PUT | `/payment-methods/{id}/sites/{site_id}` | `sales.payment_method.manage` sur ce site | `{enabled}` : disponibilité sur un site accessible |
 
+R6.5 ([ADR-0051](../adr/0051-moyens-de-reception-internationaux.md), règles : [`PAYMENTS.md`](PAYMENTS.md) §2 bis) :
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/payment-providers` (`country?`, `currency?`, `kind?`) | comme `GET /payment-methods` | Catalogue TechNova (actifs ; pays du filtre ou internationaux), libellés dans la langue de l'entreprise ; vide au départ |
+| POST, PATCH | `/payment-methods`, `/payment-methods/{id}` | `sales.payment_method.manage` | + `provider_code` (catalogue) OU `provider_name` (personnalisé) OU aucun ; `country_code` (omis : celui de l'entreprise ; `null` : international) ; `currency` (omise : celle de l'entreprise). Refus : `payment_provider_unknown`, `payment_provider_mismatch` (`field`), `payment_provider_not_allowed` (espèces), `country_unknown`, `currency_unknown` |
+| GET | `/payment-methods?site_id=` | idem | + `provider_label`, `country_code`, `currency`, `unavailable_reason` (`inactive`, `site_disabled`, `currency_mismatch`), `accounts` (identifiants actifs utilisables sur le site) |
+| GET | `/payment-methods/{id}/accounts` (`site_id?`, `active_only?`) | `sales.payment.view`, `sales.payment.create` ou `sales.payment_method.manage` | Identifiants communs et des sites ACCESSIBLES (`shared`, `site_name`, `country_code`, `calling_code`, `phone_format`) |
+| POST | `/payment-methods/{id}/accounts` | `sales.payment_method.manage` sur ce site, ou sur TOUS les sites (commun) | `{site_id?, identifier_type, country_code?, custom_label?, value, holder_name?, instructions?, sort_order?}` ; refus : `payment_account_invalid` (`reason` : `format`, `phone`, `phone_e164`, `phone_country_mismatch`, `provider_rule`), `payment_account_type_not_accepted`, `payment_account_duplicate`, `payment_account_label_required`, `payment_account_not_allowed` (espèces) |
+| PATCH | `/payment-methods/accounts/{id}` | idem (portée de l'identifiant) | `country_code`, `custom_label`, `value`, `holder_name`, `instructions`, `sort_order` (moyen, portée et type immuables) |
+| POST | `/payment-methods/accounts/{id}/activate` \| `/deactivate` | idem | Désactivation (jamais de suppression) ; réactivation revérifiée (format, doublon) |
+
+Paiements (`POST /sales/{id}/payments`, paiements immédiats de `/validate`, `/pos/checkout`,
+`/restaurant/orders/{id}/settle`) : `payment_method_account_id?` (facultatif, jamais deviné ;
+`422 payment_account_unavailable`) et `received_confirmed` (obligatoire hors espèces :
+`422 payment_confirmation_required`) ; devise contrôlée (`422 payment_method_currency_mismatch`).
+`PaymentOut` et reçu : `currency`, `confirmed_at`, `confirmed_by_name`, `provider_label`,
+`account_identifier_type`, `account_label`, `account_value`, `account_holder`,
+`account_country_code`, `account_calling_code`. Capacités : `tenant.country_code`.
+
 ### Caisse (module `cash_register`) — Phase 2.9
 
 Monté sous `/cash`. Règles : [`CASH_REGISTER.md`](CASH_REGISTER.md) ; décisions :
@@ -449,9 +469,10 @@ Audit : `restaurant_menu.section_created` / `section_updated` / `section_activat
 
 ### Commandes de restauration (module `restaurant.orders`) — paliers R2-B à R2-E
 
-> **Module encore planifié** (ADR-0049, D14 N1) : ces routes ne sont PAS montées en production
-> avant la validation de R2-E (interface livrée, bascule sur décision) ; elles sont exercées par
-> les tests avec un registre de test.
+> **Livré** (migration 0048) avec les tables : activation explicite par site (sites existants
+> remis à `false`). Libération par le responsable : `POST /restaurant/orders/{id}/release`
+> (`order.claim`, motif facultatif, `409 order_not_claimed_by_you`) ; délai entre deux prises
+> d'un employé : 5 ou 10 minutes (réglage du site) — détails dans `DOC_BACKLOG.md`.
 
 Décisions : [ADR-0049](../adr/0049-restauration-commandes.md) (D2, D3, D6, D13, D14) ; conception :
 [`RESTAURANT.md`](RESTAURANT.md). Portée des sites comme le menu (R1) : lecture limitée aux sites où
@@ -491,6 +512,26 @@ Ventes issues d'une commande : `origin_type` (`restaurant_order`) et `origin_id`
 canal `RESTAURANT` ; `POST /sales/{id}/cancel` d'une telle vente verrouille d'abord la commande
 (`409 order_closed` si elle est close, `409 sale_origin_unavailable` sans gestionnaire) et la
 repasse « à régler ».
+
+### Cuisine (module `restaurant.kitchen`) — palier R6
+
+Décisions : [ADR-0050](../adr/0050-cuisine-postes-de-preparation.md) ; livré par la migration 0050
+(activation explicite par site). Préparer reste `restaurant.orders.order.prepare` ; servir reste
+au service (écran des commandes).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/restaurant/kitchen/stations` (`site_id?`, `status?`, recherche, tri `position`) | `restaurant.kitchen.station.view` | Postes des sites lisibles (`route_count`) |
+| POST, PUT | `/restaurant/kitchen/stations`, `/stations/{id}` | `restaurant.kitchen.station.manage` sur le site | Nom unique par site (casse ignorée, `409 station_name_taken`), ordre d'affichage |
+| POST | `/restaurant/kitchen/stations/{id}/activate` \| `/deactivate` | idem | Désactivation refusée avec des lignes en cours (`409 station_has_open_lines`) |
+| GET, PUT | `/restaurant/kitchen/routes` (`site_id`) | `station.view` / `station.manage` | Affectation d'une section OU d'un élément du menu à un poste (`station_id: null` : retrait, `204`) |
+| GET | `/restaurant/kitchen/board?site_id=` (`station_id?` \| `unrouted=true`) | `station.view` + `restaurant.orders.order.view` sur le site | Tickets commande × poste, classés par priorité puis ancienneté ; compteurs |
+| PUT | `/restaurant/kitchen/orders/{id}/priority` | `restaurant.kitchen.priority.set` | `NORMAL` \| `HIGH` \| `URGENT`, motif facultatif (évènement `PRIORITY_CHANGED`) |
+| PUT | `/restaurant/kitchen/orders/{id}/route` | `restaurant.kitchen.line.route` | Poste de lignes non finales (`null` : « Sans poste » ; évènement `LINES_ROUTED`) |
+
+Routage automatique à la création et à l'ajout de lignes (élément → section → « Sans poste »),
+une fois par ligne, seulement si la cuisine est effective sur le site ; `OrderOut.priority`,
+`LineOut.station_id` / `station_name` ; avis « prête » par poste (`part`, `station_name`).
 
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 

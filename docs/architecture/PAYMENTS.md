@@ -52,8 +52,9 @@ future, refusé aujourd'hui : `422 payment_integration_unavailable`), `reference
 `is_active` (désactivation, jamais de suppression), `sort_order`. Table `payment_method_sites` :
 disponibilité **par site** (ligne absente : disponible ; `is_enabled = false` : désactivé sur ce
 site). Moyens par défaut d'une nouvelle entreprise (modifiables) : Espèces, Mobile Money,
-Carte bancaire, Virement, Autre. Exemples de configuration : Orange Money, Moov Money, Telecel
-Money, Sank Money, Wave (`MOBILE_MONEY`, référence obligatoire).
+Carte bancaire, Virement, Autre (dans le pays et la devise de l'entreprise, sans opérateur). Le
+libellé est libre : un moyen mobile money d'un opérateur local, par exemple, est un moyen
+`MOBILE_MONEY` dont l'opérateur est une DONNÉE (catalogue ou opérateur personnalisé, §2 bis).
 
 | Type | Comportement |
 |---|---|
@@ -72,8 +73,53 @@ si exigée : `422 payment_reference_required`.
 - `amount` et `amount_received` : reçu ≥ montant (sinon `422 cash_received_insufficient`).
 - Paiements immédiats d'une validation / du POS : autres moyens imputés **d'abord**, espèces
   ensuite ; la monnaie ne porte que sur la partie espèces. Ex. total 50 000 : espèces 20 000 +
-  Orange Money 10 000, puis 30 000 remis en espèces pour solder 20 000 → monnaie 10 000.
+  mobile money 10 000, puis 30 000 remis en espèces pour solder 20 000 → monnaie 10 000.
 - Le mouvement de caisse éventuel porte le montant **imputé** (la monnaie ne reste pas en caisse).
+
+## 2 bis. Moyens de réception internationaux (R6.5, [ADR-0051](../adr/0051-moyens-de-reception-internationaux.md))
+
+Le pays, l'opérateur, le type de moyen, la devise et l'identifiant sont des **données**, jamais
+des constantes : aucun nom d'opérateur, aucune devise (`XOF`) ni aucun fuseau national dans le
+code (test statique `test_receiving_methods_static.py`).
+
+- **Trois notions** : le **type** (`kind`, comportement technique fermé) ; l'**opérateur ou
+  établissement** (catalogue TechNova `payment_providers.toml` → `ref_payment_providers`, lecture
+  seule, **vide au départ**, entrées ajoutées après vérification ; ou opérateur **personnalisé**
+  saisi par l'entreprise ; ou aucun — le catalogue n'est jamais requis) ; le **moyen de
+  l'entreprise** (`payment_methods`).
+- **Pays et devise d'un moyen** : `country_code` (référentiel ; absent = international) et
+  `currency` (ISO 4217) ; par défaut ceux de l'entreprise (référentiel des pays). Un opérateur du
+  catalogue doit couvrir le type, la devise et le pays (`422 payment_provider_mismatch`) ; les
+  espèces n'ont pas d'opérateur.
+- **Règle de devise** : un moyen n'encaisse une vente que si **sa devise est celle de la vente**
+  (devise de l'entreprise, figée) — `422 payment_method_currency_mismatch` ; **aucune
+  conversion**. Contrôle unique (`PaymentService.resolve_method`) pour les ventes, le POS et le
+  règlement des commandes ; la liste par site renvoie `unavailable_reason = currency_mismatch`.
+- **Identifiants de réception** (`payment_method_accounts`) : téléphone, code marchand, code
+  agent, numéro de compte ou identifiant personnalisé (libellé obligatoire) ; **propre à un
+  site** ou **commun à tous les sites** ; aucun nombre maximal ; plusieurs par opérateur et par
+  site ; jamais supprimés (désactivés) ; un même identifiant actif une seule fois par moyen et par
+  portée. Gestion : `sales.payment_method.manage` sur CE site (propre) ou sur TOUS les sites
+  (commun) ; lecture limitée aux identifiants communs et aux sites accessibles.
+- **Formats** : contrôle générique (texte imprimable) ; règle de longueur ou de motif appliquée
+  seulement si l'opérateur du catalogue la déclare. **Téléphone** : séparateurs retirés ; forme
+  **internationale** (« + », 15 chiffres au plus) vérifiée contre l'indicatif du **pays de
+  rattachement** de l'identifiant (`phone_country_mismatch`), jamais réécrite ; forme **locale**
+  conservée telle quelle — l'indicatif est affiché à côté (« 70112233 · BF +226 »), **jamais
+  ajouté** ; aucun format national imposé.
+- **Caisse** : un seul identifiant actif → présélectionné ; plusieurs → choisi par le caissier ;
+  jamais obligatoire ; jamais deviné par le serveur. Contrôlé à l'encaissement : même moyen,
+  actif, commun ou propre au site de la vente (`422 payment_account_unavailable`), verrou partagé.
+- **Confirmation manuelle** : hors espèces, `received_confirmed` est **obligatoire** (« J'ai
+  vérifié que les fonds ont bien été reçus » ; `422 payment_confirmation_required`, contrôlé
+  après les règles de saisie) — choisir un moyen ne vaut jamais confirmation ; espèces :
+  l'enregistrement vaut confirmation. Tout paiement encaissé porte `confirmed_by` et
+  `confirmed_at` (contrainte `completed_is_confirmed`). La référence reste facultative (sauf
+  moyen qui l'exige).
+- **Instantané** : chaque paiement fige sa devise et les coordonnées réellement utilisées
+  (`provider_label`, `account_identifier_type`, `account_label`, `account_value`,
+  `account_holder`, `account_country_code`) ; historique, reçu et récapitulatif du POS les lisent,
+  jamais la configuration courante.
 
 ## 3. Calcul du solde (aucun état stocké)
 
@@ -143,7 +189,10 @@ composites.
 
 `payment.created`, `payment.completed` (solde après encaissement), `payment.cancelled` (motif,
 solde après annulation) : tenant, utilisateur, site, vente (id, numéro), paiement (id, numéro),
-montant, moyen, date. Aucune donnée sensible (pas de numéro de carte).
+montant, moyen, date ; depuis R6.5 : devise, confirmation (`confirmed_by`, `confirmed_at`),
+opérateur et identifiant utilisés. Configuration : `payment_method.*` (avant / après, opérateur,
+pays, devise) et `payment_method_account.created|updated|activated|deactivated`. Aucune donnée
+sensible (pas de numéro de carte).
 
 ## 8. Évolutions prévues (hors périmètre 2.7)
 
@@ -154,6 +203,9 @@ montant, moyen, date. Aucune donnée sensible (pas de numéro de carte).
   ouverte **de l'utilisateur** sur ce site et crée son mouvement de caisse dans la même
   transaction ; sur un site sans caisse, aucune session ni mouvement (port `sales/cash_port.py` : la vente et les autres moyens
   ne dépendent jamais de la caisse) ; son annulation crée la sortie inverse (session ouverte).
+- **Passerelles (hors R6.5)** : aucune API d'opérateur, agrégateur, webhook ni encaissement
+  centralisé par TechNova ; une intégration future se déclarera par un port, référencée par le
+  catalogue, jamais obligatoire (`integration_mode = API` toujours refusé aujourd'hui).
 - **Encaissements asynchrones** (Mobile Money par API, TPE) : statut `PENDING` réservé, déjà
   compté dans le solde engagé pour empêcher un doublon ; confirmation → `COMPLETED`. Le module
   planifié `payments` (« Paiements électroniques ») accueillera ces intégrations.

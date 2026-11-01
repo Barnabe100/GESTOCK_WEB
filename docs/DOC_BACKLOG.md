@@ -770,9 +770,9 @@ photos du menu, paiements électroniques et automobile reportés. À reporter da
 
 ## Palier R6 — module Cuisine (`restaurant.kitchen`, ADR-0050)
 
-Décisions détaillées dans [ADR-0050](adr/0050-cuisine-postes-de-preparation.md). À reporter
-dans `RESTAURANT.md` (§2, §5, §8, §11, §12, §13), `API.md`, `DATA_MODEL.md` et `CLAUDE.md`
-(phase en cours) :
+Décisions détaillées dans [ADR-0050](adr/0050-cuisine-postes-de-preparation.md). **Reporté**
+(2026-11-01) dans `API.md` (section Cuisine), `DATA_MODEL.md` (section Cuisine) et `CLAUDE.md`
+(phase en cours) ; `RESTAURANT.md` (§2, §5, §8, §11, §12, §13) reste à compléter :
 
 - **Données (migration 0049)** : `restaurant_prep_stations` (poste d'UN site, nom 100 unique
   par site sans casse, ordre d'affichage, désactivation, jamais supprimé) ;
@@ -823,12 +823,17 @@ dans `RESTAURANT.md` (§2, §5, §8, §11, §12, §13), `API.md`, `DATA_MODEL.md
 ## Lot R6.5 — moyens de réception internationaux (ADR-0051)
 
 Décisions et implémentation dans [ADR-0051](adr/0051-moyens-de-reception-internationaux.md)
-(section « Implémentation R6.5 »). À reporter dans `PAYMENTS.md`, `API.md`, `DATA_MODEL.md` et
-`CLAUDE.md` (phase en cours) :
+(sections « Implémentation R6.5 » et « Clarifications de clôture »). **Reporté** (2026-11-01)
+dans `PAYMENTS.md` (§2 bis, §7, §8), `API.md`, `DATA_MODEL.md` et `CLAUDE.md` ; ADR-0051
+**Acceptée** ; anomalies de test ouvertes dans [`SUIVI_TECHNIQUE.md`](SUIVI_TECHNIQUE.md) :
 
 - **Migrations** : 0051 (`ref_payment_providers`), 0052 (opérateur, pays, devise des moyens),
-  0053 (`payment_method_accounts`), 0054 (confirmation et instantané des paiements). Descentes
-  refusées dès qu'une donnée serait perdue.
+  0053 (`payment_method_accounts`), 0054 (confirmation et instantané des paiements), 0055 (pays
+  de rattachement des identifiants, `payments.account_country_code`). Descentes refusées dès
+  qu'une donnée serait perdue.
+- **Téléphone** : forme locale conservée (indicatif affiché, jamais ajouté) ; forme
+  internationale vérifiée contre le pays de rattachement (`phone_country_mismatch`) ; aucun
+  format national imposé.
 - **API** : `GET /payment-providers?country=&currency=&kind=` ; `payment-methods` : champs
   `provider_code`, `provider_name`, `provider_label`, `country_code`, `currency`,
   `unavailable_reason`, `accounts` (avec `site_id`) ; `GET/POST
