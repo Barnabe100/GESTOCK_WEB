@@ -28,8 +28,12 @@ test.describe.configure({ mode: 'serial' });
 
 /** Deuxième et troisième éléments du menu (Boissons, Desserts), en stock sur le site. */
 async function addItem(request: APIRequestContext, owner: Resto, label: string, section: string) {
+  const category = await call(request, owner.token, 'post', '/catalog/categories', {
+    name: `${section} ${owner.suffix}`,
+  });
   const article = await call(request, owner.token, 'post', '/catalog/articles', {
     reference: `${label.slice(0, 4).toUpperCase()}-${owner.suffix}`,
+    category_id: category.id,
     designation: `${label} ${owner.suffix.replace(/\d/g, (d) => 'KLMNOPQRST'.charAt(Number(d)))}`,
     unit: 'portion',
     purchase_price: '200',
@@ -278,6 +282,23 @@ test('priorité avant ancienneté ; correction manuelle du poste', async ({ page
   }
 });
 
+test('écran cuisine sur tablette : trois colonnes, sans débordement', async ({ page, request }) => {
+  const order = await createOrder(request, r.token, r.site, r.item);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await loginUi(page, r.email, PASSWORD, r.name);
+  await openKitchen(page);
+  await expect(ticket(page, order.daily_number, 'Grillades')).toBeVisible();
+  const columns = page.locator('.sm-kitchen-column');
+  const boxes = await columns.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  expect(new Set(boxes.map((t) => Math.round(t))).size).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  );
+  await call(request, r.token, 'post', `/restaurant/orders/${order.id}/cancel`, {
+    reason: 'Fin du test',
+  });
+});
+
 test('permissions des rôles et isolation entre sites', async ({ request }) => {
   // Vendeur : écran, priorité et poste d'une ligne ; jamais la configuration des postes.
   const seller = await addMember(request, r, 'seller');
@@ -366,23 +387,6 @@ test('permissions des rôles et isolation entre sites', async ({ request }) => {
     { line_ids: [detail.lines[0]?.id], station_id: annexStation },
   );
   expect([crossed.status, crossed.code]).toEqual([404, 'station_not_found']);
-  await call(request, r.token, 'post', `/restaurant/orders/${order.id}/cancel`, {
-    reason: 'Fin du test',
-  });
-});
-
-test('écran cuisine sur tablette : trois colonnes, sans débordement', async ({ page, request }) => {
-  const order = await createOrder(request, r.token, r.site, r.item);
-  await page.setViewportSize({ width: 1024, height: 768 });
-  await loginUi(page, r.email, PASSWORD, r.name);
-  await openKitchen(page);
-  await expect(ticket(page, order.daily_number, 'Grillades')).toBeVisible();
-  const columns = page.locator('.sm-kitchen-column');
-  const boxes = await columns.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
-  expect(new Set(boxes.map((t) => Math.round(t))).size).toBe(1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
-    false,
-  );
   await call(request, r.token, 'post', `/restaurant/orders/${order.id}/cancel`, {
     reason: 'Fin du test',
   });

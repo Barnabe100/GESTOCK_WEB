@@ -97,6 +97,14 @@ Désactivation du module refusée avec des lignes routées non finales
 Module `planned` pendant le développement (registre de test), puis `available` avec une
 migration qui remet à `false` ses activations héritées sur les sites existants (D10).
 
+**Livré** par la migration 0050 (aucun schéma) après la réussite des tests backend, Vitest et
+E2E (ordinateur, tablette, mobile) : manifeste sans statut planifié, dépendance
+`restaurant.orders` seule (jamais l'inverse), plans STANDARD et ENTREPRISE inchangés (le module
+y figurait déjà), droits des rôles de base vérifiés (Administrateur, Gestionnaire : tout ;
+Vendeur : écran, priorité, poste d'une ligne ; Serveur : écran, priorité ; Préparateur : écran,
+poste d'une ligne ; Consultant : écran). Nouveaux sites : défauts de leur profil (Restaurant,
+Pizzeria, Traiteur, Restauration rapide : activée ; Maquis, Bar, Café… : facultative).
+
 ## Conséquences
 
 - Un site sans cuisine (ou sans aucune affectation) fonctionne exactement comme avant.
