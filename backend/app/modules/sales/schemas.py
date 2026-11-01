@@ -16,12 +16,13 @@ from app.modules.sales.models import (
     PaymentIntegration,
     PaymentMethod,
     PaymentStatus,
+    ReceivingIdentifierType,
     SaleChannel,
     SalePaymentStatus,
     SaleStatus,
 )
 from app.shared.schemas import Money, PositiveMoney, PositiveQuantity, Quantity
-from app.shared.text import Optional50, Optional100, Optional500
+from app.shared.text import Optional50, Optional60, Optional100, Optional500
 
 
 class SaleLineInput(BaseModel):
@@ -386,3 +387,57 @@ class PaymentMethodOut(BaseModel):
     # ``site_disabled``, ``currency_mismatch`` : devise ≠ devise des ventes).
     available: bool | None = None
     unavailable_reason: str | None = None
+    # Avec ``site_id`` : identifiants de réception actifs utilisables sur ce site (R6.5-D).
+    accounts: "list[PaymentAccountOut] | None" = None
+
+
+# --- Identifiants de réception (R6.5-D, ADR-0051) -----------------------------------------------
+
+
+class PaymentAccountCreate(BaseModel):
+    """Identifiant de réception d'un moyen : ``site_id`` = propre à ce site ; ``null`` = commun à
+    tous les sites. Le format n'est contrôlé que par une règle du catalogue de l'opérateur."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    site_id: uuid.UUID | None = None
+    identifier_type: ReceivingIdentifierType
+    custom_label: Optional60 = None
+    value: str = Field(min_length=1, max_length=100)
+    holder_name: Optional100 = None
+    instructions: Optional500 = None
+    sort_order: int = Field(default=0, ge=0, le=9999)
+
+
+class PaymentAccountUpdate(BaseModel):
+    """Le moyen, la portée (site ou commun) et le type ne changent jamais : créer un autre
+    identifiant. ``null`` explicite efface un champ facultatif."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    custom_label: Optional60 = None
+    value: str | None = Field(default=None, min_length=1, max_length=100)
+    holder_name: Optional100 = None
+    instructions: Optional500 = None
+    sort_order: int | None = Field(default=None, ge=0, le=9999)
+
+
+class PaymentAccountOut(BaseModel):
+    id: uuid.UUID
+    payment_method_id: uuid.UUID
+    site_id: uuid.UUID | None
+    site_name: str | None
+    # ``True`` : commun à tous les sites.
+    shared: bool
+    identifier_type: ReceivingIdentifierType
+    custom_label: str | None
+    value: str
+    holder_name: str | None
+    instructions: str | None
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+PaymentMethodOut.model_rebuild()

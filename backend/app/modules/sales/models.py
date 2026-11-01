@@ -431,3 +431,71 @@ class PaymentMethodSite(TenantFiltered, Base):
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+
+
+class ReceivingIdentifierType(StrEnum):
+    """Nature d'un identifiant de réception (R6.5, ADR-0051) : comportement technique, jamais un
+    opérateur ; même liste que ``app.shared.receiving.IDENTIFIER_TYPES``."""
+
+    PHONE = "PHONE"
+    MERCHANT_CODE = "MERCHANT_CODE"
+    AGENT_CODE = "AGENT_CODE"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    CUSTOM = "CUSTOM"
+
+
+class PaymentMethodAccount(IdMixin, TenantScopedMixin, TimestampMixin, Base):
+    """Identifiant de réception d'un moyen (R6.5, ADR-0051) : numéro, code marchand, code
+    agent, compte ou identifiant personnalisé où l'entreprise reçoit les fonds. Propre à UN
+    site (``site_id``) ou COMMUN à tous les sites (``NULL``) ; aucun nombre maximal ; plusieurs
+    identifiants possibles pour un même moyen et un même site. Jamais supprimé : désactivé. Le
+    format n'est contrôlé que par une règle déclarée dans le catalogue de l'opérateur."""
+
+    __tablename__ = "payment_method_accounts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "payment_method_id"],
+            ["payment_methods.tenant_id", "payment_methods.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "site_id"], ["sites.tenant_id", "sites.id"], ondelete="RESTRICT"
+        ),
+        CheckConstraint("length(btrim(value)) > 0", name="value_not_blank"),
+        CheckConstraint(
+            "identifier_type <> 'CUSTOM' OR length(btrim(coalesce(custom_label, ''))) > 0",
+            name="custom_has_label",
+        ),
+        # Un même identifiant actif n'est enregistré qu'une fois par moyen et par portée.
+        Index(
+            "uq_payment_method_accounts_active",
+            "tenant_id",
+            "payment_method_id",
+            "site_id",
+            "identifier_type",
+            "value",
+            unique=True,
+            postgresql_where=text("is_active"),
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_payment_method_accounts_method", "tenant_id", "payment_method_id"),
+    )
+
+    payment_method_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    # ``NULL`` : identifiant commun à tous les sites de l'entreprise.
+    site_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    identifier_type: Mapped[ReceivingIdentifierType] = mapped_column(
+        str_enum(ReceivingIdentifierType, "receiving_identifier_type"), nullable=False
+    )
+    # Libellé du type ``CUSTOM`` (« Identifiant client », « IBAN »…).
+    custom_label: Mapped[str | None] = mapped_column(String(60))
+    value: Mapped[str] = mapped_column(String(100), nullable=False)
+    holder_name: Mapped[str | None] = mapped_column(String(100))
+    instructions: Mapped[str | None] = mapped_column(String(500))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
