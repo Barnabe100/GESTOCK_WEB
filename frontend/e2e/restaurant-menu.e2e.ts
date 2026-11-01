@@ -93,8 +93,13 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   await expect(row.getByRole('switch')).toBeVisible();
   await row.getByRole('switch').click();
   await expect(row.getByTestId('module-state-active')).toBeVisible();
-  // Commandes (0048) et cuisine (0050) livrées : activables explicitement ; recettes à venir.
-  await expect(page.getByRole('row', { name: /^Commandes/ }).getByRole('switch')).toHaveCount(1);
+  // Commandes (0048), cuisine (0050) et commandes par QR Code (0058) livrées : activables
+  // explicitement ; recettes à venir. « Commandes » seule : la ligne du QR commence de même.
+  const orders = page.getByRole('row', { name: /^Commandes(?! par QR Code)/ });
+  await expect(orders).toHaveCount(1);
+  await expect(orders.getByRole('switch')).toHaveCount(1);
+  const qr = page.getByRole('row', { name: /^Commandes par QR Code/ });
+  await expect(qr.getByRole('switch')).toHaveCount(1);
   await expect(page.getByRole('row', { name: /^Cuisine/ }).getByRole('switch')).toHaveCount(1);
   await expect(page.getByRole('row', { name: /^Recettes/ }).getByRole('switch')).toHaveCount(0);
   await page.reload();
