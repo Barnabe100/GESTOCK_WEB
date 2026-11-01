@@ -129,3 +129,70 @@ RLS ni dupliquer le moteur.
   suspendu ou en attente d'activation, site B indépendant ; un jeton n'ouvre que son site et son
   entreprise ; routes publiques non montées tant que le module est planifié ; limitation de
   fréquence et empreinte HMAC ; proxies de confiance).
+
+## R7-C — commandes sans compte, anti-abus, réglages QR (migration 0057)
+
+- **Moteur unique** : `OrderService` reçoit une portée et un acteur abstraits (`tenant`,
+  `scope`, `actor_kind`, `actor_user_id`, `meta`) ; la création est factorisée dans
+  `_insert` (verrous, effectivité recalculée, réglages, table, prix FIGÉS du menu, routage,
+  numéro du jour, évènement, audit), appelée par le personnel (inchangé) et par
+  **`PublicOrderService`** (`restaurant_orders/public.py`) : acteur `PUBLIC`, aucun
+  utilisateur (`created_by` nul, audit sans utilisateur), modules du site calculés sans membre
+  (`CapabilityService.public_site_modules` : abonnement du site autorisant l'écriture), état
+  « à confirmer » ou « ouverte » si `qr_auto_accept` (lu sous le verrou partagé des réglages,
+  recopié dans l'évènement de création). Le module QR passe par `restaurant_orders.api`
+  (`create_public_order`, `awaiting_staff_count`, `order_ref`) : aucun accès à ses modèles.
+- **Requête publique** `POST /api/v1/public/restaurant/qr/orders` (en-tête `X-QR-Token`) :
+  `client_key` (UUID **v4** obligatoire), lignes (élément du menu, quantité **entière**
+  1..99, instruction), nom, téléphone ; **tout autre champ est refusé** (`extra = forbid` :
+  site, table, prix, canal, état…). Ordre : compteur par adresse IP (validé) → garde → compteur
+  par point (validé) → garde rejouée → verrou consultatif du POINT → réglages QR du site en
+  partage → plafonds du site → nom / téléphone → idempotence → plafond des commandes en attente
+  → création → lien de suivi.
+- **Idempotence (Q12)** : clé unique PAR POINT (`UNIQUE (tenant_id, point_id, client_key)`),
+  clé du moteur dérivée (`uuid5` du point et de la clé : jamais égale à une clé du personnel) ;
+  même clé + même requête (empreinte SHA-256 du contenu) dans les 15 minutes : aucune nouvelle
+  commande (`200`, `replayed`), **nouveau secret de suivi** (l'ancien lien cesse de fonctionner :
+  le secret n'étant jamais conservé, il ne peut être renvoyé) ; même clé + autre contenu :
+  `409 qr_order_key_reused` ; au-delà de 15 minutes : `409 qr_order_already_sent`. Une clé
+  connue ne suffit pas : il faut aussi le jeton du point et le contenu exact.
+- **Plafonds (Q4)** : réglages QR par site (`restaurant_qr_site_settings`, créés à l'activation
+  du module par `site_setup`, conservés par une désactivation) : 30 lignes, 20 unités par ligne,
+  3 commandes en attente par point au départ ; plafonds de la plateforme 100 / 99 / 20 dans le
+  schéma ET en base (`CHECK`). « En attente » = à confirmer, ou ouverte sans responsable et non
+  commencée (acceptation automatique). Compté sous le verrou du point : soumissions simultanées
+  sans dépassement. Réglages : `GET/PUT /restaurant/qr/settings` (`point.view` /
+  `settings.manage` sur CE site), verrou exclusif, audit avant / après
+  (`restaurant_qr_settings.updated`).
+- **Données personnelles (Q7)** : nom (`call_name`, 40) et téléphone (`contact_phone`, 30)
+  selon le réglage du site (non demandé / facultatif / obligatoire ; défaut : nom facultatif,
+  téléphone non demandé) ; une information NON demandée n'est jamais conservée ; téléphone
+  normalisé (séparateurs retirés, aucun indicatif ajouté, 6 à 15 chiffres) ; aucun compte.
+- **Refus assainis** : élément non commandable ou inconnu → `422 qr_order_item_unavailable`
+  avec les seuls identifiants (aucun motif interne) ; tout autre refus du moteur → `404
+  qr_unavailable` ; plafonds : `qr_order_too_many_lines`, `qr_order_quantity_too_large`,
+  `qr_order_pending_limit` ; informations : `qr_order_name_required`,
+  `qr_order_phone_required`, `qr_order_phone_invalid` ; limitation : `429 rate_limited`
+  (`SM_QR_ORDER_IP_LIMIT`, `SM_QR_ORDER_POINT_LIMIT` par `SM_QR_ORDER_WINDOW_MINUTES`).
+- **Effacement des téléphones (Q13)** : 30 jours après la fin (close, annulée, refusée) par la
+  tâche quotidienne EXISTANTE `stockmanager notifications purge` (rôle `stockmanager_purge`) :
+  lecture limitée aux colonnes utiles des commandes finies depuis plus de 30 jours, mise à jour
+  de `contact_phone` seule et vers `NULL` seulement (`WITH CHECK`) ; le déclencheur des états
+  finaux n'admet que cet effacement sur une commande finie. Durée figée dans 0057 (comme 0045).
+  Code de sortie non nul en cas d'échec : à superviser (minuterie systemd `OnFailure=` ou alerte
+  du cron) — planification et supervision à mettre en place par l'exploitation (voir le guide
+  de mise à jour).
+- **Migration 0057** : `restaurant_qr_site_settings`, `restaurant_qr_orders` (FK composites,
+  `request_hash` et `tracking_hash` au format SHA-256, `tracking_hash` unique, politique
+  `qr_tracking_lookup`), `restaurant_orders.contact_phone`, droits par colonne, politiques du
+  rôle de purge, déclencheur des états finaux remplacé (version de 0042 restaurée à la
+  descente) ; descente refusée dès qu'un réglage, une commande QR ou un téléphone existe.
+- **Tests** : `tests/test_restaurant_qr_orders.py` (16 : moteur unique et acteur public, table
+  et acceptation automatique, champs de décision refusés, quantités et clés invalides, refus
+  sans motif interne, plafonds du site et de la plateforme, permissions des réglages,
+  minimisation nom / téléphone, idempotence et renouvellement du secret, clé limitée au point,
+  délai de rejeu, 5 soumissions identiques simultanées → 1 commande, plafond en attente sous
+  concurrence (6 soumissions, plafond 2 → 2 créées), limitation par IP et par point, refus
+  identiques au menu, effacement à 30 jours seulement et idempotent, droits du rôle de purge,
+  immutabilité des commandes finies, droits SQL, descente refusée puis restauration du
+  déclencheur).

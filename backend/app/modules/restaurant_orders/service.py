@@ -115,13 +115,13 @@ from app.modules.sales.api import (
     sale_financial_states,
 )
 from app.platform.access.models import MembershipStatus, TenantMembership
-from app.platform.audit.service import audit_action
+from app.platform.audit.service import RequestMeta, audit_action, record_audit
 from app.platform.capabilities.service import CapabilityService, SubscriptionMissingError
-from app.platform.context import RequestContext
+from app.platform.context import RequestContext, TenantScope
 from app.platform.identity.models import User
 from app.platform.registry import ModuleStatus, get_registry
 from app.platform.tenancy.identity import document_identity
-from app.platform.tenancy.models import Site
+from app.platform.tenancy.models import Site, Tenant
 from app.platform.tenancy.site_modules import lock_site_key_share
 from app.shared.ids import new_id
 from app.shared.pagination import PageParams, apply_sort, escape_like, paginate
@@ -215,6 +215,13 @@ class OrderService:
         self.db = db
         self.ctx = ctx
         self.now = now
+        # Portée et acteur (R7) : un membre ici ; l'accès public par QR Code
+        # (``PublicOrderService``) n'a ni membre ni utilisateur.
+        self.tenant: Tenant = ctx.tenant
+        self.scope: TenantScope = ctx
+        self.actor_kind = ActorKind.STAFF
+        self.actor_user_id: uuid.UUID | None = ctx.user.id
+        self.meta: RequestMeta = ctx.meta
         # Modules effectifs recalculés après le verrou du site (``_fresh_site_modules``).
         self._fresh_modules: tuple[uuid.UUID, frozenset[str]] | None = None
         # Évènements d'une même requête : même horodatage ; identifiants croissants pour que
@@ -237,24 +244,25 @@ class OrderService:
         toute reconfiguration validée avant ; aucune ne peut l'être pendant (R-2). Un module
         planifié n'est jamais effectif, même avec une activation inerte (E.1)."""
         if self._fresh_modules is None or self._fresh_modules[0] != site_id:
-            registry = get_registry()
-            try:
-                capabilities = CapabilityService(self.db, registry).resolve(
-                    tenant=self.ctx.tenant,
-                    membership=self.ctx.membership,
-                    site_id=site_id,
-                    now=self.now,
-                )
-            except SubscriptionMissingError:
-                modules: frozenset[str] = frozenset()
-            else:
-                modules = frozenset(
-                    code
-                    for code in capabilities.modules
-                    if code in registry and registry.get(code).status is ModuleStatus.AVAILABLE
-                )
-            self._fresh_modules = (site_id, modules)
+            self._fresh_modules = (site_id, self._compute_site_modules(site_id))
         return self._fresh_modules[1]
+
+    def _compute_site_modules(self, site_id: uuid.UUID) -> frozenset[str]:
+        registry = get_registry()
+        try:
+            capabilities = CapabilityService(self.db, registry).resolve(
+                tenant=self.tenant,
+                membership=self.ctx.membership,
+                site_id=site_id,
+                now=self.now,
+            )
+        except SubscriptionMissingError:
+            return frozenset()
+        return frozenset(
+            code
+            for code in capabilities.modules
+            if code in registry and registry.get(code).status is ModuleStatus.AVAILABLE
+        )
 
     def _ensure_orders_still_effective(self, site_id: uuid.UUID) -> None:
         """La création a pu attendre une reconfiguration du site (désactivation des commandes,
@@ -278,7 +286,7 @@ class OrderService:
                 "Une table ne s'associe qu'à une commande sur place",
                 code="table_not_allowed_for_mode",
             )
-        directory = table_directory(self.db, self.ctx)
+        directory = table_directory(self.db, self.scope)
         if directory is None or not self._tables_effective_now(site_id):
             raise BusinessRuleError(
                 "Les tables ne sont pas disponibles sur ce site", code="tables_unavailable"
@@ -297,10 +305,12 @@ class OrderService:
         }
 
     def _audit(self, action: str, order: RestaurantOrder, data: dict[str, Any]) -> None:
-        audit_action(
+        record_audit(
             self.db,
-            self.ctx,
-            f"restaurant_order.{action}",
+            action=f"restaurant_order.{action}",
+            tenant_id=self.tenant.id,
+            user_id=self.actor_user_id,
+            meta=self.meta,
             entity_type="restaurant_order",
             entity_id=order.id,
             site_id=order.site_id,
@@ -328,12 +338,12 @@ class OrderService:
         self.db.add(
             RestaurantOrderEvent(
                 id=event_id,
-                tenant_id=self.ctx.tenant_id,
+                tenant_id=self.tenant.id,
                 order_id=order.id,
                 site_id=order.site_id,
                 event_type=event_type,
-                actor_kind=ActorKind.STAFF,
-                actor_user_id=self.ctx.user.id,
+                actor_kind=self.actor_kind,
+                actor_user_id=self.actor_user_id,
                 reason=reason,
                 line_ids=[str(line.id) for line in lines],
                 data=data or {},
@@ -346,7 +356,7 @@ class OrderService:
     def _lock_order(self, order_id: uuid.UUID, *, write: bool = True) -> RestaurantOrder:
         order = self.db.scalars(
             select(RestaurantOrder)
-            .where(RestaurantOrder.tenant_id == self.ctx.tenant_id, RestaurantOrder.id == order_id)
+            .where(RestaurantOrder.tenant_id == self.tenant.id, RestaurantOrder.id == order_id)
             .with_for_update()
             .execution_options(populate_existing=True)
         ).one_or_none()
@@ -360,7 +370,7 @@ class OrderService:
             self.db.scalars(
                 select(RestaurantOrderLine)
                 .where(
-                    RestaurantOrderLine.tenant_id == self.ctx.tenant_id,
+                    RestaurantOrderLine.tenant_id == self.tenant.id,
                     RestaurantOrderLine.order_id == order.id,
                 )
                 .order_by(RestaurantOrderLine.line_no)
@@ -408,7 +418,7 @@ class OrderService:
     def get_settings(self, site_id: uuid.UUID) -> Any:
         if site_id not in readable_site_ids(self.ctx, site_id):
             raise NotFoundError("Site introuvable", code="site_not_found")
-        return ensure_settings(self.db, self.ctx.tenant_id, site_id, self._profile(site_id))
+        return ensure_settings(self.db, self.tenant.id, site_id, self._profile(site_id))
 
     def update_settings(self, site_id: uuid.UUID, data: SettingsUpdate) -> Any:
         if site_id not in self.ctx.capabilities.accessible_site_ids:
@@ -416,20 +426,24 @@ class OrderService:
         self.ctx.ensure_site_allows(site_id)
         require_site_permission(self.ctx, site_id, SETTINGS_MANAGE)
         settings = ensure_settings(
-            self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="update"
+            self.db, self.tenant.id, site_id, self._profile(site_id), lock="update"
         )
         before = {
             "payment_timing": settings.payment_timing.value,
             "claim_protection_minutes": settings.claim_protection_minutes,
             "claim_cooldown_minutes": settings.claim_cooldown_minutes,
+            "qr_auto_accept": settings.qr_auto_accept,
         }
         settings.payment_timing = data.payment_timing
         settings.claim_protection_minutes = data.claim_protection_minutes
         settings.claim_cooldown_minutes = data.claim_cooldown_minutes
+        if data.qr_auto_accept is not None:
+            settings.qr_auto_accept = data.qr_auto_accept
         after = {
             "payment_timing": data.payment_timing.value,
             "claim_protection_minutes": data.claim_protection_minutes,
             "claim_cooldown_minutes": data.claim_cooldown_minutes,
+            "qr_auto_accept": settings.qr_auto_accept,
         }
         self.db.flush()
         if before != after:
@@ -450,7 +464,7 @@ class OrderService:
         """Contrôles du serveur : élément du menu de CE site et commandable maintenant (élément
         et section actifs, non épuisé, article actif dans l'assortiment actif, conditionnement
         actif avec un prix) ; quantités entières si l'article l'exige ; prix du catalogue FIGÉ."""
-        items = menu_items_of_site(self.db, self.ctx, site_id, {i.menu_item_id for i in inputs})
+        items = menu_items_of_site(self.db, self.scope, site_id, {i.menu_item_id for i in inputs})
         missing = sorted({str(i.menu_item_id) for i in inputs if i.menu_item_id not in items})
         if missing:
             raise NotFoundError(
@@ -513,7 +527,7 @@ class OrderService:
         section ; sinon « Sans poste ». Les postes retenus sont pris en partage."""
         if KITCHEN_MODULE not in self._fresh_site_modules(site_id):
             return {}
-        router = station_router(self.db, self.ctx)
+        router = station_router(self.db, self.scope)
         if router is None:
             return {}
         return router.route(site_id, {p.menu_item_id: p.section_id for p in prepared})
@@ -531,7 +545,7 @@ class OrderService:
         return {"stations": routed} if routed else {}
 
     def _station_names(self, station_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
-        router = station_router(self.db, self.ctx) if station_ids else None
+        router = station_router(self.db, self.scope) if station_ids else None
         if router is None:
             return {}
         return {sid: ref.name for sid, ref in router.names(station_ids).items()}
@@ -546,7 +560,7 @@ class OrderService:
         routes = stations or {}
         created = [
             RestaurantOrderLine(
-                tenant_id=self.ctx.tenant_id,
+                tenant_id=self.tenant.id,
                 order_id=order.id,
                 site_id=order.site_id,
                 line_no=start + index,
@@ -595,22 +609,41 @@ class OrderService:
         site_id = operation_site(self.ctx, data.site_id)
         require_site_permission(self.ctx, site_id, ORDER_CREATE)
         # Deux soumissions simultanées de la même clé s'exécutent l'une après l'autre.
+        existing = self._existing(site_id, data.idempotency_key)
+        if existing is not None:
+            return existing, True
+        return self._insert(site_id, data, channel, OrderStatus.OPEN), False
+
+    def _existing(self, site_id: uuid.UUID, idempotency_key: uuid.UUID) -> RestaurantOrder | None:
+        """Commande déjà créée sur le site avec cette clé, après le verrou consultatif de la clé
+        (deux soumissions simultanées s'exécutent l'une après l'autre)."""
         self.db.execute(
             select(
                 func.pg_advisory_xact_lock(
-                    func.hashtextextended(f"restaurant.order:{site_id}:{data.idempotency_key}", 0)
+                    func.hashtextextended(f"restaurant.order:{site_id}:{idempotency_key}", 0)
                 )
             )
         )
-        existing = self.db.scalars(
+        return self.db.scalars(
             select(RestaurantOrder).where(
-                RestaurantOrder.tenant_id == self.ctx.tenant_id,
+                RestaurantOrder.tenant_id == self.tenant.id,
                 RestaurantOrder.site_id == site_id,
-                RestaurantOrder.idempotency_key == data.idempotency_key,
+                RestaurantOrder.idempotency_key == idempotency_key,
             )
         ).one_or_none()
-        if existing is not None:
-            return existing, True
+
+    def _insert(
+        self,
+        site_id: uuid.UUID,
+        data: OrderCreate,
+        channel: OrderChannel,
+        status: OrderStatus | None,
+        *,
+        contact_phone: str | None = None,
+        created_data: dict[str, Any] | None = None,
+    ) -> RestaurantOrder:
+        """Cœur UNIQUE de la création (personnel, POS, QR Code) : verrous, effectivité, réglages,
+        table, client, lignes (prix figés), routage, numéro du jour, évènement, audit."""
         # R-2 (AR-1) : le site en partage de clé AVANT les réglages, pour TOUTE création (avec
         # ou sans table). Une reconfiguration (désactivation d'un module, changement de profil)
         # prend le site en exclusif puis les réglages : sans ce verrou anticipé, l'insertion de
@@ -620,40 +653,48 @@ class OrderService:
         # la création attendait l'interdit (R-2, correction complémentaire de B-1).
         self._ensure_orders_still_effective(site_id)
         settings = ensure_settings(
-            self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="share"
+            self.db, self.tenant.id, site_id, self._profile(site_id), lock="share"
         )
         table = (
             self._table_for_order(site_id, data.table_id, data.service_mode)
             if data.table_id is not None
             else None
         )
+        auto_accepted = False
+        if status is None:
+            # Canal QR (R7) : « à confirmer », sauf acceptation automatique du site (lue sous
+            # le verrou partagé des réglages ; recopiée par l'évènement de création).
+            auto_accepted = settings.qr_auto_accept
+            status = OrderStatus.OPEN if auto_accepted else OrderStatus.PENDING_CONFIRMATION
+            created_data = {**(created_data or {}), "auto_accepted": auto_accepted}
         customer_name = self._customer(site_id, data.customer_id)
         prepared = self._prepare_lines(site_id, data.lines)
         stations = self._route(site_id, prepared)
-        day = business_date(self.ctx.tenant.timezone, self.now)
+        day = business_date(self.tenant.timezone, self.now)
         order = RestaurantOrder(
-            tenant_id=self.ctx.tenant_id,
+            tenant_id=self.tenant.id,
             site_id=site_id,
             business_date=day,
-            daily_number=next_order_number(self.db, self.ctx.tenant_id, site_id, day),
+            daily_number=next_order_number(self.db, self.tenant.id, site_id, day),
             channel=channel,
             service_mode=data.service_mode,
             customer_id=data.customer_id,
             table_id=table.id if table is not None else None,
             call_name=data.call_name,
-            status=OrderStatus.OPEN,
+            status=status,
             prep_status=PrepStatus.RECEIVED,
             settlement_status=SettlementStatus.UNSETTLED,
             # Recopié : changer le réglage du site ne touche aucune commande existante (D2).
             payment_timing=settings.payment_timing,
             idempotency_key=data.idempotency_key,
-            created_by=self.ctx.user.id,
+            created_by=self.actor_user_id,
+            contact_phone=contact_phone,
             version=1,
         )
         self.db.add(order)
         self.db.flush()
         lines = self._add_lines(order, prepared, 1, stations)
-        created: dict[str, Any] = {"channel": channel.value}
+        created: dict[str, Any] = {"channel": channel.value, **(created_data or {})}
         if table is not None:
             created |= self._table_data(table)
         created |= self._routing_data(lines, stations)
@@ -671,7 +712,7 @@ class OrderService:
                 "lines": self._lines_audit(lines),
             },
         )
-        return order, False
+        return order
 
     def _customer(self, site_id: uuid.UUID, customer_id: uuid.UUID | None) -> str | None:
         """Client facultatif, seulement si le module Clients est effectif sur le site (capacité
@@ -696,13 +737,13 @@ class OrderService:
         # commande puis prend le site en partage de clé (règlement, avis « prête ») fermaient un
         # cycle avec cet ajout (réglages tenus, commande attendue).
         lock_site_key_share(self.db, site_id)
-        ensure_settings(self.db, self.ctx.tenant_id, site_id, settings_profile, lock="share")
+        ensure_settings(self.db, self.tenant.id, site_id, settings_profile, lock="share")
         order = self._lock_order(order_id)
         require_site_permission(self.ctx, order.site_id, ORDER_CREATE)
         if data.idempotency_key is not None:
             replay = self.db.scalar(
                 select(RestaurantOrderEvent.id).where(
-                    RestaurantOrderEvent.tenant_id == self.ctx.tenant_id,
+                    RestaurantOrderEvent.tenant_id == self.tenant.id,
                     RestaurantOrderEvent.order_id == order.id,
                     RestaurantOrderEvent.idempotency_key == data.idempotency_key,
                 )
@@ -732,7 +773,7 @@ class OrderService:
     def _site_of(self, order_id: uuid.UUID) -> uuid.UUID:
         site_id = self.db.scalar(
             select(RestaurantOrder.site_id).where(
-                RestaurantOrder.tenant_id == self.ctx.tenant_id, RestaurantOrder.id == order_id
+                RestaurantOrder.tenant_id == self.tenant.id, RestaurantOrder.id == order_id
             )
         )
         if site_id is None:
@@ -1027,7 +1068,7 @@ class OrderService:
         réattribution ne comptent."""
         return self.db.scalar(
             select(func.max(RestaurantOrderEvent.occurred_at)).where(
-                RestaurantOrderEvent.tenant_id == self.ctx.tenant_id,
+                RestaurantOrderEvent.tenant_id == self.tenant.id,
                 RestaurantOrderEvent.site_id == site_id,
                 RestaurantOrderEvent.actor_user_id == self.ctx.user.id,
                 RestaurantOrderEvent.event_type == EventType.CLAIMED,
@@ -1061,7 +1102,7 @@ class OrderService:
         # ``add_lines`` avec une reconfiguration et un règlement concurrents.
         lock_site_key_share(self.db, site_id)
         settings = ensure_settings(
-            self.db, self.ctx.tenant_id, site_id, self._profile(site_id), lock="share"
+            self.db, self.tenant.id, site_id, self._profile(site_id), lock="share"
         )
         order = self._lock_order(order_id)
         self._require_open(order)
@@ -1171,7 +1212,7 @@ class OrderService:
             select(TenantMembership.user_id, User.full_name)
             .join(User, User.id == TenantMembership.user_id)
             .where(
-                TenantMembership.tenant_id == self.ctx.tenant_id,
+                TenantMembership.tenant_id == self.tenant.id,
                 TenantMembership.status == MembershipStatus.ACTIVE,
             )
             .order_by(User.full_name, User.id)
@@ -1293,7 +1334,7 @@ class OrderService:
             # ``table_only_on_site`` le garantit aussi en base.
             mode = self.db.scalar(
                 select(RestaurantOrder.service_mode).where(
-                    RestaurantOrder.tenant_id == self.ctx.tenant_id,
+                    RestaurantOrder.tenant_id == self.tenant.id,
                     RestaurantOrder.id == order_id,
                 )
             )
@@ -1305,7 +1346,7 @@ class OrderService:
         previous = order.table_id
         if previous == table_id:
             return order
-        directory = table_directory(self.db, self.ctx)
+        directory = table_directory(self.db, self.scope)
         previous_ref = (
             directory.labels([previous]).get(previous)
             if previous is not None and directory is not None
@@ -1441,7 +1482,7 @@ class OrderService:
         exigée : l'annulation de la vente relève des permissions des ventes."""
         order = self.db.scalars(
             select(RestaurantOrder)
-            .where(RestaurantOrder.tenant_id == self.ctx.tenant_id, RestaurantOrder.id == origin_id)
+            .where(RestaurantOrder.tenant_id == self.tenant.id, RestaurantOrder.id == origin_id)
             .with_for_update()
             .execution_options(populate_existing=True)
         ).one_or_none()
@@ -1467,7 +1508,7 @@ class OrderService:
 
     def _query(self, site_ids: set[uuid.UUID]) -> Select[Any]:
         return select(RestaurantOrder).where(
-            RestaurantOrder.tenant_id == self.ctx.tenant_id,
+            RestaurantOrder.tenant_id == self.tenant.id,
             RestaurantOrder.site_id.in_(site_ids),
         )
 
@@ -1531,7 +1572,7 @@ class OrderService:
     def get(self, order_id: uuid.UUID) -> RestaurantOrder:
         order = self.db.scalars(
             select(RestaurantOrder).where(
-                RestaurantOrder.tenant_id == self.ctx.tenant_id, RestaurantOrder.id == order_id
+                RestaurantOrder.tenant_id == self.tenant.id, RestaurantOrder.id == order_id
             )
         ).one_or_none()
         if order is None:
@@ -1546,7 +1587,7 @@ class OrderService:
         for line in self.db.scalars(
             select(RestaurantOrderLine)
             .where(
-                RestaurantOrderLine.tenant_id == self.ctx.tenant_id,
+                RestaurantOrderLine.tenant_id == self.tenant.id,
                 RestaurantOrderLine.order_id.in_(order_ids),
             )
             .order_by(RestaurantOrderLine.order_id, RestaurantOrderLine.line_no)
@@ -1576,7 +1617,7 @@ class OrderService:
             self.db, {o.sale_id for o in orders if o.sale_id is not None}
         )
         table_ids = {o.table_id for o in orders if o.table_id is not None}
-        directory = table_directory(self.db, self.ctx) if table_ids else None
+        directory = table_directory(self.db, self.scope) if table_ids else None
         tables = directory.labels(table_ids) if directory is not None else {}
         stations = (
             self._station_names(
@@ -1605,6 +1646,7 @@ class OrderService:
                     customer_id=order.customer_id,
                     customer_name=customer.name if customer is not None else None,
                     call_name=order.call_name,
+                    contact_phone=order.contact_phone,
                     table_id=order.table_id,
                     table=OrderTableOut(
                         id=table.id,
@@ -1674,7 +1716,7 @@ class OrderService:
             select(RestaurantOrderEvent, User.full_name)
             .outerjoin(User, User.id == RestaurantOrderEvent.actor_user_id)
             .where(
-                RestaurantOrderEvent.tenant_id == self.ctx.tenant_id,
+                RestaurantOrderEvent.tenant_id == self.tenant.id,
                 RestaurantOrderEvent.order_id == order.id,
             )
             .order_by(RestaurantOrderEvent.occurred_at, RestaurantOrderEvent.id)
@@ -1700,7 +1742,7 @@ class OrderService:
         non journalisée en V1."""
         order = self.get(order_id)
         site = self.db.get(Site, order.site_id)
-        identity = document_identity(self.db, self.ctx.tenant)
+        identity = document_identity(self.db, self.tenant)
         lines = self._lines_of({order.id})[order.id]
         return TicketOut(
             company_name=identity.trade_name or identity.name,
@@ -1710,7 +1752,7 @@ class OrderService:
             call_name=order.call_name,
             service_mode=order.service_mode,
             created_at=order.created_at,
-            timezone=self.ctx.tenant.timezone,
+            timezone=self.tenant.timezone,
             lines=[
                 TicketLineOut(
                     label=line.label,

@@ -40,7 +40,7 @@ class SettingsOut(BaseModel):
     payment_timing: PaymentTiming
     claim_protection_minutes: int
     claim_cooldown_minutes: int
-    # Sans effet avant le palier R7 (QR) ; non modifiable ici.
+    # Commandes QR (R7) : ouvertes directement au lieu de « à confirmer » (défaut : non).
     qr_auto_accept: bool
     updated_at: datetime
 
@@ -53,6 +53,8 @@ class SettingsUpdate(BaseModel):
     claim_protection_minutes: Minutes = 5
     # Délai entre deux prises d'un même employé : 5 ou 10 minutes seulement (défaut 5).
     claim_cooldown_minutes: Literal[5, 10] = 5
+    # Acceptation automatique des commandes QR (R7) ; omise : inchangée.
+    qr_auto_accept: bool | None = None
 
 
 # --- Saisie -------------------------------------------------------------------------------------
@@ -206,6 +208,9 @@ class OrderOut(BaseModel):
     customer_id: uuid.UUID | None
     customer_name: str | None
     call_name: str | None
+    # Téléphone laissé par le client d'une commande QR (R7), effacé après la durée de
+    # conservation (``None`` ensuite).
+    contact_phone: str | None = None
     # Table « sur place » (R5-B) : lue par le port des tables, même si le module n'est plus
     # effectif (une commande garde sa table jusqu'à son retrait, B4).
     table_id: uuid.UUID | None = None

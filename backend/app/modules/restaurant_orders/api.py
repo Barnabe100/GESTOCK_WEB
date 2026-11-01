@@ -29,7 +29,7 @@ from app.modules.restaurant_orders.models import (
     SettlementStatus,
 )
 from app.modules.restaurant_orders.permissions import ORDER_PREPARE, ORDER_VIEW
-from app.modules.restaurant_orders.schemas import OrderOut
+from app.modules.restaurant_orders.schemas import LineInput, OrderOut
 from app.modules.restaurant_orders.station_port import (
     StationRef,
     StationRouter,
@@ -41,12 +41,17 @@ from app.modules.restaurant_orders.table_port import (
     register_table_directory,
     table_directory,
 )
-from app.platform.context import RequestContext
+from app.platform.context import PublicScope, RequestContext
 from app.platform.footprint import capped_count
 from app.platform.identity.models import User
 
 __all__ = [
+    "LineInput",
     "ORDER_PREPARE",
+    "PublicOrderRef",
+    "awaiting_staff_count",
+    "create_public_order",
+    "order_ref",
     "ORDER_VIEW",
     "PRIORITY_RANK",
     "KitchenLine",
@@ -313,3 +318,75 @@ def order_detail(db: Session, ctx: RequestContext, now: datetime, order_id: uuid
     """Commande telle que l'API des commandes la renvoie (lignes comprises)."""
     detail: OrderOut = _service(db, ctx, now).detail(order_id)
     return detail
+
+
+# --- Commandes publiques par QR Code (palier R7, ADR-0052) --------------------------------------
+
+
+@dataclass(frozen=True)
+class PublicOrderRef:
+    id: uuid.UUID
+    daily_number: int
+    status: str
+    replayed: bool
+
+
+def create_public_order(
+    db: Session,
+    scope: PublicScope,
+    now: datetime,
+    *,
+    point_id: uuid.UUID,
+    table_id: uuid.UUID | None,
+    call_name: str | None,
+    contact_phone: str | None,
+    lines: Sequence[LineInput],
+    idempotency_key: uuid.UUID,
+) -> PublicOrderRef:
+    """Création publique (canal ``QR``) par le moteur UNIQUE des commandes ; le module QR a
+    vérifié le jeton, le point et son périmètre avant. Ne valide pas la transaction."""
+    from app.modules.restaurant_orders.public import PublicOrderService
+
+    order, replayed = PublicOrderService(db, scope, now).create_public(
+        point_id=point_id,
+        table_id=table_id,
+        call_name=call_name,
+        contact_phone=contact_phone,
+        lines=lines,
+        idempotency_key=idempotency_key,
+    )
+    return PublicOrderRef(
+        id=order.id, daily_number=order.daily_number, status=order.status.value, replayed=replayed
+    )
+
+
+def order_ref(db: Session, order_id: uuid.UUID) -> PublicOrderRef:
+    """Numéro et état d'une commande existante (soumission publique rejouée)."""
+    order = db.get(RestaurantOrder, order_id)
+    if order is None:
+        raise LookupError("commande introuvable")
+    return PublicOrderRef(
+        id=order.id, daily_number=order.daily_number, status=order.status.value, replayed=True
+    )
+
+
+def awaiting_staff_count(db: Session, order_ids: Select[Any]) -> int:
+    """Commandes parmi ``order_ids`` qui attendent encore le personnel : « à confirmer », ou
+    ouvertes, ni prises en charge ni commencées (acceptation automatique). Sert au plafond des
+    commandes en attente par point QR."""
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(RestaurantOrder)
+            .where(
+                RestaurantOrder.id.in_(order_ids),
+                (RestaurantOrder.status == OrderStatus.PENDING_CONFIRMATION)
+                | (
+                    (RestaurantOrder.status == OrderStatus.OPEN)
+                    & (RestaurantOrder.assigned_user_id.is_(None))
+                    & (RestaurantOrder.prep_status == PrepStatus.RECEIVED)
+                ),
+            )
+        )
+        or 0
+    )

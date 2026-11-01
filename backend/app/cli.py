@@ -23,6 +23,10 @@ from app.console.notifications import RenewalNoticeJob
 from app.core.config import Settings, get_settings
 from app.core.db import create_db_engine, create_session_factory, set_db_context
 from app.core.errors import AppError, NotFoundError
+from app.modules.restaurant_orders.contact_purge import (
+    CONTACT_RETENTION_DAYS,
+    erase_expired_contacts,
+)
 from app.platform.catalog.loader import CatalogError, load_catalog
 from app.platform.catalog.sync import sync_catalog
 from app.platform.member_notifications.models import RETENTION_DAYS
@@ -228,12 +232,23 @@ def cmd_notifications_run(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def cmd_notifications_purge(args: argparse.Namespace, settings: Settings) -> int:
-    """Purge des notifications des membres de plus de 30 jours (R4, ADR-0049 D8) : quotidien,
-    idempotent ; rôle SQL dédié ``stockmanager_purge`` (aucune autre donnée accessible)."""
+    """Tâche QUOTIDIENNE de conservation (cron / minuterie systemd), idempotente, rôle SQL dédié
+    ``stockmanager_purge`` (aucune autre donnée accessible) :
+
+    - notifications des membres de plus de 30 jours (R4, ADR-0049 D8) ;
+    - téléphones des clients des commandes QR finies depuis plus de 30 jours (R7, ADR-0052).
+
+    Code de sortie non nul en cas d'échec (supervision : ``OnFailure=`` de systemd ou alerte du
+    cron) ; chaque exécution affiche ses compteurs."""
     with _session(settings.purge_database_url, settings) as session:
         deleted = purge_expired(session)
+        erased = erase_expired_contacts(session)
         session.commit()
     print(f"Notifications des membres purgées (plus de {RETENTION_DAYS} jours) : {deleted}")
+    print(
+        "Téléphones de clients effacés (commandes finies depuis plus de "
+        f"{CONTACT_RETENTION_DAYS} jours) : {erased}"
+    )
     return 0
 
 
@@ -355,7 +370,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--now", help="Instant de référence ISO 8601 (tests, rattrapage)")
     run.set_defaults(func=cmd_notifications_run)
     purge = notifications_sub.add_parser(
-        "purge", help="Purge des notifications des membres de plus de 30 jours (quotidien)"
+        "purge",
+        help="Conservation (quotidien) : notifications des membres et téléphones des clients "
+        "de plus de 30 jours",
     )
     purge.set_defaults(func=cmd_notifications_purge)
     return parser

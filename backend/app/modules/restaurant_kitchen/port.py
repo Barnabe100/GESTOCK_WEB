@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.restaurant_kitchen.models import PrepStation, StationRoute
 from app.modules.restaurant_orders.api import StationRef
-from app.platform.context import RequestContext
+from app.platform.context import TenantScope
 
 
 def _ref(station: PrepStation) -> StationRef:
@@ -24,7 +24,7 @@ def _ref(station: PrepStation) -> StationRef:
 
 
 class StationRouterService:
-    def __init__(self, db: Session, ctx: RequestContext) -> None:
+    def __init__(self, db: Session, ctx: TenantScope) -> None:
         self.db = db
         self.ctx = ctx
 

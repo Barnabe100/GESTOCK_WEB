@@ -442,6 +442,9 @@ def test_migration_0056_downgrade_refuses_to_lose_points(
     at_head: None,  # noqa: F811
 ) -> None:
     _table_point(resto, resto.t1)
+    # Réglages QR créés à l'activation (0057, descendue d'abord) : retirés pour atteindre 0056.
+    owner_db.execute(text("DELETE FROM restaurant_qr_site_settings"))
+    owner_db.commit()
     owner_db.close()
     owner_engine.dispose()
     with pytest.raises(RuntimeError, match="point"):

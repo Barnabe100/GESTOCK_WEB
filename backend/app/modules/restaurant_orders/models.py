@@ -278,6 +278,10 @@ class RestaurantOrder(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     table_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     call_name: Mapped[str | None] = mapped_column(String(40))
+    # Téléphone laissé par le client d'une commande QR (R7), si le site le demande : visible du
+    # personnel qui voit la commande ; effacé N jours après la fin de la commande (tâche
+    # quotidienne, minimisation des données).
+    contact_phone: Mapped[str | None] = mapped_column(String(30))
     status: Mapped[OrderStatus] = mapped_column(
         str_enum(OrderStatus, "restaurant_order_status"), nullable=False
     )

@@ -161,9 +161,9 @@ class Settings(BaseSettings):
     qr_read_ip_limit: int = 120
     qr_read_window_minutes: int = 1
     # Lien de suivi d'une commande QR : durée de validité après sa fin (clôture, annulation,
-    # refus) ; téléphone du client effacé N jours après la fin (tâche quotidienne).
+    # refus). Le téléphone du client est effacé 30 jours après la fin (durée figée dans la
+    # migration 0057, comme la purge des notifications : ``stockmanager notifications purge``).
     qr_tracking_hours_after_end: int = 12
-    qr_contact_retention_days: int = 30
 
     @property
     def public_base_url(self) -> str | None:
@@ -213,7 +213,6 @@ class Settings(BaseSettings):
             self.qr_read_ip_limit,
             self.qr_read_window_minutes,
             self.qr_tracking_hours_after_end,
-            self.qr_contact_retention_days,
         )
         if any(value < 1 for value in limits):
             raise ValueError("Réglages SM_QR_* : entiers strictement positifs attendus")

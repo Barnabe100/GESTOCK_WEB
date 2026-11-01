@@ -92,7 +92,14 @@ def test_public_menu_shows_only_what_the_customer_needs(resto: SimpleNamespace) 
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-robots-tag"] == "noindex, nofollow"
-    assert set(menu) == {"establishment", "site_name", "point", "currency", "sections"}
+    assert set(menu) == {"establishment", "site_name", "point", "currency", "sections", "ordering"}
+    # Règles de saisie du site (valeurs initiales), rien d'autre.
+    assert menu["ordering"] == {
+        "max_lines": 30,
+        "max_quantity_per_line": 20,
+        "customer_name_mode": "OPTIONAL",
+        "customer_phone_mode": "HIDDEN",
+    }
     assert menu["point"] == {"kind": "TABLE", "label": "T1"}
     assert menu["establishment"] == "Entreprise rqp-main" and menu["currency"] == "XOF"
     [section] = menu["sections"]

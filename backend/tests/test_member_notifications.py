@@ -751,8 +751,13 @@ def test_purge_role_has_minimal_rights(
         "(:i, :i, :i, :i, 'x', 'x', :i, 'x', :i, '{}')",
         i=uuid.uuid4(),
     )
-    for table in ("tenants", "users", "restaurant_orders", "notifications", "sales"):
+    for table in ("tenants", "users", "notifications", "sales"):
         refused(f"SELECT count(*) FROM {table}")
+    # Commandes (R7, migration 0057) : seulement les colonnes utiles à l'effacement des
+    # téléphones des commandes finies depuis plus de 30 jours ; aucune autre colonne.
+    refused("SELECT call_name FROM restaurant_orders")
+    refused("SELECT * FROM restaurant_orders")
+    refused("UPDATE restaurant_orders SET status = 'CLOSED'")
     assert {row.id for row in _rows(owner_engine)} >= {recent}
 
 

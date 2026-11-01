@@ -16,7 +16,7 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from app.platform.context import RequestContext
+from app.platform.context import TenantScope
 
 # Code du module qui fournit les postes (test de capacité, jamais le profil).
 KITCHEN_MODULE = "restaurant.kitchen"
@@ -47,7 +47,7 @@ class StationRouter(Protocol):
         ...
 
 
-StationRouterFactory = Callable[[Session, RequestContext], StationRouter]
+StationRouterFactory = Callable[[Session, TenantScope], StationRouter]
 _factory: StationRouterFactory | None = None
 
 
@@ -57,6 +57,6 @@ def register_station_router(factory: StationRouterFactory) -> None:
     _factory = factory
 
 
-def station_router(db: Session, ctx: RequestContext) -> StationRouter | None:
+def station_router(db: Session, ctx: TenantScope) -> StationRouter | None:
     """Routeur des postes, ou ``None`` si aucun module ne l'a enregistré."""
     return _factory(db, ctx) if _factory is not None else None

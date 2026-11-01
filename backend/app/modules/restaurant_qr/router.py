@@ -10,15 +10,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.modules.restaurant_qr.models import QrPointKind
-from app.modules.restaurant_qr.permissions import POINT_MANAGE, POINT_VIEW
+from app.modules.restaurant_qr.permissions import POINT_MANAGE, POINT_VIEW, SETTINGS_MANAGE
 from app.modules.restaurant_qr.schemas import (
     PointCreate,
     PointIssued,
     PointOut,
     PointRegenerate,
     PointUpdate,
+    QrSettingsOut,
+    QrSettingsUpdate,
 )
 from app.modules.restaurant_qr.service import QrPointService
+from app.modules.restaurant_qr.settings_service import QrSettingsService
 from app.platform.context import DbSession, RequestContext, SettingsDep, require_permission
 from app.shared.clock import utcnow
 from app.shared.pagination import PageParams, page_params
@@ -28,6 +31,7 @@ router = APIRouter(tags=["restaurant.qr"])
 
 PointView = Annotated[RequestContext, Depends(require_permission(POINT_VIEW))]
 PointManage = Annotated[RequestContext, Depends(require_permission(POINT_MANAGE))]
+SettingsManage = Annotated[RequestContext, Depends(require_permission(SETTINGS_MANAGE))]
 Paging = Annotated[PageParams, Depends(page_params)]
 StatusParam = Annotated[StatusFilter, Query(alias="status")]
 
@@ -119,3 +123,22 @@ def regenerate_point(
     db.commit()
     _no_store(response)
     return issued
+
+
+# --- Réglages QR du site ------------------------------------------------------------------------
+
+
+@router.get("/settings", response_model=QrSettingsOut)
+def get_qr_settings(
+    ctx: PointView, db: DbSession, site_id: uuid.UUID | None = None
+) -> QrSettingsOut:
+    out = QrSettingsService(db, ctx).get(site_id)
+    db.commit()  # réglages créés au premier usage s'ils manquaient
+    return out
+
+
+@router.put("/settings", response_model=QrSettingsOut)
+def update_qr_settings(body: QrSettingsUpdate, ctx: SettingsManage, db: DbSession) -> QrSettingsOut:
+    out = QrSettingsService(db, ctx).update(body)
+    db.commit()
+    return out

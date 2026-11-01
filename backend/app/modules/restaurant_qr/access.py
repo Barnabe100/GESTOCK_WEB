@@ -34,9 +34,9 @@ from app.modules.restaurant_orders.api import TableRef, table_directory
 from app.modules.restaurant_qr.models import QrPoint, QrPointKind
 from app.modules.restaurant_qr.tokens import secret_hash, well_formed
 from app.platform.audit.service import RequestMeta
-from app.platform.capabilities.service import CapabilityService, SubscriptionMissingError
+from app.platform.capabilities.service import CapabilityService
 from app.platform.context import PublicScope
-from app.platform.registry import AccessKind, ModuleRegistry, ModuleStatus
+from app.platform.registry import ModuleRegistry
 from app.platform.tenancy.models import Site, Tenant, TenantStatus
 
 logger = logging.getLogger(__name__)
@@ -73,25 +73,6 @@ def _refuse(reason: str, point_id: uuid.UUID | None = None) -> QrUnavailableErro
     return QrUnavailableError()
 
 
-def site_public_modules(
-    db: Session, registry: ModuleRegistry, tenant: Tenant, site_id: uuid.UUID, now: datetime
-) -> frozenset[str] | None:
-    """Modules effectifs et disponibles du site si son abonnement autorise l'écriture, sinon
-    ``None`` (abonnement absent, expiré, suspendu, en attente d'activation…)."""
-    try:
-        grants = CapabilityService(db, registry).grants(tenant, site_id, now)
-    except SubscriptionMissingError:
-        return None
-    grant = grants[0]
-    if AccessKind.WRITE.value not in grant.access:
-        return None
-    return frozenset(
-        code
-        for code in grant.modules
-        if code in registry and registry.get(code).status is ModuleStatus.AVAILABLE
-    )
-
-
 def resolve_access(
     db: Session,
     registry: ModuleRegistry,
@@ -116,7 +97,7 @@ def resolve_access(
         raise _refuse("site inactif", point.id)
     if not point.is_active:
         raise _refuse("point désactivé", point.id)
-    modules = site_public_modules(db, registry, tenant, site.id, now)
+    modules = CapabilityService(db, registry).public_site_modules(tenant, site.id, now)
     if modules is None:
         raise _refuse("abonnement du site sans droit d'écriture", point.id)
     if any(code not in modules for code in REQUIRED_MODULES):

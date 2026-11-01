@@ -39,7 +39,7 @@ from app.platform.access.models import Role, TenantMembership
 from app.platform.access.permissions import effective_role_permissions
 from app.platform.catalog.models import BusinessProfile, Plan
 from app.platform.licensing.service import subscription_terms
-from app.platform.registry import ModuleRegistry
+from app.platform.registry import AccessKind, ModuleRegistry, ModuleStatus
 from app.platform.subscriptions.models import Subscription, SubscriptionStatus
 from app.platform.subscriptions.plan_policy import PlanPolicy, PlanTerms
 from app.platform.subscriptions.service import (
@@ -292,6 +292,25 @@ class CapabilityService:
         if not subscriptions:
             raise SubscriptionMissingError("aucun abonnement")
         return [self.grant(s, self.subscription_profile(s, tenant), now) for s in subscriptions]
+
+    def public_site_modules(
+        self, tenant: Tenant, site_id: uuid.UUID, now: datetime
+    ) -> frozenset[str] | None:
+        """Accès PUBLIC à un site, sans membre (palier R7, ADR-0052) : modules effectifs et
+        DISPONIBLES du site si l'abonnement de CE site autorise l'écriture (même calcul que pour
+        un membre : licence en vigueur sinon plan, statut, politique d'accès), sinon ``None``.
+        N'accorde aucune permission : l'appelant contrôle son propre périmètre."""
+        try:
+            grant = self.grants(tenant, site_id, now)[0]
+        except SubscriptionMissingError:
+            return None
+        if AccessKind.WRITE.value not in grant.access:
+            return None
+        return frozenset(
+            code
+            for code in grant.modules
+            if code in self.registry and self.registry.get(code).status is ModuleStatus.AVAILABLE
+        )
 
     # --- Résolution complète --------------------------------------------------------------
 

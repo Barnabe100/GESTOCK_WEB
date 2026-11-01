@@ -1,10 +1,16 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.restaurant_qr.models import QrPointKind
+from app.modules.restaurant_qr.models import (
+    PLATFORM_MAX_LINES,
+    PLATFORM_MAX_PENDING,
+    PLATFORM_MAX_QUANTITY,
+    ContactFieldMode,
+    QrPointKind,
+)
 from app.shared.text import Required100
 
 
@@ -68,3 +74,32 @@ class PointRegenerate(BaseModel):
     """Confirmation explicite : les QR Codes imprimés de ce point deviennent invalides."""
 
     confirm_invalidation: Literal[True]
+
+
+# --- Réglages QR d'un site ----------------------------------------------------------------------
+
+
+class QrSettingsOut(BaseModel):
+    site_id: uuid.UUID
+    max_lines: int
+    max_quantity_per_line: int
+    max_pending_per_point: int
+    customer_name_mode: ContactFieldMode
+    customer_phone_mode: ContactFieldMode
+    # Plafonds de la plateforme (un réglage ne peut jamais les dépasser).
+    platform_max_lines: int = PLATFORM_MAX_LINES
+    platform_max_quantity_per_line: int = PLATFORM_MAX_QUANTITY
+    platform_max_pending_per_point: int = PLATFORM_MAX_PENDING
+    updated_at: datetime
+
+
+class QrSettingsUpdate(BaseModel):
+    """Validé par le serveur ; les plafonds de la plateforme sont aussi des contraintes en
+    base."""
+
+    site_id: uuid.UUID | None = None
+    max_lines: Annotated[int, Field(ge=1, le=PLATFORM_MAX_LINES)]
+    max_quantity_per_line: Annotated[int, Field(ge=1, le=PLATFORM_MAX_QUANTITY)]
+    max_pending_per_point: Annotated[int, Field(ge=1, le=PLATFORM_MAX_PENDING)]
+    customer_name_mode: ContactFieldMode
+    customer_phone_mode: ContactFieldMode
