@@ -93,6 +93,14 @@ class ReceiptPaymentOut(BaseModel):
     amount_received: Money | None
     change_given: Money | None
     paid_at: datetime
+    # R6.5-E : coordonnées de réception RÉELLEMENT utilisées, lues dans l'instantané du
+    # paiement (jamais dans la configuration courante).
+    currency: str | None = None
+    provider_label: str | None = None
+    account_identifier_type: str | None = None
+    account_label: str | None = None
+    account_value: str | None = None
+    account_holder: str | None = None
 
 
 class ReceiptOut(BaseModel):
@@ -163,6 +171,12 @@ def _receipt(db: Session, ctx: RequestContext, now: datetime, sale: Sale) -> Rec
                 amount_received=p.amount_received,
                 change_given=p.change_given,
                 paid_at=p.paid_at,
+                currency=p.currency,
+                provider_label=p.provider_label,
+                account_identifier_type=p.account_identifier_type,
+                account_label=p.account_label,
+                account_value=p.account_value,
+                account_holder=p.account_holder,
             )
             for p in rows
         ]

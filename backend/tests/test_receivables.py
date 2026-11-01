@@ -66,7 +66,16 @@ def _draft(
 
 
 def _validate(w: World, sale: dict[str, Any], *payments: tuple[str, str], api: Api | None = None):
-    body = {"payments": [{"amount": a, "method": m} for a, m in payments]} if payments else None
+    body = (
+        {
+            "payments": [
+                {"amount": a, "method": m, **({} if m == "CASH" else {"received_confirmed": True})}
+                for a, m in payments
+            ]
+        }
+        if payments
+        else None
+    )
     return (api or w.owner).post(f"/sales/{sale['id']}/validate", json=body)
 
 
@@ -80,8 +89,10 @@ def _sale(
 
 
 def _pay(w: World, sale: dict[str, Any], amount: str, method: str = "CASH") -> dict[str, Any]:
+    # R6.5-E : hors espèces, l'encaissement exige la confirmation manuelle de la réception.
+    confirmed = {} if method == "CASH" else {"received_confirmed": True}
     response = w.owner.post(
-        f"/sales/{sale['id']}/payments", json={"amount": amount, "method": method}
+        f"/sales/{sale['id']}/payments", json={"amount": amount, "method": method, **confirmed}
     )
     assert response.status_code == 201, response.text
     return dict(response.json())

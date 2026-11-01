@@ -49,7 +49,11 @@ def _body(
     return {
         "site_id": w.site,
         "lines": [{"article_id": w.articles[i], "quantity": q} for i, q in lines],
-        "payments": [{"amount": a, "method": m} for a, m in payments],
+        # R6.5-E : hors espèces, confirmation manuelle de la réception des fonds.
+        "payments": [
+            {"amount": a, "method": m, **({} if m == "CASH" else {"received_confirmed": True})}
+            for a, m in payments
+        ],
         "idempotency_key": key or str(uuid.uuid4()),
         "customer_id": extra.pop("customer_id")
         if "customer_id" in extra

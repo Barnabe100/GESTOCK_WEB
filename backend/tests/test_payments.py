@@ -59,8 +59,11 @@ def _sale(
 
 
 def _pay(api: Api, sale: dict[str, Any], amount: str, method: str = "CASH", **extra: Any) -> Any:
+    # R6.5-E : hors espèces, l'encaissement exige la confirmation manuelle de la réception.
+    confirmed = {} if method == "CASH" else {"received_confirmed": True}
     return api.post(
-        f"/sales/{sale['id']}/payments", json={"amount": amount, "method": method, **extra}
+        f"/sales/{sale['id']}/payments",
+        json={"amount": amount, "method": method, **confirmed, **extra},
     )
 
 
@@ -361,7 +364,12 @@ def test_double_submission_with_idempotency_key(priced: World, app: Any) -> None
     # Deux envois simultanés de la même saisie : un seul paiement.
     other = str(uuid.uuid4())
     path = f"/sales/{sale['id']}/payments"
-    body = {"amount": "10000", "method": "CARD", "idempotency_key": other}
+    body = {
+        "amount": "10000",
+        "method": "CARD",
+        "received_confirmed": True,
+        "idempotency_key": other,
+    }
     assert _run_concurrently(app, priced.owner.token, [(path, body), (path, body)]) == [200, 201]
     assert _summary(priced.owner, sale)[0] == "35000.00"
     assert len(_history(priced.owner, sale)["items"]) == 2
@@ -406,7 +414,8 @@ def test_permissions_by_base_role(priced: World, client: TestClient) -> None:
         },
     ).json()
     own = seller.post(
-        f"/sales/{own['id']}/validate", json={"payments": [{"amount": "10000", "method": "CARD"}]}
+        f"/sales/{own['id']}/validate",
+        json={"payments": [{"amount": "10000", "method": "CARD", "received_confirmed": True}]},
     ).json()
     for api, target in ((seller, own), (manager, sale)):
         payments = _history(api, target)["items"]

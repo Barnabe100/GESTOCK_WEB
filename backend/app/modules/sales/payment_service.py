@@ -39,6 +39,7 @@ from app.modules.sales.models import (
     ConfiguredPaymentMethod,
     Payment,
     PaymentMethod,
+    PaymentMethodAccount,
     PaymentStatus,
     Sale,
     SalePaymentStatus,
@@ -182,7 +183,51 @@ class PaymentService:
                 "Le montant reçu est inférieur au montant payé",
                 code="cash_received_insufficient",
             )
+        self.resolve_account(method, site_id, data.payment_method_account_id)
+        # R6.5-E : sélectionner un moyen ne vaut jamais confirmation ; pour tout moyen autre que
+        # les espèces (remises en main propre), la réception des fonds est confirmée
+        # explicitement par l'utilisateur, qui est enregistré avec l'heure de confirmation.
+        if method.kind is not PaymentMethod.CASH and not data.received_confirmed:
+            raise BusinessRuleError(
+                "Confirmez que les fonds ont bien été reçus avant d'enregistrer le paiement",
+                code="payment_confirmation_required",
+                extra={"label": method.label},
+            )
         return method
+
+    def resolve_account(
+        self,
+        method: ConfiguredPaymentMethod,
+        site_id: uuid.UUID,
+        account_id: uuid.UUID | None,
+        *,
+        lock: bool = False,
+    ) -> PaymentMethodAccount | None:
+        """Identifiant de réception choisi (facultatif) : du même moyen, actif, commun ou propre
+        au site de la vente. Verrou partagé à l'encaissement (une désactivation concurrente
+        attend ou est attendue). Aucun identifiant n'est deviné."""
+        if account_id is None:
+            return None
+        if method.kind is PaymentMethod.CASH:
+            raise BusinessRuleError(
+                "Les espèces n'ont pas d'identifiant de réception",
+                code="payment_account_not_allowed",
+            )
+        stmt = select(PaymentMethodAccount).where(PaymentMethodAccount.id == account_id)
+        if lock:
+            stmt = stmt.with_for_update(read=True)
+        account = self.db.scalars(stmt).one_or_none()
+        if (
+            account is None
+            or account.payment_method_id != method.id
+            or not account.is_active
+            or (account.site_id is not None and account.site_id != site_id)
+        ):
+            raise BusinessRuleError(
+                "Cet identifiant de réception n'est pas utilisable pour ce moyen sur ce site",
+                code="payment_account_unavailable",
+            )
+        return account
 
     @staticmethod
     def applied_amount(data: PaymentCreate, remaining: Decimal) -> Decimal:
@@ -267,6 +312,10 @@ class PaymentService:
         if method.kind is PaymentMethod.CASH and data.amount_received is not None:
             received = round_money(data.amount_received)
             change = received - amount
+        account = self.resolve_account(
+            method, sale.site_id, data.payment_method_account_id, lock=True
+        )
+        methods = PaymentMethodService(self.db, self.ctx, self.now)
         payment = Payment(
             tenant_id=self.ctx.tenant_id,
             number=next_number(self.db, self.ctx.tenant_id, SEQUENCE_KEY, PREFIX),
@@ -284,6 +333,16 @@ class PaymentService:
             paid_at=self.now,
             idempotency_key=data.idempotency_key,
             created_by=self.ctx.user.id,
+            # Confirmation manuelle (explicite hors espèces, contrôlée plus haut) et instantané.
+            currency=method.currency,
+            confirmed_by=self.ctx.user.id,
+            confirmed_at=self.now,
+            payment_method_account_id=account.id if account else None,
+            provider_label=methods.provider_label(method),
+            account_identifier_type=account.identifier_type.value if account else None,
+            account_label=account.custom_label if account else None,
+            account_value=account.value if account else None,
+            account_holder=account.holder_name if account else None,
         )
         self.db.add(payment)
         self.db.flush()
@@ -372,12 +431,25 @@ class PaymentService:
                 "payment_method_id": str(payment.payment_method_id),
                 "method_label": payment.method_label,
                 "paid_at": payment.paid_at.isoformat(),
+                "currency": payment.currency,
+                "confirmed_by": str(payment.confirmed_by) if payment.confirmed_by else None,
+                "confirmed_at": (
+                    payment.confirmed_at.isoformat() if payment.confirmed_at else None
+                ),
+                "provider_label": payment.provider_label,
+                "payment_method_account_id": (
+                    str(payment.payment_method_account_id)
+                    if payment.payment_method_account_id
+                    else None
+                ),
+                "account_identifier_type": payment.account_identifier_type,
+                "account_value": payment.account_value,
                 **data,
             },
         )
 
     def to_out(self, sale: Sale, payments: Sequence[Payment]) -> list[PaymentOut]:
-        users = {u for p in payments for u in (p.created_by, p.cancelled_by) if u}
+        users = {u for p in payments for u in (p.created_by, p.cancelled_by, p.confirmed_by) if u}
         names: dict[Any, str] = (
             {
                 row[0]: row[1]
@@ -410,6 +482,15 @@ class PaymentService:
                 cancelled_at=p.cancelled_at,
                 cancelled_by_name=names.get(p.cancelled_by) if p.cancelled_by else None,
                 cancellation_reason=p.cancellation_reason,
+                currency=p.currency,
+                confirmed_at=p.confirmed_at,
+                confirmed_by_name=names.get(p.confirmed_by) if p.confirmed_by else None,
+                payment_method_account_id=p.payment_method_account_id,
+                provider_label=p.provider_label,
+                account_identifier_type=p.account_identifier_type,
+                account_label=p.account_label,
+                account_value=p.account_value,
+                account_holder=p.account_holder,
             )
             for p in payments
         ]

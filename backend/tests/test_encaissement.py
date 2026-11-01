@@ -209,7 +209,11 @@ def test_activation_per_site(priced: World, owner_db: Session) -> None:
     assert _methods(priced.owner, priced.site)["Mobile Money"]["available"] is True
 
     on_site2 = _draft(priced, 1, site=priced.site2)
-    refused = _validate(priced, on_site2, [{"amount": "10000", "payment_method_id": mobile}])
+    refused = _validate(
+        priced,
+        on_site2,
+        [{"amount": "10000", "payment_method_id": mobile, "received_confirmed": True}],
+    )
     assert refused.status_code == 422 and refused.json()["code"] == "payment_method_unavailable"
     # Refus : rien n'est écrit (ni stock, ni numéro, ni paiement).
     assert _count(owner_db, "SELECT count(*) FROM payments") == 0
@@ -217,9 +221,11 @@ def test_activation_per_site(priced: World, owner_db: Session) -> None:
 
     on_site1 = _draft(priced, 1)
     assert (
-        _validated(priced, on_site1, [{"amount": "10000", "payment_method_id": mobile}])[
-            "payment_status"
-        ]
+        _validated(
+            priced,
+            on_site1,
+            [{"amount": "10000", "payment_method_id": mobile, "received_confirmed": True}],
+        )["payment_status"]
         == "PAID"
     )
     back = priced.owner.put(
@@ -227,9 +233,11 @@ def test_activation_per_site(priced: World, owner_db: Session) -> None:
     )
     assert back.json()["disabled_site_ids"] == []
     assert (
-        _validated(priced, on_site2, [{"amount": "10000", "payment_method_id": mobile}])[
-            "payment_status"
-        ]
+        _validated(
+            priced,
+            on_site2,
+            [{"amount": "10000", "payment_method_id": mobile, "received_confirmed": True}],
+        )["payment_status"]
         == "PAID"
     )
     actions = _audit_actions(priced)
@@ -271,7 +279,16 @@ def test_payment_snapshot_survives_method_changes(priced: World) -> None:
     mobile = _method_id(priced, "Mobile Money")
     sale = _draft(priced, 1)
     _validated(
-        priced, sale, [{"amount": "10000", "payment_method_id": mobile, "reference": "OM-123"}]
+        priced,
+        sale,
+        [
+            {
+                "amount": "10000",
+                "payment_method_id": mobile,
+                "received_confirmed": True,
+                "reference": "OM-123",
+            }
+        ],
     )
     priced.owner.patch(f"/payment-methods/{mobile}", json={"label": "Moov Money"})
     priced.owner.patch(f"/payment-methods/{mobile}", json={"is_active": False})
@@ -290,14 +307,36 @@ def test_reference_required(priced: World) -> None:
         json={"label": "Orange Money", "kind": "MOBILE_MONEY", "reference_required": True},
     ).json()
     sale = _draft(priced, 1)
-    missing = _validate(priced, sale, [{"amount": "10000", "payment_method_id": om["id"]}])
+    missing = _validate(
+        priced,
+        sale,
+        [{"amount": "10000", "payment_method_id": om["id"], "received_confirmed": True}],
+    )
     assert missing.json()["code"] == "payment_reference_required"
     blank = _validate(
-        priced, sale, [{"amount": "10000", "payment_method_id": om["id"], "reference": "  "}]
+        priced,
+        sale,
+        [
+            {
+                "amount": "10000",
+                "payment_method_id": om["id"],
+                "received_confirmed": True,
+                "reference": "  ",
+            }
+        ],
     )
     assert blank.json()["code"] == "payment_reference_required"
     ok = _validated(
-        priced, sale, [{"amount": "10000", "payment_method_id": om["id"], "reference": "TX-9"}]
+        priced,
+        sale,
+        [
+            {
+                "amount": "10000",
+                "payment_method_id": om["id"],
+                "received_confirmed": True,
+                "reference": "TX-9",
+            }
+        ],
     )
     assert ok["payment_status"] == "PAID"
 
@@ -374,7 +413,13 @@ def test_site_without_cash_mobile_money(priced: World, owner_db: Session) -> Non
     done = _validated(
         priced,
         sale,
-        [{"amount": "10000", "payment_method_id": _method_id(priced, "Mobile Money")}],
+        [
+            {
+                "amount": "10000",
+                "payment_method_id": _method_id(priced, "Mobile Money"),
+                "received_confirmed": True,
+            }
+        ],
     )
     assert done["payment_status"] == "PAID"
     [payment] = _payments(priced.owner, sale)
@@ -430,7 +475,13 @@ def test_site_with_cash_requires_the_users_own_session(
     _validated(
         priced,
         mobile,
-        [{"amount": "10000", "payment_method_id": _method_id(priced, "Mobile Money")}],
+        [
+            {
+                "amount": "10000",
+                "payment_method_id": _method_id(priced, "Mobile Money"),
+                "received_confirmed": True,
+            }
+        ],
     )
     assert (
         _count(owner_db, "SELECT count(*) FROM cash_movements WHERE source_id = :s", s=mobile["id"])
@@ -556,7 +607,11 @@ def test_mixed_payment_change_only_on_the_cash_part(priced: World) -> None:
         [
             # Espèces en premier dans la saisie : imputées après les autres moyens.
             {"amount_received": "20000", "payment_method_id": _method_id(priced, "Espèces")},
-            {"amount": "15000", "payment_method_id": _method_id(priced, "Mobile Money")},
+            {
+                "amount": "15000",
+                "payment_method_id": _method_id(priced, "Mobile Money"),
+                "received_confirmed": True,
+            },
         ],
     )
     assert (done["payment_status"], done["paid_amount"], done["is_credit"]) == (
@@ -579,7 +634,13 @@ def test_partial_and_multiple_payments_after_validation(priced: World) -> None:
     validated = _validated(
         priced,
         sale,
-        [{"amount": "10000", "payment_method_id": _method_id(priced, "Carte bancaire")}],
+        [
+            {
+                "amount": "10000",
+                "payment_method_id": _method_id(priced, "Carte bancaire"),
+                "received_confirmed": True,
+            }
+        ],
     )
     assert (validated["is_credit"], validated["credit_status"]) == (True, "PARTIAL")
     cash = _method_id(priced, "Espèces")
@@ -632,7 +693,8 @@ def test_credit_with_customer_and_computed_statuses(priced: World) -> None:
     )
     mobile = _method_id(priced, "Mobile Money")
     paid = priced.owner.post(
-        f"/sales/{sale['id']}/payments", json={"amount": "20000", "payment_method_id": mobile}
+        f"/sales/{sale['id']}/payments",
+        json={"amount": "20000", "payment_method_id": mobile, "received_confirmed": True},
     ).json()
     assert priced.owner.get(f"/sales/{sale['id']}").json()["credit_status"] == "PAID"
     priced.owner.post(

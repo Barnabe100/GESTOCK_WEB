@@ -183,6 +183,11 @@ class PaymentCreate(BaseModel):
     # Espèces sur un site avec caisse : poste de la session de l'utilisateur (facultatif s'il
     # n'a qu'une session ouverte sur le site).
     cash_register_id: uuid.UUID | None = None
+    # R6.5-E : identifiant de réception RÉELLEMENT utilisé (facultatif ; jamais deviné par le
+    # serveur) et confirmation MANUELLE que les fonds ont été reçus — obligatoire pour tout
+    # moyen autre que les espèces (choisir un moyen ne vaut jamais confirmation).
+    payment_method_account_id: uuid.UUID | None = None
+    received_confirmed: bool = False
 
     @model_validator(mode="after")
     def _complete(self) -> "PaymentCreate":
@@ -267,6 +272,16 @@ class PaymentOut(BaseModel):
     cancelled_at: datetime | None
     cancelled_by_name: str | None
     cancellation_reason: str | None
+    # R6.5-E : devise, confirmation manuelle et instantané des coordonnées utilisées.
+    currency: str
+    confirmed_at: datetime | None = None
+    confirmed_by_name: str | None = None
+    payment_method_account_id: uuid.UUID | None = None
+    provider_label: str | None = None
+    account_identifier_type: str | None = None
+    account_label: str | None = None
+    account_value: str | None = None
+    account_holder: str | None = None
 
 
 class PaymentSummary(BaseModel):

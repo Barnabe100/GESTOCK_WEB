@@ -321,6 +321,17 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             "AND cancellation_reason IS NOT NULL)",
             name="cancelled_has_reason",
         ),
+        # R6.5-E : un paiement encaissé l'est par une confirmation MANUELLE effective (qui, quand).
+        CheckConstraint(
+            "status = 'PENDING' OR confirmed_at IS NOT NULL", name="completed_is_confirmed"
+        ),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="iso_currency"),
+        # Identifiant de réception utilisé (même tenant) ; instantané figé à côté.
+        ForeignKeyConstraint(
+            ["tenant_id", "payment_method_account_id"],
+            ["payment_method_accounts.tenant_id", "payment_method_accounts.id"],
+            ondelete="RESTRICT",
+        ),
         Index("ix_payments_tenant_sale", "tenant_id", "sale_id"),
         Index("ix_payments_tenant_paid_at", "tenant_id", "paid_at"),
     )
@@ -353,6 +364,20 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     cancellation_reason: Mapped[str | None] = mapped_column(String(500))
+    # --- R6.5-E (ADR-0051) -------------------------------------------------------------------
+    # Devise du paiement (= devise du moyen = devise de la vente, contrôlée par le serveur).
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    # Confirmation MANUELLE de la réception des fonds : utilisateur et horodatage.
+    confirmed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Instantané des coordonnées RÉELLEMENT utilisées (jamais relues dans la configuration) :
+    # opérateur, type, libellé, valeur et titulaire de l'identifiant de réception.
+    payment_method_account_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    provider_label: Mapped[str | None] = mapped_column(String(100))
+    account_identifier_type: Mapped[str | None] = mapped_column(String(32))
+    account_label: Mapped[str | None] = mapped_column(String(60))
+    account_value: Mapped[str | None] = mapped_column(String(100))
+    account_holder: Mapped[str | None] = mapped_column(String(100))
 
 
 class ConfiguredPaymentMethod(IdMixin, TenantScopedMixin, TimestampMixin, Base):

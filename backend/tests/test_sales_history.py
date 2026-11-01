@@ -181,7 +181,14 @@ def test_article_and_reference_filters(priced: World) -> None:
     bolt = _sale(
         priced,
         article=1,
-        payments=[{"amount": "2500", "payment_method_id": mobile["id"], "reference": "OM-77812"}],
+        payments=[
+            {
+                "amount": "2500",
+                "payment_method_id": mobile["id"],
+                "reference": "OM-77812",
+                "received_confirmed": True,
+            }
+        ],
     )
     assert _ids(priced.owner, article_id=priced.articles[1]) == [bolt["id"]]
     # Référence article (référence / code-barres) ≠ référence de paiement (transaction).

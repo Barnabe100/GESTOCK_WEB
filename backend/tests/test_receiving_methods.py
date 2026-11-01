@@ -241,7 +241,9 @@ def test_a_method_in_another_currency_never_cashes_a_sale(priced: World) -> None
     w.owner.patch(
         f"{METHODS}/{_methods(w.owner)['Carte bancaire']['id']}", json={"is_active": False}
     )
-    by_kind = _validate(w, _draft(w, 1), [{"method": "CARD", "amount": "10000"}])
+    by_kind = _validate(
+        w, _draft(w, 1), [{"method": "CARD", "amount": "10000", "received_confirmed": True}]
+    )
     assert _code(by_kind) == (422, "payment_method_unavailable")
 
 
@@ -260,7 +262,7 @@ def test_payment_of_a_validated_sale_checks_the_currency(priced: World) -> None:
     transfer = _methods(w.owner)["Virement"]["id"]
     paid = w.owner.post(
         f"/sales/{sale['id']}/payments",
-        json={"payment_method_id": transfer, "amount": "6000"},
+        json={"payment_method_id": transfer, "amount": "6000", "received_confirmed": True},
     )
     assert paid.status_code == 201, paid.text
 
@@ -532,3 +534,193 @@ def test_identifier_types_match_the_shared_vocabulary() -> None:
     from app.shared.receiving import IDENTIFIER_TYPES
 
     assert tuple(t.value for t in ReceivingIdentifierType) == IDENTIFIER_TYPES
+
+
+# --- E : confirmation manuelle et instantané -----------------------------------------------------
+
+
+def _pay(w: World, sale: dict[str, Any], **payment: Any) -> Any:
+    return w.owner.post(f"/sales/{sale['id']}/payments", json=payment)
+
+
+def _credit_sale(w: World) -> dict[str, Any]:
+    """Vente validée à crédit (10 000 dus) : paiements ultérieurs possibles."""
+    sale = _draft(w, 1, customer_id=sh.credit_customer(w))
+    done = _validate(w, sale, [])
+    assert done.status_code == 200, done.text
+    return dict(done.json())
+
+
+def test_selecting_a_method_never_confirms_a_payment(priced: World) -> None:  # noqa: F811
+    w = priced
+    mobile = _mobile(w)
+    sale = _credit_sale(w)
+    refused = _pay(w, sale, payment_method_id=mobile, amount="4000")
+    assert _code(refused) == (422, "payment_confirmation_required")
+    assert w.owner.get(f"/sales/{sale['id']}/payments").json()["items"] == []
+    # Validation avec paiement immédiat et POS : même règle, rien n'est enregistré.
+    draft = _draft(w, 1)
+    assert _code(_validate(w, draft, [{"payment_method_id": mobile, "amount": "10000"}])) == (
+        422,
+        "payment_confirmation_required",
+    )
+    assert w.owner.get(f"/sales/{draft['id']}").json()["status"] == "DRAFT"
+    checkout = w.owner.post(
+        "/pos/checkout",
+        json={
+            "site_id": w.site,
+            "lines": [{"article_id": w.articles[0], "quantity": "1"}],
+            "payments": [{"payment_method_id": mobile, "amount": "10000"}],
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    assert _code(checkout) == (422, "payment_confirmation_required")
+    # Confirmation explicite : auteur et horodatage conservés ; référence facultative.
+    ok = _pay(w, sale, payment_method_id=mobile, amount="4000", received_confirmed=True)
+    assert ok.status_code == 201, ok.text
+    body = ok.json()
+    assert body["status"] == "COMPLETED" and body["reference"] is None
+    assert body["confirmed_at"] and body["confirmed_by_name"]
+    assert body["currency"] == "XOF"
+    # Espèces : remises en main propre, l'enregistrement vaut confirmation (auteur, heure).
+    cash = _methods(w.owner)["Espèces"]["id"]
+    paid = _pay(w, sale, payment_method_id=cash, amount_received="6000")
+    assert paid.status_code == 201, paid.text
+    assert paid.json()["confirmed_by_name"] == body["confirmed_by_name"]
+
+
+def test_receipt_keeps_the_identifier_actually_used(priced: World, providers: None) -> None:  # noqa: F811
+    w = priced
+    demo = _create(w.owner, label="Démo Pay", provider_code="demo-mobile").json()["id"]
+    account = _account(
+        w.owner, demo, site_id=w.site, value="4321", holder_name="Boutique Centre"
+    ).json()
+    sale = _draft(w, 1)
+    validated = _validate(
+        w,
+        sale,
+        [
+            {
+                "payment_method_id": demo,
+                "amount": "10000",
+                "payment_method_account_id": account["id"],
+                "received_confirmed": True,
+            }
+        ],
+    )
+    assert validated.status_code == 200, validated.text
+    # La configuration change ensuite : l'historique et le reçu gardent l'instantané.
+    w.owner.patch(f"{METHODS}/accounts/{account['id']}", json={"value": "9999"})
+    w.owner.post(f"{METHODS}/accounts/{account['id']}/deactivate")
+    w.owner.patch(f"{METHODS}/{demo}", json={"provider_name": "Autre opérateur"})
+    payment = w.owner.get(f"/sales/{sale['id']}/payments").json()["items"][0]
+    assert (
+        payment["provider_label"],
+        payment["account_identifier_type"],
+        payment["account_value"],
+        payment["account_holder"],
+        payment["payment_method_account_id"],
+    ) == ("Démo Mobile", "MERCHANT_CODE", "4321", "Boutique Centre", account["id"])
+    receipt = w.owner.get(f"/sales/{sale['id']}/receipt").json()
+    line = receipt["payments"][0]
+    assert (line["method_label"], line["provider_label"], line["account_value"]) == (
+        "Démo Pay",
+        "Démo Mobile",
+        "4321",
+    )
+    assert (line["account_identifier_type"], line["account_holder"]) == (
+        "MERCHANT_CODE",
+        "Boutique Centre",
+    )
+
+
+def test_identifier_must_belong_to_the_method_and_the_site(priced: World) -> None:  # noqa: F811
+    w = priced
+    mobile = _mobile(w)
+    transfer = _methods(w.owner)["Virement"]["id"]
+    on_site2 = _account(w.owner, mobile, site_id=w.site2, value="S2").json()
+    of_transfer = _account(
+        w.owner, transfer, identifier_type="ACCOUNT_NUMBER", value="ACC-1"
+    ).json()
+    inactive = _account(w.owner, mobile, value="OFF").json()
+    w.owner.post(f"{METHODS}/accounts/{inactive['id']}/deactivate")
+    only = _account(w.owner, mobile, site_id=w.site, value="ONLY").json()
+    sale = _credit_sale(w)
+    for account_id in (on_site2["id"], of_transfer["id"], inactive["id"], str(uuid.uuid4())):
+        refused = _pay(
+            w,
+            sale,
+            payment_method_id=mobile,
+            amount="1000",
+            received_confirmed=True,
+            payment_method_account_id=account_id,
+        )
+        assert _code(refused) == (422, "payment_account_unavailable")
+    cash = _methods(w.owner)["Espèces"]["id"]
+    assert _code(
+        _pay(w, sale, payment_method_id=cash, amount="1000", payment_method_account_id=only["id"])
+    ) == (422, "payment_account_not_allowed")
+    # Aucun identifiant envoyé : rien n'est deviné, même avec un seul identifiant actif.
+    plain = _pay(w, sale, payment_method_id=mobile, amount="1000", received_confirmed=True)
+    assert plain.status_code == 201, plain.text
+    assert (plain.json()["payment_method_account_id"], plain.json()["account_value"]) == (
+        None,
+        None,
+    )
+    used = _pay(
+        w,
+        sale,
+        payment_method_id=mobile,
+        amount="1000",
+        received_confirmed=True,
+        payment_method_account_id=only["id"],
+    )
+    assert used.json()["account_value"] == "ONLY"
+
+
+def test_payments_stay_immutable_and_confirmed_in_sql(
+    priced: World,  # noqa: F811
+    db: Session,
+) -> None:
+    w = priced
+    sale = _credit_sale(w)
+    _pay(w, sale, payment_method_id=_mobile(w), amount="1000", received_confirmed=True)
+    tenant = uuid.UUID(w.owner.get("/me/capabilities").json()["tenant"]["id"])
+    set_db_context(db, tenant_id=tenant)
+    for column, value in (
+        ("confirmed_by", "NULL"),
+        ("account_value", "'X'"),
+        ("currency", "'EUR'"),
+        ("provider_label", "'X'"),
+    ):
+        with pytest.raises(DBAPIError, match="permission denied"):
+            db.execute(text(f"UPDATE payments SET {column} = {value}"))
+        db.rollback()
+        set_db_context(db, tenant_id=tenant)
+
+
+def test_migration_0054_downgrade_refuses_to_lose_snapshots(
+    priced: World,  # noqa: F811
+    owner_db: Session,
+    owner_engine: Engine,
+) -> None:
+    w = priced
+    mobile = _mobile(w)
+    account = _account(w.owner, mobile, site_id=w.site, value="SNAP").json()
+    sale = _credit_sale(w)
+    _pay(
+        w,
+        sale,
+        payment_method_id=mobile,
+        amount="1000",
+        received_confirmed=True,
+        payment_method_account_id=account["id"],
+    )
+    owner_db.close()
+    owner_engine.dispose()
+    try:
+        with pytest.raises(RuntimeError, match="coordonnées de réception"):
+            command.downgrade(_alembic(), "0053")
+    finally:
+        owner_engine.dispose()
+        command.upgrade(_alembic(), "head")

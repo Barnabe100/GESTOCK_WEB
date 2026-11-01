@@ -86,8 +86,11 @@ def _sale(
 
 
 def _pay(api: Api, sale: dict[str, Any], amount: str, method: str = "CASH", **extra: Any) -> Any:
+    # R6.5-E : hors espèces, l'encaissement exige la confirmation manuelle de la réception.
+    confirmed = {} if method == "CASH" else {"received_confirmed": True}
     return api.post(
-        f"/sales/{sale['id']}/payments", json={"amount": amount, "method": method, **extra}
+        f"/sales/{sale['id']}/payments",
+        json={"amount": amount, "method": method, **confirmed, **extra},
     )
 
 
@@ -348,7 +351,9 @@ def test_immediate_cash_payment_at_validation(priced: World, owner_db: Session) 
     mobile = _sale(priced, 30000, validate=False)
     ok = priced.owner.post(
         f"/sales/{mobile['id']}/validate",
-        json={"payments": [{"amount": "30000", "method": "MOBILE_MONEY"}]},
+        json={
+            "payments": [{"amount": "30000", "method": "MOBILE_MONEY", "received_confirmed": True}]
+        },
     )
     assert ok.status_code == 200 and ok.json()["payment_status"] == "PAID"
     session = _opened(priced.owner, _register(priced))
@@ -841,7 +846,9 @@ def test_inactive_register_never_blocks_sales_or_electronic_payments(priced: Wor
     draft = _sale(priced, 20000, validate=False)
     validated = priced.owner.post(
         f"/sales/{draft['id']}/validate",
-        json={"payments": [{"amount": "20000", "method": "BANK_TRANSFER"}]},
+        json={
+            "payments": [{"amount": "20000", "method": "BANK_TRANSFER", "received_confirmed": True}]
+        },
     )
     assert validated.status_code == 200 and validated.json()["payment_status"] == "PAID"
     unpaid = _sale(priced, 10000)
