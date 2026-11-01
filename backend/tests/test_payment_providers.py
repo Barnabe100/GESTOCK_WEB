@@ -163,6 +163,138 @@ def test_sync_inserts_updates_and_deactivates(synced: None, owner_db: Session) -
     }
 
 
+# --- Synchronisation : mise à jour, réactivation, références, idempotence -----------------------
+# Opérateurs de DÉMONSTRATION uniquement (fixture ``synced``) : le fichier livré reste vide et le
+# catalogue réel est rétabli à la fin de chaque test.
+
+ROW_COLUMNS = (
+    "code, name, names, instructions, kinds, countries, currencies, identifiers, is_active, "
+    "created_at"
+)
+
+
+def _sync_providers(owner_db: Session, providers: dict[str, PaymentProviderDef]) -> Any:
+    """Synchronise le catalogue réel dont seuls les opérateurs sont remplacés."""
+    real = load_catalog(get_registry())
+    report = sync_catalog(owner_db, dataclasses.replace(real, payment_providers=providers))
+    owner_db.commit()
+    return report
+
+
+def _demo_rows(owner_db: Session) -> dict[str, Any]:
+    rows = owner_db.execute(
+        text(f"SELECT {ROW_COLUMNS} FROM ref_payment_providers WHERE code LIKE 'demo-%'")
+    ).mappings()
+    return {row["code"]: dict(row) for row in rows}
+
+
+def _demo_catalog() -> dict[str, PaymentProviderDef]:
+    """Même contenu que la fixture ``synced``."""
+    return {
+        "demo-mobile": _provider(),
+        "demo-intl": _provider(
+            code="demo-intl",
+            name="Carte Internationale",
+            names={},
+            kinds=("CARD",),
+            countries=(),
+            currencies=("EUR", "XOF", "USD"),
+            identifiers={},
+            instructions={},
+        ),
+        "demo-off": _provider(code="demo-off", name="Ancien opérateur", is_active=False),
+        "demo-ci": _provider(code="demo-ci", name="Opérateur CI", countries=("CI",)),
+    }
+
+
+def test_sync_updates_an_existing_provider_in_place(synced: None, owner_db: Session) -> None:
+    before = _demo_rows(owner_db)["demo-mobile"]
+    changed = _provider(
+        name="Démo Mobile Plus",
+        names={"en": "Demo Mobile Plus"},
+        kinds=("MOBILE_MONEY", "OTHER"),
+        countries=("BF", "CI"),
+        currencies=("XOF", "EUR"),
+        identifiers={"AGENT_CODE": IdentifierRuleDef(min_length=6, max_length=6)},
+        instructions={"fr": "Donnez le code agent.", "en": "Give the agent code."},
+    )
+    report = _sync_providers(owner_db, {**_demo_catalog(), "demo-mobile": changed})
+    assert report.deactivated_payment_providers == []
+    rows = _demo_rows(owner_db)
+    assert set(rows) == {"demo-mobile", "demo-intl", "demo-off", "demo-ci"}  # aucune ligne en plus
+    after = rows["demo-mobile"]
+    # Même ligne (clé et création inchangées), tous les champs du fichier remplacés.
+    assert after["created_at"] == before["created_at"]
+    assert after == {
+        **before,
+        "name": "Démo Mobile Plus",
+        "names": {"en": "Demo Mobile Plus"},
+        "kinds": ["MOBILE_MONEY", "OTHER"],
+        "countries": ["BF", "CI"],
+        "currencies": ["XOF", "EUR"],
+        # Règle remplacée entièrement : les anciens types d'identifiants disparaissent.
+        "identifiers": {"AGENT_CODE": {"min_length": 6, "max_length": 6}},
+        "instructions": {"fr": "Donnez le code agent.", "en": "Give the agent code."},
+    }
+
+
+def test_sync_reactivates_a_provider_put_back_in_the_file(synced: None, owner_db: Session) -> None:
+    created_at = _demo_rows(owner_db)["demo-ci"]["created_at"]
+    without_ci = {code: p for code, p in _demo_catalog().items() if code != "demo-ci"}
+    report = _sync_providers(owner_db, without_ci)
+    assert report.deactivated_payment_providers == ["demo-ci"]
+    assert _demo_rows(owner_db)["demo-ci"]["is_active"] is False  # désactivé, jamais supprimé
+
+    report = _sync_providers(owner_db, _demo_catalog())
+    assert report.deactivated_payment_providers == []
+    row = _demo_rows(owner_db)["demo-ci"]
+    # Remis dans le fichier : la MÊME ligne redevient active.
+    assert (row["is_active"], row["created_at"]) == (True, created_at)
+
+
+def test_a_deactivated_provider_stays_referenced_by_its_payment_methods(
+    synced: None, owner_db: Session, provision: Any, api_for: Any
+) -> None:
+    provision("pp-ref")
+    owner = api_for("owner@pp-ref.example.com")
+    created = owner.post(
+        "/payment-methods",
+        json={"label": "Démo référencé", "kind": "MOBILE_MONEY", "provider_code": "demo-mobile"},
+    )
+    assert created.status_code == 201, created.text
+    method_id = created.json()["id"]
+    try:
+        without_mobile = {c: p for c, p in _demo_catalog().items() if c != "demo-mobile"}
+        report = _sync_providers(owner_db, without_mobile)
+        assert report.deactivated_payment_providers == ["demo-mobile"]
+        # Ligne conservée (la clé étrangère du moyen la référence), désactivée.
+        assert _demo_rows(owner_db)["demo-mobile"]["is_active"] is False
+        method = next(m for m in owner.get("/payment-methods").json() if m["id"] == method_id)
+        assert (method["provider_code"], method["provider_label"]) == (
+            "demo-mobile",
+            "Démo Mobile",
+        )
+        # Plus proposé dans le catalogue consultable.
+        assert "demo-mobile" not in [p["code"] for p in owner.get(PROVIDERS).json()]
+    finally:
+        # Préparation hors API, comme les tests des moyens de réception : la fixture supprime
+        # ensuite les opérateurs de démonstration.
+        owner_db.execute(
+            text("UPDATE payment_methods SET provider_code = NULL WHERE id = :id"),
+            {"id": method_id},
+        )
+        owner_db.commit()
+
+
+def test_sync_is_idempotent(synced: None, owner_db: Session) -> None:
+    before = _demo_rows(owner_db)
+    for _ in range(2):
+        report = _sync_providers(owner_db, _demo_catalog())
+        assert report.payment_providers == 4
+        assert report.deactivated_payment_providers == []
+        assert _demo_rows(owner_db) == before
+
+
 def _member(owner: Api, client: TestClient, email: str, template: str) -> Api:
     roles = {r["template_code"]: r["id"] for r in owner.get("/roles").json()}
     created = owner.post(
