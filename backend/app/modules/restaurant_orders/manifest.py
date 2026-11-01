@@ -16,13 +16,17 @@ from app.modules.restaurant_orders.footprint import (
 )
 from app.modules.restaurant_orders.notifications import (
     KIND_ORDER_READY,
+    KIND_QR_RECEIVED,
+    QR_RECEIVER_PERMISSIONS,
     READY_RECEIVER_PERMISSIONS,
+    resolve_qr_received,
     resolve_ready,
 )
 from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
     ORDER_CLAIM,
+    ORDER_CONFIRM,
     ORDER_CREATE,
     ORDER_PREPARE,
     ORDER_REASSIGN,
@@ -69,6 +73,8 @@ register_sale_origin(ORIGIN_RESTAURANT_ORDER, _before_sale_cancel)
 # ou annulées — calculé à la lecture.
 register_notification_resolver(KIND_ORDER_READY, resolve_ready)
 register_notification_receivers(KIND_ORDER_READY, READY_RECEIVER_PERMISSIONS)
+register_notification_resolver(KIND_QR_RECEIVED, resolve_qr_received)
+register_notification_receivers(KIND_QR_RECEIVED, QR_RECEIVER_PERMISSIONS)
 
 MANIFEST = ModuleManifest(
     code="restaurant.orders",
@@ -88,6 +94,8 @@ MANIFEST = ModuleManifest(
         PermissionDef(ORDER_CANCEL_PREPARED, A),
         # Prise en charge (« Prendre ») ; réattribution immédiate motivée : encadrement (D7).
         PermissionDef(ORDER_CLAIM, W),
+        # Commandes reçues par QR Code (R7) : confirmer ou refuser avant tout traitement.
+        PermissionDef(ORDER_CONFIRM, W),
         PermissionDef(ORDER_REASSIGN, A),
         PermissionDef(SETTINGS_MANAGE, A),
     ),

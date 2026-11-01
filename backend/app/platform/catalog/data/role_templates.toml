@@ -76,6 +76,8 @@ permissions = [
   "restaurant.orders.order.view",
   "restaurant.orders.order.create",
   "restaurant.orders.order.claim",
+  # Commandes reçues par QR Code (R7) : confirmer ou refuser.
+  "restaurant.orders.order.confirm",
   "restaurant.orders.order.prepare",
   "restaurant.orders.order.serve",
   "restaurant.orders.order.cancel",
@@ -105,6 +107,8 @@ permissions = [
   "restaurant.orders.order.view",
   "restaurant.orders.order.create",
   "restaurant.orders.order.claim",
+  # Commandes reçues par QR Code (R7) : confirmer ou refuser.
+  "restaurant.orders.order.confirm",
   "restaurant.orders.order.serve",
   "restaurant.tables.table.view",
   "restaurant.kitchen.station.view",

@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.core.db import set_db_context
 from app.core.errors import NotFoundError
 from app.modules.restaurant_orders.api import TableRef, table_directory
-from app.modules.restaurant_qr.models import QrPoint, QrPointKind
+from app.modules.restaurant_qr.models import QrOrder, QrPoint, QrPointKind
 from app.modules.restaurant_qr.tokens import secret_hash, well_formed
 from app.platform.audit.service import RequestMeta
 from app.platform.capabilities.service import CapabilityService
@@ -112,3 +112,64 @@ def resolve_access(
         if table is None or table.site_id != site.id or not table.is_active:
             raise _refuse("table inactive", point.id)
     return QrAccess(scope=scope, point=point, table=table, modules=modules)
+
+
+# --- Suivi public d'une commande (palier R7-E) ---------------------------------------------------
+
+
+class TrackingUnavailableError(NotFoundError):
+    code = "qr_tracking_unavailable"
+    title = "Suivi indisponible"
+
+    def __init__(self) -> None:
+        super().__init__("Ce lien de suivi n'est plus disponible.")
+
+
+@dataclass(frozen=True)
+class TrackingAccess:
+    scope: PublicScope
+    link: QrOrder
+    point: QrPoint | None
+    table: TableRef | None
+
+
+def resolve_tracking(
+    db: Session,
+    registry: ModuleRegistry,
+    secret: str | None,
+    meta: RequestMeta,
+    now: datetime,
+) -> TrackingAccess:
+    """Secret de suivi (distinct du jeton du point) → commande, à CHAQUE appel : format,
+    empreinte (politique ``qr_tracking_lookup`` : seule cette ligne visible), entreprise et site
+    actifs, abonnement du site et module QR effectif. Le suivi survit à la régénération ou à la
+    désactivation du point (décision R7) ; l'expiration (fin + délai) est contrôlée par
+    l'appelant, qui lit l'état de la commande. Tout échec : ``404 qr_tracking_unavailable``."""
+    if secret is None or not well_formed(secret):
+        raise TrackingUnavailableError()
+    set_db_context(db, tenant_id=None, user_id=None, qr_tracking_hash=secret_hash(secret))
+    link = db.scalars(select(QrOrder).where(QrOrder.tracking_hash == secret_hash(secret))).first()
+    if link is None:
+        set_db_context(db, qr_tracking_hash=None)
+        logger.info("Suivi QR refusé : secret inconnu ou renouvelé")
+        raise TrackingUnavailableError()
+    set_db_context(db, tenant_id=link.tenant_id, qr_tracking_hash=None)
+    tenant = db.get(Tenant, link.tenant_id)
+    site = db.get(Site, link.site_id)
+    modules = (
+        CapabilityService(db, registry).public_site_modules(tenant, link.site_id, now)
+        if tenant is not None and tenant.status is TenantStatus.ACTIVE
+        else None
+    )
+    if site is None or not site.is_active or modules is None or QR_MODULE not in modules:
+        logger.info("Suivi QR refusé : site, abonnement ou module (commande %s)", link.order_id)
+        raise TrackingUnavailableError()
+    assert tenant is not None
+    scope = PublicScope(tenant=tenant, site=site, meta=meta)
+    point = db.get(QrPoint, link.point_id)
+    table: TableRef | None = None
+    if point is not None and point.table_id is not None:
+        directory = table_directory(db, scope)
+        if directory is not None:
+            table = directory.labels([point.table_id]).get(point.table_id)
+    return TrackingAccess(scope=scope, link=link, point=point, table=table)

@@ -15,7 +15,7 @@ from app.core.errors import BusinessRuleError, ForbiddenError, NotFoundError
 from app.modules.restaurant_orders.permissions import ORDER_VIEW
 from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.capabilities.service import CapabilityService, SubscriptionMissingError
-from app.platform.context import RequestContext
+from app.platform.context import RequestContext, TenantScope
 from app.platform.registry import get_registry
 
 
@@ -69,7 +69,7 @@ def require_site_permission(ctx: RequestContext, site_id: uuid.UUID, code: str) 
 
 def member_permissions(
     db: Session,
-    ctx: RequestContext,
+    ctx: TenantScope,
     user_id: uuid.UUID,
     site_id: uuid.UUID,
     now: datetime,

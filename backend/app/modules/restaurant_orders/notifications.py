@@ -28,14 +28,20 @@ from sqlalchemy.orm import Session
 from app.modules.restaurant_orders.models import (
     FINAL_LINE_STATUSES,
     LineStatus,
+    OrderStatus,
     RestaurantOrder,
     RestaurantOrderLine,
 )
-from app.modules.restaurant_orders.permissions import ORDER_CLAIM, ORDER_SERVE, ORDER_VIEW
+from app.modules.restaurant_orders.permissions import (
+    ORDER_CLAIM,
+    ORDER_CONFIRM,
+    ORDER_SERVE,
+    ORDER_VIEW,
+)
 from app.modules.restaurant_orders.sites import member_permissions
 from app.platform.access.models import MembershipStatus, TenantMembership
 from app.platform.access.site_access import site_access_condition
-from app.platform.context import RequestContext
+from app.platform.context import RequestContext, TenantScope
 from app.platform.member_notifications.models import MemberNotification
 from app.platform.member_notifications.service import notify_members
 
@@ -130,5 +136,80 @@ def resolve_ready(
             statuses.get(uuid.UUID(line_id)) in FINAL_LINE_STATUSES
             for line_id in notification.payload.get("line_ids", [])
         )
+        for notification in notifications
+    }
+
+
+# --- Commande reçue par QR Code (palier R7, ADR-0052) -------------------------------------------
+
+KIND_QR_RECEIVED = "restaurant.order.qr_received"
+SOURCE_ORDER = "restaurant_order"
+QR_RECEIVER_PERMISSIONS = (ORDER_CONFIRM,)
+
+
+def qr_received_recipients(
+    db: Session, scope: TenantScope, order: RestaurantOrder, now: datetime
+) -> list[uuid.UUID]:
+    """Membres du site détenant EFFECTIVEMENT ``order.confirm`` et ``order.view`` sur ce site
+    (même calcul que pour leurs propres requêtes, jamais un nom de rôle)."""
+    candidates = db.scalars(
+        select(TenantMembership.user_id).where(
+            TenantMembership.tenant_id == scope.tenant_id,
+            TenantMembership.status == MembershipStatus.ACTIVE,
+            site_access_condition(order.site_id),
+        )
+    ).all()
+    recipients: list[uuid.UUID] = []
+    for user_id in sorted(set(candidates)):
+        permissions = member_permissions(db, scope, user_id, order.site_id, now)
+        if ORDER_VIEW in permissions and ORDER_CONFIRM in permissions:
+            recipients.append(user_id)
+    return recipients
+
+
+def notify_qr_received(
+    db: Session,
+    scope: TenantScope,
+    order: RestaurantOrder,
+    point_label: str,
+    line_count: int,
+    now: datetime,
+) -> list[uuid.UUID]:
+    """Avis « commande QR à confirmer » (aucun auteur : le client n'est pas un membre) ; un seul
+    par commande (clé anti-doublon : la commande)."""
+    return notify_members(
+        db,
+        scope,
+        site_id=order.site_id,
+        recipients=qr_received_recipients(db, scope, order, now),
+        kind=KIND_QR_RECEIVED,
+        source_type=SOURCE_ORDER,
+        source_id=order.id,
+        entity_type=ENTITY_ORDER,
+        entity_id=order.id,
+        payload={
+            "daily_number": order.daily_number,
+            "business_date": order.business_date.isoformat(),
+            "point_label": point_label,
+            "line_count": line_count,
+        },
+        now=now,
+    )
+
+
+def resolve_qr_received(
+    db: Session, notifications: Sequence[MemberNotification]
+) -> dict[uuid.UUID, bool]:
+    """« Traitée » : la commande n'est plus à confirmer (confirmée, refusée…)."""
+    ids = {notification.entity_id for notification in notifications}
+    statuses = {
+        order_id: status
+        for order_id, status in db.execute(
+            select(RestaurantOrder.id, RestaurantOrder.status).where(RestaurantOrder.id.in_(ids))
+        ).tuples()
+    }
+    return {
+        notification.id: statuses.get(notification.entity_id)
+        is not OrderStatus.PENDING_CONFIRMATION
         for notification in notifications
     }

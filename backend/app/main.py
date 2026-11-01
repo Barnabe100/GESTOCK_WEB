@@ -33,7 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Site-Id", "X-QR-Token"],
+        allow_headers=["Authorization", "Content-Type", "X-Site-Id", "X-QR-Token", "X-QR-Tracking"],
     )
     public_prefix = f"{settings.api_v1_prefix}/public/"
 

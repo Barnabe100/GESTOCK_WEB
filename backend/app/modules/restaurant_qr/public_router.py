@@ -19,14 +19,21 @@ from app.modules.restaurant_qr.public_schemas import (
     PublicMenuOut,
     PublicOrderCreate,
     PublicOrderPlaced,
+    PublicTrackingOut,
 )
-from app.modules.restaurant_qr.public_service import PlaceOrderContext, place_order, public_menu
+from app.modules.restaurant_qr.public_service import (
+    PlaceOrderContext,
+    place_order,
+    public_menu,
+    public_tracking,
+)
 from app.platform.context import DbSession, MetaDep, NowDep, RegistryDep, SettingsDep
 from app.platform.ratelimit.service import RateLimiter
 
 public_router = APIRouter(tags=["public.restaurant.qr"])
 
 TokenHeader = Annotated[str | None, Header(alias="X-QR-Token")]
+TrackingHeader = Annotated[str | None, Header(alias="X-QR-Tracking")]
 READ_BUCKET = "qr.read.ip"
 
 
@@ -91,3 +98,20 @@ def post_public_order(
     if placed.replayed:
         response.status_code = 200
     return placed
+
+
+@public_router.get("/track", response_model=PublicTrackingOut)
+def get_public_tracking(
+    request: Request,
+    response: Response,
+    db: DbSession,
+    registry: RegistryDep,
+    settings: SettingsDep,
+    now: NowDep,
+    meta: MetaDep,
+    secret: TrackingHeader = None,
+) -> PublicTrackingOut:
+    """Suivi temporaire d'UNE commande (secret du lien, en-tête ``X-QR-Tracking``)."""
+    secure_headers(response)
+    count_read(db, settings, request, now)
+    return public_tracking(db, registry, settings, secret, meta, now)

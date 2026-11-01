@@ -41,6 +41,7 @@ from app.modules.restaurant_orders.table_port import (
     register_table_directory,
     table_directory,
 )
+from app.modules.sales.api import sale_financial_states
 from app.platform.context import PublicScope, RequestContext
 from app.platform.footprint import capped_count
 from app.platform.identity.models import User
@@ -51,7 +52,11 @@ __all__ = [
     "PublicOrderRef",
     "awaiting_staff_count",
     "create_public_order",
+    "notify_public_order",
     "order_ref",
+    "PublicLine",
+    "PublicOrderStatus",
+    "public_order_status",
     "ORDER_VIEW",
     "PRIORITY_RANK",
     "KitchenLine",
@@ -367,6 +372,95 @@ def order_ref(db: Session, order_id: uuid.UUID) -> PublicOrderRef:
         raise LookupError("commande introuvable")
     return PublicOrderRef(
         id=order.id, daily_number=order.daily_number, status=order.status.value, replayed=True
+    )
+
+
+def notify_public_order(
+    db: Session, scope: PublicScope, order_id: uuid.UUID, point_label: str, now: datetime
+) -> list[uuid.UUID]:
+    """Avis aux membres habilités à confirmer (R7) pour une commande QR « à confirmer » ;
+    rien pour une commande acceptée automatiquement."""
+    from app.modules.restaurant_orders.notifications import notify_qr_received
+
+    order = db.get(RestaurantOrder, order_id)
+    if order is None or order.status is not OrderStatus.PENDING_CONFIRMATION:
+        return []
+    line_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(RestaurantOrderLine)
+            .where(RestaurantOrderLine.order_id == order.id)
+        )
+        or 0
+    )
+    return notify_qr_received(db, scope, order, point_label, line_count, now)
+
+
+@dataclass(frozen=True)
+class PublicLine:
+    label: str
+    packaging_name: str | None
+    quantity: Decimal
+    status: str
+
+
+@dataclass(frozen=True)
+class PublicOrderStatus:
+    """Ce qu'un client voit de SA commande (R7-E) : aucun membre, aucun coût, aucun stock,
+    aucun autre client ; motif affiché pour un REFUS seulement (pas pour une annulation)."""
+
+    daily_number: int
+    status: str
+    prep_status: str
+    created_at: datetime
+    ended_at: datetime | None
+    lines: list[PublicLine]
+    total: Decimal
+    remaining_due: Decimal
+    rejection_reason: str | None
+
+
+def public_order_status(db: Session, order_id: uuid.UUID) -> PublicOrderStatus | None:
+    """État public d'une commande (lecture seule) : total des lignes non annulées ; reste dû lu
+    sur la vente si elle est réglée, sinon le total (0 pour une commande annulée ou refusée)."""
+    order = db.get(RestaurantOrder, order_id)
+    if order is None:
+        return None
+    lines = db.scalars(
+        select(RestaurantOrderLine)
+        .where(RestaurantOrderLine.order_id == order.id)
+        .order_by(RestaurantOrderLine.line_no)
+    ).all()
+    zero = Decimal("0.00")
+    total = sum(
+        (line.line_total for line in lines if line.status is not LineStatus.CANCELLED), zero
+    )
+    ended = order.status in (OrderStatus.CLOSED, OrderStatus.CANCELLED, OrderStatus.REJECTED)
+    if order.status in (OrderStatus.CANCELLED, OrderStatus.REJECTED):
+        remaining = zero
+    elif order.settlement_status is SettlementStatus.SETTLED and order.sale_id is not None:
+        state = sale_financial_states(db, {order.sale_id}).get(order.sale_id)
+        remaining = state.remaining_amount.quantize(zero) if state is not None else zero
+    else:
+        remaining = total
+    return PublicOrderStatus(
+        daily_number=order.daily_number,
+        status=order.status.value,
+        prep_status=order.prep_status.value,
+        created_at=order.created_at,
+        ended_at=(order.closed_at or order.cancelled_at) if ended else None,
+        lines=[
+            PublicLine(
+                label=line.label,
+                packaging_name=line.packaging_name,
+                quantity=line.quantity,
+                status=line.status.value,
+            )
+            for line in lines
+        ],
+        total=total,
+        remaining_due=remaining,
+        rejection_reason=order.cancel_reason if order.status is OrderStatus.REJECTED else None,
     )
 
 

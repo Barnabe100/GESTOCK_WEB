@@ -125,6 +125,9 @@ class TenantScope(Protocol):
     membre, ou accès public par QR Code — ``PublicScope``)."""
 
     @property
+    def tenant(self) -> Tenant: ...
+
+    @property
     def tenant_id(self) -> uuid.UUID: ...
 
 

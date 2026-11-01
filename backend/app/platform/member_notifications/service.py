@@ -18,7 +18,7 @@ from sqlalchemy import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.platform.context import RequestContext
+from app.platform.context import TenantScope
 from app.platform.member_notifications.models import MemberNotification
 from app.shared.ids import new_id
 
@@ -69,7 +69,7 @@ def resolutions(
 
 def notify_members(
     db: Session,
-    ctx: RequestContext,
+    ctx: TenantScope,
     *,
     site_id: uuid.UUID,
     recipients: Iterable[uuid.UUID],
@@ -83,7 +83,9 @@ def notify_members(
 ) -> list[uuid.UUID]:
     """Notifie ``recipients`` (sauf l'auteur de l'action, toujours) ; renvoie les destinataires
     effectivement notifiés par cet appel. Idempotent par (destinataire, évènement source)."""
-    targets = sorted(set(recipients) - {ctx.user.id})
+    # Auteur de l'action (membre) ; accès public par QR Code (R7) : aucun auteur.
+    author = getattr(ctx, "user", None)
+    targets = sorted(set(recipients) - ({author.id} if author is not None else set()))
     created: list[uuid.UUID] = []
     for user_id in targets:
         # Une insertion par destinataire dans un point de sauvegarde : la clé anti-doublon est

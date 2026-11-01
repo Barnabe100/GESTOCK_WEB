@@ -110,6 +110,7 @@ def test_base_roles(owner: Api) -> None:
         "restaurant.orders.order.view",
         "restaurant.orders.order.create",
         "restaurant.orders.order.claim",  # prise en charge (R2-C), jamais la réattribution
+        "restaurant.orders.order.confirm",  # commandes QR à confirmer ou refuser (R7)
         "restaurant.orders.order.prepare",
         "restaurant.orders.order.serve",
         "restaurant.orders.order.cancel",

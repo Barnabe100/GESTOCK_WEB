@@ -12,3 +12,5 @@ ORDER_CANCEL_PREPARED = "restaurant.orders.order.cancel_prepared"
 ORDER_CLAIM = "restaurant.orders.order.claim"
 ORDER_REASSIGN = "restaurant.orders.order.reassign"
 SETTINGS_MANAGE = "restaurant.orders.settings.manage"
+# Commandes reçues par QR Code (R7, P-12) : confirmer ou refuser (motif obligatoire).
+ORDER_CONFIRM = "restaurant.orders.order.confirm"

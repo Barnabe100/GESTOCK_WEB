@@ -513,6 +513,7 @@ def test_waiter_and_preparer_templates_on_demand(resto: SimpleNamespace) -> None
         f"{P}.view",
         f"{P}.create",
         f"{P}.claim",
+        f"{P}.confirm",  # commandes QR à confirmer ou refuser (R7, ADR-0052)
         f"{P}.serve",
         # Zones et tables (palier R5-A) : consultation.
         "restaurant.tables.table.view",

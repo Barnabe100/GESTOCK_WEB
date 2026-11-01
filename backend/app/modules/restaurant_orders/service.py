@@ -71,6 +71,7 @@ from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
     ORDER_CLAIM,
+    ORDER_CONFIRM,
     ORDER_CREATE,
     ORDER_PREPARE,
     ORDER_REASSIGN,
@@ -136,9 +137,12 @@ PAYMENT_CREATE = "sales.payment.create"
 
 
 class OrderState(StrEnum):
-    """Filtre de liste : commandes en cours (défaut), closes, annulées ou toutes."""
+    """Filtre de liste : commandes en cours (défaut : à confirmer et ouvertes), ouvertes
+    seulement, à confirmer seulement (R7), closes, annulées (refusées comprises) ou toutes."""
 
     ACTIVE = "active"
+    OPEN = "open"
+    PENDING = "pending"
     CLOSED = "closed"
     CANCELLED = "cancelled"
     ALL = "all"
@@ -383,9 +387,15 @@ class OrderService:
     def _require_open(order: RestaurantOrder) -> None:
         if order.status is OrderStatus.OPEN:
             return
+        if order.status is OrderStatus.PENDING_CONFIRMATION:
+            # Commande QR (R7) : rien avant sa confirmation (prise, préparation, règlement…).
+            raise ConflictError(
+                "Cette commande doit d'abord être confirmée", code="order_pending_confirmation"
+            )
         code = {
             OrderStatus.CLOSED: "order_closed",
             OrderStatus.CANCELLED: "order_cancelled",
+            OrderStatus.REJECTED: "order_rejected",
         }.get(order.status, "order_not_open")
         raise ConflictError("Cette commande n'est plus ouverte", code=code)
 
@@ -1060,6 +1070,52 @@ class OrderService:
         )
         return order
 
+    # --- Confirmation des commandes QR (R7, ADR-0052) ----------------------------------------
+
+    def _require_pending(self, order: RestaurantOrder) -> None:
+        if order.status is not OrderStatus.PENDING_CONFIRMATION:
+            raise ConflictError(
+                "Cette commande n'est pas à confirmer",
+                code="order_not_pending",
+                extra={"status": order.status.value},
+            )
+
+    def confirm(self, order_id: uuid.UUID) -> RestaurantOrder:
+        """« À confirmer » → ouverte : la commande suit ensuite le circuit de toute commande
+        (prise en charge, cuisine, service, règlement). Sous le verrou de la commande ; deux
+        confirmations simultanées : une seule réussit (``409 order_not_pending``)."""
+        order = self._lock_order(order_id)
+        require_site_permission(self.ctx, order.site_id, ORDER_CONFIRM)
+        self._require_pending(order)
+        self._ensure_orders_still_effective(order.site_id)
+        order.status = OrderStatus.OPEN
+        order.confirmed_at = self.now
+        order.confirmed_by = self.ctx.user.id
+        order.version += 1
+        self._event(order, EventType.CONFIRMED)
+        self.db.flush()
+        self._audit("confirmed", order, {"channel": order.channel.value})
+        return order
+
+    def reject(self, order_id: uuid.UUID, reason: str) -> RestaurantOrder:
+        """Refus MOTIVÉ d'une commande à confirmer : définitif ; ses lignes sont annulées avec le
+        même motif, visible par le client sur son suivi."""
+        order = self._lock_order(order_id)
+        require_site_permission(self.ctx, order.site_id, ORDER_CONFIRM)
+        self._require_pending(order)
+        lines = [line for line in self._lock_lines(order) if line.status not in FINAL_LINE_STATUSES]
+        self._cancel(lines, reason)
+        order.status = OrderStatus.REJECTED
+        order.cancelled_at = self.now
+        order.cancelled_by = self.ctx.user.id
+        order.cancel_reason = reason
+        order.prep_status = PrepStatus.NONE
+        order.version += 1
+        self._event(order, EventType.REJECTED, lines, reason=reason)
+        self.db.flush()
+        self._audit("rejected", order, {"reason": reason, "lines": [li.line_no for li in lines]})
+        return order
+
     # --- Prise en charge (R2-C, D7) -----------------------------------------------------------
 
     def _last_claim_at(self, site_id: uuid.UUID) -> datetime | None:
@@ -1532,6 +1588,10 @@ class OrderService:
         stmt = self._query(readable_site_ids(self.ctx, site_id))
         if state is OrderState.ACTIVE:
             stmt = stmt.where(RestaurantOrder.status.in_(ACTIVE_ORDER_STATUSES))
+        elif state is OrderState.OPEN:
+            stmt = stmt.where(RestaurantOrder.status == OrderStatus.OPEN)
+        elif state is OrderState.PENDING:
+            stmt = stmt.where(RestaurantOrder.status == OrderStatus.PENDING_CONFIRMATION)
         elif state is OrderState.CLOSED:
             stmt = stmt.where(RestaurantOrder.status == OrderStatus.CLOSED)
         elif state is OrderState.CANCELLED:

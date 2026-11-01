@@ -3,6 +3,7 @@
 de donnée d'un autre client."""
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -13,7 +14,7 @@ from app.modules.restaurant_qr.models import (
     ContactFieldMode,
     QrPointKind,
 )
-from app.shared.schemas import Money
+from app.shared.schemas import Money, Quantity
 from app.shared.text import Optional30, Optional40, Optional200
 
 
@@ -99,3 +100,34 @@ class PublicOrderPlaced(BaseModel):
     # Même requête renvoyée avec la même clé : aucune nouvelle commande ; nouveau lien de suivi
     # (l'ancien ne fonctionne plus).
     replayed: bool
+
+
+# --- Suivi public -------------------------------------------------------------------------------
+
+
+class PublicTrackingLine(BaseModel):
+    name: str
+    packaging_name: str | None
+    quantity: Quantity
+    # RECEIVED, IN_PREPARATION, READY, SERVED, CANCELLED
+    status: str
+
+
+class PublicTrackingOut(BaseModel):
+    """Suivi d'UNE commande : état et reste à régler, rien d'interne (ni membre, ni coût, ni
+    stock, ni autre client) ; motif affiché pour un refus seulement."""
+
+    establishment: str
+    site_name: str
+    point: PublicPoint | None
+    currency: str
+    daily_number: int
+    # PENDING_CONFIRMATION, OPEN, CLOSED, CANCELLED, REJECTED
+    status: str
+    prep_status: str
+    lines: list[PublicTrackingLine]
+    total: Money
+    remaining_due: Money
+    rejection_reason: str | None
+    # Fin du suivi (la commande est finie) : le lien cesse ensuite de fonctionner.
+    available_until: datetime | None

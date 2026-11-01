@@ -18,6 +18,7 @@ from app.modules.restaurant_orders.permissions import (
     ORDER_CANCEL,
     ORDER_CANCEL_PREPARED,
     ORDER_CLAIM,
+    ORDER_CONFIRM,
     ORDER_CREATE,
     ORDER_PREPARE,
     ORDER_REASSIGN,
@@ -65,6 +66,7 @@ OrderCanceller = Annotated[
     RequestContext, Depends(require_any_permission(ORDER_CANCEL, ORDER_CANCEL_PREPARED))
 ]
 OrderClaimer = Annotated[RequestContext, Depends(require_permission(ORDER_CLAIM))]
+OrderConfirmer = Annotated[RequestContext, Depends(require_permission(ORDER_CONFIRM))]
 OrderReassigner = Annotated[RequestContext, Depends(require_permission(ORDER_REASSIGN))]
 SettingsManager = Annotated[RequestContext, Depends(require_permission(SETTINGS_MANAGE))]
 Paging = Annotated[PageParams, Depends(page_params)]
@@ -212,6 +214,30 @@ def cancel_order(
 ) -> OrderOut:
     service = _service(db, ctx)
     service.cancel(order_id, body.reason)
+    db.commit()
+    return service.detail(order_id)
+
+
+# --- Commandes reçues par QR Code : confirmation ou refus (R7, ADR-0052) -----------------------
+
+
+@router.post("/orders/{order_id}/confirm", response_model=OrderOut)
+def confirm_order(order_id: uuid.UUID, ctx: OrderConfirmer, db: DbSession) -> OrderOut:
+    """« À confirmer » → ouverte : la commande suit ensuite le circuit de toute commande."""
+    service = _service(db, ctx)
+    service.confirm(order_id)
+    db.commit()
+    return service.detail(order_id)
+
+
+@router.post("/orders/{order_id}/reject", response_model=OrderOut)
+def reject_order(
+    order_id: uuid.UUID, body: OrderCancel, ctx: OrderConfirmer, db: DbSession
+) -> OrderOut:
+    """Refus motivé (définitif) ; le motif est conservé dans l'historique, l'audit et affiché
+    au client sur son suivi."""
+    service = _service(db, ctx)
+    service.reject(order_id, body.reason)
     db.commit()
     return service.detail(order_id)
 

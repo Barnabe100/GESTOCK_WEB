@@ -196,3 +196,61 @@ RLS ni dupliquer le moteur.
   identiques au menu, effacement à 30 jours seulement et idempotent, droits du rôle de purge,
   immutabilité des commandes finies, droits SQL, descente refusée puis restauration du
   déclencheur).
+
+## R7-D — confirmation ou refus par le personnel (aucune migration)
+
+- **Permission** `restaurant.orders.order.confirm` (nature `write`, module des commandes, P-12) :
+  Administrateur (`*`), Gestionnaire (`restaurant.*`), Vendeur et Serveur (modèles de rôles ;
+  rôles système résolus depuis leur modèle : les entreprises existantes la reçoivent aussi) ;
+  jamais le Préparateur ni le Consultant.
+- `POST /restaurant/orders/{id}/confirm` : « à confirmer » → ouverte (`confirmed_at` /
+  `confirmed_by`, évènement `CONFIRMED`, audit `restaurant_order.confirmed`), sous le verrou de
+  la commande, effectivité revérifiée ; deux confirmations simultanées : une seule réussit
+  (`409 order_not_pending`).
+- `POST /restaurant/orders/{id}/reject` : motif OBLIGATOIRE (500 caractères) ; définitif
+  (`REJECTED`), lignes annulées avec le même motif, évènement `REJECTED` (motif), audit
+  `restaurant_order.rejected` ; motif affiché au client sur son suivi.
+- **Rien avant la confirmation** : toute action d'une commande ouverte (prise en charge,
+  préparation, ajout de lignes, règlement, table, client…) refuse une commande à confirmer
+  (`409 order_pending_confirmation`) ; une commande refusée : `409 order_rejected`. L'écran
+  cuisine ne lit que les commandes ouvertes : rien n'y arrive avant la confirmation.
+- **Listes** : filtres `state=open` (ouvertes seulement, colonnes de suivi et « À régler ») et
+  `state=pending` (« À confirmer ») ; `state=active` inchangé (à confirmer + ouvertes).
+- **Notification** des membres `restaurant.order.qr_received` à la création d'une commande « à
+  confirmer » (aucune si acceptée automatiquement) : membres actifs du site détenant
+  EFFECTIVEMENT `order.confirm` et `order.view` sur ce site (même calcul que pour leurs
+  requêtes) ; aucun auteur (le client n'est pas un membre) ; « traitée » dès que la commande
+  n'est plus à confirmer (calcul à la lecture). Les aides de notification acceptent la portée
+  minimale (`TenantScope`) pour l'accès public.
+- **Acceptation automatique** : `qr_auto_accept` modifiable dans les réglages des commandes
+  (`restaurant.orders.settings.manage`), auditée avant / après ; omise : inchangée.
+- **Tests** : `tests/test_restaurant_qr_confirm.py` (7 : permission déclarée, rien avant la
+  confirmation, circuit habituel après, refus motivé et définitif, permissions et portée des
+  sites, notifications et résolution, acceptation automatique sans avis, 4 confirmations
+  simultanées → 1) ; listes exactes des modèles Vendeur et Serveur mises à jour.
+
+## R7-E — suivi client temporaire (aucune migration)
+
+- `GET /api/v1/public/restaurant/qr/track` (en-tête `X-QR-Tracking`) ; lien
+  `{base}/q/track#<secret>` construit par `app/core/public_urls.py`.
+- **Secret** distinct du jeton du point, 256 bits, empreinte seule
+  (`restaurant_qr_orders.tracking_hash`, unique), vérifié à chaque appel par la politique
+  `qr_tracking_lookup` ; renouvelé par une soumission rejouée (l'ancien lien cesse de
+  fonctionner) ; jamais journalisé.
+- **Garde** (`resolve_tracking`) : format, empreinte, entreprise active, site actif, abonnement
+  du site autorisant l'écriture, module QR effectif. Le suivi **survit** à la régénération et à
+  la désactivation du point (décision Q14). Lecture comptée par adresse IP (même limite que le
+  menu). Tout échec : `404 qr_tracking_unavailable` (réponse identique).
+- **Expiration** : tant que la commande est en cours, puis `SM_QR_TRACKING_HOURS_AFTER_END`
+  (12) heures après sa fin (clôture, annulation, refus) ; `available_until` renvoyé.
+- **Contenu** : établissement, site, point (table ou comptoir), devise, numéro du jour, état,
+  état de préparation, lignes (nom, conditionnement, quantité, état), total des lignes non
+  annulées, **reste à régler** (lu sur la vente si la commande est réglée, sinon le total ; 0
+  pour une commande annulée ou refusée), motif d'un **refus** seulement (jamais le motif d'une
+  annulation par le personnel). Jamais de membre, de coût, de stock, de prix d'achat, de
+  référence ni d'autre client. **Aucun paiement électronique.**
+- **Tests** : `tests/test_restaurant_qr_tracking.py` (9 : champs publics seulement, secrets
+  inconnus / malformés / de mauvaise nature refusés, renouvellement par rejeu, survie à la
+  régénération et à la désactivation du point, motif de refus affiché et motif d'annulation
+  masqué, expiration 11 h / 13 h et commande en cours jamais expirée, reste à régler lu sur la
+  vente, module et abonnement, politique de lecture par empreinte).

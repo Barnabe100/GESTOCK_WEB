@@ -41,9 +41,17 @@ from app.modules.restaurant_orders.api import (
     LineInput,
     awaiting_staff_count,
     create_public_order,
+    notify_public_order,
     order_ref,
+    public_order_status,
 )
-from app.modules.restaurant_qr.access import QrAccess, QrUnavailableError, resolve_access
+from app.modules.restaurant_qr.access import (
+    QrAccess,
+    QrUnavailableError,
+    TrackingUnavailableError,
+    resolve_access,
+    resolve_tracking,
+)
 from app.modules.restaurant_qr.models import (
     CLIENT_KEY_CONSTRAINT,
     ContactFieldMode,
@@ -58,6 +66,8 @@ from app.modules.restaurant_qr.public_schemas import (
     PublicOrdering,
     PublicOrderPlaced,
     PublicPoint,
+    PublicTrackingLine,
+    PublicTrackingOut,
 )
 from app.modules.restaurant_qr.settings import ensure_settings
 from app.modules.restaurant_qr.tokens import new_secret, secret_hash
@@ -302,6 +312,8 @@ def place_order(
         if constraint == CLIENT_KEY_CONSTRAINT:
             raise ConflictError("Commande déjà envoyée", code="qr_order_already_sent") from exc
         raise
+    # Membres habilités à confirmer, dans la même transaction (aucun avis si acceptée).
+    notify_public_order(db, access.scope, ref.id, point_label(access), ctx.now)
     return PublicOrderPlaced(
         daily_number=ref.daily_number,
         status=ref.status,
@@ -324,3 +336,61 @@ def _public_refusal(exc: AppError) -> AppError:
             extra={"items": items},
         )
     return QrUnavailableError()
+
+
+# --- Suivi public (R7-E) ------------------------------------------------------------------------
+
+
+def public_tracking(
+    db: Session,
+    registry: ModuleRegistry,
+    settings: Settings,
+    secret: str | None,
+    meta: RequestMeta,
+    now: datetime,
+) -> PublicTrackingOut:
+    """Suivi d'une commande : disponible tant qu'elle est en cours, puis
+    ``SM_QR_TRACKING_HOURS_AFTER_END`` heures après sa fin (clôture, annulation, refus)."""
+    access = resolve_tracking(db, registry, secret, meta, now)
+    status = public_order_status(db, access.link.order_id)
+    if status is None:
+        raise TrackingUnavailableError()
+    until = (
+        status.ended_at + timedelta(hours=settings.qr_tracking_hours_after_end)
+        if status.ended_at is not None
+        else None
+    )
+    if until is not None and now >= until:
+        raise TrackingUnavailableError()
+    tenant = access.scope.tenant
+    label = (
+        access.table.label
+        if access.table is not None
+        else (access.point.label if access.point is not None else None)
+    )
+    return PublicTrackingOut(
+        establishment=tenant.trade_name or tenant.name,
+        site_name=access.scope.site.name,
+        point=(
+            PublicPoint(kind=access.point.kind, label=label or "")
+            if access.point is not None
+            else None
+        ),
+        currency=tenant.currency,
+        daily_number=status.daily_number,
+        status=status.status,
+        prep_status=status.prep_status,
+        lines=[
+            PublicTrackingLine(
+                name=line.label,
+                packaging_name=line.packaging_name,
+                quantity=line.quantity,
+                status=line.status,
+            )
+            for line in status.lines
+        ],
+        total=status.total,
+        remaining_due=status.remaining_due,
+        rejection_reason=status.rejection_reason,
+        available_until=until,
+    )
