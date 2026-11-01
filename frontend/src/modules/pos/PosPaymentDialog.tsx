@@ -12,6 +12,7 @@ import {
   type ConfiguredPaymentMethod,
   type PaymentMethod,
 } from '@/modules/sales/api';
+import { defaultAccountId, ReceivingAccountFields } from '@/modules/sales/ReceivingAccountFields';
 import { formatMoney, normalizeDecimal, subtractMoney, sumMoney } from '@/shared/lib/decimal';
 import { LoadingState } from '@/shared/ui/LoadingState';
 
@@ -70,6 +71,9 @@ export interface PosPayment {
   referenceRequired: boolean;
   amount: string;
   reference: string;
+  /** R6.5 : identifiant de réception utilisé (facultatif) et confirmation manuelle. */
+  accountId?: string | null;
+  confirmed?: boolean;
 }
 
 /** Corps de l'API : le montant reçu en espèces, le montant payé pour les autres moyens. */
@@ -81,6 +85,8 @@ export function toCheckoutPayment(p: PosPayment, cashRegisterId: string | null) 
     amount_received: cash ? p.amount : null,
     reference: p.reference.trim() || null,
     cash_register_id: cash ? cashRegisterId : null,
+    payment_method_account_id: cash ? null : (p.accountId ?? null),
+    received_confirmed: cash ? false : p.confirmed === true,
   };
 }
 
@@ -131,6 +137,8 @@ export function PosPaymentDialog({
         // Reste dû proposé ; rien si la vente est déjà entièrement réglée.
         amount: /[1-9]/.test(positiveRemaining) ? positiveRemaining.replace(/\.00$/, '') : '',
         reference: '',
+        accountId: defaultAccountId(method),
+        confirmed: false,
       },
     ]);
 
@@ -145,6 +153,11 @@ export function PosPaymentDialog({
     }
     if (lines.some((l) => l.referenceRequired && l.reference.trim() === '')) {
       setError(t('payment.referenceRequired'));
+      return;
+    }
+    // R6.5 : choisir un moyen ne vaut jamais confirmation (le serveur le revérifie).
+    if (lines.some((l) => l.kind !== 'CASH' && l.confirmed !== true)) {
+      setError(t('receiving.confirmRequired'));
       return;
     }
     // Seules les espèces peuvent dépasser le reste (monnaie rendue) : jamais les autres moyens.
@@ -196,6 +209,17 @@ export function PosPaymentDialog({
               aria-label={t('pos.removePayment')}
               onClick={() => setLines((ls) => ls.filter((l) => l.key !== line.key))}
             />
+            {line.kind !== 'CASH' && (
+              <div className="sm-pos-payment-receiving">
+                <ReceivingAccountFields
+                  idPrefix={`pos-pay-${index + 1}`}
+                  method={methods.find((m) => m.id === line.methodId)}
+                  accountId={line.accountId ?? null}
+                  confirmed={line.confirmed === true}
+                  onChange={(patch) => update(line.key, patch)}
+                />
+              </div>
+            )}
           </div>
         ))}
         {lines.some((l) => l.kind === 'CASH') && (

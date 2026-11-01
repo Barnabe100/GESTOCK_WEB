@@ -303,5 +303,19 @@
   "station_not_found": "Poste de préparation introuvable.",
   "station_inactive": "Ce poste de préparation est désactivé.",
   "station_has_open_lines": "Des lignes en cours sont routées vers ce poste : servez-les, annulez-les ou changez-les de poste d'abord.",
-  "station_route_changed": "Affectation modifiée en même temps : réessayez."
+  "station_route_changed": "Affectation modifiée en même temps : réessayez.",
+  "payment_method_currency_mismatch": "La devise de ce moyen n'est pas celle de la vente : il ne peut pas l'encaisser (aucune conversion).",
+  "payment_confirmation_required": "Confirmez que les fonds ont bien été reçus avant d'enregistrer le paiement.",
+  "payment_account_unavailable": "Cet identifiant de réception n'est pas utilisable pour ce moyen sur ce site.",
+  "payment_account_not_allowed": "Les espèces n'ont pas d'identifiant de réception.",
+  "payment_account_invalid": "Identifiant invalide (format non respecté).",
+  "payment_account_type_not_accepted": "Ce type d'identifiant n'est pas accepté par l'opérateur.",
+  "payment_account_duplicate": "Cet identifiant est déjà enregistré pour ce moyen.",
+  "payment_account_label_required": "Un identifiant personnalisé exige un libellé.",
+  "payment_account_not_found": "Identifiant de réception introuvable.",
+  "payment_provider_unknown": "Opérateur inconnu du catalogue.",
+  "payment_provider_mismatch": "Cet opérateur ne couvre pas ce type, cette devise ou ce pays.",
+  "payment_provider_not_allowed": "Les espèces n'ont pas d'opérateur.",
+  "country_unknown": "Pays inconnu du référentiel.",
+  "currency_unknown": "Devise inconnue du référentiel."
 }

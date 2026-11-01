@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import {
   assortArticles,
   bearer,
+  confirmFundsReceived,
   followMenu,
   loginUi,
   OWNER,
@@ -130,6 +131,7 @@ test.describe('Profils d’activité', () => {
       .getByRole('button', { name: 'Mobile Money' })
       .click();
     await payment.getByLabel('Montant du paiement 1').fill('12000');
+    await confirmFundsReceived(payment);
     await payment.getByRole('button', { name: 'Appliquer' }).click();
     await page.keyboard.press('F10');
     await page

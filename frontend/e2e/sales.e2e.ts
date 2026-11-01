@@ -4,6 +4,7 @@ import {
   apiToken,
   assortArticles,
   bearer,
+  confirmFundsReceived,
   createMember,
   followMenu,
   loginUi,
@@ -127,6 +128,8 @@ async function validateSale(page: Page, pay?: string) {
     await expect(dialog.getByLabel('Encaisser un paiement maintenant')).toBeChecked();
     await dialog.locator('.p-dropdown', { has: page.locator('#validate-method') }).click();
     await page.locator('.p-dropdown-panel').last().getByRole('option', { name: pay }).click();
+    // R6.5 : hors espèces, la réception des fonds est confirmée explicitement.
+    if (pay !== 'Espèces') await confirmFundsReceived(dialog);
   }
   await dialog.getByRole('button', { name: 'Valider la vente' }).click();
   const toast = page.getByText(new RegExp(`^Vente ${SALE_NUMBER.source} validée$`));

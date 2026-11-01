@@ -819,3 +819,34 @@ dans `RESTAURANT.md` (§2, §5, §8, §11, §12, §13), `API.md`, `DATA_MODEL.md
 - **Non livré dans R6** : indicateur `restaurant.kitchen:ready` du tableau de bord (déclaré par
   le profil UX, aucun widget implémenté — comme ceux des tables et des commandes), affectation
   de membres à un poste (reportée, ADR-0050 K1), impression de bons par poste.
+
+## Lot R6.5 — moyens de réception internationaux (ADR-0051)
+
+Décisions et implémentation dans [ADR-0051](adr/0051-moyens-de-reception-internationaux.md)
+(section « Implémentation R6.5 »). À reporter dans `PAYMENTS.md`, `API.md`, `DATA_MODEL.md` et
+`CLAUDE.md` (phase en cours) :
+
+- **Migrations** : 0051 (`ref_payment_providers`), 0052 (opérateur, pays, devise des moyens),
+  0053 (`payment_method_accounts`), 0054 (confirmation et instantané des paiements). Descentes
+  refusées dès qu'une donnée serait perdue.
+- **API** : `GET /payment-providers?country=&currency=&kind=` ; `payment-methods` : champs
+  `provider_code`, `provider_name`, `provider_label`, `country_code`, `currency`,
+  `unavailable_reason`, `accounts` (avec `site_id`) ; `GET/POST
+  /payment-methods/{id}/accounts`, `PATCH /payment-methods/accounts/{id}`,
+  `POST /payment-methods/accounts/{id}/activate|deactivate` ; paiements (`PaymentCreate`) :
+  `payment_method_account_id`, `received_confirmed` ; `PaymentOut` et reçu : `currency`,
+  `confirmed_at`, `confirmed_by_name`, `provider_label`, `account_*`.
+- **Codes d'erreur** : `payment_method_currency_mismatch`, `payment_confirmation_required`,
+  `payment_account_unavailable`, `payment_account_not_allowed`, `payment_account_invalid`,
+  `payment_account_type_not_accepted`, `payment_account_duplicate`,
+  `payment_account_label_required`, `payment_account_not_found`, `payment_provider_unknown`,
+  `payment_provider_mismatch`, `payment_provider_not_allowed`, `country_unknown`,
+  `currency_unknown`.
+- **Changement de comportement** : un paiement hors espèces exige désormais la confirmation
+  explicite de la réception des fonds (API et interface) ; les intégrations qui créaient des
+  paiements hors espèces par l'API doivent envoyer `received_confirmed: true`.
+- **Catalogue** : vide au départ ; une entrée n'est ajoutée qu'après vérification de ses types
+  d'identifiants et formats (`payment_providers.toml`, format commenté dans le fichier).
+- **Non livré** : paiement dans le parcours QR (R7, décision complémentaire requise), passerelles
+  et API d'opérateurs, webhooks, encaissement centralisé par TechNova, conversion de devises,
+  traductions au-delà du français.

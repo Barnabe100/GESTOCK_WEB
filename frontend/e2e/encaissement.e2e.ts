@@ -1,12 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
+  apiToken,
   assortArticles,
   bearer,
+  confirmFundsReceived,
   createActiveSite,
   loginUi,
   OWNER,
-  apiToken,
   provisionTenant,
   SALE_NUMBER,
   tokenFor,
@@ -138,6 +139,9 @@ async function pay(page: Page, payments: [string, string, string?][]) {
     await dialog.getByLabel(new RegExp(`^Montant (reçu )?du paiement ${index + 1}$`)).fill(value);
     if (reference) await dialog.getByLabel(`Référence du paiement ${index + 1}`).fill(reference);
   }
+  // R6.5 : hors espèces, la réception des fonds est confirmée explicitement.
+  const others = payments.filter(([method]) => method !== 'Espèces').length;
+  for (let i = 0; i < others; i += 1) await confirmFundsReceived(dialog, i);
   await dialog.getByRole('button', { name: 'Appliquer' }).click();
   await expect(dialog).toBeHidden();
 }
@@ -249,6 +253,10 @@ test.describe('Encaissement (Lot 1)', () => {
     await payments.getByRole('button', { name: 'Appliquer' }).click();
     await expect(payments.getByText('Référence de la transaction obligatoire')).toBeVisible();
     await payments.getByLabel('Référence du paiement 1').fill('OM-778899');
+    // R6.5 : choisir le moyen ne suffit pas, la réception est confirmée explicitement.
+    await payments.getByRole('button', { name: 'Appliquer' }).click();
+    await expect(payments.getByText('Confirmez la réception effective des fonds.')).toBeVisible();
+    await confirmFundsReceived(payments);
     await payments.getByRole('button', { name: 'Appliquer' }).click();
     await validate(page);
     const number = await receiptNumber(page);

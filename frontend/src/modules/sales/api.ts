@@ -269,6 +269,16 @@ export interface Payment {
   cancelled_at: string | null;
   cancelled_by_name: string | null;
   cancellation_reason: string | null;
+  /** R6.5 : devise, confirmation manuelle et coordonnées de réception RÉELLEMENT utilisées. */
+  currency?: string;
+  confirmed_at?: string | null;
+  confirmed_by_name?: string | null;
+  payment_method_account_id?: string | null;
+  provider_label?: string | null;
+  account_identifier_type?: IdentifierType | null;
+  account_label?: string | null;
+  account_value?: string | null;
+  account_holder?: string | null;
 }
 
 export interface PaymentSummary {
@@ -300,6 +310,10 @@ export interface PaymentInput {
   idempotency_key: string;
   /** Espèces : caisse du site de la vente (vérifiée par le serveur). */
   cash_register_id?: string | null;
+  /** R6.5 : identifiant de réception utilisé (facultatif). */
+  payment_method_account_id?: string | null;
+  /** R6.5 : confirmation MANUELLE que les fonds ont été reçus (obligatoire hors espèces). */
+  received_confirmed?: boolean;
 }
 
 export function useSalePayments(saleId: string, enabled: boolean) {
@@ -346,8 +360,71 @@ export interface ConfiguredPaymentMethod {
   sort_order: number;
   /** Sites où le moyen est désactivé (disponible partout ailleurs s'il est actif). */
   disabled_site_ids: string[];
-  /** Avec un site demandé : utilisable sur ce site. */
+  /** R6.5 : opérateur du catalogue (code) ou personnalisé (nom) ; nom affiché. */
+  provider_code?: string | null;
+  provider_name?: string | null;
+  provider_label?: string | null;
+  /** R6.5 : pays (absent : international) et devise du moyen. */
+  country_code?: string | null;
+  currency: string;
+  /** Avec un site demandé : utilisable sur ce site, sinon la raison (calculées par le serveur). */
   available: boolean | null;
+  unavailable_reason?: 'inactive' | 'site_disabled' | 'currency_mismatch' | null;
+  /** Avec un site demandé : identifiants de réception actifs utilisables sur ce site. */
+  accounts?: PaymentAccount[] | null;
+}
+
+/** R6.5 : nature d'un identifiant de réception (comportement, jamais un opérateur). */
+export type IdentifierType = 'PHONE' | 'MERCHANT_CODE' | 'AGENT_CODE' | 'ACCOUNT_NUMBER' | 'CUSTOM';
+export const IDENTIFIER_TYPES: readonly IdentifierType[] = [
+  'PHONE',
+  'MERCHANT_CODE',
+  'AGENT_CODE',
+  'ACCOUNT_NUMBER',
+  'CUSTOM',
+];
+
+/** Identifiant de réception : propre à un site (`site_id`) ou commun (`shared`). */
+export interface PaymentAccount {
+  id: string;
+  payment_method_id: string;
+  site_id: string | null;
+  site_name: string | null;
+  shared: boolean;
+  identifier_type: IdentifierType;
+  custom_label: string | null;
+  value: string;
+  holder_name: string | null;
+  instructions: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface PaymentAccountInput {
+  site_id?: string | null;
+  identifier_type?: IdentifierType;
+  custom_label: string | null;
+  value: string;
+  holder_name: string | null;
+  instructions: string | null;
+  sort_order: number;
+}
+
+/** Opérateur ou établissement du catalogue TechNova (lecture seule, jamais obligatoire). */
+export interface PaymentProvider {
+  code: string;
+  name: string;
+  kinds: PaymentMethod[];
+  countries: string[];
+  currencies: string[];
+  identifiers: {
+    type: IdentifierType;
+    min_length: number | null;
+    max_length: number | null;
+    pattern: string | null;
+  }[];
+  instructions: string | null;
+  is_active: boolean;
 }
 
 export interface PaymentMethodInput {
@@ -355,6 +432,10 @@ export interface PaymentMethodInput {
   kind?: PaymentMethod;
   reference_required: boolean;
   sort_order: number;
+  provider_code: string | null;
+  provider_name: string | null;
+  country_code: string | null;
+  currency: string;
 }
 
 export const paymentMethodKeys = { all: ['payment-methods'] as const };
@@ -389,6 +470,10 @@ export function usePaymentMethodMutations() {
               label: input.label,
               reference_required: input.reference_required,
               sort_order: input.sort_order,
+              provider_code: input.provider_code,
+              provider_name: input.provider_name,
+              country_code: input.country_code,
+              currency: input.currency,
             })
           : api.post<ConfiguredPaymentMethod>('/payment-methods', input),
       onSuccess,
@@ -404,4 +489,86 @@ export function usePaymentMethodMutations() {
       onSuccess,
     }),
   };
+}
+
+// --- Identifiants de réception et catalogue des opérateurs (R6.5) ------------------------------
+
+export const paymentAccountKeys = {
+  all: ['payment-accounts'] as const,
+  ofMethod: (methodId: string) => ['payment-accounts', methodId] as const,
+};
+
+/** Identifiants d'un moyen : communs et propres aux sites accessibles (filtrés par le serveur). */
+export function usePaymentAccounts(methodId: string | null) {
+  return useQuery({
+    queryKey: paymentAccountKeys.ofMethod(methodId ?? ''),
+    queryFn: ({ signal }) =>
+      api.get<PaymentAccount[]>(`/payment-methods/${methodId ?? ''}/accounts`, signal),
+    enabled: methodId !== null,
+  });
+}
+
+export function usePaymentAccountMutations(methodId: string) {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    void qc.invalidateQueries({ queryKey: paymentAccountKeys.all });
+    void qc.invalidateQueries({ queryKey: paymentMethodKeys.all });
+  };
+  return {
+    save: useMutation({
+      mutationFn: ({ id, input }: { id?: string; input: PaymentAccountInput }) =>
+        id
+          ? api.patch<PaymentAccount>(`/payment-methods/accounts/${id}`, {
+              custom_label: input.custom_label,
+              value: input.value,
+              holder_name: input.holder_name,
+              instructions: input.instructions,
+              sort_order: input.sort_order,
+            })
+          : api.post<PaymentAccount>(`/payment-methods/${methodId}/accounts`, input),
+      onSuccess,
+    }),
+    setActive: useMutation({
+      mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+        api.post<PaymentAccount>(
+          `/payment-methods/accounts/${id}/${active ? 'activate' : 'deactivate'}`,
+        ),
+      onSuccess,
+    }),
+  };
+}
+
+/** Catalogue filtré par pays, devise et type (vide au départ ; jamais requis). */
+export function usePaymentProviders(
+  filter: { country?: string | null; currency?: string | null; kind?: PaymentMethod | null },
+  enabled = true,
+) {
+  const query = new URLSearchParams();
+  if (filter.country) query.set('country', filter.country);
+  if (filter.currency) query.set('currency', filter.currency);
+  if (filter.kind) query.set('kind', filter.kind);
+  const qs = query.toString();
+  return useQuery({
+    queryKey: ['payment-providers', qs],
+    queryFn: ({ signal }) =>
+      api.get<PaymentProvider[]>(`/payment-providers${qs ? `?${qs}` : ''}`, signal),
+    enabled,
+  });
+}
+
+/** « Code marchand 12345 (Titulaire) » : coordonnées affichées à la caisse et sur le reçu. */
+export function accountText(
+  t: (key: string) => string,
+  account: {
+    identifier_type: IdentifierType;
+    custom_label: string | null;
+    value: string;
+    holder_name?: string | null;
+  },
+): string {
+  const kind =
+    account.identifier_type === 'CUSTOM' && account.custom_label
+      ? account.custom_label
+      : t(`receiving.identifierTypes.${account.identifier_type}`);
+  return `${kind} ${account.value}${account.holder_name ? ` (${account.holder_name})` : ''}`;
 }

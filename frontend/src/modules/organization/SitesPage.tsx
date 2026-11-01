@@ -7,7 +7,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputSwitch } from 'primereact/inputswitch';
 import { InputText } from 'primereact/inputtext';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -333,6 +333,9 @@ export default function SitesPage() {
   const siteStatus = new Map(capabilities.sites.map((s) => [s.id, s.subscription_status]));
   const canManage = can('organization.site.manage');
   const canProfile = can('organization.profile.manage');
+  // R6.5 : configuration des moyens de réception du site (identifiants propres ou communs).
+  const canReceiving = can('sales.payment_method.manage');
+  const navigate = useNavigate();
   // Libellé du profil lu depuis la ligne (`business_profile_code` de `/sites`, qui fait foi) :
   // les cellules du tableau ne se redessinent qu'au changement de leur ligne.
   const profileNames = new Map(
@@ -423,7 +426,7 @@ export default function SitesPage() {
               return status ? <SubscriptionStatusBadge status={status} /> : '—';
             }}
           />
-          {(canManage || canProfile) && (
+          {(canManage || canProfile || canReceiving) && (
             <Column
               header={t('common.actions')}
               body={(s: Site) => (
@@ -446,6 +449,16 @@ export default function SitesPage() {
                             label: t('siteProfile.action'),
                             icon: 'pi pi-sync',
                             onClick: () => setProfileSite(s),
+                          },
+                        ]
+                      : []),
+                    ...(canReceiving
+                      ? [
+                          {
+                            key: 'receiving',
+                            label: t('receiving.siteAction'),
+                            icon: 'pi pi-wallet',
+                            onClick: () => void navigate(`/sales/payment-methods?site=${s.id}`),
                           },
                         ]
                       : []),

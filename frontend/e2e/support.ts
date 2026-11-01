@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 /** Compte propriétaire d'une entreprise de test (voir e2e/README.md). */
 export const OWNER = {
@@ -444,4 +444,15 @@ export async function assortArticles(
     });
     expect(response.ok(), await response.text()).toBeTruthy();
   }
+}
+
+/** Libellé de la confirmation manuelle de réception des fonds (R6.5, ADR-0051). */
+export const FUNDS_RECEIVED = "J'ai vérifié que les fonds ont bien été reçus";
+
+/**
+ * Coche la confirmation de réception des fonds d'un paiement hors espèces (R6.5) : choisir un
+ * moyen ne vaut jamais confirmation. ``nth`` : rang du paiement concerné dans le dialogue.
+ */
+export async function confirmFundsReceived(scope: Locator, nth = 0) {
+  await scope.locator('label', { hasText: FUNDS_RECEIVED }).nth(nth).click();
 }

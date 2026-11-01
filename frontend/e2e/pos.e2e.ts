@@ -4,6 +4,7 @@ import {
   apiToken,
   assortArticles,
   bearer,
+  confirmFundsReceived,
   ensureCashOpen,
   followMenu,
   loginUi,
@@ -148,6 +149,9 @@ async function pay(page: Page, payments: [string, string][]) {
     await methods.getByRole('button', { name: method }).click();
     await dialog.getByLabel(new RegExp(`^Montant (reçu )?du paiement ${index + 1}$`)).fill(value);
   }
+  // R6.5 : hors espèces, la réception des fonds est confirmée explicitement.
+  const others = payments.filter(([method]) => method !== 'Espèces').length;
+  for (let i = 0; i < others; i += 1) await confirmFundsReceived(dialog, i);
   await dialog.getByRole('button', { name: 'Appliquer' }).click();
   await expect(dialog).toBeHidden();
 }

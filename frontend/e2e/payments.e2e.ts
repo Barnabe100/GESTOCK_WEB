@@ -1,9 +1,10 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import {
-  assortArticles,
   apiToken,
+  assortArticles,
   bearer,
+  confirmFundsReceived,
   ensureCashOpen,
   loginUi,
   OWNER,
@@ -119,6 +120,8 @@ async function recordPayment(page: Page, value?: string, method?: string) {
   if (method) {
     await dialog.locator('.p-dropdown', { has: page.locator('#payment-method') }).click();
     await page.locator('.p-dropdown-panel').last().getByText(method, { exact: true }).click();
+    // R6.5 : hors espèces, la réception des fonds est confirmée explicitement.
+    if (method !== 'Espèces') await confirmFundsReceived(dialog);
   }
   await dialog.getByRole('button', { name: 'Enregistrer le paiement' }).click();
   return dialog;

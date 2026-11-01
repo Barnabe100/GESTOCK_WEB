@@ -143,6 +143,8 @@ test.beforeAll(async ({ request }) => {
     amount: total,
     payment_method_id: orange.id,
     reference: OM_REFERENCE,
+    // R6.5 : hors espèces, confirmation manuelle de la réception des fonds.
+    received_confirmed: true,
   }));
   world.sales.bobo = await sell(request, token, bobo, world.articles.cement, cash);
 });

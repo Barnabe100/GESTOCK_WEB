@@ -104,6 +104,8 @@ export interface Capabilities {
     currency: string;
     locale: string;
     timezone: string;
+    /** Pays de l'entreprise (référentiel). */
+    country_code?: string | null;
   };
   is_owner: boolean;
   /**

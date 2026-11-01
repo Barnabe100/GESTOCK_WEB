@@ -28,6 +28,7 @@ import {
   type PaymentDraft,
   type PaymentDraftErrors,
 } from './PaymentFields';
+import { defaultAccountId } from './ReceivingAccountFields';
 
 /**
  * Confirmation de la validation d'une vente, avec encaissement immédiat facultatif (même
@@ -86,8 +87,13 @@ export function ValidateSaleDialog({
   const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const methodId = draft.methodId ?? defaultMethodId(methods);
-  const current = { ...draft, methodId };
   const method = methods.find((m) => m.id === methodId);
+  // R6.5 : identifiant présélectionné tant que le caissier n'en a pas choisi un autre.
+  const current = {
+    ...draft,
+    methodId,
+    accountId: draft.accountId === undefined ? defaultAccountId(method) : draft.accountId,
+  };
 
   const confirm = (withOverride: boolean, expiredLotOverride: ExpiredLotOverride | null = null) => {
     const creditOverride = withOverride ? { reason: reason.trim() } : null;

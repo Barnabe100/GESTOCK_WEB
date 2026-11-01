@@ -4,6 +4,8 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatMoney, formatQuantity } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
 
+import { accountText } from '../api';
+
 import type { Receipt, ReceiptLine } from './api';
 import { DEFAULT_RECEIPT_FORMAT, type ReceiptFormat } from './formats';
 
@@ -101,7 +103,25 @@ export function SaleReceipt({
         </div>
         {receipt.payments?.map((p, index) => (
           <div key={index} data-testid="receipt-payment">
-            <dt>{p.method_label}</dt>
+            <dt>
+              {p.method_label}
+              {/* R6.5 : opérateur et identifiant RÉELLEMENT utilisés (instantané du paiement). */}
+              {p.provider_label && (
+                <span className="sm-receipt-account" data-testid="receipt-provider">
+                  {p.provider_label}
+                </span>
+              )}
+              {p.account_identifier_type && p.account_value && (
+                <span className="sm-receipt-account" data-testid="receipt-account">
+                  {accountText(t, {
+                    identifier_type: p.account_identifier_type,
+                    custom_label: p.account_label ?? null,
+                    value: p.account_value,
+                    holder_name: p.account_holder ?? null,
+                  })}
+                </span>
+              )}
+            </dt>
             <dd>{money(p.amount)}</dd>
           </div>
         ))}

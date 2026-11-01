@@ -89,7 +89,10 @@ export function paymentMethodFixture(
     is_active: true,
     sort_order: 10,
     disabled_site_ids: [],
+    country_code: 'BF',
+    currency: 'XOF',
     available: true,
+    accounts: [],
     ...over,
   };
 }

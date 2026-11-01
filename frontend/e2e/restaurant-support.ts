@@ -28,7 +28,7 @@ export interface Resto {
   suffix: string;
 }
 
-type Method = 'get' | 'post' | 'put';
+type Method = 'get' | 'post' | 'put' | 'patch';
 
 /** Appel de l'API attendu en succès (2xx) ; renvoie le corps JSON (``null`` pour 204). */
 export async function call<T = { id: string }>(

@@ -160,6 +160,43 @@ des constantes métier.
   gardent une devise explicite.
 - Ces corrections font partie de R6.5 et ne sont pas appliquées avant son lancement (D1).
 
+## Implémentation R6.5 (2026-11-01)
+
+Livrée par étapes A à G (statut de l'ADR inchangé jusqu'à la validation de la livraison) :
+
+| Étape | Contenu | Migration |
+| --- | --- | --- |
+| A | Plus aucune devise (`XOF`), aucun fuseau national ni nom d'opérateur dans le code ; test statique | — |
+| B | Catalogue `payment_providers.toml` (vide) → `ref_payment_providers` (SELECT seul), `GET /payment-providers` | 0051 |
+| C | `payment_methods` : opérateur (catalogue / personnalisé / aucun), pays, devise ; règle de devise | 0052 |
+| D | `payment_method_accounts` : identifiants propres à un site ou communs, sans limite | 0053 |
+| E | Paiements : confirmation manuelle (`confirmed_by` / `confirmed_at`), devise, instantané des coordonnées | 0054 |
+| F | Interface : administration (opérateur, pays, devise, identifiants par portée, accès depuis la page Sites), caisse (identifiant, confirmation), reçu, historique | — |
+
+Précisions de mise en œuvre (fidèles aux décisions D1 à D5) :
+
+- **Confirmation** : un paiement hors espèces exige `received_confirmed` (case « J'ai vérifié que
+  les fonds ont bien été reçus ») ; sinon `422 payment_confirmation_required`, contrôlé après les
+  règles de saisie (référence, monnaie). Les **espèces**, remises en main propre, sont confirmées
+  par leur enregistrement. Tout paiement encaissé porte `confirmed_by` et `confirmed_at`
+  (contrainte `completed_is_confirmed`) ; `PENDING` reste réservé aux passerelles futures. Les
+  paiements antérieurs sont repris comme confirmés par leur auteur à leur date d'encaissement.
+- **Identifiant à la caisse** : jamais deviné par le serveur ; l'interface présélectionne l'unique
+  identifiant actif, laisse choisir parmi plusieurs (« Aucun identifiant » toujours possible).
+  Contrôlé à l'encaissement : même moyen, actif, commun ou propre au site de la vente
+  (`payment_account_unavailable`), verrou partagé.
+- **Portées** : identifiant propre à un site géré avec `sales.payment_method.manage` sur CE site ;
+  identifiant commun géré seulement avec la permission sur TOUS les sites ; lecture limitée aux
+  identifiants communs et aux sites accessibles (autres : introuvables).
+- **Formats** : téléphone = séparateurs retirés, « + » initial conservé, **aucun indicatif ajouté**
+  (pas de règle nationale supposée) ; règle de longueur ou de motif appliquée seulement si
+  l'opérateur du catalogue la déclare ; types acceptés limités par le catalogue s'il en déclare.
+- **Devise** : contrôlée dans `resolve_method` (point unique des ventes, du POS et du règlement
+  des commandes) ; la liste par site renvoie `unavailable_reason = currency_mismatch` ; la
+  compatibilité « par type » ne choisit jamais un moyen d'une autre devise.
+- **Capacités** : `tenant.country_code` ajouté (pays proposé par défaut d'un nouveau moyen).
+- **Permissions** : aucune nouvelle.
+
 ## Conséquences
 
 - Déployer un nouveau pays = activer le pays dans le référentiel + ajouter ses opérateurs au

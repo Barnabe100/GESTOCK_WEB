@@ -3,9 +3,10 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import {
   assortArticles,
   bearer,
+  confirmFundsReceived,
   createMember,
-  loginUi,
   enableLotTracking,
+  loginUi,
   provisionTenant,
   SALE_NUMBER,
   tokenFor,
@@ -144,6 +145,8 @@ async function openValidation(page: Page) {
     .last()
     .getByRole('option', { name: 'Mobile Money' })
     .click();
+  // R6.5 : la réception des fonds est confirmée explicitement.
+  await confirmFundsReceived(dialog);
   return dialog;
 }
 
@@ -159,6 +162,7 @@ async function payPos(page: Page, amount: string) {
     .getByRole('button', { name: 'Mobile Money' })
     .click();
   await dialog.getByLabel(/^Montant (reçu )?du paiement 1$/).fill(amount);
+  await confirmFundsReceived(dialog);
   await dialog.getByRole('button', { name: 'Appliquer' }).click();
   await expect(dialog).toBeHidden();
 }

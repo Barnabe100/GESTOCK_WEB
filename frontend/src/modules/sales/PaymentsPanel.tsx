@@ -22,6 +22,7 @@ import { RowActions } from '@/shared/ui/RowActions';
 import { useToast } from '@/shared/ui/toast';
 
 import {
+  accountText,
   useAvailablePaymentMethods,
   usePaymentMutations,
   useSalePayments,
@@ -36,6 +37,7 @@ import {
   type PaymentDraft,
   type PaymentDraftErrors,
 } from './PaymentFields';
+import { defaultAccountId } from './ReceivingAccountFields';
 import { PaymentStatusBadge, SalePaymentBadge, paymentError } from './ui';
 
 /** « 70000.00 » → « 70000 » : valeur proposée dans le champ montant (aucun calcul). */
@@ -86,8 +88,13 @@ function PaymentDialog({
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const remaining = formatMoney(summary.remaining_amount, currency, locale);
   const methodId = draft.methodId ?? defaultMethodId(methods);
-  const current = { ...draft, methodId };
   const method = methods.find((m) => m.id === methodId);
+  // R6.5 : identifiant présélectionné tant que le caissier n'en a pas choisi un autre.
+  const current = {
+    ...draft,
+    methodId,
+    accountId: draft.accountId === undefined ? defaultAccountId(method) : draft.accountId,
+  };
 
   const submit = () => {
     const result = toPaymentInput(t, current, methods);
@@ -309,6 +316,18 @@ export function PaymentsPanel({ sale }: { sale: Sale }) {
             body={(p: Payment) => (
               <div>
                 {p.provider ? `${p.method_label} — ${p.provider}` : p.method_label}
+                {/* R6.5 : opérateur et identifiant utilisés (instantané du paiement). */}
+                {p.provider_label && <div className="sm-help">{p.provider_label}</div>}
+                {p.account_identifier_type && p.account_value && (
+                  <div className="sm-help" data-testid="payment-account">
+                    {accountText(t, {
+                      identifier_type: p.account_identifier_type,
+                      custom_label: p.account_label ?? null,
+                      value: p.account_value,
+                      holder_name: p.account_holder ?? null,
+                    })}
+                  </div>
+                )}
                 {p.amount_received !== null && (
                   <div className="sm-help">
                     {t('payment.receivedAndChange', {
@@ -347,7 +366,22 @@ export function PaymentsPanel({ sale }: { sale: Sale }) {
               </div>
             )}
           />
-          <Column field="created_by_name" header={t('payment.recordedBy')} />
+          <Column
+            header={t('payment.recordedBy')}
+            body={(p: Payment) => (
+              <div>
+                {p.created_by_name}
+                {p.confirmed_at && (
+                  <div className="sm-help" data-testid="payment-confirmed">
+                    {t('receiving.confirmedBy', {
+                      name: p.confirmed_by_name ?? '',
+                      date: formatDateTime(p.confirmed_at, locale, timezone),
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          />
           {canCancel && (
             <Column
               header={t('common.actions')}

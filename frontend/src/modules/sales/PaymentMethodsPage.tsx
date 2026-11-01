@@ -7,11 +7,14 @@ import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputSwitch } from 'primereact/inputswitch';
 import { InputText } from 'primereact/inputtext';
+import { Message } from 'primereact/message';
 import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import { z } from 'zod';
 
+import { usePublicCountries } from '@/core/api/geo';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { translateError } from '@/shared/lib/errors';
 import { confirmAction } from '@/shared/ui/confirm';
@@ -27,16 +30,31 @@ import {
   PAYMENT_METHODS,
   usePaymentMethodMutations,
   usePaymentMethods,
+  usePaymentProviders,
   type ConfiguredPaymentMethod,
   type PaymentMethod,
 } from './api';
+import { PaymentAccountsDialog } from './PaymentAccountsDialog';
 
-const schema = z.object({
-  label: z.string().trim().min(1).max(60),
-  kind: z.enum(['CASH', 'MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'OTHER']),
-  reference_required: z.boolean(),
-  sort_order: z.string().regex(/^\d{1,4}$/),
-});
+/** Opérateur : aucun, du catalogue (code) ou personnalisé (saisi) — jamais obligatoire. */
+const NO_PROVIDER = '__none';
+const CUSTOM_PROVIDER = '__custom';
+const INTERNATIONAL = '__intl';
+
+const schema = z
+  .object({
+    label: z.string().trim().min(1).max(60),
+    kind: z.enum(['CASH', 'MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'OTHER']),
+    reference_required: z.boolean(),
+    sort_order: z.string().regex(/^\d{1,4}$/),
+    provider: z.string(),
+    provider_name: z.string().trim().max(100),
+    country: z.string(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+  })
+  .refine((v) => v.provider !== CUSTOM_PROVIDER || v.provider_name.length > 0, {
+    path: ['provider_name'],
+  });
 type FormValues = z.infer<typeof schema>;
 
 function MethodDialog({
@@ -48,7 +66,10 @@ function MethodDialog({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { capabilities } = useCapabilities();
+  const tenant = capabilities.tenant;
   const { save } = usePaymentMethodMutations();
+  const countries = usePublicCountries();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -56,9 +77,28 @@ function MethodDialog({
       kind: method?.kind ?? 'MOBILE_MONEY',
       reference_required: method?.reference_required ?? false,
       sort_order: String(method?.sort_order ?? 100),
+      provider: method?.provider_code ?? (method?.provider_name ? CUSTOM_PROVIDER : NO_PROVIDER),
+      provider_name: method?.provider_name ?? '',
+      country:
+        method === null
+          ? (tenant.country_code ?? INTERNATIONAL)
+          : (method.country_code ?? INTERNATIONAL),
+      currency: method?.currency ?? tenant.currency,
     },
   });
   const errors = form.formState.errors;
+  const [kind, country, currency, provider] = useWatch({
+    control: form.control,
+    name: ['kind', 'country', 'currency', 'provider'],
+  });
+  // Catalogue (vide au départ) filtré par le serveur : pays (ou international), devise, type.
+  const providers = usePaymentProviders(
+    { country: country === INTERNATIONAL ? null : country, currency, kind },
+    kind !== 'CASH',
+  );
+  const currencies = [
+    ...new Set([tenant.currency, ...(countries.data ?? []).map((c) => c.currency)]),
+  ].sort();
   const onSubmit = form.handleSubmit((values) =>
     save.mutate(
       {
@@ -68,6 +108,18 @@ function MethodDialog({
           kind: values.kind,
           reference_required: values.reference_required,
           sort_order: Number(values.sort_order),
+          provider_code:
+            values.kind === 'CASH' ||
+            values.provider === NO_PROVIDER ||
+            values.provider === CUSTOM_PROVIDER
+              ? null
+              : values.provider,
+          provider_name:
+            values.kind !== 'CASH' && values.provider === CUSTOM_PROVIDER
+              ? values.provider_name.trim()
+              : null,
+          country_code: values.country === INTERNATIONAL ? null : values.country,
+          currency: values.currency,
         },
       },
       {
@@ -129,6 +181,94 @@ function MethodDialog({
             )}
           />
         </FormField>
+        {kind !== 'CASH' && (
+          <FormField
+            id="pm-provider"
+            label={t('receiving.provider')}
+            help={t('receiving.providerHelp')}
+          >
+            <Controller
+              control={form.control}
+              name="provider"
+              render={({ field }) => (
+                <Dropdown
+                  inputId="pm-provider"
+                  value={field.value}
+                  onChange={(e) => field.onChange(e.value as string)}
+                  options={[
+                    { value: NO_PROVIDER, label: t('receiving.noProvider') },
+                    ...(providers.data ?? []).map((p) => ({ value: p.code, label: p.name })),
+                    // Opérateur du moyen absent du filtre (pays ou devise changés) : conservé.
+                    ...(method?.provider_code &&
+                    !(providers.data ?? []).some((p) => p.code === method.provider_code)
+                      ? [
+                          {
+                            value: method.provider_code,
+                            label: method.provider_label ?? method.provider_code,
+                          },
+                        ]
+                      : []),
+                    { value: CUSTOM_PROVIDER, label: t('receiving.customProvider') },
+                  ]}
+                />
+              )}
+            />
+          </FormField>
+        )}
+        {kind !== 'CASH' && provider === CUSTOM_PROVIDER && (
+          <FormField
+            id="pm-provider-name"
+            label={t('receiving.customProviderName')}
+            required
+            error={errors.provider_name && t('validation.required')}
+          >
+            <InputText
+              id="pm-provider-name"
+              maxLength={100}
+              placeholder={t('payment.providerPlaceholder')}
+              {...form.register('provider_name')}
+            />
+          </FormField>
+        )}
+        <FormField id="pm-country" label={t('receiving.country')}>
+          <Controller
+            control={form.control}
+            name="country"
+            render={({ field }) => (
+              <Dropdown
+                inputId="pm-country"
+                value={field.value}
+                filter
+                onChange={(e) => field.onChange(e.value as string)}
+                options={[
+                  { value: INTERNATIONAL, label: t('receiving.international') },
+                  ...(countries.data ?? []).map((c) => ({ value: c.code, label: c.name })),
+                ]}
+              />
+            )}
+          />
+        </FormField>
+        <FormField id="pm-currency" label={t('receiving.currency')} required>
+          <Controller
+            control={form.control}
+            name="currency"
+            render={({ field }) => (
+              <Dropdown
+                inputId="pm-currency"
+                value={field.value}
+                filter
+                onChange={(e) => field.onChange(e.value as string)}
+                options={currencies.map((c) => ({ value: c, label: c }))}
+              />
+            )}
+          />
+        </FormField>
+        {currency !== tenant.currency && (
+          <Message
+            severity="warn"
+            text={t('receiving.currencyWarning', { currency, sales: tenant.currency })}
+          />
+        )}
         <div className="sm-checkbox">
           <Controller
             control={form.control}
@@ -227,6 +367,12 @@ export default function PaymentMethodsPage() {
   const { setActive } = usePaymentMethodMutations();
   const [editing, setEditing] = useState<ConfiguredPaymentMethod | null | undefined>(undefined);
   const [sites, setSites] = useState<ConfiguredPaymentMethod | null>(null);
+  const [accounts, setAccounts] = useState<ConfiguredPaymentMethod | null>(null);
+  // Venue de la page Sites : identifiants de ce site mis en avant.
+  const [search] = useSearchParams();
+  const focusSite = capabilities.sites.some((s) => s.id === search.get('site'))
+    ? search.get('site')
+    : null;
   const siteName = (id: string) => capabilities.sites.find((s) => s.id === id)?.name ?? id;
 
   const toggle = (m: ConfiguredPaymentMethod) => {
@@ -264,6 +410,14 @@ export default function PaymentMethodsPage() {
           />
         }
       />
+      {focusSite && (
+        <Message
+          severity="info"
+          text={t('receiving.siteFocus', {
+            site: capabilities.sites.find((s) => s.id === focusSite)?.name ?? '',
+          })}
+        />
+      )}
       {methods.isError ? (
         <ErrorMessage error={methods.error} onRetry={() => void methods.refetch()} />
       ) : (
@@ -280,6 +434,16 @@ export default function PaymentMethodsPage() {
           <Column
             header={t('paymentMethods.kind')}
             body={(m: ConfiguredPaymentMethod) => t(`payment.method.${m.kind}`)}
+          />
+          <Column
+            header={t('receiving.provider')}
+            body={(m: ConfiguredPaymentMethod) => m.provider_label ?? '—'}
+          />
+          <Column
+            header={t('receiving.countryCurrency')}
+            body={(m: ConfiguredPaymentMethod) =>
+              `${m.country_code ?? t('receiving.international')} · ${m.currency}`
+            }
           />
           <Column
             header={t('paymentMethods.referenceRequired')}
@@ -314,6 +478,13 @@ export default function PaymentMethodsPage() {
                     onClick: () => setEditing(m),
                   },
                   {
+                    key: 'accounts',
+                    label: t('receiving.accounts'),
+                    icon: 'pi pi-id-card',
+                    hidden: m.kind === 'CASH',
+                    onClick: () => setAccounts(m),
+                  },
+                  {
                     key: 'sites',
                     label: t('paymentMethods.sites'),
                     icon: 'pi pi-building',
@@ -336,6 +507,13 @@ export default function PaymentMethodsPage() {
         <MethodDialog method={editing} onClose={() => setEditing(undefined)} />
       )}
       {sites && <SitesDialog method={sites} onClose={() => setSites(null)} />}
+      {accounts && (
+        <PaymentAccountsDialog
+          method={accounts}
+          site={focusSite}
+          onClose={() => setAccounts(null)}
+        />
+      )}
     </>
   );
 }

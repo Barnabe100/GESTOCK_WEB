@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/core/api/client';
 
-import { saleKeys, type PaymentMethod, type SalePaymentStatus } from '../api';
+import { saleKeys, type IdentifierType, type PaymentMethod, type SalePaymentStatus } from '../api';
 
 /** Consultation : `sales.sale.view` (et sa portée) ; impressions : contrôlées par le serveur. */
 export const RECEIPT_PRINT = 'sales.sale.receipt_print';
@@ -33,6 +33,13 @@ export interface ReceiptPayment {
   amount_received: string | null;
   change_given: string | null;
   paid_at: string;
+  /** R6.5 : instantané des coordonnées de réception utilisées (jamais la configuration). */
+  currency?: string | null;
+  provider_label?: string | null;
+  account_identifier_type?: IdentifierType | null;
+  account_label?: string | null;
+  account_value?: string | null;
+  account_holder?: string | null;
 }
 
 /** Reçu construit par le serveur à partir de la vente PERSISTÉE (jamais du panier). */

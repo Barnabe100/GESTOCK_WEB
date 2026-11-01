@@ -8,18 +8,29 @@ import { normalizeDecimal } from '@/shared/lib/decimal';
 import { FormField } from '@/shared/ui/FormField';
 
 import type { ConfiguredPaymentMethod, PaymentInput } from './api';
+import {
+  defaultAccountId,
+  needsConfirmation,
+  ReceivingAccountFields,
+} from './ReceivingAccountFields';
 
-/** Saisie d'un paiement : moyen configuré, montant (espèces : montant reçu), référence. */
+/**
+ * Saisie d'un paiement : moyen configuré, montant (espèces : montant reçu), référence ; R6.5 :
+ * identifiant de réception utilisé (facultatif) et confirmation manuelle (hors espèces).
+ */
 export interface PaymentDraft {
   methodId: string | null;
   amount: string;
   reference: string;
+  accountId?: string | null;
+  confirmed?: boolean;
 }
 
 export interface PaymentDraftErrors {
   method?: string;
   amount?: string;
   reference?: string;
+  confirmed?: string;
 }
 
 /**
@@ -41,6 +52,9 @@ export function toPaymentInput(
   if (method?.reference_required && reference === '') {
     errors.reference = t('payment.referenceRequired');
   }
+  if (needsConfirmation(method) && draft.confirmed !== true) {
+    errors.confirmed = t('receiving.confirmRequired');
+  }
   if (!method || amount === null || Object.keys(errors).length > 0) return { errors };
   const cash = method.kind === 'CASH';
   return {
@@ -49,6 +63,8 @@ export function toPaymentInput(
       amount: cash ? null : amount,
       amount_received: cash ? amount : null,
       reference: reference || null,
+      payment_method_account_id: cash ? null : (draft.accountId ?? null),
+      received_confirmed: cash ? false : draft.confirmed === true,
     },
   };
 }
@@ -88,7 +104,15 @@ export function PaymentFields({
         <Dropdown
           inputId={`${idPrefix}-method`}
           value={draft.methodId}
-          onChange={(e) => onChange({ methodId: e.value as string })}
+          onChange={(e) => {
+            const id = e.value as string;
+            // Changer de moyen : identifiant présélectionné, confirmation à refaire.
+            onChange({
+              methodId: id,
+              accountId: defaultAccountId(methods.find((m) => m.id === id)),
+              confirmed: false,
+            });
+          }}
           options={methods.map((m) => ({ value: m.id, label: m.label }))}
           placeholder={t('payment.chooseMethod')}
         />
@@ -128,6 +152,14 @@ export function PaymentFields({
           onChange={(e) => onChange({ reference: e.target.value })}
         />
       </FormField>
+      <ReceivingAccountFields
+        idPrefix={idPrefix}
+        method={method}
+        accountId={draft.accountId ?? null}
+        confirmed={draft.confirmed === true}
+        confirmError={errors.confirmed}
+        onChange={(patch) => onChange(patch)}
+      />
     </>
   );
 }

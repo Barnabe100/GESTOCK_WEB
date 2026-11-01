@@ -50,6 +50,8 @@ class TenantInfo(BaseModel):
     currency: str
     locale: str
     timezone: str
+    # Pays de l'entreprise (référentiel) : pays proposé par défaut d'un moyen de réception.
+    country_code: str | None = None
 
 
 class SubscriptionInfo(BaseModel):

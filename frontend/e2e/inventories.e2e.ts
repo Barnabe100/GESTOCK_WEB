@@ -145,7 +145,7 @@ test.describe('Inventaires', () => {
     // Vente sans client : entièrement payée (le crédit exige un client, Lot 1).
     const validated = await request.post(`/api/v1/sales/${saleId}/validate`, {
       headers,
-      data: { payments: [{ amount: total, method: 'MOBILE_MONEY' }] },
+      data: { payments: [{ amount: total, method: 'MOBILE_MONEY', received_confirmed: true }] },
     });
     expect(validated.status(), await validated.text()).toBe(200);
     expect(await stockOf(request, s)).toBe('18.000');
