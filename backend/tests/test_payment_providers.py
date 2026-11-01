@@ -151,9 +151,7 @@ def synced(owner_db: Session) -> Iterator[None]:
 
 
 def test_sync_inserts_updates_and_deactivates(synced: None, owner_db: Session) -> None:
-    rows = dict(
-        owner_db.execute(text("SELECT code, is_active FROM ref_payment_providers")).all()
-    )
+    rows = dict(owner_db.execute(text("SELECT code, is_active FROM ref_payment_providers")).all())
     assert rows == {"demo-mobile": True, "demo-intl": True, "demo-off": False, "demo-ci": True}
     rule = owner_db.execute(
         text("SELECT identifiers FROM ref_payment_providers WHERE code = 'demo-mobile'")
