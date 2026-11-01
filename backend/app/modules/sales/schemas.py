@@ -1,8 +1,15 @@
 import uuid
 from datetime import date, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.modules.sales.models import (
     CreditStatus,
@@ -298,7 +305,31 @@ class CheckoutOut(BaseModel):
 # --- Moyens de paiement configurables (Lot 1) ---------------------------------------------------
 
 
-class PaymentMethodCreate(BaseModel):
+ProviderCode = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9_.-]{1,49}$")]
+ProviderName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
+CountryCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]
+CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
+
+
+class _ProviderChoice(BaseModel):
+    """Opérateur du catalogue (``provider_code``) OU personnalisé (``provider_name``) OU aucun
+    (R6.5, ADR-0051) ; jamais les deux."""
+
+    @model_validator(mode="after")
+    def _one_provider(self) -> "_ProviderChoice":
+        code = getattr(self, "provider_code", None)
+        name = getattr(self, "provider_name", None)
+        if code is not None and name is not None:
+            raise ValueError("Choisissez un opérateur du catalogue OU un opérateur personnalisé")
+        return self
+
+
+class PaymentMethodCreate(_ProviderChoice):
+    """Pays omis : celui de l'entreprise ; ``null`` : moyen international. Devise omise :
+    celle de l'entreprise (référentiel des pays)."""
+
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(min_length=1, max_length=60)
@@ -306,10 +337,15 @@ class PaymentMethodCreate(BaseModel):
     reference_required: bool = False
     integration_mode: PaymentIntegration = PaymentIntegration.MANUAL
     sort_order: int = Field(default=0, ge=0, le=9999)
+    provider_code: ProviderCode | None = None
+    provider_name: ProviderName | None = None
+    country_code: CountryCode | None = None
+    currency: CurrencyCode | None = None
 
 
-class PaymentMethodUpdate(BaseModel):
-    """Le type n'est jamais modifiable (comportement des paiements déjà enregistrés)."""
+class PaymentMethodUpdate(_ProviderChoice):
+    """Le type n'est jamais modifiable (comportement des paiements déjà enregistrés). Opérateur
+    et pays : ``null`` explicite = retrait ; la devise ne peut pas être vidée."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -318,6 +354,10 @@ class PaymentMethodUpdate(BaseModel):
     integration_mode: PaymentIntegration | None = None
     is_active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=9999)
+    provider_code: ProviderCode | None = None
+    provider_name: ProviderName | None = None
+    country_code: CountryCode | None = None
+    currency: CurrencyCode | None = None
 
 
 class PaymentMethodSiteUpdate(BaseModel):
@@ -336,5 +376,13 @@ class PaymentMethodOut(BaseModel):
     sort_order: int
     # Sites où le moyen est désactivé (disponible partout ailleurs s'il est actif).
     disabled_site_ids: list[uuid.UUID]
-    # Avec ``site_id`` en filtre : utilisable sur ce site.
+    # Opérateur : code du catalogue ou nom personnalisé ; ``provider_label`` : nom affiché.
+    provider_code: str | None = None
+    provider_name: str | None = None
+    provider_label: str | None = None
+    country_code: str | None = None
+    currency: str
+    # Avec ``site_id`` en filtre : utilisable sur ce site, sinon raison (``inactive``,
+    # ``site_disabled``, ``currency_mismatch`` : devise ≠ devise des ventes).
     available: bool | None = None
+    unavailable_reason: str | None = None

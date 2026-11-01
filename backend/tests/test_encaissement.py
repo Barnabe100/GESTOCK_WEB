@@ -1064,8 +1064,8 @@ def test_rls_and_grants_on_new_tables(
             db.execute(
                 text(
                     "INSERT INTO payment_methods (id, tenant_id, label, kind, integration_mode, "
-                    "reference_required, is_active, sort_order) VALUES (:id, :t, 'Intrus', "
-                    "'CASH', 'MANUAL', false, true, 0)"
+                    "reference_required, is_active, sort_order, currency) VALUES (:id, :t, "
+                    "'Intrus', 'CASH', 'MANUAL', false, true, 0, 'XOF')"
                 ),
                 {"id": uuid.uuid4(), "t": tenant_a},
             )

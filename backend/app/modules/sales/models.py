@@ -366,12 +366,31 @@ class ConfiguredPaymentMethod(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         UniqueConstraint("tenant_id", "id"),
         UniqueConstraint("tenant_id", "label"),
         CheckConstraint("length(btrim(label)) > 0", name="label_not_blank"),
+        # Opérateur du catalogue OU opérateur personnalisé OU aucun (R6.5, ADR-0051).
+        CheckConstraint("num_nonnulls(provider_code, provider_name) <= 1", name="one_provider"),
+        CheckConstraint(
+            "provider_name IS NULL OR length(btrim(provider_name)) > 0",
+            name="provider_name_not_blank",
+        ),
+        CheckConstraint("currency ~ '^[A-Z]{3}$'", name="iso_currency"),
     )
 
     label: Mapped[str] = mapped_column(String(60), nullable=False)
     kind: Mapped[PaymentMethod] = mapped_column(
         str_enum(PaymentMethod, "payment_method_kind"), nullable=False
     )
+    # Opérateur (R6.5) : code du catalogue TechNova (référentiel global), ou nom saisi par
+    # l'entreprise, ou aucun. Le catalogue n'est jamais requis.
+    provider_code: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("ref_payment_providers.code", ondelete="RESTRICT")
+    )
+    provider_name: Mapped[str | None] = mapped_column(String(100))
+    # Pays (référentiel ; ``NULL`` : international) et devise ISO 4217 du moyen. Un moyen
+    # n'encaisse une vente que dans SA devise (aucune conversion).
+    country_code: Mapped[str | None] = mapped_column(
+        String(2), ForeignKey("geo_countries.code", ondelete="RESTRICT")
+    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
     integration_mode: Mapped[PaymentIntegration] = mapped_column(
         str_enum(PaymentIntegration, "payment_integration"),
         default=PaymentIntegration.MANUAL,
