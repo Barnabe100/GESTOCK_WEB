@@ -219,12 +219,14 @@ def test_d1_reverse_disabling_first_then_creation_with_table_is_refused(
     provision: Any, tclient: TestClient, owner_engine: Engine
 ) -> None:
     """Même scénario avec une table (registre de test : commandes et tables disponibles). Les
-    tables, qui dépendent des commandes, sont d'abord désactivées (sinon la désactivation des
-    commandes est refusée : ``module_has_dependents``) ; la création portant une table attend
-    au verrou du site, puis est refusée parce que les commandes ne sont plus effectives."""
+    tables et la cuisine (activée par défaut sur un site Restaurant depuis 0050), qui dépendent
+    des commandes, sont d'abord désactivées (sinon la désactivation des commandes est refusée :
+    ``module_has_dependents``) ; la création portant une table attend au verrou du site, puis
+    est refusée parce que les commandes ne sont plus effectives."""
     w = _world(provision, tclient, "rl-d1rt", RESTAURANT)
     table = _table(w.owner, w.site, "T1")
     assert _disable(w.owner, w.site, "restaurant.tables").status_code == 204
+    assert _disable(w.owner, w.site, "restaurant.kitchen").status_code == 204
     with _gate(owner_engine, SITE_MODULE, s=w.site, c="restaurant.orders"):
         disable = Call(lambda: _disable(w.owner, w.site, "restaurant.orders"))
         _wait_until(owner_engine, "FROM site_modules")
