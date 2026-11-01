@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.platform.catalog.models import PaymentProvider
+from app.platform.catalog.models import GeoCountry, PaymentProvider
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,17 @@ def identifier_rules(provider: PaymentProvider) -> list[IdentifierRule]:
         )
         for kind, rule in rules.items()
     ]
+
+
+def calling_codes(db: Session, codes: set[str | None]) -> dict[str, int]:
+    """Indicatifs téléphoniques (référentiel des pays) des codes donnés."""
+    wanted = {c for c in codes if c}
+    if not wanted:
+        return {}
+    rows = db.execute(
+        select(GeoCountry.code, GeoCountry.calling_code).where(GeoCountry.code.in_(wanted))
+    )
+    return {code: cc for code, cc in rows if cc is not None}
 
 
 def get_provider(db: Session, code: str) -> PaymentProvider | None:

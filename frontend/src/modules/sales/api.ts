@@ -279,6 +279,8 @@ export interface Payment {
   account_label?: string | null;
   account_value?: string | null;
   account_holder?: string | null;
+  account_country_code?: string | null;
+  account_calling_code?: number | null;
 }
 
 export interface PaymentSummary {
@@ -398,11 +400,16 @@ export interface PaymentAccount {
   instructions: string | null;
   sort_order: number;
   is_active: boolean;
+  /** Pays de rattachement et indicatif (référentiel) ; téléphone : forme locale ou internationale. */
+  country_code?: string | null;
+  calling_code?: number | null;
+  phone_format?: 'local' | 'international' | null;
 }
 
 export interface PaymentAccountInput {
   site_id?: string | null;
   identifier_type?: IdentifierType;
+  country_code: string | null;
   custom_label: string | null;
   value: string;
   holder_name: string | null;
@@ -519,6 +526,7 @@ export function usePaymentAccountMutations(methodId: string) {
       mutationFn: ({ id, input }: { id?: string; input: PaymentAccountInput }) =>
         id
           ? api.patch<PaymentAccount>(`/payment-methods/accounts/${id}`, {
+              country_code: input.country_code,
               custom_label: input.custom_label,
               value: input.value,
               holder_name: input.holder_name,
@@ -556,7 +564,11 @@ export function usePaymentProviders(
   });
 }
 
-/** « Code marchand 12345 (Titulaire) » : coordonnées affichées à la caisse et sur le reçu. */
+/**
+ * « Code marchand 12345 (Titulaire) » : coordonnées affichées à la caisse et sur le reçu.
+ * Téléphone LOCAL : l'indicatif du pays de rattachement est indiqué à côté (« · BF +226 »),
+ * jamais fusionné au numéro ; numéro international (« + ») : affiché tel quel.
+ */
 export function accountText(
   t: (key: string) => string,
   account: {
@@ -564,11 +576,20 @@ export function accountText(
     custom_label: string | null;
     value: string;
     holder_name?: string | null;
+    country_code?: string | null;
+    calling_code?: number | null;
   },
 ): string {
   const kind =
     account.identifier_type === 'CUSTOM' && account.custom_label
       ? account.custom_label
       : t(`receiving.identifierTypes.${account.identifier_type}`);
-  return `${kind} ${account.value}${account.holder_name ? ` (${account.holder_name})` : ''}`;
+  const local =
+    account.identifier_type === 'PHONE' &&
+    !account.value.startsWith('+') &&
+    account.country_code &&
+    account.calling_code
+      ? ` · ${account.country_code} +${account.calling_code}`
+      : '';
+  return `${kind} ${account.value}${local}${account.holder_name ? ` (${account.holder_name})` : ''}`;
 }

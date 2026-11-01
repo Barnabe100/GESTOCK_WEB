@@ -49,6 +49,7 @@ from app.modules.sales.payment_methods import PaymentMethodService
 from app.modules.sales.schemas import PaymentCreate, PaymentOut, PaymentSummary
 from app.modules.stock.api import round_money
 from app.platform.audit.service import audit_action
+from app.platform.catalog.payment_providers import calling_codes
 from app.platform.context import RequestContext
 from app.platform.identity.models import User
 from app.platform.sequences.service import next_number
@@ -343,6 +344,7 @@ class PaymentService:
             account_label=account.custom_label if account else None,
             account_value=account.value if account else None,
             account_holder=account.holder_name if account else None,
+            account_country_code=account.country_code if account else None,
         )
         self.db.add(payment)
         self.db.flush()
@@ -450,6 +452,7 @@ class PaymentService:
 
     def to_out(self, sale: Sale, payments: Sequence[Payment]) -> list[PaymentOut]:
         users = {u for p in payments for u in (p.created_by, p.cancelled_by, p.confirmed_by) if u}
+        calling = calling_codes(self.db, {p.account_country_code for p in payments})
         names: dict[Any, str] = (
             {
                 row[0]: row[1]
@@ -491,6 +494,8 @@ class PaymentService:
                 account_label=p.account_label,
                 account_value=p.account_value,
                 account_holder=p.account_holder,
+                account_country_code=p.account_country_code,
+                account_calling_code=calling.get(p.account_country_code or ""),
             )
             for p in payments
         ]

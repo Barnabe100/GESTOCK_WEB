@@ -9,6 +9,7 @@ import { Message } from 'primereact/message';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { usePublicCountries } from '@/core/api/geo';
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { translateError } from '@/shared/lib/errors';
 import { confirmAction } from '@/shared/ui/confirm';
@@ -36,6 +37,7 @@ import {
  */
 
 const SHARED = 'shared';
+const NO_COUNTRY = '__none';
 
 function AccountForm({
   method,
@@ -62,6 +64,12 @@ function AccountForm({
   const [customLabel, setCustomLabel] = useState(account?.custom_label ?? '');
   const [value, setValue] = useState(account?.value ?? '');
   const [holder, setHolder] = useState(account?.holder_name ?? '');
+  // Pays de rattachement : par défaut celui du moyen ; aucun = international.
+  const countries = usePublicCountries();
+  const [country, setCountry] = useState<string>(
+    (account ? account.country_code : method.country_code) ?? NO_COUNTRY,
+  );
+  const callingCode = countries.data?.find((c) => c.code === country)?.calling_code ?? null;
   const [instructions, setInstructions] = useState(account?.instructions ?? '');
   const [order, setOrder] = useState(String(account?.sort_order ?? 0));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -79,6 +87,7 @@ function AccountForm({
         input: {
           site_id: scope === SHARED ? null : scope,
           identifier_type: type,
+          country_code: country === NO_COUNTRY ? null : country,
           custom_label: type === 'CUSTOM' ? customLabel.trim() : null,
           value: value.trim(),
           holder_name: holder.trim() || null,
@@ -155,6 +164,25 @@ function AccountForm({
           </FormField>
         )}
         <FormField
+          id="acc-country"
+          label={t('receiving.attachmentCountry')}
+          help={t('receiving.attachmentCountryHelp')}
+        >
+          <Dropdown
+            inputId="acc-country"
+            value={country}
+            filter
+            onChange={(e) => setCountry(e.value as string)}
+            options={[
+              { value: NO_COUNTRY, label: t('receiving.international') },
+              ...(countries.data ?? []).map((c) => ({
+                value: c.code,
+                label: c.calling_code ? `${c.name} (+${c.calling_code})` : c.name,
+              })),
+            ]}
+          />
+        </FormField>
+        <FormField
           id="acc-value"
           label={t('receiving.value')}
           required
@@ -166,7 +194,9 @@ function AccountForm({
                   max: rule.max_length ?? 100,
                 })
               : type === 'PHONE'
-                ? t('receiving.phoneHelp')
+                ? callingCode
+                  ? t('receiving.phoneHelpCountry', { code: callingCode })
+                  : t('receiving.phoneHelp')
                 : t('receiving.valueHelp')
           }
         >
@@ -285,7 +315,14 @@ export function PaymentAccountsDialog({
                     : t(`receiving.identifierTypes.${a.identifier_type}`)
                 }
               />
-              <Column field="value" header={t('receiving.value')} />
+              <Column
+                header={t('receiving.value')}
+                body={(a: PaymentAccount) =>
+                  a.identifier_type === 'PHONE' && a.phone_format === 'local' && a.calling_code
+                    ? `${a.value} · ${a.country_code ?? ''} +${a.calling_code}`
+                    : a.value
+                }
+              />
               <Column
                 header={t('receiving.holder')}
                 body={(a: PaymentAccount) => a.holder_name ?? '—'}

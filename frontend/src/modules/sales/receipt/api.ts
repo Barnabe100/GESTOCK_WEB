@@ -40,6 +40,8 @@ export interface ReceiptPayment {
   account_label?: string | null;
   account_value?: string | null;
   account_holder?: string | null;
+  account_country_code?: string | null;
+  account_calling_code?: number | null;
 }
 
 /** Reçu construit par le serveur à partir de la vente PERSISTÉE (jamais du panier). */

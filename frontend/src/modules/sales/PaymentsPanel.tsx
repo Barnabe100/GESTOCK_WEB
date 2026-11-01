@@ -325,6 +325,8 @@ export function PaymentsPanel({ sale }: { sale: Sale }) {
                       custom_label: p.account_label ?? null,
                       value: p.account_value,
                       holder_name: p.account_holder ?? null,
+                      country_code: p.account_country_code ?? null,
+                      calling_code: p.account_calling_code ?? null,
                     })}
                   </div>
                 )}

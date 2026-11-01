@@ -40,6 +40,7 @@ from app.modules.sales.scope import site_can
 from app.modules.sales.service import SaleService
 from app.platform.audit.models import AuditLog
 from app.platform.audit.service import audit_action
+from app.platform.catalog.payment_providers import calling_codes
 from app.platform.context import DbSession, NowDep, RequestContext, require_permission
 from app.platform.tenancy.identity import document_identity
 from app.shared.schemas import Money, Quantity
@@ -101,6 +102,8 @@ class ReceiptPaymentOut(BaseModel):
     account_label: str | None = None
     account_value: str | None = None
     account_holder: str | None = None
+    account_country_code: str | None = None
+    account_calling_code: int | None = None
 
 
 class ReceiptOut(BaseModel):
@@ -163,6 +166,7 @@ def _receipt(db: Session, ctx: RequestContext, now: datetime, sale: Sale) -> Rec
                 .order_by(Payment.paid_at, Payment.number)
             )
         )
+        calling = calling_codes(db, {p.account_country_code for p in rows})
         payments = [
             ReceiptPaymentOut(
                 method=p.method,
@@ -177,6 +181,8 @@ def _receipt(db: Session, ctx: RequestContext, now: datetime, sale: Sale) -> Rec
                 account_label=p.account_label,
                 account_value=p.account_value,
                 account_holder=p.account_holder,
+                account_country_code=p.account_country_code,
+                account_calling_code=calling.get(p.account_country_code or ""),
             )
             for p in rows
         ]

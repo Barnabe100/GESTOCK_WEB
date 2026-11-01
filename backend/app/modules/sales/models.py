@@ -378,6 +378,8 @@ class Payment(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     account_label: Mapped[str | None] = mapped_column(String(60))
     account_value: Mapped[str | None] = mapped_column(String(100))
     account_holder: Mapped[str | None] = mapped_column(String(100))
+    # Pays de rattachement de l'identifiant utilisé (instantané).
+    account_country_code: Mapped[str | None] = mapped_column(String(2))
 
 
 class ConfiguredPaymentMethod(IdMixin, TenantScopedMixin, TimestampMixin, Base):
@@ -515,6 +517,11 @@ class PaymentMethodAccount(IdMixin, TenantScopedMixin, TimestampMixin, Base):
     )
     # Libellé du type ``CUSTOM`` (« Identifiant client », « IBAN »…).
     custom_label: Mapped[str | None] = mapped_column(String(60))
+    # Pays de rattachement (référentiel ; par défaut celui du moyen). Téléphone : un numéro
+    # « + » doit commencer par l'indicatif de ce pays ; un numéro local reste tel quel.
+    country_code: Mapped[str | None] = mapped_column(
+        String(2), ForeignKey("geo_countries.code", ondelete="RESTRICT")
+    )
     value: Mapped[str] = mapped_column(String(100), nullable=False)
     holder_name: Mapped[str | None] = mapped_column(String(100))
     instructions: Mapped[str | None] = mapped_column(String(500))

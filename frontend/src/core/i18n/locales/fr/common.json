@@ -2620,7 +2620,7 @@
     "customLabel": "Libellé de l'identifiant",
     "value": "Numéro ou code",
     "valueHelp": "Aucun format imposé : saisissez l'identifiant tel que le client doit l'utiliser.",
-    "phoneHelp": "Espaces, points et tirets sont retirés ; l'indicatif n'est jamais ajouté automatiquement.",
+    "phoneHelp": "Numéro local (tel que composé dans le pays) ou international commençant par « + » et l'indicatif. Espaces, points et tirets sont retirés ; aucun indicatif n'est jamais ajouté.",
     "ruleHelp": "Format de l'opérateur : {{min}} à {{max}} caractères.",
     "holder": "Titulaire",
     "instructions": "Instructions pour le client",
@@ -2637,6 +2637,9 @@
     "confirm": "J'ai vérifié que les fonds ont bien été reçus",
     "confirmHelp": "Obligatoire : choisir le moyen ne suffit pas. Vous serez enregistré comme auteur de la confirmation.",
     "confirmRequired": "Confirmez la réception effective des fonds.",
-    "confirmedBy": "Réception confirmée par {{name}} le {{date}}"
+    "confirmedBy": "Réception confirmée par {{name}} le {{date}}",
+    "phoneHelpCountry": "Numéro local, ou international commençant par « +{{code}} ». Espaces, points et tirets sont retirés ; aucun indicatif n'est jamais ajouté.",
+    "attachmentCountry": "Pays de rattachement",
+    "attachmentCountryHelp": "Par défaut celui du moyen. Un numéro international doit commencer par l'indicatif de ce pays ; un numéro local est affiché avec cet indicatif, sans le modifier."
   }
 }

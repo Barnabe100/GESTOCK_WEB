@@ -705,13 +705,16 @@ def test_migration_0054_downgrade_refuses_to_lose_snapshots(
     owner_engine: Engine,
 ) -> None:
     w = priced
-    mobile = _mobile(w)
-    account = _account(w.owner, mobile, site_id=w.site, value="SNAP").json()
+    # Moyen international et identifiant sans pays : la descente de 0055 passe, celle de 0054
+    # refuse de perdre l'instantané des coordonnées.
+    intl = _create(w.owner, label="Mobile intl", country_code=None).json()["id"]
+    account = _account(w.owner, intl, site_id=w.site, value="SNAP").json()
+    assert account["country_code"] is None
     sale = _credit_sale(w)
     _pay(
         w,
         sale,
-        payment_method_id=mobile,
+        payment_method_id=intl,
         amount="1000",
         received_confirmed=True,
         payment_method_account_id=account["id"],
@@ -721,6 +724,107 @@ def test_migration_0054_downgrade_refuses_to_lose_snapshots(
     try:
         with pytest.raises(RuntimeError, match="coordonnées de réception"):
             command.downgrade(_alembic(), "0053")
+    finally:
+        owner_engine.dispose()
+        command.upgrade(_alembic(), "head")
+
+
+# --- Précision R6.5 : téléphones locaux / internationaux, pays de rattachement ----------------
+
+
+def test_phone_local_and_international_keep_the_country(world: World) -> None:
+    w = world
+    mobile = _mobile(w)  # moyen du pays de l'entreprise (BF, indicatif 226)
+    local = _account(w.owner, mobile, identifier_type="PHONE", value="70 11 22 33").json()
+    # Local : conservé tel quel, JAMAIS complété ; pays de rattachement et indicatif exposés.
+    assert (
+        local["value"],
+        local["phone_format"],
+        local["country_code"],
+        local["calling_code"],
+    ) == (
+        "70112233",
+        "local",
+        "BF",
+        226,
+    )
+    intl = _account(w.owner, mobile, identifier_type="PHONE", value="+226 76 00 00 01").json()
+    # International : indicatif déjà présent, rien n'est ajouté.
+    assert (intl["value"], intl["phone_format"]) == ("+22676000001", "international")
+    mismatch = _account(w.owner, mobile, identifier_type="PHONE", value="+33 6 12 34 56 78")
+    assert _code(mismatch) == (422, "payment_account_invalid")
+    assert (mismatch.json()["reason"], mismatch.json()["calling_code"]) == (
+        "phone_country_mismatch",
+        226,
+    )
+    too_long = _account(w.owner, mobile, identifier_type="PHONE", value="+2267011223344556677")
+    assert too_long.json()["reason"] == "phone_e164"
+    # Autre pays de rattachement, choisi explicitement : son indicatif fait foi.
+    foreign = _account(
+        w.owner, mobile, identifier_type="PHONE", value="+33 6 12 34 56 78", country_code="FR"
+    ).json()
+    assert (foreign["country_code"], foreign["calling_code"]) == ("FR", 33)
+    # Sans pays de rattachement (international) : aucune vérification d'indicatif supposée.
+    free = _account(
+        w.owner, mobile, identifier_type="PHONE", value="+44 20 7946 0000", country_code=None
+    ).json()
+    assert (free["country_code"], free["phone_format"]) == (None, "international")
+    # Aucun format national imposé : un numéro local de longueur quelconque est accepté.
+    assert _account(w.owner, mobile, identifier_type="PHONE", value="1234").status_code == 201
+    assert _code(
+        _account(w.owner, mobile, identifier_type="PHONE", value="7011", country_code="ZZ")
+    ) == (
+        422,
+        "country_unknown",
+    )
+    # Changer le pays revérifie un numéro international.
+    changed = w.owner.patch(f"{METHODS}/accounts/{intl['id']}", json={"country_code": "FR"})
+    assert changed.json()["reason"] == "phone_country_mismatch"
+
+
+def test_payment_and_receipt_keep_the_country_of_attachment(
+    priced: World,  # noqa: F811
+) -> None:
+    w = priced
+    mobile = _mobile(w)
+    account = _account(w.owner, mobile, identifier_type="PHONE", value="70 11 22 33").json()
+    sale = _draft(w, 1)
+    done = _validate(
+        w,
+        sale,
+        [
+            {
+                "payment_method_id": mobile,
+                "amount": "10000",
+                "payment_method_account_id": account["id"],
+                "received_confirmed": True,
+            }
+        ],
+    )
+    assert done.status_code == 200, done.text
+    w.owner.patch(f"{METHODS}/accounts/{account['id']}", json={"country_code": None})
+    payment = w.owner.get(f"/sales/{sale['id']}/payments").json()["items"][0]
+    assert (
+        payment["account_value"],
+        payment["account_country_code"],
+        payment["account_calling_code"],
+    ) == ("70112233", "BF", 226)
+    line = w.owner.get(f"/sales/{sale['id']}/receipt").json()["payments"][0]
+    assert (line["account_country_code"], line["account_calling_code"]) == ("BF", 226)
+
+
+def test_migration_0055_downgrade_refuses_to_lose_countries(
+    priced: World,  # noqa: F811
+    owner_db: Session,
+    owner_engine: Engine,
+) -> None:
+    w = priced
+    _account(w.owner, _mobile(w), identifier_type="PHONE", value="+33612345678", country_code="FR")
+    owner_db.close()
+    owner_engine.dispose()
+    try:
+        with pytest.raises(RuntimeError, match="pays de rattachement"):
+            command.downgrade(_alembic(), "0054")
     finally:
         owner_engine.dispose()
         command.upgrade(_alembic(), "head")

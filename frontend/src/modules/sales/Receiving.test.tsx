@@ -13,7 +13,7 @@ import {
 import { jsonResponse, renderWithCapabilities, SITES } from '@/shared/testing';
 import { ToastContext } from '@/shared/ui/toast';
 
-import type { PaymentAccount, PaymentSummary } from './api';
+import { accountText, type PaymentAccount, type PaymentSummary } from './api';
 import { toPaymentInput } from './PaymentFields';
 import PaymentMethodsPage from './PaymentMethodsPage';
 import { SaleReceipt } from './receipt/SaleReceipt';
@@ -399,5 +399,20 @@ describe('reçu : instantané des coordonnées utilisées (R6.5)', () => {
     expect(text(within(line).getByTestId('receipt-account'))).toBe(
       'Code marchand 123456 (Boutique Centre)',
     );
+  });
+});
+
+describe('téléphones locaux et internationaux (R6.5)', () => {
+  it('local : indicatif du pays affiché à côté, jamais fusionné ; international tel quel', () => {
+    const tt = i18next.t.bind(i18next) as unknown as (key: string) => string;
+    const base = { identifier_type: 'PHONE' as const, custom_label: null, holder_name: null };
+    expect(
+      accountText(tt, { ...base, value: '70112233', country_code: 'BF', calling_code: 226 }),
+    ).toBe('Téléphone 70112233 · BF +226');
+    expect(
+      accountText(tt, { ...base, value: '+22670112233', country_code: 'BF', calling_code: 226 }),
+    ).toBe('Téléphone +22670112233');
+    // Sans pays de rattachement : rien n'est supposé.
+    expect(accountText(tt, { ...base, value: '70112233' })).toBe('Téléphone 70112233');
   });
 });

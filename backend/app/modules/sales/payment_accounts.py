@@ -12,8 +12,20 @@ personnalisé) indique où l'entreprise reçoit les fonds d'un moyen :
 Aucun nombre maximal ; plusieurs identifiants pour un même moyen et un même site. Jamais
 supprimé : désactivé. Le format n'est contrôlé que par une règle DÉCLARÉE dans le catalogue de
 l'opérateur du moyen (longueur, motif) ; sinon seul un contrôle générique s'applique (texte
-non vide, caractères imprimables ; téléphone : chiffres et « + » initial, séparateurs retirés,
-jamais réécrit avec un indicatif deviné). Le service ne valide pas la transaction.
+non vide, caractères imprimables). Le service ne valide pas la transaction.
+
+Téléphone (ADR-0051, précision R6.5) : séparateurs retirés ; deux formes distinguées, jamais
+réécrites —
+
+- **internationale** : « + » suivi de l'indicatif et du numéro (E.164 : 15 chiffres au plus) ;
+  si l'identifiant a un pays de rattachement, le numéro doit commencer par l'indicatif de ce
+  pays (``phone_country_mismatch``) ; rien n'est ajouté ;
+- **locale** : chiffres seuls, conservés tels quels ; l'indicatif du pays de rattachement est
+  affiché à côté, JAMAIS ajouté au numéro (aucune règle nationale supposée : préfixe de
+  sortie, zéro initial, longueur).
+
+Chaque identifiant conserve son pays de rattachement (référentiel ; par défaut celui du moyen,
+aucun pour un moyen international), figé aussi sur le paiement.
 """
 
 import re
@@ -38,6 +50,7 @@ from app.modules.sales.schemas import (
     PaymentAccountUpdate,
 )
 from app.platform.audit.service import audit_action
+from app.platform.catalog.models import GeoCountry
 from app.platform.catalog.payment_providers import get_provider
 from app.platform.context import RequestContext
 from app.platform.tenancy.models import Site
@@ -46,6 +59,15 @@ from app.shared.text import normalize_phone
 MANAGE = "sales.payment_method.manage"
 NOT_FOUND = "payment_account_not_found"
 _PRINTABLE = re.compile(r"^[^\x00-\x1f\x7f]+$")
+# E.164 : 15 chiffres au plus, indicatif compris.
+_E164 = re.compile(r"^\+\d{4,15}$")
+INTERNATIONAL = "international"
+LOCAL = "local"
+
+
+def phone_format(value: str) -> str:
+    """Forme d'un numéro normalisé : ``international`` (« + ») ou ``local``."""
+    return INTERNATIONAL if value.startswith("+") else LOCAL
 
 
 class PaymentAccountService:
@@ -145,11 +167,22 @@ class PaymentAccountService:
 
     # --- Contrôle d'un identifiant ----------------------------------------------------------
 
+    def _country(self, code: str | None) -> GeoCountry | None:
+        if code is None:
+            return None
+        country = self.db.get(GeoCountry, code)
+        if country is None:
+            raise BusinessRuleError(
+                "Pays inconnu du référentiel", code="country_unknown", extra={"country_code": code}
+            )
+        return country
+
     def _checked_value(
         self,
         method: ConfiguredPaymentMethod,
         identifier_type: ReceivingIdentifierType,
         raw: str,
+        country_code: str | None = None,
     ) -> str:
         value = raw.strip()
         if not value or not _PRINTABLE.match(value):
@@ -165,6 +198,28 @@ class PaymentAccountService:
                     code="payment_account_invalid",
                     extra={"reason": "phone"},
                 ) from exc
+            if phone_format(value) == INTERNATIONAL:
+                if not _E164.match(value):
+                    raise BusinessRuleError(
+                        "Numéro international invalide (15 chiffres au plus après « + »)",
+                        code="payment_account_invalid",
+                        extra={"reason": "phone_e164"},
+                    )
+                country = self._country(country_code)
+                if (
+                    country is not None
+                    and country.calling_code is not None
+                    and not value.startswith(f"+{country.calling_code}")
+                ):
+                    raise BusinessRuleError(
+                        "Le numéro international ne correspond pas au pays de rattachement",
+                        code="payment_account_invalid",
+                        extra={
+                            "reason": "phone_country_mismatch",
+                            "country_code": country.code,
+                            "calling_code": country.calling_code,
+                        },
+                    )
         provider = get_provider(self.db, method.provider_code) if method.provider_code else None
         if provider is None or not provider.identifiers:
             return value  # opérateur personnalisé ou sans règle déclarée : contrôle générique
@@ -227,13 +282,19 @@ class PaymentAccountService:
                 "Un identifiant personnalisé exige un libellé",
                 code="payment_account_label_required",
             )
-        value = self._checked_value(method, data.identifier_type, data.value)
+        # Pays de rattachement : omis = celui du moyen ; ``null`` explicite = aucun.
+        country_code = (
+            data.country_code if "country_code" in data.model_fields_set else method.country_code
+        )
+        self._country(country_code)
+        value = self._checked_value(method, data.identifier_type, data.value, country_code)
         self._ensure_unique(method.id, data.site_id, data.identifier_type, value)
         account = PaymentMethodAccount(
             tenant_id=self.ctx.tenant_id,
             payment_method_id=method.id,
             site_id=data.site_id,
             identifier_type=data.identifier_type,
+            country_code=country_code,
             custom_label=(
                 data.custom_label
                 if data.identifier_type is ReceivingIdentifierType.CUSTOM
@@ -259,8 +320,16 @@ class PaymentAccountService:
         account = self.get(account_id, lock=True)
         before = _snapshot(account)
         changes = data.model_dump(exclude_unset=True)
-        if "value" in changes and changes["value"] is not None:
-            value = self._checked_value(method, account.identifier_type, changes["value"])
+        if "country_code" in changes:
+            self._country(changes["country_code"])
+            account.country_code = changes["country_code"]
+        if ("value" in changes and changes["value"] is not None) or "country_code" in changes:
+            value = self._checked_value(
+                method,
+                account.identifier_type,
+                changes.get("value") or account.value,
+                account.country_code,
+            )
             if account.is_active:
                 self._ensure_unique(
                     method.id, account.site_id, account.identifier_type, value, exclude=account.id
@@ -296,7 +365,9 @@ class PaymentAccountService:
         if account.is_active is active:
             return account
         if active:
-            account.value = self._checked_value(method, account.identifier_type, account.value)
+            account.value = self._checked_value(
+                method, account.identifier_type, account.value, account.country_code
+            )
             self._ensure_unique(
                 method.id, account.site_id, account.identifier_type, account.value, account.id
             )
@@ -327,6 +398,19 @@ class PaymentAccountService:
 
     def to_out(self, accounts: Sequence[PaymentMethodAccount]) -> list[PaymentAccountOut]:
         site_ids = {a.site_id for a in accounts if a.site_id is not None}
+        codes = {a.country_code for a in accounts if a.country_code}
+        calling = (
+            {
+                c: cc
+                for c, cc in self.db.execute(
+                    select(GeoCountry.code, GeoCountry.calling_code).where(
+                        GeoCountry.code.in_(codes)
+                    )
+                )
+            }
+            if codes
+            else {}
+        )
         names: dict[uuid.UUID, str] = {}
         if site_ids:
             rows = self.db.execute(select(Site.id, Site.name).where(Site.id.in_(site_ids)))
@@ -347,6 +431,13 @@ class PaymentAccountService:
                 is_active=a.is_active,
                 created_at=a.created_at,
                 updated_at=a.updated_at,
+                country_code=a.country_code,
+                calling_code=calling.get(a.country_code) if a.country_code else None,
+                phone_format=(
+                    phone_format(a.value)
+                    if a.identifier_type is ReceivingIdentifierType.PHONE
+                    else None
+                ),
             )
             for a in accounts
         ]
@@ -364,6 +455,7 @@ def _snapshot(account: PaymentMethodAccount) -> dict[str, Any]:
     return {
         "site_id": str(account.site_id) if account.site_id else None,
         "identifier_type": account.identifier_type.value,
+        "country_code": account.country_code,
         "custom_label": account.custom_label,
         "value": account.value,
         "holder_name": account.holder_name,

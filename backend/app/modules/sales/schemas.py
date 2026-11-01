@@ -282,6 +282,8 @@ class PaymentOut(BaseModel):
     account_label: str | None = None
     account_value: str | None = None
     account_holder: str | None = None
+    account_country_code: str | None = None
+    account_calling_code: int | None = None
 
 
 class PaymentSummary(BaseModel):
@@ -417,6 +419,8 @@ class PaymentAccountCreate(BaseModel):
 
     site_id: uuid.UUID | None = None
     identifier_type: ReceivingIdentifierType
+    # Pays de rattachement : omis = pays du moyen ; ``null`` = aucun (international).
+    country_code: CountryCode | None = None
     custom_label: Optional60 = None
     value: str = Field(min_length=1, max_length=100)
     holder_name: Optional100 = None
@@ -430,6 +434,7 @@ class PaymentAccountUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    country_code: CountryCode | None = None
     custom_label: Optional60 = None
     value: str | None = Field(default=None, min_length=1, max_length=100)
     holder_name: Optional100 = None
@@ -453,6 +458,11 @@ class PaymentAccountOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    # Pays de rattachement et son indicatif (référentiel) ; téléphone : ``international``
+    # (numéro « + » complet) ou ``local`` (saisi sans indicatif, jamais complété).
+    country_code: str | None = None
+    calling_code: int | None = None
+    phone_format: str | None = None
 
 
 PaymentMethodOut.model_rebuild()
