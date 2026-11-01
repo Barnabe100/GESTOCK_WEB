@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import ARRAY, Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -234,3 +235,32 @@ class SubscriptionAccessPolicy(Base):
     status: Mapped[str] = mapped_column(String(32), primary_key=True)
     allowed_access: Mapped[list[str]] = mapped_column(ARRAY(String(16)), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+
+
+class PaymentProvider(TimestampMixin, Base):
+    """Opérateur ou établissement financier (R6.5, ADR-0051) : référentiel GLOBAL géré par
+    TechNova, synchronisé depuis ``catalog/data/payment_providers.toml`` ; lecture seule pour le
+    rôle applicatif. Jamais requis : une entreprise peut toujours utiliser un opérateur
+    personnalisé. Un opérateur retiré du fichier est désactivé, jamais supprimé."""
+
+    __tablename__ = "ref_payment_providers"
+    __table_args__ = (
+        CheckConstraint("code ~ '^[a-z0-9][a-z0-9_.-]{1,49}$'", name="code_format"),
+        CheckConstraint("length(btrim(name)) > 0", name="name_not_blank"),
+        CheckConstraint("cardinality(kinds) > 0", name="has_kind"),
+        CheckConstraint("cardinality(currencies) > 0", name="has_currency"),
+    )
+
+    code: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Traductions du nom et des instructions : {"en": "…"}.
+    names: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, nullable=False)
+    instructions: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, nullable=False)
+    kinds: Mapped[list[str]] = mapped_column(PG_ARRAY(String(32)), nullable=False)
+    # Pays couverts (ISO 3166-1) ; vide = international.
+    countries: Mapped[list[str]] = mapped_column(PG_ARRAY(String(2)), default=list, nullable=False)
+    currencies: Mapped[list[str]] = mapped_column(PG_ARRAY(String(3)), nullable=False)
+    # Types d'identifiants acceptés et leur règle FACULTATIVE : {"PHONE": {}, "MERCHANT_CODE":
+    # {"min_length": 4, "max_length": 12, "pattern": "^[0-9]+$"}}.
+    identifiers: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

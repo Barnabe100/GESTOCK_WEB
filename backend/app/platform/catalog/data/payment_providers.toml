@@ -1,0 +1,28 @@
+# Catalogue des opérateurs et établissements financiers (R6.5, ADR-0051).
+#
+# Géré par TechNova, versionné, synchronisé en base par `stockmanager catalog sync` (table
+# ref_payment_providers, lecture seule pour l'application). Volontairement VIDE au départ : une
+# entrée n'est ajoutée qu'après vérification de ses informations (types d'identifiants,
+# formats). Le catalogue n'est JAMAIS requis : une entreprise peut toujours enregistrer un
+# opérateur personnalisé et ses propres identifiants.
+#
+# Une entrée retirée de ce fichier est désactivée, jamais supprimée (des moyens la référencent).
+#
+# Format d'une entrée (exemple commenté, code fictif) :
+#
+# [providers.exemple-mobile]
+# name = "Exemple Mobile"                 # nom affiché (langue de référence : français)
+# names = { en = "Example Mobile" }       # traductions facultatives
+# kinds = ["MOBILE_MONEY"]                # CASH, MOBILE_MONEY, CARD, BANK_TRANSFER, OTHER
+# countries = ["ZZ"]                      # ISO 3166-1 alpha-2 ; vide = international
+# currencies = ["ZZZ"]                    # ISO 4217, au moins une
+# is_active = true
+# instructions = { fr = "…", en = "…" }   # facultatif
+#
+# # Types d'identifiants acceptés : PHONE, MERCHANT_CODE, AGENT_CODE, ACCOUNT_NUMBER, CUSTOM.
+# # Règle de format FACULTATIVE, seulement si elle est fiable (sinon : contrôle générique).
+# [providers.exemple-mobile.identifiers.PHONE]
+# [providers.exemple-mobile.identifiers.MERCHANT_CODE]
+# min_length = 4
+# max_length = 12
+# pattern = "^[0-9]+$"

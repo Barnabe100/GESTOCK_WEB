@@ -3,6 +3,7 @@ from app.modules.sales.assortment_checks import assortment_removal_check
 from app.modules.sales.footprint import sales_footprint
 from app.modules.sales.payment_method_router import router as payment_method_router
 from app.modules.sales.payment_methods import ensure_default_payment_methods
+from app.modules.sales.payment_provider_router import router as payment_provider_router
 from app.modules.sales.router import router
 from app.modules.sales.service import packagings_used
 from app.platform.registry import AccessKind, ModuleManifest, PermissionDef
@@ -50,7 +51,10 @@ MANIFEST = ModuleManifest(
         PermissionDef("sales.payment_method.manage", A),
     ),
     router=router,
-    extra_routers=(("/payment-methods", payment_method_router),),
+    extra_routers=(
+        ("/payment-methods", payment_method_router),
+        ("/payment-providers", payment_provider_router),
+    ),
     tenant_setup=ensure_default_payment_methods,
     site_footprint=sales_footprint,
 )

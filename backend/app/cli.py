@@ -49,6 +49,7 @@ def cmd_catalog_sync(args: argparse.Namespace, settings: Settings) -> int:
     print(
         f"Catalogue synchronisé : {report.sectors} secteurs, {report.ux_profiles} profils UX, "
         f"{report.profiles} profils, {report.plans} plans, {report.countries} pays, "
+        f"{report.payment_providers} opérateurs de paiement, "
         f"{report.policies} politiques d'abonnement."
     )
     for code in report.deactivated_sectors:

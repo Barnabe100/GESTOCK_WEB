@@ -1,5 +1,6 @@
 """Synchronisation du catalogue (fichiers → base). Exécutée avec le rôle propriétaire."""
 
+import dataclasses
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from app.platform.catalog.models import (
     BusinessProfileModule,
     BusinessSector,
     GeoCountry,
+    PaymentProvider,
     Plan,
     PlanModule,
     SubscriptionAccessPolicy,
@@ -32,6 +34,8 @@ class SyncReport:
     deactivated_ux_profiles: list[str] = field(default_factory=list)
     countries: int = 0
     deactivated_countries: list[str] = field(default_factory=list)
+    payment_providers: int = 0
+    deactivated_payment_providers: list[str] = field(default_factory=list)
 
 
 def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
@@ -128,6 +132,29 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
     for code in deactivated_countries:
         existing_countries[code].is_active = False
 
+    # Opérateurs et établissements (R6.5) : un opérateur retiré est désactivé, jamais supprimé
+    # (des moyens de réception le référencent).
+    existing_providers = {p.code: p for p in session.scalars(select(PaymentProvider))}
+    for provider_def in catalog.payment_providers.values():
+        provider = existing_providers.get(provider_def.code) or PaymentProvider(
+            code=provider_def.code
+        )
+        provider.name = provider_def.name
+        provider.names = dict(provider_def.names)
+        provider.instructions = dict(provider_def.instructions)
+        provider.kinds = list(provider_def.kinds)
+        provider.countries = list(provider_def.countries)
+        provider.currencies = list(provider_def.currencies)
+        provider.identifiers = {
+            kind: {k: v for k, v in dataclasses.asdict(rule).items() if v is not None}
+            for kind, rule in provider_def.identifiers.items()
+        }
+        provider.is_active = provider_def.is_active
+        session.add(provider)
+    deactivated_providers = sorted(set(existing_providers) - set(catalog.payment_providers))
+    for code in deactivated_providers:
+        existing_providers[code].is_active = False
+
     existing_policies = {p.status: p for p in session.scalars(select(SubscriptionAccessPolicy))}
     for policy_def in catalog.policies.values():
         policy = existing_policies.get(policy_def.status) or SubscriptionAccessPolicy(
@@ -150,4 +177,6 @@ def sync_catalog(session: Session, catalog: Catalog) -> SyncReport:
         deactivated_ux_profiles=deactivated_ux,
         countries=len(catalog.countries),
         deactivated_countries=deactivated_countries,
+        payment_providers=len(catalog.payment_providers),
+        deactivated_payment_providers=deactivated_providers,
     )

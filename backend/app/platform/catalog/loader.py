@@ -20,6 +20,12 @@ from app.platform.catalog.ux import (
 )
 from app.platform.registry import AccessKind, ModuleRegistry
 from app.platform.subscriptions.models import SubscriptionStatus
+from app.shared.receiving import (
+    IDENTIFIER_TYPES,
+    LANGUAGE_RE,
+    PROVIDER_CODE_RE,
+    RECEIVING_KINDS,
+)
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -94,6 +100,32 @@ class CountryDef:
 
 
 @dataclass(frozen=True)
+class IdentifierRuleDef:
+    """Règle FACULTATIVE de format d'un type d'identifiant chez un opérateur (déclarée seulement
+    si elle est fiable ; sinon le contrôle générique s'applique)."""
+
+    min_length: int | None = None
+    max_length: int | None = None
+    pattern: str | None = None
+
+
+@dataclass(frozen=True)
+class PaymentProviderDef:
+    """Opérateur ou établissement financier du catalogue TechNova (R6.5, ADR-0051) : données de
+    référence, jamais une constante du code."""
+
+    code: str
+    name: str
+    names: dict[str, str]
+    kinds: tuple[str, ...]
+    countries: tuple[str, ...]
+    currencies: tuple[str, ...]
+    identifiers: dict[str, IdentifierRuleDef]
+    instructions: dict[str, str]
+    is_active: bool
+
+
+@dataclass(frozen=True)
 class PlanDef:
     code: str
     name: str
@@ -147,6 +179,7 @@ class Catalog:
     policies: dict[str, PolicyDef] = field(default_factory=dict)
     role_templates: dict[str, RoleTemplate] = field(default_factory=dict)
     countries: dict[str, CountryDef] = field(default_factory=dict)
+    payment_providers: dict[str, PaymentProviderDef] = field(default_factory=dict)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -164,6 +197,7 @@ def load_catalog(registry: ModuleRegistry, data_dir: Path = DATA_DIR) -> Catalog
         policies=_load_policies(_read(data_dir / "subscription_policies.toml")),
         role_templates=_load_role_templates(_read(data_dir / "role_templates.toml")),
         countries=_load_countries(_read(data_dir / "countries.toml")),
+        payment_providers=load_payment_providers(_read(data_dir / "payment_providers.toml")),
     )
     validate_catalog(catalog, registry)
     return catalog
@@ -302,6 +336,88 @@ def _country_errors(country: CountryDef) -> list[str]:
     return errors
 
 
+def _texts(value: Any) -> dict[str, str]:
+    return {str(k): str(v) for k, v in (value or {}).items()}
+
+
+def load_payment_providers(raw: dict[str, Any]) -> dict[str, PaymentProviderDef]:
+    """Opérateurs du catalogue (fichier éventuellement vide)."""
+    providers: dict[str, PaymentProviderDef] = {}
+    for code, data in raw.get("providers", {}).items():
+        identifiers = {
+            str(kind): IdentifierRuleDef(
+                min_length=rule.get("min_length"),
+                max_length=rule.get("max_length"),
+                pattern=rule.get("pattern"),
+            )
+            for kind, rule in (data.get("identifiers") or {}).items()
+        }
+        providers[code] = PaymentProviderDef(
+            code=code,
+            name=str(data.get("name", "")),
+            names=_texts(data.get("names")),
+            kinds=tuple(data.get("kinds", ())),
+            countries=tuple(data.get("countries", ())),
+            currencies=tuple(data.get("currencies", ())),
+            identifiers=identifiers,
+            instructions=_texts(data.get("instructions")),
+            is_active=bool(data.get("is_active", True)),
+        )
+    return providers
+
+
+def payment_provider_errors(
+    provider: PaymentProviderDef, known_countries: set[str] | None = None
+) -> list[str]:
+    """Contrôles d'une entrée du catalogue (codes ISO, types connus, règles cohérentes)."""
+    owner = f"opérateur {provider.code}"
+    errors: list[str] = []
+    if not re.match(PROVIDER_CODE_RE, provider.code):
+        errors.append(f"{owner} : code invalide (minuscules, chiffres, « . », « _ », « - »)")
+    if not provider.name.strip() or len(provider.name) > 100:
+        errors.append(f"{owner} : nom manquant ou trop long (100)")
+    for lang, text in {**provider.names, **provider.instructions}.items():
+        if not re.match(LANGUAGE_RE, lang):
+            errors.append(f"{owner} : langue invalide {lang!r}")
+        if not text.strip():
+            errors.append(f"{owner} : traduction vide ({lang})")
+    if not provider.kinds:
+        errors.append(f"{owner} : au moins un type de moyen")
+    errors += [
+        f"{owner} : type de moyen inconnu {k}" for k in provider.kinds if k not in RECEIVING_KINDS
+    ]
+    for country in provider.countries:
+        if not _COUNTRY_RE.match(country):
+            errors.append(f"{owner} : pays ISO 3166-1 invalide {country!r}")
+        elif known_countries is not None and country not in known_countries:
+            errors.append(f"{owner} : pays absent du référentiel {country}")
+    if not provider.currencies:
+        errors.append(f"{owner} : au moins une devise")
+    errors += [
+        f"{owner} : devise ISO 4217 invalide {c!r}"
+        for c in provider.currencies
+        if not _CURRENCY_RE.match(c)
+    ]
+    for kind, rule in provider.identifiers.items():
+        if kind not in IDENTIFIER_TYPES:
+            errors.append(f"{owner} : type d'identifiant inconnu {kind}")
+        for name, bound in (("min_length", rule.min_length), ("max_length", rule.max_length)):
+            if bound is not None and (not isinstance(bound, int) or not 1 <= bound <= 100):
+                errors.append(f"{owner} : {kind}.{name} doit être un entier de 1 à 100")
+        if (
+            isinstance(rule.min_length, int)
+            and isinstance(rule.max_length, int)
+            and rule.min_length > rule.max_length
+        ):
+            errors.append(f"{owner} : {kind} min_length > max_length")
+        if rule.pattern is not None:
+            try:
+                re.compile(rule.pattern)
+            except re.error:
+                errors.append(f"{owner} : {kind}.pattern n'est pas une expression valide")
+    return errors
+
+
 def _load_plans(raw: dict[str, Any]) -> dict[str, PlanDef]:
     return {
         code: PlanDef(
@@ -433,6 +549,8 @@ def validate_catalog(catalog: Catalog, registry: ModuleRegistry) -> None:
         errors.append("référentiel des pays vide")
     for country in catalog.countries.values():
         errors.extend(_country_errors(country))
+    for provider in catalog.payment_providers.values():
+        errors.extend(payment_provider_errors(provider, set(catalog.countries)))
 
     statuses = {s.value for s in SubscriptionStatus}
     if set(catalog.policies) != statuses:
