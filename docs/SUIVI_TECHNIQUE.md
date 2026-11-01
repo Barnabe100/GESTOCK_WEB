@@ -50,7 +50,7 @@ livrés ; à vérifier dans l'environnement Ubuntu complet.
   (rôle `stockmanager_purge`) et les tests sont livrés ; la **planification** (cron ou minuterie
   systemd, quotidienne) et la **supervision** (alerte sur code de sortie non nul, consultation
   des compteurs affichés) relèvent de l'environnement de production et ne peuvent pas être
-  vérifiées depuis le dépôt. Exemple de minuterie et de vérification : guide de mise à jour R7.
+  vérifiées depuis le dépôt. Exemple de minuterie et de vérification : [`MISE_A_JOUR_R7.md`](MISE_A_JOUR_R7.md) §6.
 
 ## R7-2 — en-têtes de sécurité des pages publiques en production
 
@@ -68,3 +68,4 @@ livrés ; à vérifier dans l'environnement Ubuntu complet.
 | 2026-11-01 | A-1 | ouverte (R6.5) ; course `/sales/new` → `/sales/{id}` corrigée dans le test (`986a1c0`) ; échec résiduel 1/21 |
 | 2026-11-01 | E-1 à E-5 | consignées (exécutions complètes R6 et R6.5) |
 | 2026-11-01 | R7-1, R7-2 | consignées (livraison R7 : actions d'exploitation) |
+| 2026-11-01 | A-1, E-1 à E-5 | exécution complète R7 : E-1 (×2), E-2, E-4, E-5 reproduites (mêmes causes) ; A-1 non reproduite (reste ouverte) |

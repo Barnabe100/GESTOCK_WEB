@@ -288,3 +288,20 @@ RLS ni dupliquer le moteur.
 - **Minimisation de l'audit public** : les entrées d'audit écrites par l'acteur `PUBLIC`
   (commande QR reçue) ne conservent ni l'adresse IP ni l'agent utilisateur du client
   (`public_meta`) ; l'adresse ne sert qu'aux compteurs de fréquence, sous empreinte HMAC.
+
+## Résultats de livraison (2026-11-01)
+
+- **Backend** : 1540 tests réussis, 0 échec (suite complète, 42 min ; dont 61 tests R7 :
+  points, accès public, commandes, confirmation, suivi, livraison et offres) ; `ruff`, `mypy`,
+  `alembic check` (aucune dérive) propres.
+- **Frontend** : Vitest 551 / 551 (75 fichiers) ; lint, format, types, build propres.
+- **E2E** (exécution complète, pile locale) : 178 réussis, 6 échecs, 3 non exécutés (suite des
+  groupes en série interrompus). Échecs : E-1 (×2), E-2, E-4, E-5 — environnement, consignés
+  dans `SUIVI_TECHNIQUE.md` — et `restaurant-menu.e2e.ts` « site existant » : sélecteur
+  `/^Commandes/` devenu ambigu avec la ligne « Commandes par QR Code » livrée, corrigé (ligne
+  ciblée exactement, interrupteur du QR vérifié en plus, aucune assertion retirée) puis rejoué
+  avec les E2E QR : 9 / 9. Anomalie A-1 non reproduite lors de cette exécution (toujours ouverte).
+- **CI** : run 41348446603 sur `7bf4460`, 4 jobs réussis (backend, frontend, Signing Service,
+  Docker Compose).
+- Guide de mise à jour Ubuntu : [`MISE_A_JOUR_R7.md`](../MISE_A_JOUR_R7.md).
+
