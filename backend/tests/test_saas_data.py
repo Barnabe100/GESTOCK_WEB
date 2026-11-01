@@ -393,7 +393,7 @@ def test_rate_limiter_window_and_hashed_keys(app_engine: Engine, owner_db: Sessi
     now = utcnow()
     window = timedelta(hours=1)
     with create_session_factory(app_engine)() as session:
-        limiter = RateLimiter(session, now)
+        limiter = RateLimiter(session, now, "test-key")
         for _ in range(3):
             limiter.hit("signup", "203.0.113.7", limit=3, window=window)
         with pytest.raises(TooManyRequestsError) as error:
@@ -403,7 +403,7 @@ def test_rate_limiter_window_and_hashed_keys(app_engine: Engine, owner_db: Sessi
         limiter.hit("signup", "203.0.113.8", limit=3, window=window)
         limiter.hit("other", "203.0.113.7", limit=3, window=window)
         # Fenêtre écoulée : de nouveau autorisé ; les tentatives anciennes sont purgées.
-        RateLimiter(session, now + window + timedelta(seconds=1)).hit(
+        RateLimiter(session, now + window + timedelta(seconds=1), "test-key").hit(
             "signup", "203.0.113.7", limit=3, window=window
         )
         session.commit()
@@ -424,7 +424,7 @@ def test_rate_limiter_is_safe_across_concurrent_processes(
         with create_session_factory(app_engine)() as session:
             barrier.wait()
             try:
-                RateLimiter(session, utcnow()).hit(
+                RateLimiter(session, utcnow(), "test-key").hit(
                     "signup", "198.51.100.1", limit=3, window=timedelta(hours=1)
                 )
                 session.commit()

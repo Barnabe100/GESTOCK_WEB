@@ -1,5 +1,6 @@
 from app.modules.restaurant_qr.footprint import qr_footprint
 from app.modules.restaurant_qr.permissions import POINT_MANAGE, POINT_VIEW, SETTINGS_MANAGE
+from app.modules.restaurant_qr.public_router import public_router
 from app.modules.restaurant_qr.router import router
 from app.platform.registry import AccessKind, ModuleManifest, ModuleStatus, PermissionDef
 
@@ -19,5 +20,7 @@ MANIFEST = ModuleManifest(
         PermissionDef(SETTINGS_MANAGE, A),
     ),
     router=router,
+    # ``/api/v1/public/restaurant/qr`` : menu, commande et suivi publics (jeton vérifié).
+    public_router=public_router,
     site_footprint=qr_footprint,
 )

@@ -1,8 +1,13 @@
 """Limite de fréquence par fenêtre glissante, persistée en base : correcte avec plusieurs
 processus ou instances (aucun cache partagé n'existe dans la pile). Les tentatives d'une même
-clé sont sérialisées par un verrou consultatif transactionnel."""
+clé sont sérialisées par un verrou consultatif transactionnel.
+
+Clés (adresses IP, points QR) jamais stockées en clair : empreinte HMAC-SHA256 avec la clé
+secrète du serveur (``SM_RATE_LIMIT_HMAC_KEY``, R7) — sans elle, une empreinte ne permet pas de
+retrouver une adresse IP par essais."""
 
 import hashlib
+import hmac
 from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select
@@ -13,13 +18,13 @@ from app.platform.ratelimit.models import RateLimitHit
 
 
 class RateLimiter:
-    def __init__(self, session: Session, now: datetime) -> None:
+    def __init__(self, session: Session, now: datetime, secret: str) -> None:
         self.db = session
         self.now = now
+        self._secret = secret.encode()
 
-    @staticmethod
-    def key_hash(bucket: str, key: str) -> str:
-        return hashlib.sha256(f"{bucket}:{key}".encode()).hexdigest()
+    def key_hash(self, bucket: str, key: str) -> str:
+        return hmac.new(self._secret, f"{bucket}:{key}".encode(), hashlib.sha256).hexdigest()
 
     def hit(self, bucket: str, key: str, *, limit: int, window: timedelta) -> None:
         """Compte une tentative ; ``TooManyRequestsError`` si ``limit`` tentatives ont déjà eu

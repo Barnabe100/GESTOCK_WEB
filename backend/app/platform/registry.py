@@ -89,6 +89,10 @@ class ModuleManifest:
     extra_routers: "tuple[tuple[str, APIRouter], ...]" = field(
         default=(), compare=False, hash=False
     )
+    # Routeur PUBLIC (sans authentification, palier R7) : monté sous ``/api/v1/public<url_prefix>``
+    # pour un module DISPONIBLE seulement, sans ``require_module`` (aucun membre) ; chaque route
+    # vérifie elle-même son périmètre (ex. jeton d'un point QR, ``restaurant_qr/access.py``).
+    public_router: "APIRouter | None" = field(default=None, compare=False, hash=False)
     # Étapes d'onboarding portées par le module (proposées si le module est effectif).
     onboarding: tuple[OnboardingStepDef, ...] = field(default=(), compare=False, hash=False)
     # Empreinte du module sur un site, en lecture seule (palier D, ``app.platform.footprint``) :

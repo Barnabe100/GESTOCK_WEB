@@ -67,7 +67,7 @@ class SignupService:
         if not self.settings.signup_enabled:
             raise ForbiddenError("Inscription fermée", code="signup_closed")
         # Tentative comptée et validée avant tout traitement : un échec reste compté.
-        RateLimiter(self.db, self.now).hit(
+        RateLimiter(self.db, self.now, self.settings.rate_limit_hmac_key.get_secret_value()).hit(
             RATE_LIMIT_BUCKET,
             client_ip,
             limit=self.settings.signup_rate_limit_attempts,

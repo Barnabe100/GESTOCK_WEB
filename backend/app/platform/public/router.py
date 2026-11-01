@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
+from app.core.client_ip import client_ip
 from app.platform.catalog.models import GeoCountry, Plan
 from app.platform.context import DbSession, MetaDep, NowDep, RegistryDep, SettingsDep
 from app.platform.identity.router import session_response
@@ -134,7 +135,9 @@ def signup(
     """Crée un compte et une entreprise ; renvoie une session ouverte sur cette entreprise.
     Adresse du client : celle vue par l'application (voir SM_SIGNUP_RATE_LIMIT_* et la
     configuration du reverse proxy)."""
-    client_ip = request.client.host if request.client else "unknown"
-    issued = SignupService(db, settings, registry, now).signup(body, client_ip=client_ip, meta=meta)
+    # Adresse de la connexion, ou celle transmise par un proxy de CONFIANCE seulement (R7).
+    issued = SignupService(db, settings, registry, now).signup(
+        body, client_ip=client_ip(request, settings), meta=meta
+    )
     db.commit()
     return session_response(issued, response, settings)

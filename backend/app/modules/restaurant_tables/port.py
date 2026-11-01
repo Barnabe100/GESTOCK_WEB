@@ -16,13 +16,13 @@ from sqlalchemy.orm import Session
 from app.core.errors import BusinessRuleError, NotFoundError
 from app.modules.restaurant_orders.api import TableRef
 from app.modules.restaurant_tables.models import RestaurantTable, RestaurantZone
-from app.platform.context import RequestContext
+from app.platform.context import TenantScope
 
 TABLE_NOT_FOUND = "table_not_found"
 
 
 class TableDirectoryService:
-    def __init__(self, db: Session, ctx: RequestContext) -> None:
+    def __init__(self, db: Session, ctx: TenantScope) -> None:
         self.db = db
         self.ctx = ctx
 

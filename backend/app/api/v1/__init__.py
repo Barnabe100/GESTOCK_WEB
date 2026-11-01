@@ -28,6 +28,11 @@ def mount_module_routers(api_router: APIRouter, registry: ModuleRegistry) -> Non
         )
         for prefix, extra_router in manifest.extra_routers:
             api_router.include_router(extra_router, prefix=prefix, dependencies=module_required)
+        if manifest.public_router is not None:
+            # Aucun membre : jamais ``require_module`` ; la route contrôle son périmètre.
+            api_router.include_router(
+                manifest.public_router, prefix=f"/public{manifest.url_prefix}"
+            )
 
 
 def build_api_router(registry: ModuleRegistry | None = None) -> APIRouter:

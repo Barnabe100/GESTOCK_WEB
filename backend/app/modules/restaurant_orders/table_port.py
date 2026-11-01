@@ -16,7 +16,7 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from app.platform.context import RequestContext
+from app.platform.context import TenantScope
 
 # Code du module qui fournit les tables (test de capacité, jamais le profil).
 TABLES_MODULE = "restaurant.tables"
@@ -46,7 +46,8 @@ class TableDirectory(Protocol):
         ...
 
 
-TableDirectoryFactory = Callable[[Session, RequestContext], TableDirectory]
+# Portée minimale (entreprise) : un membre, ou l'accès public par QR Code (R7).
+TableDirectoryFactory = Callable[[Session, TenantScope], TableDirectory]
 _factory: TableDirectoryFactory | None = None
 
 
@@ -56,6 +57,6 @@ def register_table_directory(factory: TableDirectoryFactory) -> None:
     _factory = factory
 
 
-def table_directory(db: Session, ctx: RequestContext) -> TableDirectory | None:
+def table_directory(db: Session, ctx: TenantScope) -> TableDirectory | None:
     """Annuaire des tables, ou ``None`` si aucun module ne l'a enregistré."""
     return _factory(db, ctx) if _factory is not None else None

@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Protocol
 
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
@@ -118,6 +118,29 @@ ActiveUser = Annotated[Authenticated, Depends(get_active_user)]
 
 
 # --- Contexte tenant ------------------------------------------------------------------------
+
+
+class TenantScope(Protocol):
+    """Ce que les lectures d'un module exigent au minimum : l'entreprise courante (contexte d'un
+    membre, ou accès public par QR Code — ``PublicScope``)."""
+
+    @property
+    def tenant_id(self) -> uuid.UUID: ...
+
+
+@dataclass(frozen=True)
+class PublicScope:
+    """Accès PUBLIC (palier R7, ADR-0052) : entreprise et site déduits d'un jeton présenté et
+    vérifié par le serveur (jamais d'un paramètre du client), sans utilisateur ni membre. Ne
+    porte aucune permission : chaque opération publique contrôle elle-même son périmètre."""
+
+    tenant: Tenant
+    site: Site
+    meta: RequestMeta
+
+    @property
+    def tenant_id(self) -> uuid.UUID:
+        return self.tenant.id
 
 
 # Natures de permission qui ne modifient rien : pas de revérification par site (Q6, ADR-0033).

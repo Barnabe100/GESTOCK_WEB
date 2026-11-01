@@ -83,3 +83,49 @@ RLS ni dupliquer le moteur.
   en-têtes `Host` / `X-Forwarded-Host` ignorés, adresse absente → rien d'écrit, permissions et
   portée des sites, isolation API et SQL avec la politique de lecture par jeton, droits SQL,
   registre de production, descente de 0056 refusée).
+
+## R7-B — accès public sécurisé et menu public (aucune migration)
+
+- **Routeur public des modules** : champ `public_router` du manifeste, monté sous
+  `/api/v1/public<préfixe du module>` pour un module DISPONIBLE seulement, sans
+  `require_module` (aucun membre) ; chaque route contrôle son périmètre.
+- **Garde unique** `restaurant_qr/access.py` (`resolve_access`), à chaque appel : format du
+  jeton (refus sans requête) → point trouvé par l'empreinte, la politique `qr_token_lookup`
+  ne laissant voir que lui (aucune entreprise dans le contexte) → contexte RLS de l'entreprise
+  DU POINT, empreinte effacée → entreprise active, site actif, point actif → abonnement du SITE
+  autorisant l'écriture (même calcul que pour un membre : licence en vigueur sinon plan,
+  statut, politique d'accès ; `pending_activation`, expiré, suspendu : refus) → modules
+  effectifs et disponibles du site (QR Code, commandes, menu) → pour une table : module des
+  tables effectif, table ACTIVE du même site.
+- **Refus identique** pour tout échec : `404 qr_unavailable`, message générique ; motif
+  journalisé côté serveur avec l'identifiant du point (jamais le jeton ni son empreinte).
+- **Menu public** `GET /api/v1/public/restaurant/qr/menu` (en-tête `X-QR-Token`) :
+  établissement (nom commercial), site, point (table ou comptoir), devise, sections actives et
+  éléments : nom, conditionnement, description, prix, disponibilité. Seul « épuisé » est montré
+  (non commandable) ; tout autre motif interne (article désactivé, hors assortiment,
+  conditionnement sans prix, section désactivée) retire l'élément. Jamais de stock, coût,
+  référence, identifiant d'article ni motif d'indisponibilité saisi par le personnel. Lecture
+  du menu factorisée dans le module Menu (`item_query`, `item_rows`, `site_menu`) : même règle
+  « commandable » que pour le personnel.
+- **Portée sans membre** : `TenantScope` (protocole : l'entreprise) et `PublicScope`
+  (entreprise et site déduits du jeton) dans `app/platform/context.py` ; les ports des tables
+  et la lecture du menu acceptent cette portée minimale.
+- **En-têtes** (intergiciel, toutes les réponses `/api/v1/public/…`, erreurs comprises) :
+  `Cache-Control: no-store` (sauf réponses publiques déjà mises en cache volontairement : pays,
+  profils), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`,
+  `X-Robots-Tag: noindex, nofollow`.
+- **Adresse du client** (`app/core/client_ip.py`) : adresse de la connexion ; `X-Forwarded-For`
+  lu seulement si la connexion vient d'un proxy de confiance (`SM_TRUSTED_PROXIES`, adresses ou
+  réseaux), parcouru de droite à gauche en sautant les proxies de confiance ; en-tête altéré :
+  arrêt au dernier proxy de confiance. Aussi utilisée par l'inscription publique.
+- **Limitation de fréquence** : clés en empreinte **HMAC-SHA256** avec `SM_RATE_LIMIT_HMAC_KEY`
+  (inscription comprise) ; lecture publique comptée par adresse IP AVANT la vérification du
+  jeton (`SM_QR_READ_IP_LIMIT` par `SM_QR_READ_WINDOW_MINUTES`) : un jeton inconnu est compté
+  aussi (pas de recherche par force brute illimitée).
+- **Tests** : `tests/test_restaurant_qr_public.py` (menu limité aux champs publics, aucune
+  donnée interne, autre site absent ; épuisé visible, motifs internes masqués, section et
+  assortiment ; refus identiques : jeton absent, malformé, inconnu, régénéré, point désactivé,
+  table désactivée, tables ou QR désactivés ; site inactif, entreprise suspendue, abonnement
+  suspendu ou en attente d'activation, site B indépendant ; un jeton n'ouvre que son site et son
+  entreprise ; routes publiques non montées tant que le module est planifié ; limitation de
+  fréquence et empreinte HMAC ; proxies de confiance).

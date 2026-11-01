@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from collections.abc import Awaitable, Callable
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -31,8 +33,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Site-Id"],
+        allow_headers=["Authorization", "Content-Type", "X-Site-Id", "X-QR-Token"],
     )
+    public_prefix = f"{settings.api_v1_prefix}/public/"
+
+    @app.middleware("http")
+    async def _public_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Réponses PUBLIQUES (inscription, QR Code), erreurs comprises : jamais en cache, sans
+        référent, non indexées (R7, ADR-0052)."""
+        response = await call_next(request)
+        if request.url.path.startswith(public_prefix):
+            response.headers.setdefault("Cache-Control", "no-store")
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+
     register_error_handlers(app)
     app.include_router(build_api_router(registry), prefix=settings.api_v1_prefix)
     verify_declared_requirements(registry)

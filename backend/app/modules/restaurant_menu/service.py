@@ -125,6 +125,103 @@ def _blockers(row: Any, packaging: PackagingRef | None) -> list[str]:
     return blockers
 
 
+def item_query(tenant_id: uuid.UUID) -> Select[Any]:
+    """Éléments du menu d'une entreprise avec l'état de leur section, de l'article et de
+    l'assortiment du site (lecture seule)."""
+    articles = articles_view()
+    assortment = assortment_view()
+    return (
+        select(
+            MenuItem.id,
+            MenuItem.site_id,
+            Site.name.label("site_name"),
+            MenuItem.section_id,
+            MenuSection.name.label("section_name"),
+            MenuSection.is_active.label("section_active"),
+            MenuItem.article_id,
+            articles.c.reference,
+            articles.c.designation,
+            articles.c.unit,
+            articles.c.is_active.label("article_active"),
+            assortment.c.article_id.is_not(None).label("in_assortment"),
+            MenuItem.packaging_id,
+            MenuItem.display_name,
+            MenuItem.description,
+            MenuItem.sort_order,
+            MenuItem.is_active,
+            MenuItem.available,
+            MenuItem.unavailable_reason,
+            MenuItem.created_at,
+            MenuItem.updated_at,
+        )
+        .join(Site, (Site.tenant_id == MenuItem.tenant_id) & (Site.id == MenuItem.site_id))
+        .join(
+            MenuSection,
+            (MenuSection.tenant_id == MenuItem.tenant_id) & (MenuSection.id == MenuItem.section_id),
+        )
+        .join(
+            articles,
+            (articles.c.tenant_id == MenuItem.tenant_id) & (articles.c.id == MenuItem.article_id),
+        )
+        .outerjoin(
+            assortment,
+            (assortment.c.tenant_id == MenuItem.tenant_id)
+            & (assortment.c.site_id == MenuItem.site_id)
+            & (assortment.c.article_id == MenuItem.article_id),
+        )
+        .where(MenuItem.tenant_id == tenant_id)
+    )
+
+
+def item_rows(db: Session, rows: list[Any]) -> list[ItemRow]:
+    """Lignes enrichies de l'état COURANT du catalogue (prix, conditionnement) — lecture
+    seule, sans verrou ; un conditionnement désactivé n'est pas exposé par le catalogue."""
+    article_ids = {row.article_id for row in rows}
+    refs = get_article_refs(db, article_ids)
+    packagings = {
+        p.id: p
+        for items in active_packagings(db, article_ids, priced_only=False).values()
+        for p in items
+    }
+    result: list[ItemRow] = []
+    for row in rows:
+        packaging = packagings.get(row.packaging_id) if row.packaging_id else None
+        if row.packaging_id is None:
+            price: Decimal | None = refs[row.article_id].sale_price
+        else:
+            price = packaging.sale_price if packaging is not None else None
+        blockers = _blockers(row, packaging)
+        result.append(
+            ItemRow(
+                id=row.id,
+                site_id=row.site_id,
+                site_name=row.site_name,
+                section_id=row.section_id,
+                section_name=row.section_name,
+                section_active=row.section_active,
+                article_id=row.article_id,
+                reference=row.reference,
+                designation=row.designation,
+                unit=row.unit,
+                packaging_id=row.packaging_id,
+                packaging_name=packaging.name if packaging is not None else None,
+                conversion=packaging.conversion if packaging is not None else None,
+                display_name=row.display_name,
+                description=row.description,
+                sort_order=row.sort_order,
+                is_active=row.is_active,
+                available=row.available,
+                unavailable_reason=row.unavailable_reason,
+                price=price,
+                orderable=not blockers,
+                blockers=blockers,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+        )
+    return result
+
+
 class MenuService:
     def __init__(self, db: Session, ctx: RequestContext) -> None:
         self.db = db
@@ -288,99 +385,10 @@ class MenuService:
     # --- Éléments : lecture ---------------------------------------------------------------------
 
     def _item_query(self) -> Select[Any]:
-        articles = articles_view()
-        assortment = assortment_view()
-        return (
-            select(
-                MenuItem.id,
-                MenuItem.site_id,
-                Site.name.label("site_name"),
-                MenuItem.section_id,
-                MenuSection.name.label("section_name"),
-                MenuSection.is_active.label("section_active"),
-                MenuItem.article_id,
-                articles.c.reference,
-                articles.c.designation,
-                articles.c.unit,
-                articles.c.is_active.label("article_active"),
-                assortment.c.article_id.is_not(None).label("in_assortment"),
-                MenuItem.packaging_id,
-                MenuItem.display_name,
-                MenuItem.description,
-                MenuItem.sort_order,
-                MenuItem.is_active,
-                MenuItem.available,
-                MenuItem.unavailable_reason,
-                MenuItem.created_at,
-                MenuItem.updated_at,
-            )
-            .join(Site, (Site.tenant_id == MenuItem.tenant_id) & (Site.id == MenuItem.site_id))
-            .join(
-                MenuSection,
-                (MenuSection.tenant_id == MenuItem.tenant_id)
-                & (MenuSection.id == MenuItem.section_id),
-            )
-            .join(
-                articles,
-                (articles.c.tenant_id == MenuItem.tenant_id)
-                & (articles.c.id == MenuItem.article_id),
-            )
-            .outerjoin(
-                assortment,
-                (assortment.c.tenant_id == MenuItem.tenant_id)
-                & (assortment.c.site_id == MenuItem.site_id)
-                & (assortment.c.article_id == MenuItem.article_id),
-            )
-            .where(MenuItem.tenant_id == self.ctx.tenant_id)
-        )
+        return item_query(self.ctx.tenant_id)
 
     def _item_rows(self, rows: list[Any]) -> list[ItemRow]:
-        """Lignes enrichies de l'état COURANT du catalogue (prix, conditionnement) — lecture
-        seule, sans verrou ; un conditionnement désactivé n'est pas exposé par le catalogue."""
-        article_ids = {row.article_id for row in rows}
-        refs = get_article_refs(self.db, article_ids)
-        packagings = {
-            p.id: p
-            for items in active_packagings(self.db, article_ids, priced_only=False).values()
-            for p in items
-        }
-        result: list[ItemRow] = []
-        for row in rows:
-            packaging = packagings.get(row.packaging_id) if row.packaging_id else None
-            if row.packaging_id is None:
-                price: Decimal | None = refs[row.article_id].sale_price
-            else:
-                price = packaging.sale_price if packaging is not None else None
-            blockers = _blockers(row, packaging)
-            result.append(
-                ItemRow(
-                    id=row.id,
-                    site_id=row.site_id,
-                    site_name=row.site_name,
-                    section_id=row.section_id,
-                    section_name=row.section_name,
-                    section_active=row.section_active,
-                    article_id=row.article_id,
-                    reference=row.reference,
-                    designation=row.designation,
-                    unit=row.unit,
-                    packaging_id=row.packaging_id,
-                    packaging_name=packaging.name if packaging is not None else None,
-                    conversion=packaging.conversion if packaging is not None else None,
-                    display_name=row.display_name,
-                    description=row.description,
-                    sort_order=row.sort_order,
-                    is_active=row.is_active,
-                    available=row.available,
-                    unavailable_reason=row.unavailable_reason,
-                    price=price,
-                    orderable=not blockers,
-                    blockers=blockers,
-                    created_at=row.created_at,
-                    updated_at=row.updated_at,
-                )
-            )
-        return result
+        return item_rows(self.db, rows)
 
     def search_items(
         self,
