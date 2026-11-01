@@ -133,6 +133,9 @@ async function enterSale(page: Page, article: Article, quantity: string) {
   await page.locator('#line-0-quantity').fill(quantity);
   await page.getByRole('button', { name: 'Enregistrer le brouillon' }).click();
   await expect(page.getByText('Brouillon enregistré')).toBeVisible();
+  // Premier enregistrement : la page passe de /sales/new à /sales/{id} (remontée) ; valider
+  // avant cette navigation ouvrirait un dialogue aussitôt démonté.
+  await expect(page).toHaveURL(/\/sales\/[0-9a-f-]{36}$/);
 }
 
 async function openValidation(page: Page) {
