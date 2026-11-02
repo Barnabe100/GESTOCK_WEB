@@ -66,6 +66,9 @@ export interface BoardLine {
   received_at: string;
   prepared_at: string | null;
   ready_at: string | null;
+  /** Palier R8 : présentation commandée (fiche technique de la recette). */
+  article_id?: string | null;
+  packaging_id?: string | null;
 }
 
 /** Une commande ouverte × un poste (`station_id` nul : « Sans poste »). */

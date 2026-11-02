@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -65,6 +66,31 @@ export function useMediaQuery(query: string): boolean {
     return () => list.removeEventListener('change', onChange);
   }, [query]);
   return matches;
+}
+
+/** Marge entre un panneau contextuel et les bords de la fenêtre (px). */
+export const FLYOUT_MARGIN = 8;
+
+/**
+ * Position d'un panneau contextuel (ordinateur) : aligné sur sa rubrique, mais RECALÉ pour tenir
+ * entièrement dans la hauteur visible — une rubrique proche du bas de l'écran ouvre un panneau
+ * remonté, jamais coupé ; un panneau plus haut que la fenêtre défile à l'intérieur.
+ */
+export function flyoutPosition(
+  anchorTop: number,
+  contentHeight: number,
+  viewportHeight: number,
+  margin = FLYOUT_MARGIN,
+): { top: number; maxHeight: number } {
+  const maxHeight = Math.max(0, viewportHeight - margin * 2);
+  const height = Math.min(contentHeight, maxHeight);
+  const top = Math.max(margin, Math.min(anchorTop, viewportHeight - margin - height));
+  return { top, maxHeight };
+}
+
+/** Hauteur VISIBLE de la fenêtre (barres du navigateur mobile déduites quand c'est connu). */
+function viewportHeight(): number {
+  return window.visualViewport?.height ?? window.innerHeight;
 }
 
 /** Tablette et mobile : barre latérale en tiroir (même seuil que la feuille de styles). */
@@ -147,26 +173,44 @@ function GroupEntry({
   const labelId = `nav-${group}`;
   const title = t(`navGroups.${group}`);
   const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<CSSProperties>({});
   const flyout = !drawer;
 
-  // Panneau contextuel adjacent à la barre (position fixe : jamais rogné par le défilement).
-  // Recalculée au défilement de la barre et au redimensionnement, tant qu'il est ouvert.
-  useEffect(() => {
+  // Panneau contextuel adjacent à la barre (position fixe : jamais rogné par le défilement),
+  // recalé dans la hauteur VISIBLE (jamais coupé en bas de l'écran). Calculé avant l'affichage,
+  // puis à chaque défilement, redimensionnement, rotation ou changement de la zone visible.
+  useLayoutEffect(() => {
     if (!open || !flyout) return undefined;
     const place = () => {
       if (!button.current) return;
       const rect = button.current.getBoundingClientRect();
       const sidebar = button.current.closest('.sm-sidebar')?.getBoundingClientRect();
-      setPosition({ top: Math.max(8, rect.top), left: sidebar ? sidebar.right : rect.right });
+      const { top, maxHeight } = flyoutPosition(
+        rect.top,
+        panel.current?.scrollHeight ?? 0,
+        viewportHeight(),
+      );
+      setPosition({ top, left: sidebar ? sidebar.right : rect.right, maxHeight });
     };
     place();
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
+    window.visualViewport?.addEventListener('resize', place);
     return () => {
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
+      window.visualViewport?.removeEventListener('resize', place);
     };
+  }, [open, flyout, items.length]);
+
+  // Tiroir : une rubrique dépliée près du bas reste lisible (défilement jusqu'à ses entrées).
+  useEffect(() => {
+    if (!open || flyout || !panel.current) return;
+    const target = panel.current;
+    if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }, [open, flyout]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -209,6 +253,7 @@ function GroupEntry({
         />
       </button>
       <div
+        ref={panel}
         id={panelId}
         className={flyout ? 'sm-nav-flyout' : 'sm-nav-inline'}
         hidden={!open}

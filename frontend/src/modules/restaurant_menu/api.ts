@@ -32,7 +32,8 @@ export type MenuBlocker =
   | 'article_inactive'
   | 'article_not_in_site_assortment'
   | 'packaging_inactive'
-  | 'packaging_price_not_set';
+  | 'packaging_price_not_set'
+  | 'ingredients_unavailable';
 
 export interface MenuItem {
   id: string;

@@ -158,7 +158,9 @@ test.describe('Profils d’activité', () => {
       'restaurant.kitchen',
       'restaurant.menu',
     ]);
-    expect(caps.ux.upcoming).toEqual(expect.arrayContaining(['restaurant.recipes']));
+    // Recettes livrées (R8, 0060) : plus jamais « à venir » ; rapports encore planifiés.
+    expect(caps.ux.upcoming).toEqual(expect.arrayContaining(['reports']));
+    expect(caps.ux.upcoming).not.toContain('restaurant.recipes');
     expect(caps.ux.upcoming).not.toContain('restaurant.kitchen');
     expect(caps.ux.upcoming).not.toContain('restaurant.tables');
     expect(caps.ux.upcoming).not.toContain('restaurant.orders');
@@ -186,11 +188,13 @@ test.describe('Profils d’activité', () => {
     const stockLinks = sidebar(page).locator('ul[aria-labelledby="nav-stock"] a');
     await expect(stockLinks.first()).toHaveText('Produits');
     const links = await sidebar(page).getByRole('link', { includeHidden: true }).allTextContents();
+    // Recettes (R8) : livrées mais facultatives, non activées sur ce site — aucune entrée.
     expect(links.join(' | ')).not.toMatch(/Recettes/);
 
     // Annoncées « à venir », sans lien ; les modules livrés n'y figurent plus.
     const upcoming = page.getByRole('list', { name: 'À venir pour votre activité' });
-    await expect(upcoming).toContainText('Recettes');
+    await expect(upcoming).toContainText('Rapports');
+    await expect(upcoming).not.toContainText('Recettes');
     await expect(upcoming).not.toContainText('Cuisine');
     await expect(upcoming).not.toContainText('Tables');
     await expect(upcoming.getByRole('link')).toHaveCount(0);
@@ -201,7 +205,13 @@ test.describe('Profils d’activité', () => {
     await expect(page.getByRole('heading', { name: 'Tables', exact: true })).toBeVisible();
     await page.goto('/restaurant/kitchen');
     await expect(page.getByRole('heading', { name: 'Cuisine', exact: true })).toBeVisible();
+    // Recettes (R8) : livrées mais non activées sur ce site — repli explicite, aucune donnée.
     await page.goto('/restaurant/recipes');
+    await expect(
+      page.getByRole('main').getByText('Fonction non disponible sur ce site'),
+    ).toBeVisible();
+    // Module planifié : aucune route (page introuvable).
+    await page.goto('/reports');
     await expect(page.getByRole('main').getByText('Page introuvable')).toBeVisible();
   });
 

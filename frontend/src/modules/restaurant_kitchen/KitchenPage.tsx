@@ -13,6 +13,11 @@ import {
   type TransitionAction,
 } from '@/modules/restaurant_orders/api';
 import { orderError } from '@/modules/restaurant_orders/ui';
+import {
+  RecipeSheetDialog,
+  useCanSeeSheets,
+  type SheetTarget,
+} from '@/modules/restaurant_recipes/RecipeSheetDialog';
 import { formatQuantity } from '@/shared/lib/decimal';
 import { translateError } from '@/shared/lib/errors';
 import { LoadingState } from '@/shared/ui/LoadingState';
@@ -82,6 +87,9 @@ function TicketCard({ ticket, now }: { ticket: Ticket; now: number }) {
   const { transition } = useOrderMutations();
   const { setPriority } = useKitchenMutations();
   const canPrepare = can(ORDER_PREPARE) && !ticket.awaiting_payment;
+  // Palier R8 (ADR-0053, D13) : fiche technique d'une ligne (recettes effectives et consultables).
+  const canSeeSheets = useCanSeeSheets();
+  const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const elapsed = Math.max(0, Math.floor((now - new Date(ticket.received_at).getTime()) / 60_000));
   const ids = (status: string) => ticket.lines.filter((l) => l.status === status).map((l) => l.id);
   const act = (action: TransitionAction, lineIds: string[]) =>
@@ -153,6 +161,26 @@ function TicketCard({ ticket, now }: { ticket: Ticket; now: number }) {
               }
               label={t(`restaurantOrders.lineStatus.${line.status}`)}
             />
+            {canSeeSheets && line.article_id && (
+              <Button
+                type="button"
+                icon="pi pi-list-check"
+                text
+                rounded
+                aria-label={t('restaurantKitchen.sheetOf', { name: line.label })}
+                tooltip={t('restaurantRecipes.sheet')}
+                onClick={() =>
+                  setSheet({
+                    articleId: line.article_id ?? '',
+                    packagingId: line.packaging_id ?? null,
+                    quantity: line.quantity,
+                    label: line.packaging_name
+                      ? `${line.label} (${line.packaging_name})`
+                      : line.label,
+                  })
+                }
+              />
+            )}
             {canPrepare && line.status === 'READY' && (
               <Button
                 type="button"
@@ -167,6 +195,7 @@ function TicketCard({ ticket, now }: { ticket: Ticket; now: number }) {
           </li>
         ))}
       </ul>
+      {sheet && <RecipeSheetDialog target={sheet} onClose={() => setSheet(null)} />}
       {ticket.awaiting_payment && (
         <Message severity="warn" text={t('restaurantKitchen.awaitingPayment')} />
       )}

@@ -109,7 +109,8 @@
     "restaurantTables": "Tables",
     "restaurantKitchen": "Cuisine",
     "restaurantStations": "Postes de préparation",
-    "restaurantQr": "QR Codes"
+    "restaurantQr": "QR Codes",
+    "restaurantRecipes": "Recettes"
   },
   "navGroups": {
     "catalog": "Catalogue",
@@ -586,7 +587,9 @@
     "restaurant.qr.point.view": "Consulter les QR Codes des tables et des comptoirs",
     "restaurant.qr.point.manage": "Créer, désactiver et régénérer les QR Codes",
     "restaurant.qr.settings.manage": "Modifier les réglages des commandes par QR Code",
-    "restaurant.orders.order.confirm": "Confirmer ou refuser les commandes reçues par QR Code"
+    "restaurant.orders.order.confirm": "Confirmer ou refuser les commandes reçues par QR Code",
+    "restaurant.recipes.recipe.view": "Consulter les recettes",
+    "restaurant.recipes.recipe.manage": "Gérer les recettes (fiches, versions, activation)"
   },
   "audit": {
     "title": "Journal d'audit",
@@ -2232,7 +2235,8 @@
       "article_inactive": "produit désactivé au catalogue",
       "article_not_in_site_assortment": "hors assortiment du site",
       "packaging_inactive": "conditionnement désactivé",
-      "packaging_price_not_set": "prix du conditionnement non configuré"
+      "packaging_price_not_set": "prix du conditionnement non configuré",
+      "ingredients_unavailable": "ingrédients insuffisants"
     }
   },
   "restaurantTables": {
@@ -2608,7 +2612,8 @@
     "inherited": "Suit la section ({{name}})",
     "routeSaved": "Affectation enregistrée",
     "priorityChange": "{{from}} → {{to}}",
-    "stationNamed": "vers {{name}}"
+    "stationNamed": "vers {{name}}",
+    "sheetOf": "Fiche technique de {{name}}"
   },
   "receiving": {
     "provider": "Opérateur ou établissement",
@@ -2764,5 +2769,76 @@
     "remainingDue": "Reste à régler",
     "payOnSite": "Le règlement se fait auprès du personnel de l'établissement.",
     "trackingEnds": "Ce suivi reste disponible quelques heures après la fin de la commande."
+  },
+  "restaurantRecipes": {
+    "title": "Recettes",
+    "subtitle": "Fiches techniques des plats. À la validation d'une vente, les ingrédients de la recette sortent du stock du site ; le plat lui-même n'est pas géré en stock.",
+    "new": "Nouvelle recette",
+    "newHelp": "Choisissez le plat (article non géré en stock), sa présentation, puis ses ingrédients.",
+    "search": "Rechercher un plat",
+    "empty": "Aucune recette",
+    "dish": "Plat",
+    "dishHelp": "Article du catalogue non géré en stock (ses ingrédients, eux, le sont).",
+    "presentation": "Présentation",
+    "presentationHelp": "Unité de base ou conditionnement (variante). Sans recette propre, un conditionnement utilise la recette de l'unité de base multipliée par sa conversion.",
+    "yield": "Rendement",
+    "yieldHelp": "Nombre de portions (unités de la présentation) que produit cette composition.",
+    "yieldValue": "Rendement : {{value}} portion(s)",
+    "portions": "{{value}} portion(s)",
+    "ingredients": "Ingrédients",
+    "ingredientsHelp": "Quantités en unité de base de chaque ingrédient, pour le rendement indiqué. Un ingrédient compté en unités entières exige une quantité entière par portion.",
+    "ingredient": "Ingrédient {{index}}",
+    "ingredientColumn": "Ingrédient",
+    "ingredientInactive": "désactivé",
+    "quantity": "Quantité",
+    "quantityIn": "Quantité ({{unit}})",
+    "note": "Remarque",
+    "addIngredient": "Ajouter un ingrédient",
+    "removeIngredient": "Retirer l'ingrédient {{index}}",
+    "instructions": "Instructions de préparation",
+    "notes": "Notes",
+    "create": "Créer la recette",
+    "created": "Recette créée",
+    "saveVersion": "Enregistrer une nouvelle version",
+    "versionSaved": "Nouvelle version enregistrée",
+    "newVersionHelp": "Toute modification de la composition crée une nouvelle version : la précédente reste consultable et les ventes passées gardent la version appliquée.",
+    "editComposition": "Modifier la composition",
+    "composition": "Composition",
+    "costs": "Coût de revient",
+    "availability": "Disponibilité",
+    "versions": "Versions",
+    "version": "Version",
+    "versionOf": "Version {{number}} du {{date}}",
+    "versionCount_one": "{{count}} version",
+    "versionCount_other": "{{count}} versions",
+    "updatedAt": "Mise à jour",
+    "status": "Statut",
+    "statusChanged": "Statut de la recette modifié",
+    "deactivateTitle": "Désactiver la recette",
+    "deactivateConfirm": "Désactiver la recette « {{name}} » ? Ses ventes ne déduiront plus d'ingrédients et le plat ne sera plus limité par le stock des ingrédients.",
+    "inactiveHelp": "Recette désactivée : aucune déduction d'ingrédients à la vente.",
+    "portionCost": "Coût par portion",
+    "salePrice": "Prix de vente",
+    "margin": "Marge",
+    "unitCost": "Coût unitaire (CMUP)",
+    "lineCost": "Coût",
+    "noCost": "aucun coût sur ce site",
+    "costDetail": "Détail du coût",
+    "costIncomplete": "Coût incomplet : un ingrédient n'a encore jamais été reçu sur ce site.",
+    "costsHidden": "Les coûts sont réservés aux utilisateurs autorisés à consulter les coûts.",
+    "noSite": "Aucun site où les recettes sont actives.",
+    "availabilityHelp": "Portions réalisables avec le stock actuel de chaque site (indicatif : la validation de la vente fait foi).",
+    "unitsAvailable_one": "{{count}} portion réalisable",
+    "unitsAvailable_other": "{{count}} portions réalisables",
+    "noneAvailable": "Aucune portion réalisable",
+    "limiting": "Limité par : {{articles}}",
+    "stockDetail": "Stock des ingrédients",
+    "required": "Par portion",
+    "available": "En stock",
+    "notInAssortment": "hors assortiment du site",
+    "sheet": "Fiche technique",
+    "sheetOf": "Fiche technique — {{name}}",
+    "sheetFor": "Pour {{quantity}} ({{portions}} portion(s)) · version {{number}}",
+    "sheetUnavailable": "Aucune recette active pour ce plat."
   }
 }

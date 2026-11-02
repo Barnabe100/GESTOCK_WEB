@@ -226,6 +226,9 @@ class KitchenLine:
     received_at: datetime
     prepared_at: datetime | None
     ready_at: datetime | None
+    # Palier R8 (ADR-0053, D13) : présentation commandée (fiche technique de la recette).
+    article_id: uuid.UUID | None = None
+    packaging_id: uuid.UUID | None = None
 
 
 def kitchen_lines(db: Session, ctx: RequestContext, site_id: uuid.UUID) -> list[KitchenLine]:
@@ -281,6 +284,8 @@ def kitchen_lines(db: Session, ctx: RequestContext, site_id: uuid.UUID) -> list[
                 received_at=line.created_at,
                 prepared_at=line.prepared_at,
                 ready_at=line.ready_at,
+                article_id=line.article_id,
+                packaging_id=line.packaging_id,
             )
         )
     return result

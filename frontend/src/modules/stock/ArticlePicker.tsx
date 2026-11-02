@@ -51,6 +51,7 @@ export function ArticlePicker({
   invalid,
   ariaLabel,
   stockManagedOnly = false,
+  unmanagedOnly = false,
   siteId = null,
 }: {
   id: string;
@@ -61,6 +62,9 @@ export function ArticlePicker({
   /** Documents de stock : articles gérés en stock seulement (Lot 3-A ; le serveur refuse
    *  de toute façon les autres). */
   stockManagedOnly?: boolean;
+  /** Recettes (R8, ADR-0053) : plats = articles NON gérés en stock seulement (guidage ; le
+   *  serveur refuse de toute façon un article géré). */
+  unmanagedOnly?: boolean;
   siteId?: string | null;
 }) {
   const { t } = useTranslation();
@@ -74,6 +78,7 @@ export function ArticlePicker({
       limit: '20',
       sort: 'reference',
       ...(stockManagedOnly ? { stock_managed: 'true' } : {}),
+      ...(unmanagedOnly ? { stock_managed: 'false' } : {}),
       ...(siteId ? { site_id: siteId } : {}),
     });
     try {

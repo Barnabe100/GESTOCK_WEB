@@ -114,6 +114,9 @@ class BoardLineOut(BaseModel):
     received_at: datetime
     prepared_at: datetime | None
     ready_at: datetime | None
+    # Palier R8 (ADR-0053, D13) : présentation commandée (fiche technique), aucun prix.
+    article_id: uuid.UUID | None = None
+    packaging_id: uuid.UUID | None = None
 
 
 class BoardTicketOut(BaseModel):

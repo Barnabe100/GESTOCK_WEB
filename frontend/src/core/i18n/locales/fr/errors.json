@@ -338,5 +338,16 @@
   "qr_point_label_not_editable": "Le libellé d'un point de table est celui de sa table.",
   "qr_point_token_collision": "Réessayez.",
   "qr_tables_unavailable": "Les tables ne sont pas activées sur ce site : créez un point de comptoir.",
-  "public_url_not_configured": "L'adresse publique de StockManager Web n'est pas configurée (SM_PUBLIC_APP_URL) : aucun QR Code ne peut être généré."
+  "public_url_not_configured": "L'adresse publique de StockManager Web n'est pas configurée (SM_PUBLIC_APP_URL) : aucun QR Code ne peut être généré.",
+  "recipe_not_found": "Recette introuvable.",
+  "recipe_exists": "Cette présentation a déjà une recette.",
+  "recipe_article_stock_managed": "Le plat d'une recette doit être un article non géré en stock : seuls ses ingrédients sortent du stock.",
+  "recipe_ingredient_not_stock_managed": "Un ingrédient doit être un article géré en stock.",
+  "recipe_ingredient_inactive": "Un ingrédient est désactivé au catalogue.",
+  "recipe_duplicate_ingredient": "Un ingrédient figure plusieurs fois dans la recette.",
+  "recipe_self_ingredient": "Un plat ne peut pas être son propre ingrédient.",
+  "recipe_whole_quantity_required": "Cet ingrédient se compte en unités entières : la quantité par portion doit être entière.",
+  "recipe_ingredients_unavailable": "Ingrédients indisponibles pour préparer ce plat ({{dishes}}).",
+  "article_has_recipe": "Cet article a une recette active : il ne peut pas être géré en stock.",
+  "article_used_in_recipes": "Cet article est un ingrédient de recettes actives ({{articles}}) : il doit rester géré en stock."
 }

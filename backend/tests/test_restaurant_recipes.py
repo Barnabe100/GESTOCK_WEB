@@ -863,3 +863,49 @@ def test_public_qr_menu_shows_a_dish_without_ingredients_as_sold_out(
         },
     )
     assert _code(refused) == (422, "qr_order_item_unavailable")
+
+
+def test_kitchen_board_lines_carry_the_ordered_presentation(
+    kit: SimpleNamespace, recipe: dict[str, Any]
+) -> None:
+    k = kit
+    assert set_site_module(k.owner, k.site, "restaurant.kitchen", True).status_code == 204
+    section = _ok(
+        k.owner.post("/restaurant/menu/sections", json={"site_id": k.site, "name": "Plats"}), 201
+    )
+    item = _ok(
+        k.owner.post(
+            "/restaurant/menu/items",
+            json={
+                "site_id": k.site,
+                "section_id": section["id"],
+                "article_id": k.dish,
+                "packaging_id": k.family,
+            },
+        ),
+        201,
+    )
+    _ok(
+        k.owner.post(
+            "/restaurant/orders",
+            json={
+                "site_id": k.site,
+                "service_mode": "COUNTER",
+                "idempotency_key": str(uuid.uuid4()),
+                "lines": [{"menu_item_id": item["id"], "quantity": "1"}],
+            },
+        ),
+        201,
+    )
+    board = _ok(k.owner.get(f"/restaurant/kitchen/board?site_id={k.site}"))
+    [line] = [line for ticket in board["tickets"] for line in ticket["lines"]]
+    # Présentation commandée (fiche technique), jamais un prix ni un coût.
+    assert (line["article_id"], line["packaging_id"]) == (k.dish, k.family)
+    assert not {"unit_price", "price", "cost", "unit_cost"} & set(line)
+    sheet = _ok(
+        k.owner.get(
+            f"{BASE}/sheet?article_id={line['article_id']}&packaging_id={line['packaging_id']}"
+            f"&quantity={line['quantity']}"
+        )
+    )
+    assert sheet["portions"] == "4.000"

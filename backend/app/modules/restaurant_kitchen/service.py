@@ -515,6 +515,8 @@ class KitchenService:
                     received_at=line.received_at,
                     prepared_at=line.prepared_at,
                     ready_at=line.ready_at,
+                    article_id=line.article_id,
+                    packaging_id=line.packaging_id,
                 )
                 for line in group
             ],

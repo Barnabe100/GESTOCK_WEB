@@ -46,6 +46,7 @@ from app.modules.restaurant_recipes.engine import (
     applicable,
     compositions,
     consumed,
+    round_quantity,
 )
 from app.modules.restaurant_recipes.models import (
     RECIPE_PRESENTATION_CONSTRAINT,
@@ -613,7 +614,7 @@ class RecipeService:
             packaging = packagings.get(packaging_id)
             if packaging is not None:
                 conversion, packaging_name = packaging.conversion, packaging.name
-        portions = quantity * conversion if applied.via_base else quantity
+        portions = round_quantity(quantity * conversion if applied.via_base else quantity)
         ref = get_article_refs(self.db, {article_id})[article_id]
         refs = get_article_refs(self.db, {i.article_id for i in composition.ingredients})
         return SheetOut(

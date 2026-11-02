@@ -13,10 +13,12 @@ import '@/core/i18n';
 import { AppLayout } from './AppLayout';
 import {
   DRAWER_QUERY,
+  FLYOUT_MARGIN,
   HOVER_CLOSE_DELAY_MS,
   HOVER_QUERY,
   NAV_GROUP_ICONS,
   SidebarNav,
+  flyoutPosition,
 } from './SidebarNav';
 
 /**
@@ -449,6 +451,52 @@ describe('barre latérale par rubriques', () => {
     expect(shell().classList.contains('sm-menu-open')).toBe(false);
   });
 
+  it('14. panneau d’une rubrique basse : recalé dans la fenêtre, jamais coupé', () => {
+    // Fenêtre de 600 px ; rubrique « Administration » affichée à 560 px ; panneau de 300 px.
+    vi.stubGlobal('innerHeight', 600);
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(300);
+    renderNav();
+    vi.spyOn(groupButton('Administration'), 'getBoundingClientRect').mockReturnValue({
+      top: 560,
+      bottom: 596,
+      left: 0,
+      right: 256,
+      width: 256,
+      height: 36,
+      x: 0,
+      y: 560,
+      toJSON: () => ({}),
+    });
+    fireEvent.click(groupButton('Administration'));
+    expect(isOpen('Administration')).toBe(true);
+    const style = panel('Administration').style;
+    // Remonté : bas du panneau à la marge du bas (600 − 8 − 300 = 292), toutes entrées visibles.
+    expect(style.top).toBe(`${600 - FLYOUT_MARGIN - 300}px`);
+    expect(style.maxHeight).toBe(`${600 - 2 * FLYOUT_MARGIN}px`);
+    // Rotation / redimensionnement : position recalculée.
+    vi.stubGlobal('innerHeight', 400);
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(panel('Administration').style.top).toBe(`${400 - FLYOUT_MARGIN - 300}px`);
+  });
+
+  it('15. tiroir : une rubrique dépliée près du bas défile jusqu’à ses entrées', () => {
+    screenAs('drawer');
+    const scrolled = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      renderLayout('/');
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      fireEvent.click(groupButton('Administration'));
+      expect(isOpen('Administration')).toBe(true);
+      expect(scrolled).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' });
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it('13. persistance : préférence compacte conservée dans l’onglet (mécanisme existant)', () => {
     renderLayout();
     fireEvent.click(screen.getByRole('button', { name: 'Réduire le menu' }));
@@ -477,5 +525,27 @@ describe('barre latérale par rubriques', () => {
     fireEvent.keyDown(button, { key: 'Escape' });
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(button);
+  });
+});
+
+describe('position du panneau contextuel (toutes hauteurs d’écran)', () => {
+  it('aligné sur sa rubrique quand il tient', () => {
+    expect(flyoutPosition(100, 200, 800)).toEqual({ top: 100, maxHeight: 784 });
+  });
+
+  it('remonté quand la rubrique est près du bas', () => {
+    expect(flyoutPosition(700, 300, 800)).toEqual({ top: 492, maxHeight: 784 });
+  });
+
+  it('plus haut que la fenêtre : collé en haut, défilement interne', () => {
+    expect(flyoutPosition(400, 2000, 500)).toEqual({ top: 8, maxHeight: 484 });
+  });
+
+  it('jamais au-dessus de la marge du haut (rubrique partiellement masquée)', () => {
+    expect(flyoutPosition(-40, 100, 800)).toEqual({ top: 8, maxHeight: 784 });
+  });
+
+  it('fenêtre minuscule (paysage très bas) : hauteur jamais négative', () => {
+    expect(flyoutPosition(10, 100, 10)).toEqual({ top: 8, maxHeight: 0 });
   });
 });

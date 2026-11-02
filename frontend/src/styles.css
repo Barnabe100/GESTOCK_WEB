@@ -411,7 +411,10 @@ a {
   border-right: 1px solid var(--sm-border);
   position: sticky;
   top: 0;
+  /* Hauteur VISIBLE (100dvh : barres du navigateur mobile déduites ; 100vh en repli) : le bas
+     du menu n'est jamais caché sous la barre d'adresse. */
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -437,7 +440,12 @@ a {
 
 .sm-sidebar-nav {
   flex: 1;
+  /* Zone de défilement du menu : tout le contenu reste atteignable quelle que soit la hauteur
+     (rubriques dépliées comprises), sans faire défiler la page derrière. */
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: var(--sm-space-3) var(--sm-space-3) var(--sm-space-5);
 }
 
@@ -623,9 +631,11 @@ a {
   position: fixed;
   z-index: 1100;
   min-width: 14rem;
-  max-width: 18rem;
-  max-height: calc(100vh - var(--sm-space-4));
+  max-width: min(18rem, calc(100vw - var(--sm-sidebar-width) - var(--sm-space-4)));
+  /* Hauteur bornée par le calcul de position (``flyoutPosition``) ; repli CSS. */
+  max-height: calc(100dvh - var(--sm-space-4));
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin-left: var(--sm-space-1);
   padding: var(--sm-space-2);
   background: var(--sm-surface);
@@ -1330,6 +1340,9 @@ a {
 
   .sm-sidebar {
     width: min(var(--sm-sidebar-width), 85vw);
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
   }
 
   .sm-sidebar-toggle {
@@ -3478,4 +3491,96 @@ a {
 .sm-qr-line-cancelled {
   text-decoration: line-through;
   opacity: 0.7;
+}
+
+/* --- Recettes (palier R8, ADR-0053) ----------------------------------------------------------- */
+
+/* Tableau simple de lecture (composition, coûts, stock des ingrédients) : défile horizontalement
+   dans son conteneur plutôt que de déborder sur mobile. */
+.sm-plain-table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: var(--sm-text-sm);
+}
+
+.sm-plain-table th,
+.sm-plain-table td {
+  padding: var(--sm-space-2) var(--sm-space-3);
+  border-bottom: 1px solid var(--sm-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sm-plain-table th {
+  color: var(--sm-text-muted);
+  font-weight: var(--sm-weight-bold);
+  white-space: nowrap;
+}
+
+.sm-preline {
+  white-space: pre-line;
+}
+
+.sm-recipe-lines {
+  margin: 0;
+  padding: var(--sm-space-3);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+}
+
+.sm-recipe-lines legend {
+  padding: 0 var(--sm-space-2);
+  font-weight: var(--sm-weight-bold);
+}
+
+.sm-recipe-lines ul,
+.sm-recipe-versions,
+.sm-recipe-sheet {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Ligne d'ingrédient : article, quantité, remarque, retrait — empilés sur mobile. */
+.sm-recipe-line {
+  display: grid;
+  grid-template-columns: minmax(12rem, 2fr) minmax(7rem, 1fr) minmax(8rem, 1.5fr) auto;
+  gap: var(--sm-space-3);
+  align-items: end;
+  padding: var(--sm-space-2) 0;
+  border-bottom: 1px solid var(--sm-border);
+}
+
+.sm-recipe-site + .sm-recipe-site,
+.sm-recipe-versions > li + li {
+  margin-top: var(--sm-space-5);
+  padding-top: var(--sm-space-4);
+  border-top: 1px solid var(--sm-border);
+}
+
+.sm-recipe-sheet > li {
+  padding: var(--sm-space-2) 0;
+  border-bottom: 1px solid var(--sm-border);
+}
+
+@media (max-width: 720px) {
+  .sm-recipe-line {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
+/* Écrans bas (téléphone en paysage, petite fenêtre) : en-tête de la barre réduit pour laisser la
+   place au menu, qui reste défilable. */
+@media (max-height: 520px) {
+  .sm-brand {
+    padding: var(--sm-space-2) var(--sm-space-3);
+  }
+
+  .sm-sidebar-nav {
+    padding-bottom: var(--sm-space-3);
+  }
 }
