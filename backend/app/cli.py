@@ -375,7 +375,28 @@ def build_parser() -> argparse.ArgumentParser:
         "de plus de 30 jours",
     )
     purge.set_defaults(func=cmd_notifications_purge)
+
+    signing = sub.add_parser("signing", help="Service de signature des licences")
+    signing_sub = signing.add_subparsers(dest="signing_command", required=True)
+    signing_sub.add_parser(
+        "check",
+        help="Signer et vérifier une sonde (service joignable, secret HMAC et trousseau cohérents)",
+    ).set_defaults(func=cmd_signing_check)
     return parser
+
+
+def cmd_signing_check(args: argparse.Namespace, settings: Settings) -> int:
+    """Contrôle de bout en bout du Signing Service : vraie signature d'une sonde puis
+    vérification avec le trousseau public (ADR-0034). Code de sortie non nul à la moindre
+    anomalie (supervision, déploiement). Aucun secret affiché."""
+    from app.console.signing_check import check_signing
+
+    result = check_signing(settings)
+    print(
+        f"Signing Service opérationnel : {result.base_url} — clé {result.key_id} "
+        f"(clés actives du trousseau : {', '.join(result.active_keys)})"
+    )
+    return 0
 
 
 def main(argv: Sequence[str] | None = None, settings: Settings | None = None) -> int:

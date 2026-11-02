@@ -104,3 +104,20 @@ aucun paiement et ne modifie aucun abonnement.
   canonique explicite suffit.
 - **Restaurer une licence révoquée** : écarté par TechNova (Q5) ; la réémission est un
   nouveau cycle explicite.
+
+## Avenant (2026-11-02, R8) — exploitation et environnements
+
+Aucune décision modifiée (service séparé, Ed25519, HMAC, clé privée hors dépôt, trousseau
+public versionné, rotation par `key_id`). Ajouts d'exploitation :
+
+- **Contrôle de bout en bout** `stockmanager signing check` : signature réelle d'une sonde
+  conforme (entreprise nulle, plan `PROBE`, un jour, jamais enregistrée) puis vérification par le
+  trousseau ; échec explicite pour chaque mauvaise configuration. Un service démarré n'est pas
+  considéré comme opérationnel tant que ce contrôle n'a pas réussi.
+- **Développement et E2E** : `scripts/signing-dev.sh` (paire éphémère hors dépôt, refus d'écrire
+  dans un dépôt Git, `0700` / `0600`, attente d'une vraie signature, `signing.env`).
+- **Tests et CI** : `backend/tests/test_signing_live.py` démarre le VRAI service du dépôt avec une
+  paire éphémère par exécution (le job backend installe `signing-service/`) ; ces tests ne sont
+  jamais ignorés.
+- **Production** : paire dédiée générée par TechNova sur l'hôte du service, jamais générée au
+  démarrage ; procédure dans [`DEPLOIEMENT.md`](../DEPLOIEMENT.md) §4.

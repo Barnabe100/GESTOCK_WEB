@@ -105,6 +105,28 @@ Vérification : `app.platform.licensing.keyring.verify_document` avec le trousse
   `license_key_unknown` / `license_key_retired` (réponse non vérifiable). Dans tous les cas,
   **rien** n'est enregistré.
 
+### 5 bis. Mise en service et contrôle (exploitation)
+
+Un service **démarré** n'est pas un service **opérationnel** :
+`uv run stockmanager signing check` (depuis `backend/`, avec la configuration de la console)
+soumet une vraie demande signée (HMAC, horodatage, nonce) d'une **sonde** conforme (entreprise
+nulle, plan `PROBE`, valable un jour, jamais enregistrée), puis vérifie le document reçu avec
+le trousseau public. Code de sortie non nul et message explicite à la première anomalie :
+configuration absente (`signing_not_configured`), trousseau sans clé **active**, service
+injoignable (`signing_service_unavailable`), secret HMAC différent (`signing_failed`, 401), clé
+du service absente du trousseau (`license_key_unknown`). Aucun secret n'est affiché. À exécuter
+après chaque déploiement ou rotation, et par la supervision.
+
+| Environnement | Clés | Mise en place |
+|---|---|---|
+| Développement, E2E locales | paire **éphémère** hors dépôt (`${XDG_RUNTIME_DIR:-/tmp}/sm-signing-dev`, `0700` / `0600`) | `scripts/signing-dev.sh start` (génère au besoin, démarre, attend une signature réelle, écrit `signing.env`) ; puis `set -a; . <dir>/signing.env; set +a` avant de lancer la console (et l'API) ; `stop`, `reset` |
+| Tests backend et CI | paire **éphémère** par exécution (répertoire temporaire) | `backend/tests/test_signing_live.py` démarre le VRAI service du dépôt (`uv sync --frozen` dans `signing-service/`, fait par la CI) ; jamais ignorés |
+| Production | paire **dédiée** générée sur l'hôte du service par TechNova (`signing-service-keygen`), clé privée montée en lecture seule (`0600`) | clé publique ajoutée au trousseau versionné (`status = "active"`), `SM_SIGNING_SERVICE_URL` (réseau privé), `SM_SIGNING_CLIENT_SECRET` (gestionnaire de secrets) ; aucune clé générée au démarrage ; `stockmanager signing check` doit réussir |
+
+Les clés de développement et de test ne figurent **jamais** dans le trousseau versionné : une
+licence qu'elles signent n'est vérifiable qu'avec leur trousseau éphémère. Procédure de
+production et de rotation : [`DEPLOIEMENT.md`](../DEPLOIEMENT.md) §4.
+
 ## 6. API
 
 | Surface | Route | Rôle |
@@ -196,4 +218,8 @@ Job quotidien ── stockmanager notifications run ── rappels J-30 … J+7 
   figé, postes conservés / augmentés / réduits, expiration, révocation sans repli, réémission),
   `backend/tests/test_notifications.py` (chaque étape, essais, statuts exclus, idempotence,
   échéance modifiée, job manqué, concurrence, CLI, visibilité par site et par droit, lu / non
-  lu, isolation, RLS). Clés **éphémères** uniquement.
+  lu, isolation, RLS), `backend/tests/test_signing_live.py` (VRAI service démarré :
+  contrôle de bout en bout, CLI, chaque mauvaise configuration, clé hors trousseau, licence
+  réelle vérifiée puis altérée — postes, période, modules, signature, clé —, demandes non
+  authentifiées, horodatage dépassé, rejeu, payload non conforme, aucune clé dans le dépôt).
+  Clés **éphémères** uniquement.

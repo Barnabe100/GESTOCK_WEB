@@ -49,23 +49,18 @@ cd frontend && npm run dev                                  # terminal 3
 cd frontend && npm run e2e                                  # terminal 4
 ```
 
-Licences (`console-licenses.e2e.ts`) : Signing Service local avec une clé **éphémère**
-générée **hors du dépôt** (jamais versionnée), et console lancée avec son secret HMAC et le
-trousseau public correspondant :
+Licences (`console-licenses.e2e.ts`, `renewal.e2e.ts`) : Signing Service local avec une clé
+**éphémère** générée **hors du dépôt** (jamais versionnée), et console lancée avec son secret
+HMAC et le trousseau public correspondant :
 
 ```bash
-D=/tmp/sm-signing && cd signing-service && uv sync
-uv run signing-service-keygen --key-id dev-ed25519-e2e --out $D/private.pem \
-  | grep -v '^#' > $D/public_keys.toml
-head -c 48 /dev/urandom | base64 | tr -d '\n' > $D/client-secret && chmod 600 $D/client-secret
-SIGNING_KEY_ID=dev-ed25519-e2e SIGNING_PRIVATE_KEY_FILE=$D/private.pem \
-SIGNING_CLIENT_SECRET_FILE=$D/client-secret \
-  uv run uvicorn --factory signing_service.app:create_app --port 8100      # terminal 5
-# terminal 2, à la place : console avec le Signing Service
-cd backend && SM_SIGNING_SERVICE_URL=http://127.0.0.1:8100 \
-  SM_SIGNING_CLIENT_SECRET="$(cat $D/client-secret)" SM_LICENSE_PUBLIC_KEYS_FILE=$D/public_keys.toml \
-  uv run uvicorn app.console.main:app --port 8001
+scripts/signing-dev.sh start        # génère au besoin, démarre, vérifie une VRAIE signature
+set -a; . "${XDG_RUNTIME_DIR:-/tmp}/sm-signing-dev/signing.env"; set +a
+cd backend && uv run uvicorn app.console.main:app --port 8001   # terminal 2, à la place
 ```
+
+`scripts/signing-dev.sh check` refait le contrôle de bout en bout (`stockmanager signing
+check`) ; `stop` arrête le service ; `reset` efface la paire éphémère.
 
 Renouvellement (`renewal.e2e.ts`, Phase 3.3-B4) : même Signing Service ; le scénario lance
 lui-même le job des rappels (`stockmanager notifications run --now …`, dans `../backend` ou

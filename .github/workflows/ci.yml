@@ -53,6 +53,12 @@ jobs:
       - name: Installer les dépendances
         run: uv sync --frozen
 
+      # Tests d'intégration des licences (tests/test_signing_live.py) : le VRAI Signing Service
+      # est démarré par les tests avec une paire de clés éphémère générée hors du dépôt.
+      - name: Installer le Signing Service (intégration des licences)
+        working-directory: signing-service
+        run: uv sync --frozen
+
       - name: Créer le rôle applicatif (sans BYPASSRLS)
         working-directory: .
         env:

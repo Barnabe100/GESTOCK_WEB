@@ -6,7 +6,8 @@ indique son impact, son état et l'échéance de résolution.
 
 ## A-1 — E2E `lots-3ha.e2e.ts` : dialogue de validation démonté (intermittent)
 
-- **Statut** : OUVERT — à résoudre **avant la campagne globale de validation sur Ubuntu**
+- **Statut** : OUVERT (non reproduit lors des exécutions complètes R7 et R8, 2026-11-01 et
+  2026-11-02) — à résoudre **avant la campagne globale de validation sur Ubuntu**
   (décision de l'utilisateur, clôture de R6.5).
 - **Constat** (2026-11-01, exécution complète des E2E de R6.5) : le test « lot périmé : vente
   refusée par défaut, puis dérogation explicite tracée » (et, plus rarement, « vente
@@ -29,18 +30,14 @@ indique son impact, son état et l'échéance de résolution.
   (trace Playwright avec capture DOM) pour identifier l'élément qui provoque la remontée, puis
   corriger l'application si la remontée n'est pas voulue.
 
-## E-1 à E-5 — échecs liés à l'environnement d'exécution (cloud de développement)
+## E-1 à E-5 — échecs liés à l'environnement d'exécution — RÉSOLUS (R8)
 
-Constatés lors de l'exécution complète des E2E (R6 puis R6.5), **sans lien** avec les lots
-livrés ; à vérifier dans l'environnement Ubuntu complet.
-
-| Réf. | Test(s) | Cause | Condition de réussite |
+| Réf. | Test(s) | Cause | Résolution |
 |---|---|---|---|
-| E-1 | `console-licenses.e2e.ts` (paiement confirmé → licence signée ; postes) | service de signature non configuré (`503 signing_service_unavailable`) | Signing Service démarré et configuré (`SM_SIGNING_SERVICE_URL`, `SM_SIGNING_CLIENT_SECRET`, `SM_LICENSE_PUBLIC_KEYS_FILE`) |
-| E-2 | `renewal.e2e.ts` (renouveler sans perte de jours) | même cause (génération de licence) | idem |
-| E-3 | `console*.e2e.ts` (exécution R6, console arrêtée) | console TechNova non démarrée (`502` du proxy `/platform-api`) | `uvicorn app.console.main:app --port 8001` démarrée (fait lors de l'exécution R6.5 : ces tests passent alors) |
-| E-4 | `onboarding.e2e.ts` @mobile | limitation de fréquence persistante de l'inscription publique (`429 rate_limited`) épuisée par les tests d'inscription précédents de la même exécution | base de test neuve, ou exécution isolée du projet mobile |
-| E-5 | `signup.e2e.ts` @mobile | idem (`429`) | idem |
+| E-1 | `console-licenses.e2e.ts` (licence signée ; postes) | Signing Service absent de l'environnement des E2E (procédure manuelle en cinq terminaux, non suivie) | `scripts/signing-dev.sh start` (paire éphémère hors dépôt, démarrage, **vraie** signature vérifiée par le trousseau) puis console lancée avec `signing.env` : **3 / 3** ; contrôle d'exploitation `stockmanager signing check` ; tests backend contre le VRAI service (`tests/test_signing_live.py`, CI) |
+| E-2 | `renewal.e2e.ts` | même cause | même résolution : **1 / 1** |
+| E-3 | `console*.e2e.ts` | console non démarrée | condition documentée (console démarrée) ; passe |
+| E-4, E-5 | `onboarding.e2e.ts` / `signup.e2e.ts` @mobile | API lancée SANS `SM_SIGNUP_RATE_LIMIT_ATTEMPTS=1000` (prévu par `frontend/e2e/README.md`) : limite d'inscription épuisée par les tests précédents | API lancée selon le README : **4 / 4** (aucun code modifié, la limitation de fréquence reste active en production) |
 
 ## R7-1 — supervision de la tâche quotidienne de conservation (exploitation)
 
@@ -90,3 +87,4 @@ livrés ; à vérifier dans l'environnement Ubuntu complet.
 | 2026-11-01 | R7-1, R7-2 | consignées (livraison R7 : actions d'exploitation) |
 | 2026-11-01 | A-1, E-1 à E-5 | exécution complète R7 : E-1 (×2), E-2, E-4, E-5 reproduites (mêmes causes) ; A-1 non reproduite (reste ouverte) |
 | 2026-11-02 | R7-3 | ouverte (recette Ubuntu) et résolue : clé d'idempotence sans `crypto.randomUUID` hors contexte sécurisé |
+| 2026-11-02 | E-1, E-2, E-4, E-5 | résolues : Signing Service de développement automatisé, tests contre le vrai service, configuration des E2E documentée ; exécution complète R8 194 / 199, puis les 5 restants 8 / 8 avec la configuration documentée |
