@@ -123,9 +123,13 @@ agrégateur.
 
 ## 15. CI
 
-Runs de la mission : 41380682534 (Signing Service, vert), 41402013436 (R10 : échec des 2 tests
-adaptés depuis), 41408102079 (exploitation : images vertes ; échecs corrigés par `8b5f78c`),
-puis le run de `8b5f78c` (résultat : voir le message final de la mission).
+| Run | Commit | Résultat |
+|---|---|---|
+| [41380682534](https://github.com/Barnabe100/GESTOCK_WEB/actions/runs/41380682534) | `5ce048b` | vert (Signing Service opérationnel) |
+| [41402013436](https://github.com/Barnabe100/GESTOCK_WEB/actions/runs/41402013436) | `0c3b067` | backend : 2 tests obsolètes depuis la livraison des rapports — adaptés (`65ec165`) |
+| [41408102079](https://github.com/Barnabe100/GESTOCK_WEB/actions/runs/41408102079) | `65ec165` | images vertes ; backend : 1 626 réussis, 1 échec (marqueur de clé dans `ci.yml`, détecté par le test anti-clé) ; exercice : `initdb` absent — corrigés |
+| [41411797407](https://github.com/Barnabe100/GESTOCK_WEB/actions/runs/41411797407) | `8b5f78c` | backend, frontend, Signing Service, Compose, images : **verts** ; exercice : PostgreSQL 16 absent des dépôts du runner — job exécuté dans `postgres:16` (`ca70f04`) |
+| [41417194662](https://github.com/Barnabe100/GESTOCK_WEB/actions/runs/41417194662) | `ca70f04` | exercice PITR, frontend, Signing Service, Compose, images : **verts** ; backend : en cours à la rédaction (même code applicatif que `8b5f78c`, vert) |
 
 ## 16. Risques
 
