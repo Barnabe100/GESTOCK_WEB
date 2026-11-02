@@ -38,6 +38,9 @@ MANIFEST = ModuleManifest(
         PermissionDef("sales.sale.expired_lot_override", W),
         # Annulation (remise en stock d'une vente validée) : réservée à l'administration.
         PermissionDef("sales.sale.cancel", W),
+        # Palier R9 (ADR-0054) : remise globale motivée (Administrateur par « * » ; autres rôles :
+        # rôle personnalisé). Aucun modèle de rôle modifié.
+        PermissionDef("sales.sale.discount", W),
         # Reçu 80 mm (palier POS) : première impression, puis réimpression (chaque impression
         # journalisée ; consultation du reçu = ``sales.sale.view`` et sa portée).
         PermissionDef("sales.sale.receipt_print", R),

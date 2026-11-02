@@ -73,6 +73,7 @@ from app.modules.sales.schemas import (
     PaymentCreate,
     SaleCheckout,
     SaleCreate,
+    SaleDiscountInput,
     SaleInput,
     SaleLineInput,
     SaleLineLotOut,
@@ -115,6 +116,8 @@ EXPORT = "sales.sale.export"
 CREDIT_CREATE = "sales.sale.credit_create"
 CREDIT_OVERRIDE = "sales.sale.credit_override"
 EXPIRED_LOT_OVERRIDE = "sales.sale.expired_lot_override"
+# Palier R9 (ADR-0054) : remise globale sur une vente.
+SALE_DISCOUNT = "sales.sale.discount"
 ZERO = Decimal("0")
 QUANTITY_STEP = Decimal("0.001")  # NUMERIC(18,3) : même valeur en réponse, en audit et en base
 
@@ -407,7 +410,40 @@ class SaleService:
             )
         sale.lines = lines
         sale.subtotal = sum((line.line_total for line in sale.lines), ZERO)
-        sale.total = sale.subtotal  # ni remise ni taxe dans cette phase
+        self._apply_discount(sale, data.discount)
+
+    def _apply_discount(self, sale: Sale, discount: SaleDiscountInput | None) -> None:
+        """Remise globale (palier R9, ADR-0054) : montant calculé par le SERVEUR (pourcentage
+        du sous-total arrondi au centime), jamais supérieur au sous-total, motif obligatoire,
+        permission ``sales.sale.discount`` sur le site de la vente ; total = sous-total − remise.
+        Sans remise (ou remise retirée d'un brouillon) : 0, motif et auteur effacés."""
+        if discount is None:
+            sale.discount_amount, sale.discount_reason, sale.discount_by = MONEY_ZERO, None, None
+            sale.total = sale.subtotal
+            return
+        if not self.ctx.has_site_permission(sale.site_id, SALE_DISCOUNT):
+            raise ForbiddenError("Permission insuffisante", code="permission_denied")
+        if discount.mode == "PERCENT":
+            if discount.value > 100:
+                raise BusinessRuleError(
+                    "Une remise ne peut pas dépasser 100 %", code="sale_discount_too_large"
+                )
+            amount = round_money(sale.subtotal * discount.value / 100)
+        else:
+            amount = round_money(discount.value)
+        if amount > sale.subtotal:
+            raise BusinessRuleError(
+                "La remise dépasse le montant de la vente",
+                code="sale_discount_too_large",
+                extra={"subtotal": format(sale.subtotal, "f")},
+            )
+        if amount <= 0:
+            sale.discount_amount, sale.discount_reason, sale.discount_by = MONEY_ZERO, None, None
+        else:
+            sale.discount_amount = amount
+            sale.discount_reason = discount.reason
+            sale.discount_by = self.ctx.user.id
+        sale.total = sale.subtotal - sale.discount_amount
 
     def _snapshot(self, sale: Sale) -> dict[str, Any]:
         return {
@@ -415,6 +451,15 @@ class SaleService:
             "sale_date": sale.sale_date.isoformat(),
             "notes": sale.notes,
             "total": format(sale.total, "f"),
+            **(
+                {
+                    "subtotal": format(sale.subtotal, "f"),
+                    "discount_amount": format(sale.discount_amount, "f"),
+                    "discount_reason": sale.discount_reason,
+                }
+                if sale.discount_amount
+                else {}
+            ),
             "lines": [
                 {
                     "article_id": str(line.article_id),
@@ -1206,6 +1251,8 @@ class SaleService:
                     sale_date=sale.sale_date,
                     notes=sale.notes,
                     subtotal=sale.subtotal,
+                    discount_amount=sale.discount_amount,
+                    discount_reason=sale.discount_reason,
                     total=sale.total,
                     line_count=len(sale.lines),
                     created_at=sale.created_at,

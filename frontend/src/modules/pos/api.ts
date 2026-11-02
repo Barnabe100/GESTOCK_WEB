@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api } from '@/core/api/client';
 import type { ExpiredLotOverride, Payment, Sale } from '@/modules/sales/api';
+import type { SaleDiscount } from '@/modules/sales/discount';
 import type { Page } from '@/shared/lib/serverTable';
 
 /** Conditionnement ACTIF (Lot 3-B) : quantité de base = quantité × `conversion`. */
@@ -53,6 +54,8 @@ export interface CheckoutInput {
   credit_override?: { reason: string } | null;
   /** Lot 3-H-A (O-1) : dérogation explicite à la vente d'un lot périmé (motif, audit). */
   expired_lot_override?: ExpiredLotOverride | null;
+  /** Palier R9 : remise globale (montant calculé par le serveur, permission par site). */
+  discount?: SaleDiscount;
   /** Une clé par panier : une double soumission renvoie la même vente. */
   idempotency_key: string;
 }

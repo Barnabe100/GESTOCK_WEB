@@ -3,6 +3,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '@/core/api/client';
 import type { Page } from '@/shared/lib/serverTable';
 
+import type { SaleDiscount } from './discount';
+
 export type SaleStatus = 'DRAFT' | 'VALIDATED' | 'CANCELLED';
 /** État d'encaissement, indépendant du statut commercial de la vente. */
 export type SalePaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
@@ -72,6 +74,9 @@ export interface Sale {
   sale_date: string;
   notes: string | null;
   subtotal: string;
+  /** Palier R9 (ADR-0054) : remise globale calculée par le serveur ; total = sous-total − remise. */
+  discount_amount?: string;
+  discount_reason?: string | null;
   total: string;
   line_count: number;
   created_at: string;
@@ -109,6 +114,8 @@ export interface SaleInput {
   notes: string | null;
   /** `packaging_id` nul : unité de base ; la quantité est dans la présentation choisie. */
   lines: { article_id: string; packaging_id: string | null; quantity: string }[];
+  /** Remise globale (permission `sales.sale.discount`) ; absente : aucune remise (retirée). */
+  discount?: SaleDiscount;
 }
 
 export const saleKeys = { all: ['sales'] as const };

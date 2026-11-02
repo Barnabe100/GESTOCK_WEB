@@ -58,8 +58,15 @@ import type { ExpiredLotOverride } from '@/modules/sales/api';
 import { expiredShortages, type ExpiredShortage } from '@/modules/stock/ui';
 import { newUuid } from '@/shared/lib/uuid';
 import { RecentSalesDialog } from './RecentSalesDialog';
+import { DiscountDialog } from '@/modules/sales/DiscountDialog';
+import {
+  discountAmount,
+  discountedTotal,
+  SALE_DISCOUNT_PERMISSION,
+  type SaleDiscount,
+} from '@/modules/sales/discount';
 
-type PosDialog = 'customer' | 'payment' | 'confirm' | 'recent' | null;
+type PosDialog = 'customer' | 'payment' | 'confirm' | 'recent' | 'discount' | null;
 
 /** Présentation « unité de base » dans le choix du conditionnement (Lot 3-B). */
 const BASE_UNIT = 'base';
@@ -89,6 +96,8 @@ export default function PosPage() {
   const [lines, dispatch] = useReducer(cartReducer, []);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [payments, setPayments] = useState<PosPayment[]>([]);
+  // Palier R9 (ADR-0054) : remise globale du panier (permission vérifiée par le serveur).
+  const [discount, setDiscount] = useState<SaleDiscount | null>(null);
   const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
   const [cartKey, setCartKey] = useState(() => newUuid());
   const [dialog, setDialog] = useState<PosDialog>(null);
@@ -121,7 +130,10 @@ export default function PosPage() {
   );
 
   const money = (v: string) => formatMoney(v, currency, locale);
-  const total = cartTotal(lines);
+  const subtotal = cartTotal(lines);
+  const discountValue = discountAmount(subtotal, discount);
+  const total = discountedTotal(subtotal, discount);
+  const canDiscount = can(SALE_DISCOUNT_PERMISSION);
   // Indicatif : montant reçu, reste dû, monnaie rendue (le serveur recalcule à la validation).
   const summary = cashSummary(
     total,
@@ -135,6 +147,7 @@ export default function PosPage() {
     dispatch({ type: 'clear' });
     setCustomer(null);
     setPayments([]);
+    setDiscount(null);
     setCashRegisterId(null);
     setCartKey(newUuid());
     setResult(null);
@@ -227,6 +240,7 @@ export default function PosPage() {
           quantity: lineQuantity(l) ?? '0',
         })),
         payments: payments.map((p) => toCheckoutPayment(p, cashRegisterId)),
+        ...(discount ? { discount } : {}),
         credit_override: withOverride ? { reason: overrideReason.trim() } : null,
         ...(expiredLotOverride ? { expired_lot_override: expiredLotOverride } : {}),
         idempotency_key: cartKey,
@@ -547,8 +561,17 @@ export default function PosPage() {
               <dl className="sm-pos-summary" aria-label={t('pos.totals')}>
                 <div>
                   <dt>{t('pos.subtotal')}</dt>
-                  <dd>{money(total)}</dd>
+                  <dd>{money(subtotal)}</dd>
                 </div>
+                {discount && (
+                  <div data-testid="pos-discount">
+                    <dt>
+                      {t('sales.discount.label')}
+                      <small className="sm-muted"> — {discount.reason}</small>
+                    </dt>
+                    <dd>−{money(discountValue)}</dd>
+                  </div>
+                )}
                 <div className="sm-pos-grand-total">
                   <dt>{t('pos.total')}</dt>
                   <dd data-testid="pos-total">{money(total)}</dd>
@@ -575,6 +598,15 @@ export default function PosPage() {
               <p className="sm-help">{t('pos.indicative')}</p>
               {!canSell && <Message severity="warn" text={t('pos.cannotSell')} />}
               <div className="sm-pos-actions">
+                {canDiscount && (
+                  <Button
+                    icon="pi pi-percentage"
+                    label={discount ? t('sales.discount.edit') : t('sales.discount.add')}
+                    outlined
+                    disabled={lines.length === 0}
+                    onClick={() => setDialog('discount')}
+                  />
+                )}
                 {canPay && (
                   <Button
                     icon="pi pi-wallet"
@@ -617,6 +649,23 @@ export default function PosPage() {
           onSave={(saved, register) => {
             setPayments(saved);
             setCashRegisterId(register);
+            clearAttempt();
+            setDialog(null);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'discount' && (
+        <DiscountDialog
+          subtotal={subtotal}
+          currency={currency}
+          locale={locale}
+          initial={discount}
+          idPrefix="pos"
+          onApply={(applied) => {
+            setDiscount(applied);
+            // Total changé : les paiements saisis sont à revoir, l'ancienne erreur est caduque.
+            setPayments([]);
             clearAttempt();
             setDialog(null);
           }}

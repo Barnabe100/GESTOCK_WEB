@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
-from typing import Annotated, Any
+from decimal import Decimal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -35,11 +36,32 @@ class SaleLineInput(BaseModel):
     quantity: PositiveQuantity
 
 
+class SaleDiscountInput(BaseModel):
+    """Remise globale (palier R9, ADR-0054) : le CLIENT saisit un montant ou un pourcentage ;
+    le SERVEUR calcule le montant (pourcentage arrondi au centime), le borne par le sous-total et
+    exige ``sales.sale.discount`` sur le site de la vente."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["AMOUNT", "PERCENT"]
+    value: Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=2)]
+    reason: str = Field(min_length=3, max_length=200)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 3:
+            raise ValueError("motif de 3 caractères au moins")
+        return cleaned
+
+
 class SaleInput(BaseModel):
     sale_date: date | None = None  # défaut : aujourd'hui (fuseau du tenant)
     customer_id: uuid.UUID | None = None  # vente comptant anonyme si absent
     notes: Optional500 = None
     lines: list[SaleLineInput] = Field(min_length=1, max_length=500)
+    discount: SaleDiscountInput | None = None
 
 
 class SaleCreate(SaleInput):
@@ -109,6 +131,8 @@ class SaleOut(BaseModel):
     sale_date: date
     notes: str | None
     subtotal: Money
+    discount_amount: Money = Decimal("0")
+    discount_reason: str | None = None
     total: Money
     line_count: int
     created_at: datetime

@@ -115,6 +115,10 @@ class ReceiptOut(BaseModel):
     customer_name: str | None
     issuer: ReceiptIssuerOut
     lines: list[ReceiptLineOut]
+    # Palier R9 (ADR-0054) : sous-total et remise globale (0 sans remise) ; total = sous-total −
+    # remise. Le motif de la remise est interne (jamais imprimé).
+    subtotal: Money
+    discount_amount: Money
     total: Money
     paid_amount: Money
     remaining_amount: Money
@@ -221,6 +225,8 @@ def _receipt(db: Session, ctx: RequestContext, now: datetime, sale: Sale) -> Rec
             )
             for line in sorted(out.lines, key=lambda x: x.line_no)
         ],
+        subtotal=sale.subtotal,
+        discount_amount=sale.discount_amount,
         total=sale.total,
         paid_amount=paid,
         remaining_amount=remaining,

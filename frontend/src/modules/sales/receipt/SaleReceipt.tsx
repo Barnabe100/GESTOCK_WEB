@@ -97,6 +97,18 @@ export function SaleReceipt({
       </ul>
 
       <dl className="sm-receipt-totals">
+        {/[1-9]/.test(receipt.discount_amount ?? '') && (
+          <>
+            <div>
+              <dt>{t('receipt.subtotal')}</dt>
+              <dd>{money(receipt.subtotal ?? receipt.total)}</dd>
+            </div>
+            <div data-testid="receipt-discount">
+              <dt>{t('receipt.discount')}</dt>
+              <dd>−{money(receipt.discount_amount ?? '0')}</dd>
+            </div>
+          </>
+        )}
         <div className="sm-receipt-total">
           <dt>{t('receipt.total')}</dt>
           <dd data-testid="receipt-total">{money(receipt.total)}</dd>

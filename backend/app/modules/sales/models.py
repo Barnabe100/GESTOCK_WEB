@@ -71,6 +71,18 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         CheckConstraint("subtotal >= 0 AND total >= 0", name="amounts_non_negative"),
+        # Palier R9 (ADR-0054) : remise globale bornée par le sous-total, total = sous-total −
+        # remise, motif obligatoire dès qu'une remise existe (et seulement alors).
+        CheckConstraint(
+            "discount_amount >= 0 AND discount_amount <= subtotal "
+            "AND total = subtotal - discount_amount",
+            name="discount_consistent",
+        ),
+        CheckConstraint(
+            "(discount_amount = 0) = (discount_reason IS NULL) "
+            "AND (discount_amount = 0) = (discount_by IS NULL)",
+            name="discount_has_reason",
+        ),
         CheckConstraint(
             "status <> 'VALIDATED' OR validated_at IS NOT NULL", name="validated_has_date"
         ),
@@ -121,9 +133,16 @@ class Sale(IdMixin, TenantScopedMixin, TimestampMixin, Base):
         str_enum(SaleStatus, "sale_status"), default=SaleStatus.DRAFT, nullable=False
     )
     sale_date: Mapped[date] = mapped_column(Date, nullable=False)
-    # Recalculés par le serveur ; total = sous-total tant qu'il n'y a ni remise ni taxe.
+    # Recalculés par le serveur ; total = sous-total − remise (aucune taxe dans cette phase).
     subtotal: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     total: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Palier R9 (ADR-0054) : remise globale calculée par le serveur (montant ou pourcentage
+    # saisi), motivée, auteur enregistré ; 0 sans remise.
+    discount_amount: Mapped[Decimal] = mapped_column(
+        MONEY, nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    discount_reason: Mapped[str | None] = mapped_column(String(200))
+    discount_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     notes: Mapped[str | None] = mapped_column(String(500))
     channel: Mapped[SaleChannel] = mapped_column(
         str_enum(SaleChannel, "sale_channel"),

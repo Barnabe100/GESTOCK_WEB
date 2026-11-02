@@ -119,3 +119,15 @@ export function addQuantity(a: string, b: string): string {
 export function subtractQuantity(a: string, b: string): string {
   return fromScaled(toScaled(a, 3) - toScaled(b, 3), 3);
 }
+
+/** Pourcentage (2 déc.) d'un montant (2 déc.), arrondi au centime demi supérieur (remise R9). */
+export function percentOfMoney(amount: string, percent: string): string {
+  const product = toScaled(amount, 2) * toScaled(percent, 2); // échelle 4, sur 100 → centimes
+  return fromScaled((product + 5000n) / 10000n, 2);
+}
+
+/** Comparaison de deux montants à 2 décimales (−1, 0, 1), sans float. */
+export function compareMoney(a: string, b: string): number {
+  const diff = toScaled(a, 2) - toScaled(b, 2);
+  return diff === 0n ? 0 : diff < 0n ? -1 : 1;
+}

@@ -48,6 +48,14 @@ import {
   type SaleLine,
   type ExpiredLotOverride,
 } from './api';
+import { DiscountDialog } from './DiscountDialog';
+import {
+  discountAmount,
+  discountedTotal,
+  SALE_DISCOUNT_PERMISSION,
+  savedDiscount,
+  type SaleDiscount,
+} from './discount';
 import { CustomerPicker, toCustomerOption, type CustomerOption } from './CustomerPicker';
 import { PaymentsPanel } from './PaymentsPanel';
 import { SaleHistoryPanel, SaleMovementsPanel } from './SaleActivity';
@@ -70,6 +78,7 @@ const schema = z
     sale_date: z.string(),
     customer: z.custom<CustomerOption | null>(),
     notes: z.string().max(500),
+    discount: z.custom<SaleDiscount | null>(),
     lines: z
       .array(
         z.object({
@@ -107,6 +116,7 @@ function defaults(sale: Sale | undefined, siteId: string | null): FormValues {
           })
         : null,
     notes: sale?.notes ?? '',
+    discount: sale ? savedDiscount(sale) : null,
     lines: (sale?.lines ?? []).map((line) => ({
       article: toArticleOption({
         id: line.article_id,
@@ -136,6 +146,8 @@ function toInput(values: FormValues, isNew: boolean): SaleInput {
     sale_date: values.sale_date || null,
     customer_id: values.customer?.id ?? null,
     notes: values.notes.trim() || null,
+    // Absente : aucune remise (un brouillon remisé la perd, comme côté serveur).
+    ...(values.discount ? { discount: values.discount } : {}),
     lines: values.lines.map((line) => ({
       article_id: line.article?.id ?? '',
       packaging_id: line.packaging?.id ?? null,
@@ -179,7 +191,13 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
   const errors = form.formState.errors;
   const { currency, locale } = capabilities.tenant;
   const totals = watched.map((line) => lineTotal(line));
-  const displayTotal = sumMoney(totals.filter((v): v is string => v !== null));
+  const displaySubtotal = sumMoney(totals.filter((v): v is string => v !== null));
+  // Palier R9 : remise indicative (le serveur calcule le montant et le total).
+  const discount = useWatch({ control: form.control, name: 'discount' });
+  const displayDiscount = discountAmount(displaySubtotal, discount);
+  const displayTotal = discountedTotal(displaySubtotal, discount);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const canDiscount = can(SALE_DISCOUNT_PERMISSION);
 
   /**
    * Lot 3-D : le scan ajoute directement 1 présentation (article en unité de base ou
@@ -459,7 +477,37 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
       <FormField id="sale-notes" label={t('sales.notes')}>
         <InputTextarea id="sale-notes" rows={2} {...form.register('notes')} />
       </FormField>
+      {(canDiscount || discount) && (
+        <div className="sm-sale-discount">
+          {discount ? (
+            <p data-testid="sale-discount">
+              {t('sales.discount.summary', {
+                amount: formatMoney(displayDiscount, currency, locale),
+                reason: discount.reason,
+              })}
+            </p>
+          ) : null}
+          {canDiscount && (
+            <Button
+              type="button"
+              icon="pi pi-percentage"
+              outlined
+              size="small"
+              label={discount ? t('sales.discount.edit') : t('sales.discount.add')}
+              onClick={() => setDiscountOpen(true)}
+            />
+          )}
+        </div>
+      )}
       <p className="sm-total">
+        {discount && (
+          <>
+            {t('sales.subtotal')} : {formatMoney(displaySubtotal, currency, locale)}
+            <br />
+            {t('sales.discount.label')} : −{formatMoney(displayDiscount, currency, locale)}
+            <br />
+          </>
+        )}
         {t('sales.total')} :{' '}
         <strong data-testid="sale-total">{formatMoney(displayTotal, currency, locale)}</strong>
         <br />
@@ -490,6 +538,20 @@ function SaleForm({ sale }: { sale: Sale | undefined }) {
           />
         )}
       </div>
+      {discountOpen && (
+        <DiscountDialog
+          subtotal={displaySubtotal}
+          currency={currency}
+          locale={locale}
+          initial={discount}
+          idPrefix="sale"
+          onApply={(applied) => {
+            form.setValue('discount', applied, { shouldDirty: true });
+            setDiscountOpen(false);
+          }}
+          onClose={() => setDiscountOpen(false)}
+        />
+      )}
       {validating && (
         <ValidateSaleDialog
           total={displayTotal}
@@ -607,6 +669,17 @@ function SaleSummary({ sale }: { sale: Sale }) {
         />
       </DataTable>
       <p className="sm-total">
+        {/[1-9]/.test(sale.discount_amount ?? '') && (
+          <>
+            {t('sales.subtotal')} : {formatMoney(sale.subtotal, currency, locale)}
+            <br />
+            <span data-testid="sale-discount">
+              {t('sales.discount.label')} : −{formatMoney(sale.discount_amount, currency, locale)}
+              {sale.discount_reason ? ` (${sale.discount_reason})` : ''}
+            </span>
+            <br />
+          </>
+        )}
         {t('sales.total')} : <strong>{formatMoney(sale.total, currency, locale)}</strong>
       </p>
     </>

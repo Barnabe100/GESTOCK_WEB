@@ -633,3 +633,37 @@ describe('point de vente', () => {
     expect(screen.getByLabelText('Quantité de Livraison')).toBeTruthy();
   });
 });
+
+describe('point de vente — remise (palier R9)', () => {
+  it('sans la permission : aucun bouton de remise', async () => {
+    render();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));
+    expect(screen.queryByRole('button', { name: 'Ajouter une remise' })).toBeNull();
+  });
+
+  it('avec la permission : remise affichée, total indicatif, remise envoyée au serveur', async () => {
+    render([...SELLER, 'sales.sale.discount']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter Ciment 50 kg au panier' }));
+    fireEvent.click(tile('Ciment 50 kg'));
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter une remise' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Remise sur la vente' });
+    fireEvent.change(within(dialog).getByLabelText(/Montant de la remise/), {
+      target: { value: '1000' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Motif de la remise/), {
+      target: { value: 'Client fidèle' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer la remise' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(text(screen.getByTestId('pos-discount'))).toContain(money('1000'));
+    expect(text(screen.getByTestId('pos-total'))).toBe(money('10000'));
+    fireEvent.click(screen.getByRole('button', { name: 'Valider la vente (F10)' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Valider la vente ?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Valider la vente (F10)' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const body = JSON.parse(String(posts()[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body.discount).toEqual({ mode: 'AMOUNT', value: '1000', reason: 'Client fidèle' });
+    // Aucun total envoyé : le serveur le calcule.
+    expect(body).not.toHaveProperty('total');
+  });
+});

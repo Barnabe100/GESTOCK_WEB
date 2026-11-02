@@ -731,3 +731,102 @@ describe('vente en conditionnement (Lot 3-B)', () => {
     expect(within(row).getByText(money('2200'))).toBeTruthy();
   });
 });
+
+describe('remise sur une vente (palier R9)', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const show = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    cleanup();
+    fetchMock.mockReset();
+    show.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it('sans la permission : aucun bouton de remise', async () => {
+    fetchMock.mockImplementation(async () => jsonResponse(draft));
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: ALL,
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    expect(await screen.findByRole('heading', { name: 'Vente non numérotée' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ajouter une remise' })).toBeNull();
+  });
+
+  it('pourcentage : total indicatif remisé, remise envoyée, aucun montant calculé envoyé', async () => {
+    fetchMock.mockImplementation(async (_url, init) =>
+      init?.method === 'PUT'
+        ? jsonResponse({
+            ...draft,
+            discount_amount: '300.00',
+            discount_reason: 'Client fidèle',
+            total: '2700.00',
+          })
+        : jsonResponse(draft),
+    );
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: [...ALL, 'sales.sale.discount'],
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter une remise' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Remise sur la vente' });
+    fireEvent.click(within(dialog).getByText('Pourcentage'));
+    fireEvent.change(within(dialog).getByLabelText(/Pourcentage de remise/), {
+      target: { value: '10' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Motif de la remise/), {
+      target: { value: 'Client fidèle' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Appliquer la remise' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('sale-total').textContent?.replace(/\s/g, ' ')).toBe(
+        money('2700.00'),
+      ),
+    );
+    expect(screen.getByTestId('sale-discount').textContent?.replace(/\s/g, ' ')).toContain(
+      money('300.00'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }));
+    await waitFor(() => expect(methodCalls(fetchMock, 'PUT')).toHaveLength(1));
+    const body = JSON.parse(String(methodCalls(fetchMock, 'PUT')[0]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >;
+    expect(body.discount).toEqual({ mode: 'PERCENT', value: '10', reason: 'Client fidèle' });
+    expect(JSON.stringify(body)).not.toMatch(/total|discount_amount/);
+  });
+
+  it('vente validée : sous-total, remise et motif affichés', async () => {
+    fetchMock.mockImplementation(async (url) =>
+      String(url).includes('/payments')
+        ? pageOf([])
+        : jsonResponse({
+            ...draft,
+            number: 'VENT-BOU-2026-000001',
+            status: 'VALIDATED',
+            discount_amount: '300.00',
+            discount_reason: 'Client fidèle',
+            total: '2700.00',
+            validated_at: '2026-09-24T09:00:00Z',
+            validated_by_name: 'Moussa',
+            paid_amount: '0.00',
+            remaining_amount: '2700.00',
+            payment_status: 'UNPAID',
+          }),
+    );
+    renderWithCapabilities(withToast(<SalePage />, show), {
+      permissions: ALL,
+      path: '/sales/:id',
+      route: '/sales/v1',
+    });
+    const discount = await screen.findByTestId('sale-discount');
+    expect(discount.textContent?.replace(/\s/g, ' ')).toContain(money('300.00'));
+    expect(discount.textContent).toContain('Client fidèle');
+  });
+});

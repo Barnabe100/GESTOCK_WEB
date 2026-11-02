@@ -60,6 +60,9 @@ export interface Receipt {
     identifiers: ReceiptIdentityLine[];
   };
   lines: ReceiptLine[];
+  /** Palier R9 : sous-total et remise (total = sous-total − remise, calculés par le serveur). */
+  subtotal?: string;
+  discount_amount?: string;
   total: string;
   paid_amount: string;
   remaining_amount: string;
