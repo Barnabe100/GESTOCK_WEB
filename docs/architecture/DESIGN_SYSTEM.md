@@ -136,6 +136,14 @@ Le libellé vient de l'espace i18n du module (`sales.statuses`, `stock.documentS
   fonctionnalités, **groupée** selon le profil UX du SITE actif (`caps.ux.navigation` : rubriques
   et ordre ; repli : `NavItem.group`, `NAV_GROUPS`). Une rubrique sans entrée visible
   disparaît ; titres textuels liés aux listes (`aria-labelledby`).
+- **Accessibilité de toutes les entrées (R8)** : la barre et le tiroir ont la hauteur VISIBLE
+  (`100dvh`, repli `100vh`) et leur zone de menu défile (`min-height: 0`, défilement contenu) ;
+  sur ordinateur, le panneau contextuel d'une rubrique est recalé dans la fenêtre
+  (`flyoutPosition` : aligné sur la rubrique, remonté près du bas, défilement interne s'il est
+  plus haut que la fenêtre ; recalcul au redimensionnement, à la rotation et au changement de
+  zone visible) ; dans le tiroir, une rubrique dépliée est amenée dans la zone visible ; sur un
+  écran bas (paysage), l'en-tête de la barre est réduit. Testé (Vitest et E2E) sur ordinateur,
+  fenêtre basse, tablette portrait et paysage, téléphone portrait et paysage.
 - Tableau de bord : widgets et raccourcis déclarés par le profil UX
   ([`BUSINESS_PROFILES.md`](BUSINESS_PROFILES.md) §6), chacun conditionné par sa permission
   (et sa fonctionnalité de plan) ; aucune requête sans la permission correspondante. Modules

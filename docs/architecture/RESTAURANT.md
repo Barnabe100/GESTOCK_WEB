@@ -8,7 +8,9 @@
 > de leur palier.
 > **État au 2026-11-01** : menu (R1), commandes et règlement (R2), notifications (R4), tables
 > (R5), cuisine (R6, ADR-0050) et **commandes par QR Code (R7, [ADR-0052](../adr/0052-commandes-par-qr-code.md),
-> migrations 0056 à 0058)** livrés ; `restaurant.recipes` (R8) reste planifié.
+> migrations 0056 à 0058)** livrés. **État au 2026-11-02** : **recettes (R8,
+> [ADR-0053](../adr/0053-recettes.md), migrations 0059 et 0060) livrées** — tous les modules
+> `restaurant.*` sont disponibles ; reste le cadrage de R9 (rapports).
 > **Aucun palier ne commence sans validation explicite.**
 
 ## 1. Vocabulaire
@@ -33,7 +35,7 @@
 | `restaurant.tables` | `restaurant.orders` | `restaurant.qr` (QR par table) |
 | `restaurant.kitchen` | `restaurant.orders` | — |
 | `restaurant.qr` | `restaurant.orders` | `restaurant.tables` |
-| `restaurant.recipes` | `catalog`, `stock`, `sales` | — |
+| `restaurant.recipes` | `catalog`, `stock`, `sales`, `restaurant.menu` (port de disponibilité, ADR-0053 D12) | `restaurant.kitchen` (fiche technique), `restaurant.qr` (« épuisé ») |
 
 États d'un module sur un site : proposé par le profil, activé par défaut, facultatif, dans
 l'offre, activé sur le site, **effectif** (seul état qui ouvre l'accès) — ADR-0049 D11.
@@ -181,8 +183,12 @@ site (stable après un changement de code ou de nom), jamais préfixée par `{si
 - R7 `restaurant_qr_points` (`token_hash` unique, rotation) ; politique `qr_token_lookup`
   (`current_setting('app.qr_token_hash')`) ; référence publique et secret de suivi haché sur la
   commande.
-- R8 recettes (fiches versionnées, ingrédients en unité de base) ; source des mouvements à
-  définir pour respecter la garde d'unicité des mouvements (O10).
+- R8 (livré, [ADR-0053](../adr/0053-recettes.md)) `restaurant_recipes` (fiche d'une
+  présentation d'un article NON géré en stock, unique par présentation, version courante),
+  `restaurant_recipe_versions` / `restaurant_recipe_lines` (immuables : rendement,
+  instructions, ingrédients gérés en stock en unité de base), `restaurant_recipe_consumptions`
+  (couple ligne de vente × ingrédient, identifiant = ligne source du mouvement : O10 résolu,
+  garde d'unicité des mouvements inchangée).
 
 ## 5. Machines à états et refus
 
@@ -413,7 +419,8 @@ politique restrictive). Une annulation de vente ou de paiement ne notifie person
 | 0056 | R7-A (livrée) | `restaurant_qr_points`, politique `qr_token_lookup` |
 | 0057 | R7-C / R7-E (livrée) | réglages QR, `restaurant_qr_orders` (`qr_tracking_lookup`), `contact_phone`, purge des téléphones, déclencheur des états finaux |
 | 0058 | R7-F (livrée) | livraison de `restaurant.qr` (activations remises à `false`) |
-| à venir | R8 | recettes et source des mouvements de consommation |
+| 0059 | R8 (livrée) | recettes, versions, ingrédients, consommations ; unique `(tenant_id, sale_id, id)` sur `sale_lines` ; descente refusée dès qu'une recette existe |
+| 0060 | R8 (livrée) | livraison de `restaurant.recipes` (activations remises à `false`) |
 
 Hors migrations (données versionnées, à la livraison de chaque palier) : passage de `planned` à
 un manifeste réel, dépendances (D1), modèles de rôles (`auto_provision`), profils (D11,
@@ -502,7 +509,7 @@ remontée, `alembic check` ; tests de migration sur le modèle de `test_site_mod
 | O7 | Perte de stock d'une ligne préparée puis annulée | R6 |
 | O8 | Déplacement d'une commande entre tables | R5 |
 | O9 | ~~Plafonds QR~~ — tranché (ADR-0052 Q4) : réglables par site (30 / 20 / 3), plafonds de la plateforme 100 / 99 / 20 | R7 |
-| O10 | Source des mouvements des recettes (garde d'unicité) | R8 |
+| O10 | ~~Source des mouvements des recettes~~ — tranché (ADR-0053 D8) : consommations matérialisées, identifiant = ligne source du mouvement | R8 |
 | — | Procédure de perte (Z1) et remboursement d'espèces après clôture (W1) | à concevoir séparément |
 | — | Addition scindée, remises, options payantes | après V1 |
 
@@ -531,7 +538,9 @@ remontée, `alembic check` ; tests de migration sur le modèle de `test_site_mod
 - **R6 Postes** : routage et un avis par poste ; un site sans poste inchangé ; activation par
   l'Administrateur.
 - **R7 QR** (livré) : batterie de sécurité verte ; confirmation par défaut ; QR dans STANDARD et ENTREPRISE ; voir ADR-0052 pour les résultats.
-- **R8 Recettes** : consommation par `StockService.consume` ; CMUP et lots inchangés ; garde
-  d'unicité résolue.
+- **R8 Recettes** (livré, voir ADR-0053) : consommation par `StockService.consume` (un seul
+  appel avec les lignes gérées) ; CMUP et lots inchangés ; garde d'unicité résolue (O10) ;
+  aucune double déduction (plat non géré, garde du catalogue, vente jamais revalidée) ;
+  annulation exacte ; disponibilité au menu, aux commandes et au QR ; fiche en cuisine.
 - **R9 Consolidation** : E2E des trois canaux rejoués deux fois ; isolation, concurrence, CI
   verte ; documentation alignée ; aucun module disponible non livré.

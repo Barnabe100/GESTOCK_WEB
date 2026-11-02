@@ -436,9 +436,29 @@ décision accepté du public ; limitation de fréquence en empreintes **HMAC**
 `restaurant.order.qr_received`) ; suivi 12 h après la fin ; téléphone effacé à 30 jours par
 `stockmanager notifications purge` (rôle de purge) ; aucun paiement électronique dans le parcours
 QR. Pages publiques `/q`, `/q/track` : application distincte (sans session, CSP sans ressource
-tierce). **Prochain lot : R8 recettes** (audit et plan à présenter avant toute implémentation,
-après validation de R7), puis cadrage R9 rapports. Ne pas commencer un nouveau module métier
-sans validation. Non implémentés (feuille de route §13) :
+tierce). Correctif R7-3 : clés d'idempotence par `shared/lib/uuid.ts` (`newUuid`, jamais
+`crypto.randomUUID` direct — absent en HTTP sur le réseau local ; test statique). **R8 livré —
+recettes** ([ADR-0053](docs/adr/0053-recettes.md), migrations 0059 / 0060, module
+`restaurant.recipes`, dépend de `catalog`, `stock`, `sales`, `restaurant.menu` ; activation
+explicite par site ; offres inchangées) : recette = fiche d'UNE présentation d'un article **non
+géré en stock** (variante = conditionnement ; sans recette propre, recette de base × conversion),
+une par présentation, jamais supprimée ; versions **immuables** (rendement, instructions,
+ingrédients **gérés en stock** en unité de base ; quantité entière par portion pour un
+ingrédient entier) ; **déduction à la validation de la vente** (ventes, POS, règlement des
+commandes) par le port `sales.components_port`, en UN appel à `StockService.consume` avec les
+lignes gérées (FEFO, lots, CMUP inchangé) ; **O10 résolu** : consommations matérialisées
+(`restaurant_recipe_consumptions`, identifiant = `source_line_id` du mouvement) ; refus
+`422 recipe_ingredients_unavailable` ; annulation : un inverse par mouvement d'ingrédient ;
+**aucune double déduction** (port `catalog.recipe_port` : `409 article_has_recipe`,
+`409 article_used_in_recipes`) ; coût de revient par site au CMUP courant
+(`RECIPE_COST_FIELDS`, masqués sans `cost_view`) ; portions réalisables ; motif de menu
+`ingredients_unavailable` (port `restaurant_menu.availability_port` ; commandes refusées ; QR :
+« épuisé ») ; fiche technique en cuisine (`/restaurant/recipes/sheet`) ; permissions
+`restaurant.recipes.recipe.view` / `.manage` (matrice existante). **Navigation responsive** :
+panneau contextuel recalé dans la hauteur visible (`flyoutPosition`), barre et tiroir en
+`100dvh`, zone de menu défilable (DESIGN_SYSTEM §8). **Prochain lot : cadrage R9 rapports**
+(audit et plan à présenter avant toute implémentation, après validation de R8). Ne pas commencer
+un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
 profils UX (secteurs `retail`/`restaurant`/`automobile`/`distribution`, profils
@@ -475,7 +495,7 @@ serveur ; un paiement `CASH` exige une session ouverte du site de la vente et cr
 dans la même transaction ; **la vente ne dépend pas de la caisse** : `cash_register` dépend de
 `sales` et implémente son port `sales/cash_port.py`,
 [`CASH_REGISTER.md`](docs/architecture/CASH_REGISTER.md), ADR-0022).
-Autres modules métier (paiements électroniques, restaurant…) :
+Autres modules métier (paiements électroniques, rapports, automobile) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

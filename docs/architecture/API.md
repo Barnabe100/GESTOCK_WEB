@@ -565,6 +565,34 @@ Toute action sur une commande à confirmer (prise, préparation, lignes, règlem
 
 Tout refus d'accès : `404 qr_unavailable` (réponse identique quel que soit le motif).
 
+### Recettes (module `restaurant.recipes`) — palier R8
+
+Décisions : [ADR-0053](../adr/0053-recettes.md) ; livré par la migration 0060 (activation
+explicite par site ; offres STANDARD et ENTREPRISE inchangées). Coûts et marges (`unit_cost`,
+`line_cost`, `batch_cost`, `portion_cost`, `margin`, `margin_rate`) ABSENTS des réponses sans
+`catalog.article.cost_view` (`RECIPE_COST_FIELDS`).
+
+| Méthode | Chemin | Permission | Rôle |
+|---|---|---|---|
+| GET | `/restaurant/recipes` (`search`, `status`, `article_id`, tri `designation` \| `reference` \| `updated_at`) | `restaurant.recipes.recipe.view` | Liste paginée (plat, présentation, version courante, rendement, nombre d'ingrédients) |
+| POST | `/restaurant/recipes` (`article_id`, `packaging_id?`, `yield_quantity`, `instructions?`, `notes?`, `lines[]` : `article_id`, `quantity` en unité de base, `note?`) | `restaurant.recipes.recipe.manage` | `201` (version 1) ; `422 recipe_article_stock_managed`, `recipe_ingredient_not_stock_managed`, `recipe_ingredient_inactive`, `recipe_duplicate_ingredient`, `recipe_self_ingredient`, `recipe_whole_quantity_required`, `article_inactive`, `packaging_inactive` ; `404 article_not_found`, `packaging_not_found` ; `409 recipe_exists` |
+| GET | `/restaurant/recipes/{id}` | `view` | Fiche : version courante (lignes), prix de vente courant de la présentation |
+| PUT | `/restaurant/recipes/{id}` (`notes`) | `manage` | Notes |
+| GET, POST | `/restaurant/recipes/{id}/versions` | `view` / `manage` | Historique (récent d'abord) ; nouvelle composition = version n + 1 (mêmes contrôles) |
+| POST | `/restaurant/recipes/{id}/activate` \| `/deactivate` | `manage` | Réactivation revérifiée (plat non géré, ingrédients gérés) |
+| GET | `/restaurant/recipes/{id}/costs` (`site_id?`) | `view` (+ `cost_view` pour les montants) | Par site lisible : coût du rendement, par portion, marge, `complete` |
+| GET | `/restaurant/recipes/{id}/availability` (`site_id?`) | `view` | Par site : unités réalisables, ingrédients limitants, stock et assortiment |
+| GET | `/restaurant/recipes/sheet` (`article_id`, `packaging_id?`, `quantity`) | `view` | Fiche de cuisine mise à l'échelle (même règle que la vente) ; `404 recipe_not_found` |
+
+Effets sur les autres API : `POST /sales/{id}/validate`, `POST /pos/checkout` et
+`POST /restaurant/orders/{id}/settle` déduisent les ingrédients d'un plat (module effectif sur le
+site, recette active) dans la même transaction ; refus
+`422 recipe_ingredients_unavailable` (`reason`, `articles`, `dishes`) ; `POST /sales/{id}/cancel`
+restaure chaque ingrédient. Menu : motif `ingredients_unavailable` dans `blockers` (commande
+refusée ; page publique QR : « épuisé »). Catalogue : `409 article_has_recipe` (plat rendu géré),
+`409 article_used_in_recipes` (ingrédient rendu non géré). Tableau de cuisine : `article_id`,
+`packaging_id` sur chaque ligne.
+
 ## Console TechNova (processus distinct, `/platform-api/v1`) — Phase 3.2-F
 
 API séparée de celle des entreprises (`app.console.main`, rôle SQL dédié), réservée aux

@@ -333,6 +333,21 @@ refusées dès qu'une donnée serait perdue) et 0058 (livraison : activations ex
 `false`). Aucune nouvelle table de plateforme : la limitation de fréquence réutilise
 `rate_limit_hits` (clés en empreinte HMAC).
 
+### Recettes (palier R8, isolées par RLS, [ADR-0053](../adr/0053-recettes.md))
+
+| Table / colonnes | Contenu | Contraintes notables |
+|---|---|---|
+| `restaurant_recipes` | `tenant_id`, `article_id`, `packaging_id`, `current_version_id`, `is_active`, `notes`, `created_by` | une recette par présentation (`UNIQUE NULLS NOT DISTINCT (tenant_id, article_id, packaging_id)`) ; FK composites vers l'article et le conditionnement DE l'article ; version courante = version DE CETTE recette (FK composite) ; `UPDATE` de `current_version_id`, `is_active`, `notes`, `updated_at` seulement ; jamais supprimée |
+| `restaurant_recipe_versions` | `tenant_id`, `recipe_id`, `number`, `yield_quantity` (> 0), `instructions`, `created_by`, `created_at` | numéro unique par recette ; immuable (`SELECT, INSERT`) |
+| `restaurant_recipe_lines` | `tenant_id`, `version_id`, `line_no`, `article_id`, `quantity` (> 0, unité de base), `note` | ingrédient unique par version ; immuable |
+| `restaurant_recipe_consumptions` | `tenant_id`, `site_id`, `sale_id`, `sale_line_id`, `recipe_version_id`, `article_id`, `quantity`, `created_at` | identifiant = `source_line_id` des mouvements `SALE` / `CANCELLATION` (O10) ; `UNIQUE (tenant_id, sale_line_id, article_id)` ; vente du même site et ligne de cette vente (FK composites) ; immuable |
+| `sale_lines` (+) | contrainte `UNIQUE (tenant_id, sale_id, id)` | cible de la FK composite des consommations (additive) |
+
+Migrations 0059 (tables, RLS `ENABLE` + `FORCE`, droits ; descente refusée dès qu'une recette
+existe) et 0060 (livraison : activations existantes remises à `false`). Le plat (article non
+géré en stock) n'a jamais de niveau ni de mouvement ; ses ingrédients sortent par
+`StockService.consume` (FEFO, lots, CMUP inchangé).
+
 ### Créances (Phase 2.8) : aucune table
 
 Une créance ouverte est une vente `VALIDATED` dont le reste dû (`total` − paiements
