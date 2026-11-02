@@ -13,6 +13,7 @@ import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { CashRegisterChoice } from '@/modules/cash_register/CashRegisterChoice';
 import { formatMoney } from '@/shared/lib/decimal';
 import { formatDateTime } from '@/shared/lib/format';
+import { newUuid } from '@/shared/lib/uuid';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
 import { FormField } from '@/shared/ui/FormField';
@@ -85,7 +86,7 @@ function PaymentDialog({
   const [errors, setErrors] = useState<PaymentDraftErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   // Une clé par saisie : double clic ou nouvel envoi après une coupure → aucun doublon.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => newUuid());
   const remaining = formatMoney(summary.remaining_amount, currency, locale);
   const methodId = draft.methodId ?? defaultMethodId(methods);
   const method = methods.find((m) => m.id === methodId);

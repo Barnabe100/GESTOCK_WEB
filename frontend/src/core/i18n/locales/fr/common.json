@@ -2741,6 +2741,8 @@
     "tooManyLines": "Trop d'articles différents : au plus {{max}}.",
     "total": "Total",
     "send": "Envoyer la commande",
+    "nameRequired": "Indiquez votre nom pour envoyer la commande.",
+    "phoneRequired": "Indiquez votre téléphone pour envoyer la commande.",
     "noPayment": "Aucun paiement en ligne : vous réglez auprès du personnel. Votre commande sera confirmée par l'établissement.",
     "tracking": "Suivi de votre commande",
     "orderNumber": "Numéro de votre commande",

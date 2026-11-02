@@ -19,6 +19,7 @@ import { formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
 import { translateError } from '@/shared/lib/errors';
 import { formatDate, formatDateTime } from '@/shared/lib/format';
 import { INITIAL_TABLE, toQueryString, type TableState } from '@/shared/lib/serverTable';
+import { newUuid } from '@/shared/lib/uuid';
 import { ListEmpty } from '@/shared/ui/EmptyState';
 import { FilterBar } from '@/shared/ui/FilterBar';
 import { FormField } from '@/shared/ui/FormField';
@@ -119,7 +120,7 @@ export function DeclarePaymentDialog({
   const locale = capabilities.tenant.locale;
   const declare = useDeclareSubscriptionPayment();
   // Une clé par saisie : double clic ou nouvel envoi après une coupure → aucun doublon.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => newUuid());
   const [error, setError] = useState<unknown>(null);
   // Abonnement payé : celui d'un site (1 site = 1 abonnement, ADR-0033).
   const [subscriptionId, setSubscriptionId] = useState(

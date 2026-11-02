@@ -168,3 +168,65 @@ test('@mobile comptoir : commande, refus motivé visible au client, sans débord
   });
   expect(response.status()).toBe(422);
 });
+
+/**
+ * Régression : sur http://<IP du serveur> (téléphone du réseau local), le contexte n'est PAS
+ * sécurisé et le navigateur ne fournit pas `crypto.randomUUID` — « Envoyer » ne réagissait
+ * plus. La page est privée de `randomUUID` avant son chargement (même situation, reproductible
+ * sur `localhost`) ; l'envoi doit aboutir au suivi.
+ */
+async function withoutRandomUuid(page: Page) {
+  await page.addInitScript(() => {
+    delete (Crypto.prototype as { randomUUID?: unknown }).randomUUID;
+  });
+}
+
+async function sendWithoutRandomUuid(page: Page, request: APIRequestContext, label: string) {
+  const counter = await call<Issued>(request, r.token, 'post', '/restaurant/qr/points', {
+    site_id: r.site,
+    kind: 'COUNTER',
+    label: `${label} ${r.suffix}`,
+  });
+  await withoutRandomUuid(page);
+  await page.goto(`/q${fragment(counter.url)}`);
+  await expect(page.getByText(`${label} ${r.suffix}`)).toBeVisible();
+  expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe('undefined');
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await order(page, 1);
+  await expect(page.getByTestId('qr-order-status')).toHaveText(
+    "En attente de confirmation par l'établissement",
+  );
+  expect(errors).toEqual([]);
+}
+
+test('contexte non sécurisé (HTTP sur le réseau local) : « Envoyer » aboutit sur ordinateur', async ({
+  page,
+  request,
+}) => {
+  await sendWithoutRandomUuid(page, request, 'Comptoir HTTP');
+});
+
+test('@mobile contexte non sécurisé (HTTP sur le réseau local) : « Envoyer » aboutit au toucher', async ({
+  page,
+  request,
+}) => {
+  const counter = await call<Issued>(request, r.token, 'post', '/restaurant/qr/points', {
+    site_id: r.site,
+    kind: 'COUNTER',
+    label: `Mobile HTTP ${r.suffix}`,
+  });
+  await withoutRandomUuid(page);
+  await page.goto(`/q${fragment(counter.url)}`);
+  expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe('undefined');
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.getByRole('button', { name: `Ajouter un ${r.itemLabel}` }).tap();
+  await page.getByRole('button', { name: 'Envoyer la commande' }).tap();
+  await expect(page).toHaveURL(/\/q\/track$/);
+  await expect(page.getByTestId('qr-order-status')).toHaveText(
+    "En attente de confirmation par l'établissement",
+  );
+  expect(await overflow(page)).toBe(false);
+  expect(errors).toEqual([]);
+});

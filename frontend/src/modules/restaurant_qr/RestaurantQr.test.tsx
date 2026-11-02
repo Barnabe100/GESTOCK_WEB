@@ -205,6 +205,50 @@ describe('menu public et commande (R7-B / R7-C)', () => {
     });
   });
 
+  it('HTTP sur le réseau local (sans crypto.randomUUID) : l’envoi part, raison du bouton désactivé écrite', async () => {
+    // Téléphone sur http://<IP du serveur> : contexte NON sécurisé, ``randomUUID`` absent ;
+    // ``getRandomValues`` reste disponible (même aléa cryptographique).
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', {
+      getRandomValues: <T extends ArrayBufferView>(array: T) =>
+        real.getRandomValues(array as T & ArrayBufferView<ArrayBuffer>),
+    });
+    const assign = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign,
+    } as unknown as Location);
+    fetchMock.mockImplementation(async (_url, init) => {
+      if ((init?.method ?? 'GET') === 'GET') return jsonResponse(menu());
+      return jsonResponse(
+        {
+          daily_number: 3,
+          status: 'PENDING_CONFIRMATION',
+          tracking_url: `http://192.168.1.20:5173/q/track#${SECRET}`,
+          replayed: false,
+        },
+        201,
+      );
+    });
+    render(<PublicMenuPage token={TOKEN} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ajouter un Bière' }));
+    const send = screen.getByRole('button', { name: 'Envoyer la commande' });
+    // Nom obligatoire non saisi : bouton désactivé ET raison affichée (jamais un bouton muet).
+    expect(send.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Indiquez votre nom pour envoyer la commande.')).toBeTruthy();
+    expect(send.getAttribute('aria-describedby')).toBe('qr-send-hint');
+    fireEvent.change(screen.getByLabelText('Votre nom *'), { target: { value: 'Awa' } });
+    expect(screen.queryByText('Indiquez votre nom pour envoyer la commande.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer la commande' }));
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`http://192.168.1.20:5173/q/track#${SECRET}`),
+    );
+    const [post] = requests('POST');
+    expect(String(post!.body!.client_key)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
+
   it('signale un article devenu indisponible sans motif interne', async () => {
     fetchMock.mockImplementation(async (_url, init) => {
       if ((init?.method ?? 'GET') === 'GET') {

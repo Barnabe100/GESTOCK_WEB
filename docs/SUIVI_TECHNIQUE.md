@@ -61,6 +61,26 @@ livrés ; à vérifier dans l'environnement Ubuntu complet.
   `/q/track` avec l'en-tête CSP et `frame-ancestors 'none'` (non applicable par balise), et
   déclarer le proxy dans `SM_TRUSTED_PROXIES` (`ARCHITECTURE.md` §11).
 
+## R7-3 — « Envoyer » sans réaction sur téléphone (HTTP sur le réseau local) — RÉSOLUE
+
+- **Constat** (recette Ubuntu, 2026-11-02) : page publique QR ouverte sur un téléphone du même
+  Wi-Fi (`http://<IP du serveur>:5173`) : menu et sélection fonctionnent, « Envoyer » ne réagit
+  pas au toucher.
+- **Cause** : `crypto.randomUUID()` (clé d'idempotence) n'existe que dans un contexte
+  **sécurisé** (HTTPS ou `localhost`). Par l'adresse IP en HTTP, l'appel levait
+  `TypeError: crypto.randomUUID is not a function` avant tout changement d'état : aucune
+  requête, aucun message. Reproduit sur ordinateur ET mobile par l'adresse IP ; invisible par
+  `localhost` (E2E et développement). Même défaut latent dans le POS, l'encaissement, la caisse,
+  l'abonnement et la saisie des commandes. Aucune superposition, `pointer-events` ni `z-index`
+  en cause.
+- **Correction** : générateur commun `frontend/src/shared/lib/uuid.ts` (`newUuid` :
+  `randomUUID` si disponible, sinon `crypto.getRandomValues`, même aléa cryptographique ;
+  jamais `Math.random`), test statique interdisant tout appel direct ; page publique : erreur
+  imprévue affichée, raison écrite quand un champ obligatoire désactive « Envoyer ». Aucune règle
+  de commande ni permission modifiée ; le serveur revérifie tout.
+- **Tests** : Vitest (générateur, test statique, envoi sans `randomUUID`), E2E ordinateur et
+  mobile (page privée de `randomUUID`), rejoués aussi par l'adresse IP en HTTP.
+
 ## Historique
 
 | Date | Entrée | Évènement |
@@ -69,3 +89,4 @@ livrés ; à vérifier dans l'environnement Ubuntu complet.
 | 2026-11-01 | E-1 à E-5 | consignées (exécutions complètes R6 et R6.5) |
 | 2026-11-01 | R7-1, R7-2 | consignées (livraison R7 : actions d'exploitation) |
 | 2026-11-01 | A-1, E-1 à E-5 | exécution complète R7 : E-1 (×2), E-2, E-4, E-5 reproduites (mêmes causes) ; A-1 non reproduite (reste ouverte) |
+| 2026-11-02 | R7-3 | ouverte (recette Ubuntu) et résolue : clé d'idempotence sans `crypto.randomUUID` hors contexte sécurisé |

@@ -56,6 +56,7 @@ import { PosReceipt } from './PosReceipt';
 import { ExpiredLotOverridePanel } from '@/modules/sales/ExpiredLotOverridePanel';
 import type { ExpiredLotOverride } from '@/modules/sales/api';
 import { expiredShortages, type ExpiredShortage } from '@/modules/stock/ui';
+import { newUuid } from '@/shared/lib/uuid';
 import { RecentSalesDialog } from './RecentSalesDialog';
 
 type PosDialog = 'customer' | 'payment' | 'confirm' | 'recent' | null;
@@ -89,7 +90,7 @@ export default function PosPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [payments, setPayments] = useState<PosPayment[]>([]);
   const [cashRegisterId, setCashRegisterId] = useState<string | null>(null);
-  const [cartKey, setCartKey] = useState(() => crypto.randomUUID());
+  const [cartKey, setCartKey] = useState(() => newUuid());
   const [dialog, setDialog] = useState<PosDialog>(null);
   const [result, setResult] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +136,7 @@ export default function PosPage() {
     setCustomer(null);
     setPayments([]);
     setCashRegisterId(null);
-    setCartKey(crypto.randomUUID());
+    setCartKey(newUuid());
     setResult(null);
     setError(null);
     setOverrideAllowed(false);

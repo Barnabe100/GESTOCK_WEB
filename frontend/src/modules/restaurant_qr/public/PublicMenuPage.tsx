@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/core/api/client';
 import { formatMoney } from '@/shared/lib/decimal';
 import { translateError } from '@/shared/lib/errors';
+import { newUuid } from '@/shared/lib/uuid';
 
 import { publicQrApi, type PublicMenu, type PublicMenuItem } from './publicApi';
 
@@ -116,7 +117,13 @@ export function PublicMenuPage({ token }: { token: string }) {
     };
     const content = JSON.stringify(body);
     if (submission.current?.content !== content) {
-      submission.current = { key: crypto.randomUUID(), content };
+      try {
+        submission.current = { key: newUuid(), content };
+      } catch {
+        // Jamais de toucher sans effet : l'échec (aucun aléa disponible) est signalé.
+        setSubmitError(t('errors:unknown'));
+        return;
+      }
     }
     setSending(true);
     setSubmitError(null);
@@ -263,6 +270,12 @@ export function PublicMenuPage({ token }: { token: string }) {
             />
           )}
           {submitError && <Message severity="error" text={submitError} />}
+          {/* Bouton désactivé : la raison est toujours écrite (le serveur revérifie tout). */}
+          {(nameMissing || phoneMissing) && (
+            <p className="sm-help" id="qr-send-hint" role="status">
+              {t(nameMissing ? 'qrPublic.nameRequired' : 'qrPublic.phoneRequired')}
+            </p>
+          )}
           <div className="sm-qr-cart-footer">
             <strong>
               {t('qrPublic.total')} :{' '}
@@ -274,6 +287,7 @@ export function PublicMenuPage({ token }: { token: string }) {
               label={t('qrPublic.send')}
               disabled={!canSend}
               loading={sending}
+              aria-describedby={nameMissing || phoneMissing ? 'qr-send-hint' : undefined}
               onClick={send}
             />
           </div>

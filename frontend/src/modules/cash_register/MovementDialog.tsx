@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { formatMoney, normalizeDecimal } from '@/shared/lib/decimal';
+import { newUuid } from '@/shared/lib/uuid';
 import { FormField } from '@/shared/ui/FormField';
 import { useToast } from '@/shared/ui/toast';
 
@@ -54,7 +55,7 @@ export function MovementDialog({
   const { currency, locale } = capabilities.tenant;
   const { move } = useCashMutations();
   // Une clé par saisie : double clic ou nouvel envoi → aucun doublon.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => newUuid());
   const [serverError, setServerError] = useState<string | null>(null);
   const categories = direction === 'in' ? IN_CATEGORIES : OUT_CATEGORIES;
   const form = useForm<FormValues>({

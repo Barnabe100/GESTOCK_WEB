@@ -69,7 +69,9 @@ npm run dev -- --host 0.0.0.0
 
 Une adresse non autorisée est refusée **au démarrage** (message explicite) ; hors
 développement, sans adresse configurée, la génération des QR est refusée
-(`503 public_url_not_configured`). Les QR émis contiennent l'adresse en vigueur à leur émission :
+(`503 public_url_not_configured`). En HTTP par l'adresse IP, le navigateur n'est pas en contexte
+sécurisé : l'interface n'utilise donc jamais `crypto.randomUUID` directement (correctif R7-3,
+`SUIVI_TECHNIQUE.md`). Les QR émis contiennent l'adresse en vigueur à leur émission :
 après un changement d'adresse, régénérer les points.
 
 ## 5. Démarrage et activation

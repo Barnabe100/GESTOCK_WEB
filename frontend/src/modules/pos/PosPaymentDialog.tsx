@@ -14,6 +14,7 @@ import {
 } from '@/modules/sales/api';
 import { defaultAccountId, ReceivingAccountFields } from '@/modules/sales/ReceivingAccountFields';
 import { formatMoney, normalizeDecimal, subtractMoney, sumMoney } from '@/shared/lib/decimal';
+import { newUuid } from '@/shared/lib/uuid';
 import { LoadingState } from '@/shared/ui/LoadingState';
 
 import { cashSummary, type CashSummary } from './change';
@@ -129,7 +130,7 @@ export function PosPaymentDialog({
     setLines((ls) => [
       ...ls,
       {
-        key: crypto.randomUUID(),
+        key: newUuid(),
         methodId: method.id,
         label: method.label,
         kind: method.kind,

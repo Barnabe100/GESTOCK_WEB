@@ -8,6 +8,7 @@ import type {
   SalePaymentStatus,
 } from '@/modules/sales/api';
 import type { Page } from '@/shared/lib/serverTable';
+import { newUuid } from '@/shared/lib/uuid';
 
 /**
  * Commandes de restauration (palier R2, ADR-0049) : le serveur fait foi pour tout (prix figés,
@@ -404,5 +405,5 @@ export function orderNumber(order: Pick<Order, 'daily_number'>): string {
 
 /** Nouvelle clé d'idempotence (une par saisie ; rejouée si la requête est renvoyée). */
 export function newKey(): string {
-  return crypto.randomUUID();
+  return newUuid();
 }
