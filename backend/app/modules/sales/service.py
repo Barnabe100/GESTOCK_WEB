@@ -50,6 +50,7 @@ from app.modules.customers.api import (
     get_customer_refs,
     require_active_customer,
 )
+from app.modules.sales.components_port import Component, SoldLine, component_provider
 from app.modules.sales.credit import customer_exposure
 from app.modules.sales.filters import SaleFilters
 from app.modules.sales.models import (
@@ -757,30 +758,51 @@ class SaleService:
         )
         stocked = [line for line in sale.lines if managed.get(line.article_id, True)]
         picks = self._expired_lot_picks(sale, stocked, expired_lot_override)
-        # Sortie de stock : exclusivement via le moteur central (verrous, lots, tout ou rien).
-        movements = (
-            self._stock().consume(
-                sale.site_id,
-                [
-                    ConsumptionRequest(
-                        article_id=line.article_id,
-                        movement_type=MovementType.SALE,
-                        # Toujours en unité de base (Lot 3-B) : 2 cartons de 24 → −48.
-                        quantity=line.base_quantity,
-                        source_type=SOURCE_TYPE,
-                        source_id=sale.id,
-                        source_line_id=line.id,
-                        source_number=sale.number,
-                        packaging=_snapshot_of(line),
-                        picks=picks.get(line.id, ()),
-                    )
-                    for line in stocked
-                ],
-                today=tenant_today(self.ctx, self.now),
+        # Palier R8 (ADR-0053, D7 / D8) : un article NON géré en stock (plat) consomme les
+        # ingrédients de sa recette quand le module Recettes est effectif sur le site — un
+        # composant matérialisé par (ligne, ingrédient), identifiant = ligne source du mouvement.
+        components = self._components(sale, [line for line in sale.lines if line not in stocked])
+        requests = [
+            ConsumptionRequest(
+                article_id=line.article_id,
+                movement_type=MovementType.SALE,
+                # Toujours en unité de base (Lot 3-B) : 2 cartons de 24 → −48.
+                quantity=line.base_quantity,
+                source_type=SOURCE_TYPE,
+                source_id=sale.id,
+                source_line_id=line.id,
+                source_number=sale.number,
+                packaging=_snapshot_of(line),
+                picks=picks.get(line.id, ()),
             )
-            if stocked
-            else []
-        )
+            for line in stocked
+        ] + [
+            ConsumptionRequest(
+                article_id=component.article_id,
+                movement_type=MovementType.SALE,
+                quantity=component.quantity,
+                source_type=SOURCE_TYPE,
+                source_id=sale.id,
+                source_line_id=component.id,
+                source_number=sale.number,
+            )
+            for component in components
+        ]
+        # Sortie de stock : exclusivement via le moteur central, en UN appel (verrous dans un
+        # ordre global, lignes et ingrédients ensemble, tout ou rien).
+        try:
+            movements = (
+                self._stock().consume(
+                    sale.site_id, requests, today=tenant_today(self.ctx, self.now)
+                )
+                if requests
+                else []
+            )
+        except BusinessRuleError as error:
+            ingredients = get_article_refs(self.db, {c.article_id for c in components})
+            raise _ingredients_error(
+                error, sale.lines, stocked, components, refs, ingredients
+            ) from error
         consumed = self._consumed_lots(movements)
         if expired_lot_override is not None:
             self._record_expired_override(sale, expired_lot_override, picks, consumed)
@@ -799,11 +821,35 @@ class SaleService:
                 "customer_id": str(sale.customer_id) if sale.customer_id else None,
                 "is_credit": sale.is_credit,
                 **({"lots": list(consumed.values())} if consumed else {}),
+                **({"recipe_components": len(components)} if components else {}),
             },
         )
         for payment, _ in planned:
             payment_service.create(sale.id, payment)
         return sale
+
+    def _components(self, sale: Sale, unstocked: Sequence[SaleLine]) -> list[Component]:
+        """Ingrédients des lignes non gérées en stock (ADR-0053), matérialisés par le module
+        Recettes dans cette transaction ; aucun sans module effectif sur le site."""
+        if not unstocked:
+            return []
+        provider = component_provider(self.db, self.ctx, self.now, sale.site_id)
+        if provider is None:
+            return []
+        return provider.components_for_sale(
+            sale_id=sale.id,
+            site_id=sale.site_id,
+            lines=[
+                SoldLine(
+                    line_id=line.id,
+                    article_id=line.article_id,
+                    packaging_id=line.packaging_id,
+                    quantity=line.quantity,
+                    base_quantity=line.base_quantity,
+                )
+                for line in unstocked
+            ],
+        )
 
     def _expired_lot_picks(
         self,
@@ -947,6 +993,7 @@ class SaleService:
         previous = sale.status
         skipped: list[uuid.UUID] = []
         restored: list[SaleLine] = []
+        restored_ingredients: list[tuple[uuid.UUID, Any]] = []
         origins: dict[uuid.UUID, Any] = {}
         restored_lots = False
         if previous is SaleStatus.CANCELLED:
@@ -967,21 +1014,45 @@ class SaleService:
                     extra={"payments": int(active)},
                 )
             origins = self._stock().movements_of(sale.id, MovementType.SALE)
+            # Palier R8 (ADR-0053, D10) : mouvements d'ingrédients (ligne source = composant,
+            # pas une ligne de la vente) — inversés à l'identique, comme les lignes.
+            line_ids = {line.id for line in sale.lines}
+            ingredient_origins = [
+                (component_id, origin)
+                for component_id, refs_ in origins.items()
+                if component_id not in line_ids
+                for origin in refs_
+                if origin.article_id is not None
+            ]
             # Seules les lignes sorties du stock à la validation (mouvement ``SALE``) y
             # reviennent ; un article devenu non géré entre-temps (stock nul partout exigé) ne
             # reçoit aucun stock (Lot 3-A).
-            managed = lock_stock_managed(self.db, {line.article_id for line in sale.lines})
+            managed = lock_stock_managed(
+                self.db,
+                {line.article_id for line in sale.lines}
+                | {origin.article_id for _, origin in ingredient_origins if origin.article_id},
+            )
+            restored_ingredients = [
+                (component_id, origin)
+                for component_id, origin in ingredient_origins
+                if origin.article_id is not None and managed.get(origin.article_id, True)
+            ]
+            skipped += [
+                origin.article_id
+                for _, origin in ingredient_origins
+                if origin.article_id is not None and not managed.get(origin.article_id, True)
+            ]
             restored = [
                 line
                 for line in sale.lines
                 if line.id in origins and managed.get(line.article_id, True)
             ]
-            skipped = [
+            skipped += [
                 line.article_id
                 for line in sale.lines
                 if line.id in origins and not managed.get(line.article_id, True)
             ]
-            if restored:
+            if restored or restored_ingredients:
                 # Un inverse par mouvement d'origine : même quantité, même coût, MÊME lot —
                 # restauration exacte, y compris sur un lot devenu périmé (H-D10) ; jamais sur
                 # un autre lot. Double annulation : refusée (statut verrouillé + unicité).
@@ -1009,6 +1080,23 @@ class SaleService:
                         )
                         for line in restored
                         for origin in origins[line.id]
+                    ]
+                    + [
+                        MovementRequest(
+                            article_id=origin.article_id,
+                            movement_type=MovementType.CANCELLATION,
+                            quantity=-origin.quantity,
+                            unit_cost=origin.unit_cost,
+                            source_type=SOURCE_TYPE,
+                            source_id=sale.id,
+                            source_line_id=component_id,
+                            source_number=sale.number,
+                            origin_movement_id=origin.id,
+                            comment=f"Annulation {sale.number}",
+                            lot_id=origin.lot_id,
+                        )
+                        for component_id, origin in restored_ingredients
+                        if origin.article_id is not None
                     ],
                 )
         sale.status = SaleStatus.CANCELLED
@@ -1026,6 +1114,11 @@ class SaleService:
                 "stock_restored": previous is SaleStatus.VALIDATED,
                 "total": format(sale.total, "f"),
                 **({"lots": self._restored_lots(restored, origins)} if restored_lots else {}),
+                **(
+                    {"recipe_components_restored": len(restored_ingredients)}
+                    if restored_ingredients
+                    else {}
+                ),
                 **(
                     {"not_restored_unmanaged": self._references(skipped)}
                     if previous is SaleStatus.VALIDATED and skipped
@@ -1158,6 +1251,50 @@ def _current_price(
 ) -> Decimal:
     """Prix catalogue actuel de la présentation de la ligne (article ou conditionnement)."""
     return _packaging_price(packagings[line.packaging_id]) if line.packaging_id else ref.sale_price
+
+
+# Refus du moteur de stock traduits pour une vente de plat (ADR-0053, D9) : le manque ne porte
+# que sur des ingrédients (aucune ligne gérée en cause).
+_INGREDIENT_REFUSALS = frozenset(
+    {
+        "insufficient_stock",
+        "insufficient_unexpired_stock",
+        "article_not_in_site_assortment",
+        "article_not_stock_managed",
+    }
+)
+
+
+def _refused_references(error: BusinessRuleError) -> set[str]:
+    items = (error.extra or {}).get("articles") or []
+    return {str(item.get("reference")) if isinstance(item, dict) else str(item) for item in items}
+
+
+def _ingredients_error(
+    error: BusinessRuleError,
+    lines: Sequence[SaleLine],
+    stocked: Sequence[SaleLine],
+    components: Sequence[Component],
+    refs: dict[uuid.UUID, ArticleRef],
+    ingredients: dict[uuid.UUID, ArticleRef],
+) -> BusinessRuleError:
+    """``422 recipe_ingredients_unavailable`` quand le refus ne porte QUE sur des ingrédients :
+    nomme les plats concernés et garde le motif d'origine ; sinon le refus d'origine."""
+    if error.code not in _INGREDIENT_REFUSALS or not components:
+        return error
+    ingredient_refs = {a: ref.reference for a, ref in ingredients.items()}
+    refused = _refused_references(error)
+    stocked_refs = {refs[line.article_id].reference for line in stocked if line.article_id in refs}
+    if not refused or not refused <= set(ingredient_refs.values()) or refused & stocked_refs:
+        return error
+    refused_ids = {a for a, reference in ingredient_refs.items() if reference in refused}
+    dish_lines = {c.line_id for c in components if c.article_id in refused_ids}
+    dishes = sorted({refs[line.article_id].reference for line in lines if line.id in dish_lines})
+    return BusinessRuleError(
+        "Ingrédients indisponibles pour préparer ce plat",
+        code="recipe_ingredients_unavailable",
+        extra={**(error.extra or {}), "reason": error.code, "dishes": dishes},
+    )
 
 
 def _snapshot_of(line: SaleLine) -> PackagingSnapshot | None:

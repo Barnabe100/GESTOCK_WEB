@@ -41,7 +41,7 @@ def test_profiles_drive_modules_navigation_and_terminology(provision: Any, api_f
     ]
     assert not [m for m in quinc["navigation"] if m.startswith("restaurant.")]
     assert "restaurant.kitchen" not in resto["ux"]["upcoming"]
-    assert "restaurant.recipes" in resto["ux"]["upcoming"]
+    assert "restaurant.recipes" not in resto["ux"]["upcoming"]  # livré (R8)
     assert "restaurant.tables" not in resto["ux"]["upcoming"]
     assert resto["terminology"]["fr"]["catalog"]["item"] == "Produit"
     assert quinc["terminology"]["fr"]["catalog"]["item"] == "Article"

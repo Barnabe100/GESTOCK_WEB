@@ -28,6 +28,7 @@ from app.modules.catalog.models import (
     Packaging,
     SiteArticle,
 )
+from app.modules.catalog.recipe_port import dish_recipes, ingredient_recipes
 from app.modules.catalog.schemas import (
     ArticleCreate,
     ArticleOut,
@@ -500,6 +501,9 @@ class ArticleService:
             self._ensure_lot_flags_change(article, updates)
         if updates.get("stock_managed") is False:
             self._ensure_no_stock(article)
+            self._ensure_not_ingredient(article)
+        if updates.get("stock_managed") is True:
+            self._ensure_no_dish_recipe(article)
         if updates.get("decimal_quantity_allowed") is False:
             self._ensure_whole_packagings(article)
 
@@ -530,6 +534,27 @@ class ArticleService:
             )
         self.db.refresh(article)
         return article
+
+    def _ensure_no_dish_recipe(self, article: Article) -> None:
+        """Palier R8 (ADR-0053, D2) : un plat ayant une recette ACTIVE reste non géré en stock —
+        sinon il sortirait du stock EN PLUS de ses ingrédients (double déduction)."""
+        dishes = dish_recipes(self.db, self.ctx.tenant_id, article.id)
+        if dishes:
+            raise ConflictError(
+                "Cet article a une recette active : il ne peut pas être géré en stock",
+                code="article_has_recipe",
+                extra={"articles": dishes},
+            )
+
+    def _ensure_not_ingredient(self, article: Article) -> None:
+        """Palier R8 (ADR-0053, D3) : un ingrédient d'une recette active reste géré en stock."""
+        dishes = ingredient_recipes(self.db, self.ctx.tenant_id, article.id)
+        if dishes:
+            raise ConflictError(
+                "Cet article est un ingrédient de recettes actives",
+                code="article_used_in_recipes",
+                extra={"articles": dishes},
+            )
 
     def _ensure_lot_flags_change(self, article: Article, updates: dict[str, Any]) -> None:
         """Lot 3-G (ADR-0045) : suivi par lot / de péremption modifiés seulement à stock nul sur

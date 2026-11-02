@@ -22,9 +22,8 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     _planned("reports"),
     # Restauration (ADR-0049) : ``restaurant.menu`` (R1), ``restaurant.orders`` (R2) et
     # ``restaurant.tables`` (R5) et ``restaurant.kitchen`` (R6) sont livrés dans leurs paquets ;
-    # ``restaurant.qr`` (R7) a le sien (paquet ``restaurant_qr``, planifié pendant son
-    # développement) ; reste planifié sans paquet :
-    _planned("restaurant.recipes", "catalog", "stock"),
+    # ``restaurant.qr`` (R7) et ``restaurant.recipes`` (R8, paquet ``restaurant_recipes``) ont le
+    # leur ; plus aucun module de restauration planifié.
     # Automobile (profils d'activité de la Phase 3.1 ; hors plans tant qu'ils sont planifiés)
     _planned("automobile.vehicles", "customers"),
     _planned("automobile.workshop", "catalog", "stock", "customers", "automobile.vehicles"),

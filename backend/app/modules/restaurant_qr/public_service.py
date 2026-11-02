@@ -76,10 +76,11 @@ from app.platform.ratelimit.service import RateLimiter
 from app.platform.registry import ModuleRegistry
 from app.shared.text import normalize_phone
 
-# Seul motif « non commandable » montré au public : épuisé (signalé par le personnel). Les
+# Motifs « non commandable » montrés au public comme « épuisé » : épuisé signalé par le personnel
+# et, depuis R8 (ADR-0053, D12), plat dont les ingrédients manquent (aucun détail interne). Les
 # autres motifs (article désactivé, hors assortiment, conditionnement sans prix…) sont internes :
 # l'élément est simplement absent du menu public.
-PUBLIC_BLOCKERS = frozenset({"unavailable"})
+PUBLIC_BLOCKERS = frozenset({"unavailable", "ingredients_unavailable"})
 ORDER_IP_BUCKET = "qr.order.ip"
 ORDER_POINT_BUCKET = "qr.order.point"
 # Une même requête n'est rejouée (nouveau lien de suivi) que peu après son premier envoi.

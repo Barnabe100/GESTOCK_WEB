@@ -37,6 +37,11 @@ from app.modules.catalog.api import (
     ensure_in_assortment,
     get_article_refs,
 )
+from app.modules.restaurant_menu.availability_port import (
+    INGREDIENTS_UNAVAILABLE,
+    Presentation,
+    short_items,
+)
 from app.modules.restaurant_menu.models import (
     ITEM_PRESENTATION_CONSTRAINT,
     SECTION_NAME_INDEX,
@@ -47,7 +52,7 @@ from app.modules.restaurant_menu.schemas import ItemCreate, ItemUpdate
 from app.modules.restaurant_menu.sites import ensure_row_site, operation_site, readable_site_ids
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
-from app.platform.tenancy.models import Site
+from app.platform.tenancy.models import Site, Tenant
 from app.shared.pagination import PageParams, apply_sort, paginate_rows, search_filter, text_sort
 from app.shared.schemas import StatusFilter
 
@@ -173,9 +178,26 @@ def item_query(tenant_id: uuid.UUID) -> Select[Any]:
     )
 
 
-def item_rows(db: Session, rows: list[Any]) -> list[ItemRow]:
+def item_rows(db: Session, rows: list[Any], tenant: Tenant | None = None) -> list[ItemRow]:
     """Lignes enrichies de l'état COURANT du catalogue (prix, conditionnement) — lecture
-    seule, sans verrou ; un conditionnement désactivé n'est pas exposé par le catalogue."""
+    seule, sans verrou ; un conditionnement désactivé n'est pas exposé par le catalogue.
+
+    Palier R8 (ADR-0053, D12) : ``tenant`` fourni, un plat dont aucune portion n'est réalisable
+    avec le stock du site (recette, module Recettes effectif) reçoit le motif
+    ``ingredients_unavailable`` (port ``availability_port``)."""
+    short = short_items(
+        db,
+        tenant,
+        [
+            Presentation(
+                item_id=row.id,
+                site_id=row.site_id,
+                article_id=row.article_id,
+                packaging_id=row.packaging_id,
+            )
+            for row in rows
+        ],
+    )
     article_ids = {row.article_id for row in rows}
     refs = get_article_refs(db, article_ids)
     packagings = {
@@ -191,6 +213,8 @@ def item_rows(db: Session, rows: list[Any]) -> list[ItemRow]:
         else:
             price = packaging.sale_price if packaging is not None else None
         blockers = _blockers(row, packaging)
+        if row.id in short:
+            blockers.append(INGREDIENTS_UNAVAILABLE)
         result.append(
             ItemRow(
                 id=row.id,
@@ -388,7 +412,7 @@ class MenuService:
         return item_query(self.ctx.tenant_id)
 
     def _item_rows(self, rows: list[Any]) -> list[ItemRow]:
-        return item_rows(self.db, rows)
+        return item_rows(self.db, rows, self.ctx.tenant)
 
     def search_items(
         self,

@@ -154,13 +154,19 @@ def test_offered_but_not_activated_is_not_effective(provision: Any, api_for: Any
     assert set_site_module(owner, t.site_id, "alerts", True).status_code == 204
     assert _state(_site_modules(owner, t.site_id)["alerts"]) == (True, True, True, True)
     assert "alerts" in _modules(_caps(owner, t.site_id))
-    # Recettes : optionnel du profil, inclus dans ENTREPRISE, non activé à la création du site ;
-    # module « Bientôt disponible » : son activation est refusée (palier E.1), il reste non activé.
+    # Paiements électroniques : du profil, inclus dans ENTREPRISE ; module « Bientôt disponible »
+    # désactivé : sa réactivation est refusée (palier E.1), il reste non activé.
+    planned = "payments"
+    assert set_site_module(owner, t.site_id, planned, False).status_code == 204
+    assert _state(_site_modules(owner, t.site_id)[planned]) == (True, True, False, False)
+    refused = set_site_module(owner, t.site_id, planned, True)
+    assert (refused.status_code, refused.json()["code"]) == (422, "module_not_implemented")
+    assert _state(_site_modules(owner, t.site_id)[planned]) == (True, True, False, False)
+    # Recettes (livrées, R8) : optionnel, non activé à la création ; activable explicitement.
     recipes = "restaurant.recipes"
     assert _state(_site_modules(owner, t.site_id)[recipes]) == (True, True, False, False)
-    refused = set_site_module(owner, t.site_id, recipes, True)
-    assert (refused.status_code, refused.json()["code"]) == (422, "module_not_implemented")
-    assert _state(_site_modules(owner, t.site_id)[recipes]) == (True, True, False, False)
+    assert set_site_module(owner, t.site_id, recipes, True).status_code == 204
+    assert _state(_site_modules(owner, t.site_id)[recipes]) == (True, True, True, True)
     # QR (livré, R7) : optionnel, non activé à la création ; activable explicitement.
     assert _state(_site_modules(owner, t.site_id)["restaurant.qr"]) == (True, True, False, False)
     assert set_site_module(owner, t.site_id, "restaurant.qr", True).status_code == 204

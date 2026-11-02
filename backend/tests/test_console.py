@@ -510,7 +510,8 @@ def test_plans_list_and_read_only_structure(admin: TestClient) -> None:
     assert "stock.transfer.create" in permissions
     modules = {m["code"]: m for m in entreprise["modules"]}
     assert modules["stock"]["status"] == "available"
-    assert modules["restaurant.recipes"]["status"] == "planned"
+    assert modules["restaurant.recipes"]["status"] == "available"  # livré (R8, 0060)
+    assert modules["payments"]["status"] == "planned"
     assert modules["restaurant.qr"]["status"] == "available"  # livré (R7, 0058)
     assert any(m["core"] for m in modules.values())
 

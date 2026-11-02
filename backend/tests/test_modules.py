@@ -24,17 +24,18 @@ def test_module_listing_reflects_profile_and_plan(
     assert modules["restaurant.qr"]["in_profile"] is True
     assert modules["restaurant.qr"]["in_plan"] is False
     assert modules["pos"]["enabled"] is True and modules["pos"]["status"] == "available"
-    # ADR-0049 / ADR-0050 / ADR-0052 : menu (R1), commandes (R2), tables (R5), cuisine (R6) et QR
-    # (R7) livrés ; les recettes restent planifiées.
+    # ADR-0049 / ADR-0050 / ADR-0052 / ADR-0053 : menu (R1), commandes (R2), tables (R5),
+    # cuisine (R6), QR (R7) et recettes (R8) livrés ; paiements électroniques planifiés.
     for code in (
         "restaurant.menu",
         "restaurant.orders",
         "restaurant.tables",
         "restaurant.kitchen",
         "restaurant.qr",
+        "restaurant.recipes",
     ):
         assert modules[code]["status"] == "available", code
-    assert modules["restaurant.recipes"]["status"] == "planned"
+    assert modules["payments"]["status"] == "planned"
     assert modules["users"]["core"] is True
     assert "stock" in modules
 
@@ -49,11 +50,15 @@ def test_toggle_optional_module_on_a_site(provision: Any, api_for: Any) -> None:
     assert _by_code(api)["alerts"]["effective"] is True
     caps = api.get("/me/capabilities").json()
     assert "alerts" in {m["code"] for m in caps["modules"]}
-    # Module optionnel « Bientôt disponible » (palier E.1) : jamais activé.
-    assert _by_code(api)["restaurant.recipes"]["enabled"] is False
-    refused = set_site_module(api, t.site_id, "restaurant.recipes", True)
+    # Module « Bientôt disponible » (palier E.1) : jamais activé (désactivé d'abord).
+    assert set_site_module(api, t.site_id, "payments", False).status_code == 204
+    refused = set_site_module(api, t.site_id, "payments", True)
     assert (refused.status_code, refused.json()["code"]) == (422, "module_not_implemented")
+    assert _by_code(api)["payments"]["enabled"] is False
+    # Module optionnel livré (R8) : désactivé à la création, activable explicitement.
     assert _by_code(api)["restaurant.recipes"]["enabled"] is False
+    assert set_site_module(api, t.site_id, "restaurant.recipes", True).status_code == 204
+    assert _by_code(api)["restaurant.recipes"]["enabled"] is True
     # Module optionnel livré (R7) : désactivé à la création, activable explicitement.
     assert _by_code(api)["restaurant.qr"]["enabled"] is False
     assert set_site_module(api, t.site_id, "restaurant.qr", True).status_code == 204

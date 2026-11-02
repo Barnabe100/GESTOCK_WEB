@@ -675,41 +675,31 @@ def test_available_dependents_still_block_and_planned_ones_never_do(
     orders_planned: None, resto: SimpleNamespace, owner_db: Session
 ) -> None:
     """Commandes et tables simulées planifiées (comme à la livraison de R1) : seuls les
-    dépendants DISPONIBLES bloquent."""
+    dépendants DISPONIBLES bloquent. Exemple de dépendant planifié : paiements électroniques
+    (dépend des ventes ; les recettes, qui servaient d'exemple, sont livrées depuis R8)."""
     r = resto
-    # Activation inerte héritée (site créé quand les recettes étaient activées par défaut, avant
-    # D11) : un module planifié qui dépend du catalogue.
+    # Activation inerte héritée : un module planifié qui dépend des ventes.
     owner_db.execute(
         text(
-            "UPDATE site_modules SET enabled = true "
-            "WHERE site_id = :s AND module_code = 'restaurant.recipes'"
+            "UPDATE site_modules SET enabled = true WHERE site_id = :s AND module_code = 'payments'"
         ),
         {"s": r.a},
     )
     owner_db.commit()
-    assert _row(owner_db, r.a, "restaurant.recipes") is True
+    assert _row(owner_db, r.a, "payments") is True
     # Dépendants mixtes : seul le disponible est cité ; le refus demeure.
-    busy = set_site_module(r.owner, r.a, "catalog", False)
+    busy = set_site_module(r.owner, r.a, "sales", False)
     assert _code(busy) == (409, "module_has_dependents")
     dependents = busy.json()["dependents"]
-    assert "restaurant.menu" in dependents and "restaurant.recipes" not in dependents
-    # Tous les dépendants disponibles désactivés (dépendants d'abord) : le seul dépendant
-    # restant, planifié, ne bloque plus la désactivation du catalogue.
-    for code in (
-        "pos",
-        "cash_register",
-        "receivables",
-        "sales",
-        "alerts",
-        "inventory_count",
-        "stock",
-        "restaurant.menu",
-    ):
+    assert "pos" in dependents and "payments" not in dependents
+    # Tous les dépendants disponibles désactivés : le seul dépendant restant, planifié, ne
+    # bloque plus la désactivation des ventes.
+    for code in ("pos", "cash_register", "receivables"):
         response = set_site_module(r.owner, r.a, code, False)
         assert response.status_code == 204, (code, response.text)
-    assert set_site_module(r.owner, r.a, "catalog", False).status_code == 204
-    assert _row(owner_db, r.a, "restaurant.recipes") is True
-    refused = set_site_module(r.owner, r.a, "restaurant.recipes", True)
+    assert set_site_module(r.owner, r.a, "sales", False).status_code == 204
+    assert _row(owner_db, r.a, "payments") is True
+    refused = set_site_module(r.owner, r.a, "payments", True)
     assert _code(refused) == (422, "module_not_implemented")
 
 

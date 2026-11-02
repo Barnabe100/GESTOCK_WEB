@@ -17,6 +17,7 @@ from app.modules.restaurant_kitchen.manifest import MANIFEST as RESTAURANT_KITCH
 from app.modules.restaurant_menu.manifest import MANIFEST as RESTAURANT_MENU
 from app.modules.restaurant_orders.manifest import MANIFEST as RESTAURANT_ORDERS
 from app.modules.restaurant_qr.manifest import MANIFEST as RESTAURANT_QR
+from app.modules.restaurant_recipes.manifest import MANIFEST as RESTAURANT_RECIPES
 from app.modules.restaurant_tables.manifest import MANIFEST as RESTAURANT_TABLES
 from app.modules.sales.manifest import MANIFEST as SALES
 from app.modules.stock.manifest import MANIFEST as STOCK
@@ -41,5 +42,7 @@ BUSINESS_MODULES: tuple[ModuleManifest, ...] = (
     RESTAURANT_KITCHEN,
     # Palier R7 (ADR-0052) : livré par la migration 0058.
     RESTAURANT_QR,
+    # Palier R8 (ADR-0053) : livré par la migration 0060.
+    RESTAURANT_RECIPES,
     *PLANNED_MODULES,
 )

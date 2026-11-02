@@ -1,7 +1,8 @@
 """API publique du module Ventes pour les autres modules (créances, futurs caisse et POS), qui
 n'importent jamais ses modèles directement (règle d'architecture 10). ``register_cash_ledger`` :
 implémentation de la caisse des paiements espèces (module Caisse). ``register_sale_origin`` et
-``sale_financial_states`` : ventes issues d'un document d'un autre module (R2-D, ADR-0049)."""
+``sale_financial_states`` : ventes issues d'un document d'un autre module (R2-D, ADR-0049).
+``register_component_provider`` : ingrédients des plats déduits à la validation (R8, ADR-0053)."""
 
 import uuid
 from dataclasses import dataclass
@@ -11,6 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.sales.cash_port import CashLedger, register_cash_ledger
+from app.modules.sales.components_port import (
+    COMPONENTS_MODULE,
+    Component,
+    SoldLine,
+    register_component_provider,
+)
 from app.modules.sales.credit import balances_query, customer_exposure, open_receivables_query
 from app.modules.sales.models import (
     ORIGIN_RESTAURANT_ORDER,
@@ -112,6 +119,10 @@ __all__ = [
     "SaleService",
     "CashLedger",
     "register_cash_ledger",
+    "COMPONENTS_MODULE",
+    "Component",
+    "SoldLine",
+    "register_component_provider",
     "PaymentOut",
     "PaymentService",
     "PaymentStatus",

@@ -169,6 +169,9 @@ class SaleLine(IdMixin, TenantScopedMixin, Base):
 
     __tablename__ = "sale_lines"
     __table_args__ = (
+        # Palier R8 (ADR-0053) : cible de la FK composite des consommations d'ingrédients — une
+        # consommation ne référence qu'une ligne DE SA vente.
+        UniqueConstraint("tenant_id", "sale_id", "id"),
         ForeignKeyConstraint(
             ["tenant_id", "sale_id"], ["sales.tenant_id", "sales.id"], ondelete="CASCADE"
         ),

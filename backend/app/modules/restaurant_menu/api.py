@@ -44,7 +44,7 @@ def menu_items_of_site(
     rows = db.execute(
         item_query(scope.tenant_id).where(MenuItem.site_id == site_id, MenuItem.id.in_(ids))
     ).all()
-    return {row.id: row for row in item_rows(db, list(rows))}
+    return {row.id: row for row in item_rows(db, list(rows), scope.tenant)}
 
 
 def site_menu(
@@ -77,7 +77,7 @@ def site_menu(
         )
         .order_by(MenuItem.sort_order, MenuItem.id)
     ).all()
-    return sections, item_rows(db, list(rows))
+    return sections, item_rows(db, list(rows), scope.tenant)
 
 
 def menu_section_ids_of_site(

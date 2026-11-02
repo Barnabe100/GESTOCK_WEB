@@ -145,6 +145,9 @@ class MovementRef:
     quantity: Decimal = Decimal("0")
     lot_id: uuid.UUID | None = None
     packaging: "PackagingSnapshot | None" = None
+    # Palier R8 (ADR-0053) : article du mouvement — un ingrédient déduit pour une ligne de vente
+    # n'est pas l'article de la ligne ; son inverse porte le même article.
+    article_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -1317,6 +1320,7 @@ def movement_ref(movement: StockMovement) -> MovementRef:
         unit_cost=movement.unit_cost,
         quantity=movement.quantity,
         lot_id=movement.lot_id,
+        article_id=movement.article_id,
         packaging=packaging,
     )
 

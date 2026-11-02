@@ -39,6 +39,10 @@ STOCK_COST_FIELDS = frozenset(
 INVENTORY_COST_FIELDS = frozenset(
     {"unit_cost", "adjustment_value", "surplus_value", "shortage_value"}
 )
+# Recettes (palier R8, ADR-0053, D11) : coût de revient et marge (la marge révèle le coût).
+RECIPE_COST_FIELDS = frozenset(
+    {"unit_cost", "line_cost", "batch_cost", "portion_cost", "margin", "margin_rate"}
+)
 # Journal d'audit : coûts dans les données des évènements (jamais les montants de paiement).
 AUDIT_COST_FIELDS = frozenset(
     {

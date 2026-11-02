@@ -216,7 +216,8 @@ def test_catalog_api_lists_sectors_and_profiles_with_default_configuration(
     assert "restaurant.tables:occupied" in detail["ux"]["dashboard"]["widgets"]
     assert detail["ux"]["theme"]["accent"] == "orange"
     assert "restaurant.kitchen" not in detail["upcoming"]
-    assert "restaurant.recipes" in detail["upcoming"]
+    # Livré (R8, 0060) : plus jamais « à venir ».
+    assert "restaurant.recipes" not in detail["upcoming"]
 
     unknown = owner.get("/business-profiles/restaurant.inconnu")
     assert unknown.status_code == 404
@@ -257,15 +258,16 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     assert caps["ux"]["dashboard"]["widgets"][:2] == ["sales:today", "cash_register:open_sessions"]
     # « À venir » : modules planifiés du profil, dans l'ordre de sa navigation.
     assert caps["ux"]["upcoming"] == [
-        "restaurant.recipes",
         "reports",
         "payments",
     ]
     assert caps["ux"]["theme"] == {"accent": "orange", "density": "comfortable", "icon": None}
     assert caps["terminology"]["fr"]["catalog"]["items"] == "Produits"
-    # Aucune route planifiée n'est servie ; les modules livrés le sont.
+    # Aucune route planifiée n'est servie ; les modules livrés le sont. Recettes (R8) : livrées
+    # mais facultatives, non activées sur ce site — route servie, accès refusé.
     owner = api_for("owner@resto.example.com")
-    assert owner.get("/restaurant/recipes").status_code == 404
+    refused = owner.get("/restaurant/recipes")
+    assert (refused.status_code, refused.json()["code"]) == (403, "module_unavailable")
     for path in (
         "/restaurant/menu/sections",
         "/restaurant/orders",

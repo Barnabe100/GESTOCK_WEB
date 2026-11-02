@@ -36,6 +36,7 @@ from app.modules.catalog.lot_flags_port import (
 )
 from app.modules.catalog.lot_tracking import lot_tracking_available
 from app.modules.catalog.models import Article, Barcode, Category, Packaging, SiteArticle
+from app.modules.catalog.recipe_port import register_recipe_usage
 from app.modules.catalog.stock_port import register_lot_stocked_sites, register_stocked_sites
 from app.modules.catalog.usage_port import register_packaging_usage
 from app.shared.pagination import escape_like
@@ -66,6 +67,8 @@ __all__ = [
     "register_lot_stocked_sites",
     "register_packaging_usage",
     "register_stocked_sites",
+    "register_recipe_usage",
+    "get_packaging_refs",
     "resolve_barcode",
     "RemovalBlocker",
     "RemovalBlockerKind",
@@ -145,6 +148,15 @@ def _packaging_ref(p: Packaging) -> PackagingRef:
         sale_price=p.sale_price,
         is_active=p.is_active,
     )
+
+
+def get_packaging_refs(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, PackagingRef]:
+    """Conditionnements du tenant (RLS), actifs ou non, en lecture seule et sans verrou."""
+    if not ids:
+        return {}
+    return {
+        p.id: _packaging_ref(p) for p in db.scalars(select(Packaging).where(Packaging.id.in_(ids)))
+    }
 
 
 def lock_packagings(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, PackagingRef]:
