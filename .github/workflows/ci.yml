@@ -157,3 +157,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
+      # Exemple de production : configuration valide avec des valeurs factices (aucun secret).
+      - name: Compose de production (configuration)
+        env:
+          SM_IMAGE_BACKEND: example/backend:ci
+          SM_IMAGE_FRONTEND: example/frontend:ci
+          SM_ENV_FILE: /dev/null
+          SM_BACKUP_HOST_DIR: /tmp/backups
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_APP_PASSWORD: ci
+          POSTGRES_PLATFORM_PASSWORD: ci
+          POSTGRES_PURGE_PASSWORD: ci
+        run: docker compose -f docker-compose.prod.example.yml config --quiet
+
+  images:
+    name: Images de production (construction, sans publication)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image backend
+        run: docker build -f docker/backend/Dockerfile.prod -t sm-backend:ci .
+      - name: Image frontend
+        run: docker build -f docker/frontend/Dockerfile.prod -t sm-frontend:ci .
+      - name: Contrôles des images
+        run: |
+          # Utilisateur non root ; démarrage refusé en production sans secrets ; nginx valide.
+          test "$(docker run --rm --entrypoint id sm-backend:ci -u)" = "10001"
+          if docker run --rm sm-backend:ci python -c "import app.main" 2>/dev/null; then
+            echo "démarrage accepté sans secrets" && exit 1
+          fi
+          docker run --rm -e SM_API_UPSTREAM=http://127.0.0.1:8000 \
+            -e SM_CONSOLE_UPSTREAM=http://127.0.0.1:8001 sm-frontend:ci \
+            sh -c '/docker-entrypoint.d/20-envsubst-on-templates.sh && nginx -t'
+          # Aucune clé privée dans l'image (ADR-0034) : le code et les données de l'application.
+          docker run --rm --entrypoint sh sm-backend:ci -c '! grep -rIl "PRIVATE KEY-----" /app'
+
+  backup-drill:
+    name: Sauvegarde et restauration (PITR mesuré)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Installer les dépendances
+        working-directory: backend
+        run: uv sync --frozen
+      # PostgreSQL 16 est préinstallé sur l'image (arrêté) : cluster TEMPORAIRE propre à l'exercice.
+      - name: Exercice PITR (RPO / RTO mesurés)
+        env:
+          SM_PG_BINDIR: /usr/lib/postgresql/16/bin
+          SM_DRILL_ARCHIVE_TIMEOUT: "60"
+          SM_DRILL_REPORT: ${{ runner.temp }}/backup-drill-report.json
+        run: ops/backup/sm-backup-drill.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backup-drill-report
+          path: ${{ runner.temp }}/backup-drill-report.json
+          if-no-files-found: ignore

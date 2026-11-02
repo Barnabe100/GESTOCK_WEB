@@ -465,7 +465,12 @@ calculés par le serveur, `total = sous-total − remise` garanti en base, permi
 0062) : module `reports` sans table (requêtes `sales.api.report_*`,
 `stock.api.outflow_costs_query`), ventes validées, CA remises déduites, coût réel des sorties,
 marge, répartitions, paiements, rentabilité des recettes (`/restaurant/recipes/profitability`),
-coûts masqués (`REPORT_COST_FIELDS`), exports audités ; activation explicite par site. Ne pas commencer
+coûts masqués (`REPORT_COST_FIELDS`), exports audités ; activation explicite par site. **Exploitation livrée**
+([ADR-0056](docs/adr/0056-exploitation-sauvegarde-deploiement.md), [`DEPLOIEMENT.md`](docs/DEPLOIEMENT.md),
+[`docs/exploitation/`](docs/exploitation/SAUVEGARDE_RESTAURATION.md)) : PITR (`ops/backup/`,
+exercice mesuré en CI), `stockmanager tenant export` (copie restaurée, lecture seule), page
+console « Sauvegardes » (lecture seule), images `Dockerfile.prod`, nginx (CSP, HSTS),
+`docker-compose.prod.example.yml` (secrets obligatoires), supervision `ops/monitoring/`. Ne pas commencer
 un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
@@ -628,6 +633,8 @@ uv run uvicorn app.main:app --reload --port 8000
 uv run stockmanager platform-admin create --email … --name "…"   # compte TechNova (CLI seule)
 uv run uvicorn app.console.main:app --reload --port 8001   # console TechNova (SM_PLATFORM_*)
 uv run stockmanager notifications run     # rappels d'échéance (cron quotidien, idempotent)
+uv run stockmanager tenant export --tenant-id … --out … --database-url …  # copie restaurée
+../ops/backup/sm-backup-drill.sh          # exercice PITR mesuré (cluster temporaire)
 #   licences : SM_SIGNING_SERVICE_URL, SM_SIGNING_CLIENT_SECRET, SM_LICENSE_PUBLIC_KEYS_FILE
 
 # Signing Service (depuis signing-service/, déployé À PART ; clé privée hors dépôt)

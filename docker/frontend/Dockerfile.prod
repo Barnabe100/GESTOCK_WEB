@@ -1,0 +1,15 @@
+# Image frontend de PRODUCTION — fichiers statiques construits, servis par nginx non root.
+# Application des entreprises sur le port 8080 ; console TechNova (/tech-admin) sur le port 8081,
+# à n'exposer que sur un réseau d'administration (docs/DEPLOIEMENT.md §3). Amonts configurés par
+# l'environnement (SM_API_UPSTREAM, SM_CONSOLE_UPSTREAM) ; aucun domaine en dur.
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+COPY docker/nginx/stockmanager.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 8080 8081

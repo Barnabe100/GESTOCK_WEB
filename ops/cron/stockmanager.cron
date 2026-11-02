@@ -1,0 +1,20 @@
+# Tâches planifiées de StockManager Web (exemple : /etc/cron.d/stockmanager). Heures en UTC.
+# Chaque commande lit son environnement depuis /etc/stockmanager/*.env (droits 0600, hors dépôt).
+# Adapter « docker compose … exec/run » si l'application tourne en conteneurs
+# (docs/DEPLOIEMENT.md §5). Toute sortie non vide est envoyée par cron à MAILTO.
+MAILTO=exploitation@example.invalid
+SHELL=/bin/bash
+
+# Sauvegarde de base quotidienne (vérifiée), puis rétention 30 jours.
+15 1 * * *  postgres  set -a; . /etc/stockmanager/backup.env; set +a; /opt/stockmanager/backup/sm-base-backup.sh >/dev/null && /opt/stockmanager/backup/sm-backup-prune.sh >/dev/null
+# Copie hors site de l'archive : script À FOURNIR selon l'outil retenu (rclone, restic, rsync
+# vers un autre site) — décision d'exploitation, non livrée (docs/exploitation §3).
+# 45 1 * * *  backup  /opt/stockmanager/backup/offsite-sync.sh
+# Rappels d'échéance des abonnements (idempotent) et conservation (30 jours).
+5 3 * * *   stockmgr  set -a; . /etc/stockmanager/console.env; set +a; stockmanager notifications run
+25 3 * * *  stockmgr  set -a; . /etc/stockmanager/purge.env; set +a; stockmanager notifications purge
+# Supervision toutes les 5 minutes (ou sonde de l'outil de supervision).
+*/5 * * * * monitor   set -a; . /etc/stockmanager/monitor.env; set +a; /opt/stockmanager/monitoring/sm-healthcheck.sh >/dev/null || echo "StockManager : supervision en anomalie"
+# Exercice de restauration mensuel : sur un hôte de RECETTE disposant du dépôt (cluster
+# temporaire, aucune base de production touchée) ; il est aussi joué par la CI à chaque commit.
+# 30 4 1 * *  recette  /srv/stockmanager/ops/backup/sm-backup-drill.sh >/dev/null

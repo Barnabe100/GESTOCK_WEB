@@ -18,6 +18,7 @@ const NAV = [
   { to: `${CONSOLE_BASE}/payments`, icon: 'pi pi-wallet', label: 'console:nav.payments' },
   { to: `${CONSOLE_BASE}/licenses`, icon: 'pi pi-key', label: 'console:nav.licenses' },
   { to: `${CONSOLE_BASE}/audit`, icon: 'pi pi-history', label: 'console:nav.audit' },
+  { to: `${CONSOLE_BASE}/backups`, icon: 'pi pi-database', label: 'console:nav.backups' },
 ] as const;
 
 function initials(name: string): string {

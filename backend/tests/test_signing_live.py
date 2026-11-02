@@ -282,3 +282,9 @@ def test_no_key_material_is_written_in_the_repository(live: LiveService) -> None
     assert (live.workdir / "key.pem").stat().st_mode & 0o077 == 0  # 0600
     # La clé de test n'est jamais dans le trousseau versionné.
     assert KEY_ID not in load_keyring(None).keys
+
+
+def test_only_http_signing_urls_are_accepted(live: LiveService) -> None:
+    for url in ("file:///etc/passwd", "ftp://signing.example.invalid", "signing:8100"):
+        with pytest.raises(ValueError, match="http:// ou https://"):
+            _settings(live, signing_service_url=url)

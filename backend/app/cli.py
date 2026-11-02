@@ -376,6 +376,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     purge.set_defaults(func=cmd_notifications_purge)
 
+    tenant = sub.add_parser("tenant", help="Exploitation d'une entreprise")
+    tenant_sub = tenant.add_subparsers(dest="tenant_command", required=True)
+    export = tenant_sub.add_parser(
+        "export",
+        help="Exporter les données d'une entreprise (lecture seule, depuis une copie restaurée)",
+    )
+    export.add_argument("--tenant-id", required=True, type=uuid.UUID)
+    export.add_argument("--out", required=True, help="Répertoire de sortie (neuf)")
+    export.add_argument(
+        "--database-url",
+        help="Base à lire (copie restaurée) ; défaut : SM_MIGRATION_DATABASE_URL",
+    )
+    export.set_defaults(func=cmd_tenant_export)
+
     signing = sub.add_parser("signing", help="Service de signature des licences")
     signing_sub = signing.add_subparsers(dest="signing_command", required=True)
     signing_sub.add_parser(
@@ -383,6 +397,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Signer et vérifier une sonde (service joignable, secret HMAC et trousseau cohérents)",
     ).set_defaults(func=cmd_signing_check)
     return parser
+
+
+def cmd_tenant_export(args: argparse.Namespace, settings: Settings) -> int:
+    """Export d'une entreprise (restauration par tenant, étape d'extraction) : lecture seule."""
+    from pathlib import Path
+
+    from app.platform.backup.tenant_export import TenantExportError, export_tenant
+
+    url = args.database_url or settings.migration_database_url
+    try:
+        manifest = export_tenant(create_db_engine(url, settings), args.tenant_id, Path(args.out))
+    except TenantExportError as exc:
+        print(f"Erreur : {exc}", file=sys.stderr)
+        return 1
+    total = sum(t["rows"] for t in manifest["tables"])
+    print(
+        f"Entreprise « {manifest['tenant_name']} » exportée : {len(manifest['tables'])} tables, "
+        f"{total} lignes (révision {manifest['alembic_revision']}) → {args.out}"
+    )
+    return 0
 
 
 def cmd_signing_check(args: argparse.Namespace, settings: Settings) -> int:

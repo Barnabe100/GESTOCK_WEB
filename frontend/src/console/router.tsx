@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { NotFound } from '@/shared/ui/NotFound';
 
 import { CONSOLE_BASE, ConsoleLayout } from './ConsoleLayout';
+import { BackupsPage } from './pages/BackupsPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ConsoleDashboardPage } from './pages/ConsoleDashboardPage';
 import { ConsoleLoginPage } from './pages/ConsoleLoginPage';
@@ -35,6 +36,7 @@ export const consoleRoutes = [
       { path: 'licenses', element: <LicensesPage /> },
       { path: 'licenses/:id', element: <LicenseDetailPage /> },
       { path: 'audit', element: <PlatformAuditPage /> },
+      { path: 'backups', element: <BackupsPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

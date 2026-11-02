@@ -518,3 +518,38 @@ class LicenseReissueIn(ReasonIn):
 
 
 DashboardOut.model_rebuild()
+
+
+# --- Sauvegardes (lecture seule, docs/exploitation/SAUVEGARDE_RESTAURATION.md) -----------------
+
+
+class ArchivingStatusOut(BaseModel):
+    archive_mode: str | None
+    archive_timeout_seconds: int
+    wal_level: str | None
+    archived_count: int
+    last_archived_wal: str | None
+    last_archived_at: datetime | None
+    last_archived_age_seconds: int | None
+    failed_count: int
+    last_failed_wal: str | None
+    last_failed_at: datetime | None
+    ok: bool
+
+
+class BaseBackupsStatusOut(BaseModel):
+    configured: bool  # répertoire des sauvegardes monté dans la console
+    count: int
+    latest_label: str | None
+    latest_finished_at: datetime | None
+    latest_age_hours: int | None
+    unverified_count: int
+    ok: bool
+    max_age_hours: int
+
+
+class BackupStatusOut(BaseModel):
+    checked_at: datetime
+    rpo_seconds: int
+    archiving: ArchivingStatusOut
+    base_backups: BaseBackupsStatusOut

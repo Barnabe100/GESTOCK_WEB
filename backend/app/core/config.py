@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     signing_timeout_seconds: float = 10.0
     # Trousseau des clés PUBLIQUES (vérification) ; défaut : fichier versionné du backend.
     license_public_keys_file: Path | None = None
+    # Répertoire des sauvegardes monté en LECTURE SEULE dans la console (état des sauvegardes de
+    # base, docs/exploitation/SAUVEGARDE_RESTAURATION.md) ; facultatif.
+    backup_dir: Path | None = None
     # Postes (3.3-B3) : durée pendant laquelle une installation peut fonctionner sans contacter
     # le serveur (renvoyée au client lors du contrôle ; au-delà, poste signalé « non vu »).
     activation_offline_grace_days: int = 7
@@ -217,6 +220,9 @@ class Settings(BaseSettings):
         if any(value < 1 for value in limits):
             raise ValueError("Réglages SM_QR_* : entiers strictement positifs attendus")
         if self.signing_service_url:
+            # Requête de signature par urllib : jamais de schéma ``file:`` ni exotique.
+            if not self.signing_service_url.startswith(("http://", "https://")):
+                raise ValueError("SM_SIGNING_SERVICE_URL : adresse http:// ou https:// attendue")
             signing_secret = (
                 self.signing_client_secret.get_secret_value() if self.signing_client_secret else ""
             )

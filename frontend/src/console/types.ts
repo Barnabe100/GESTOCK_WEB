@@ -361,3 +361,32 @@ export interface ConsoleActivation {
   release_source: 'TENANT' | 'TECHNOVA' | null;
   release_reason: string | null;
 }
+
+/** État des sauvegardes (lecture seule, docs/exploitation/SAUVEGARDE_RESTAURATION.md). */
+export interface BackupStatus {
+  checked_at: string;
+  rpo_seconds: number;
+  archiving: {
+    archive_mode: string | null;
+    archive_timeout_seconds: number;
+    wal_level: string | null;
+    archived_count: number;
+    last_archived_wal: string | null;
+    last_archived_at: string | null;
+    last_archived_age_seconds: number | null;
+    failed_count: number;
+    last_failed_wal: string | null;
+    last_failed_at: string | null;
+    ok: boolean;
+  };
+  base_backups: {
+    configured: boolean;
+    count: number;
+    latest_label: string | null;
+    latest_finished_at: string | null;
+    latest_age_hours: number | null;
+    unverified_count: number;
+    ok: boolean;
+    max_age_hours: number;
+  };
+}

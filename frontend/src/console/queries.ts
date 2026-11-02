@@ -4,6 +4,7 @@ import { parseError } from '@/core/api/client';
 
 import { CONSOLE_API_BASE, consoleRequest } from './api';
 import type {
+  BackupStatus,
   Catalog,
   ConsoleActivation,
   ConsoleLicense,
@@ -26,6 +27,13 @@ export const useDashboard = () =>
   useQuery({
     queryKey: ['console', 'dashboard'],
     queryFn: () => consoleRequest<Dashboard>('/dashboard'),
+  });
+
+export const useBackupStatus = () =>
+  useQuery({
+    queryKey: ['console', 'backups'],
+    queryFn: () => consoleRequest<BackupStatus>('/operations/backups'),
+    refetchInterval: 60_000,
   });
 
 export const usePlans = () =>

@@ -12,7 +12,8 @@
     "tenants": "Tenants",
     "payments": "Paiements",
     "audit": "Journal de la plateforme",
-    "licenses": "Licences"
+    "licenses": "Licences",
+    "backups": "Sauvegardes"
   },
   "login": {
     "title": "Console TechNova",
@@ -454,5 +455,29 @@
     "renewalSame": "Reconduction (aucun changement demandé)",
     "proposedActivations": "Postes proposés",
     "graceContinuity": "Renouvellement pendant le délai de grâce : la période commence au lendemain de la licence échue (aucun jour perdu, aucun jour offert)."
+  },
+  "backups": {
+    "title": "Sauvegardes",
+    "subtitle": "État de l'archivage continu et des sauvegardes de base (lecture seule). Sauvegarder et restaurer sont des opérations d'exploitation documentées, jamais une action de la console.",
+    "archiving": "Archivage continu (WAL)",
+    "base": "Sauvegardes de base",
+    "ok": "Conforme",
+    "alert": "À vérifier",
+    "mode": "Mode d'archivage",
+    "timeout": "Archivage forcé au plus toutes les",
+    "lastArchived": "Dernier WAL archivé",
+    "age": "il y a {{value}}",
+    "never": "Jamais",
+    "failed": "Échecs d'archivage",
+    "lastFailed": "Dernier échec",
+    "rpo": "Objectif de perte maximale (RPO) : {{minutes}} min",
+    "notConfigured": "Répertoire des sauvegardes non monté dans la console (SM_BACKUP_DIR) : état des sauvegardes de base indisponible.",
+    "count": "Sauvegardes conservées",
+    "latest": "Dernière sauvegarde vérifiée",
+    "unverified": "Sauvegardes non vérifiées",
+    "maxAge": "Âge maximal attendu : {{hours}} h",
+    "seconds": "{{count}} s",
+    "hours": "{{count}} h",
+    "procedure": "Procédure : docs/exploitation/SAUVEGARDE_RESTAURATION.md"
   }
 }

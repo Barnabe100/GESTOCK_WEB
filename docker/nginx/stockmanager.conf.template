@@ -1,0 +1,69 @@
+# nginx — StockManager Web (production). Gabarit : variables ${SM_*} remplacées au démarrage
+# par l'image officielle (envsubst). TLS terminé en amont (mandataire / équilibreur) : HSTS est
+# émis ici, ignoré par les navigateurs tant que le site n'est pas servi en HTTPS.
+
+# En-têtes communs (application et console).
+# CSP : aucune ressource tierce ; styles en ligne requis par PrimeReact.
+# Pages publiques QR (/q) : même politique (ADR-0052).
+
+server {
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  server_tokens off;
+  client_max_body_size 10m;
+
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(self), microphone=(), geolocation=()" always;
+
+  location /api/ {
+    proxy_pass ${SM_API_UPSTREAM};
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    proxy_read_timeout 120s;
+  }
+  # Console TechNova : jamais servie par l'application des entreprises.
+  location /platform-api/ { return 404; }
+  location /tech-admin { return 404; }
+
+  # Fichiers à empreinte : cache long ; pages : toujours revalidées.
+  location /assets/ { expires 1y; }
+  location / {
+    expires -1;
+    try_files $uri $uri/ /index.html;
+  }
+}
+
+server {
+  listen 8081;
+  server_name _;
+  root /usr/share/nginx/html;
+  server_tokens off;
+
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "no-referrer" always;
+  add_header X-Robots-Tag "noindex, nofollow" always;
+
+  location /platform-api/ {
+    proxy_pass ${SM_CONSOLE_UPSTREAM};
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+  }
+  location /api/ { return 404; }
+  location = / { return 302 /tech-admin; }
+  # Fichiers à empreinte : cache long ; pages : toujours revalidées.
+  location /assets/ { expires 1y; }
+  location / {
+    expires -1;
+    try_files $uri $uri/ /index.html;
+  }
+}

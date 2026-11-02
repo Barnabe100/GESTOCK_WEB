@@ -1,0 +1,96 @@
+# Exemple de déploiement de PRODUCTION (docs/DEPLOIEMENT.md). Ne remplace PAS
+# docker-compose.yml (développement). Copier, adapter, et fournir les secrets par
+# l'environnement (fichier .env.production hors dépôt, droits 0600) : AUCUNE valeur par défaut
+# pour un secret — le démarrage échoue explicitement s'il manque.
+#
+#   docker compose -f docker-compose.prod.example.yml --env-file /etc/stockmanager/.env.production up -d
+#
+# Le Signing Service n'est PAS ici : il est déployé à part (signing-service/README.md).
+
+x-backend: &backend
+  image: ${SM_IMAGE_BACKEND:?image backend (registre:étiquette)}
+  restart: unless-stopped
+  env_file: ${SM_ENV_FILE:?chemin du fichier d'environnement de production}
+  environment:
+    SM_ENVIRONMENT: production
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stockmanager
+      POSTGRES_USER: ${POSTGRES_USER:?rôle propriétaire}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?mot de passe du rôle propriétaire}
+      POSTGRES_APP_USER: stockmanager_app
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?}
+      POSTGRES_PLATFORM_USER: stockmanager_platform
+      POSTGRES_PLATFORM_PASSWORD: ${POSTGRES_PLATFORM_PASSWORD:?}
+      POSTGRES_PURGE_USER: stockmanager_purge
+      POSTGRES_PURGE_PASSWORD: ${POSTGRES_PURGE_PASSWORD:?}
+      SM_BACKUP_DIR: /backups
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/opt/stockmanager/backup/sm-wal-archive.sh %p %f
+      - -c
+      - archive_timeout=300
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes (autre disque)}:/backups
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./ops/backup:/opt/stockmanager/backup:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d stockmanager"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    # Aucun port publié : la base n'est joignable que par le réseau interne.
+
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["sh", "-c", "alembic upgrade head && stockmanager catalog sync"]
+
+  api:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  console:
+    <<: *backend
+    command: ["uvicorn", "app.console.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers", "--no-server-header"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: ${SM_IMAGE_FRONTEND:?image frontend (registre:étiquette)}
+    restart: unless-stopped
+    environment:
+      SM_API_UPSTREAM: http://api:8000
+      SM_CONSOLE_UPSTREAM: http://console:8001
+    ports:
+      # Application des entreprises : derrière le mandataire TLS.
+      - "127.0.0.1:8080:8080"
+      # Console TechNova : réseau d'administration / VPN SEULEMENT.
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      - api
+      - console
+
+volumes:
+  db-data:
