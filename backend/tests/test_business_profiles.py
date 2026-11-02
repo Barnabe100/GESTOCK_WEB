@@ -236,14 +236,16 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     groups = _groups(caps)
     # ADR-0049 / ADR-0050 : menu (R1), commandes (R2), tables (R5, 0048) et cuisine (R6, 0050)
     # — activés par défaut sur un nouveau site Restaurant ; QR (R7, 0058) : livré mais
-    # facultatif (non activé) ; recettes : planifiées.
+    # facultatif (non activé) ; recettes (R8, 0060) : facultatives ; rapports (R10, 0062) :
+    # livrés, activés par défaut sur un NOUVEAU site par le profil.
     assert groups["restaurant"] == [
         "restaurant.tables",
         "restaurant.orders",
         "restaurant.kitchen",
         "restaurant.menu",
     ]
-    assert list(groups) == ["home", "restaurant", "sales", "cash", "stock", "admin"]
+    assert list(groups) == ["home", "restaurant", "sales", "cash", "stock", "reports", "admin"]
+    assert groups["reports"] == ["reports"]
     assert groups["stock"] == ["catalog", "stock", "inventory_count", "alerts", "suppliers"]
     # Indicateurs déclarés par le profil pour les modules effectifs seulement ; l'interface
     # n'affiche que ceux qu'elle implémente.
@@ -257,10 +259,7 @@ def test_restaurant_experience_shows_only_what_really_exists(provision: Any, api
     ]
     assert caps["ux"]["dashboard"]["widgets"][:2] == ["sales:today", "cash_register:open_sessions"]
     # « À venir » : modules planifiés du profil, dans l'ordre de sa navigation.
-    assert caps["ux"]["upcoming"] == [
-        "reports",
-        "payments",
-    ]
+    assert caps["ux"]["upcoming"] == ["payments"]
     assert caps["ux"]["theme"] == {"accent": "orange", "density": "comfortable", "icon": None}
     assert caps["terminology"]["fr"]["catalog"]["items"] == "Produits"
     # Aucune route planifiée n'est servie ; les modules livrés le sont. Recettes (R8) : livrées
@@ -675,7 +674,15 @@ def test_new_profile_is_added_by_configuration_only(
         caps = _caps(api_for("owner@livres.example.com"))
         assert caps["profile"]["code"] == "retail.librairie"
         assert caps["profile"]["sector"]["code"] == "retail"
-        assert list(_groups(caps)) == ["home", "catalog", "stock", "sales", "cash", "admin"]
+        assert list(_groups(caps)) == [
+            "home",
+            "catalog",
+            "stock",
+            "sales",
+            "cash",
+            "reports",
+            "admin",
+        ]
         assert caps["terminology"]["fr"]["catalog"]["items"] == "Ouvrages"
         assert "sales:recent" in caps["ux"]["dashboard"]["widgets"]
     finally:

@@ -19,7 +19,6 @@ PLANNED_MODULES: tuple[ModuleManifest, ...] = (
     # la caisse (``cash_register``) depuis la Phase 2.9 (ADR-0022), le point de vente (``pos``)
     # depuis la Phase 3.0 (ADR-0023).
     _planned("payments", "sales"),
-    _planned("reports"),
     # Restauration (ADR-0049) : ``restaurant.menu`` (R1), ``restaurant.orders`` (R2) et
     # ``restaurant.tables`` (R5) et ``restaurant.kitchen`` (R6) sont livrés dans leurs paquets ;
     # ``restaurant.qr`` (R7) et ``restaurant.recipes`` (R8, paquet ``restaurant_recipes``) ont le

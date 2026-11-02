@@ -48,7 +48,8 @@ modules = ["organization", "users", "subscription", "audit"]
 [dashboard]
 widgets = [
   "alerts:out_of_stock", "alerts:low_stock", "automobile.workshop:open_orders", "sales:today",
-  "sales:drafts", "receivables:outstanding", "stock:draft_transfers", "sales:recent",
+  "sales:drafts", "receivables:outstanding", "stock:draft_transfers", "reports:month_revenue",
+  "sales:recent",
 ]
 shortcuts = ["sales:new", "pos:open", "stock:entry", "stock:transfer"]
 

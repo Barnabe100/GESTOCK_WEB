@@ -58,7 +58,7 @@ modules = ["organization", "users", "subscription", "audit"]
 widgets = [
   "sales:today", "cash_register:open_sessions", "restaurant.tables:occupied",
   "restaurant.orders:in_progress", "restaurant.kitchen:ready", "receivables:outstanding",
-  "alerts:out_of_stock", "alerts:low_stock", "sales:recent",
+  "alerts:out_of_stock", "alerts:low_stock", "reports:month_revenue", "sales:recent",
 ]
 shortcuts = ["pos:open", "sales:new", "stock:entry"]
 

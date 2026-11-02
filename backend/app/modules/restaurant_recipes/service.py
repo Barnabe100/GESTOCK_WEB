@@ -17,7 +17,7 @@ consulte les recettes (module effectif, rôles du site). Ne valide pas la transa
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -55,9 +55,12 @@ from app.modules.restaurant_recipes.models import (
     RecipeVersion,
 )
 from app.modules.restaurant_recipes.permissions import RECIPE_VIEW
+from app.modules.restaurant_recipes.profitability import profitability_rows
 from app.modules.restaurant_recipes.schemas import (
     AvailabilityLineOut,
     CostLineOut,
+    ProfitabilityPage,
+    ProfitabilityRowOut,
     RecipeCreate,
     RecipeLineIn,
     RecipeLineOut,
@@ -71,8 +74,10 @@ from app.modules.restaurant_recipes.schemas import (
     SiteCostOut,
 )
 from app.modules.restaurant_recipes.stock_view import site_assortment, site_stock
+from app.modules.stock.api import tenant_today
 from app.platform.audit.service import audit_action
 from app.platform.context import RequestContext
+from app.platform.costs import COST_VIEW
 from app.platform.identity.models import User
 from app.platform.tenancy.models import Site
 from app.shared.pagination import PageParams, apply_sort, paginate_rows, search_filter, text_sort
@@ -84,6 +89,10 @@ ZERO = Decimal("0")
 
 def _refuse(message: str, code: str, **extra: Any) -> BusinessRuleError:
     return BusinessRuleError(message, code=code, extra=extra or None)
+
+
+#: Période maximale d'un rapport de rentabilité (comme les rapports, ADR-0055).
+MAX_REPORT_DAYS = 732
 
 
 class RecipeService:
@@ -462,6 +471,45 @@ class RecipeService:
         ]
 
     # --- Sites, coût de revient, disponibilité -----------------------------------------------
+
+    def profitability(
+        self,
+        params: PageParams,
+        date_from: date | None,
+        date_to: date | None,
+        site_id: uuid.UUID | None,
+    ) -> ProfitabilityPage:
+        """Rentabilité des plats (palier R10) sur les sites lisibles ; par défaut le mois en
+        cours du tenant ; période de deux ans au plus."""
+        today = tenant_today(self.ctx, self.now)
+        start, end = date_from or today.replace(day=1), date_to or today
+        if start > end:
+            raise BusinessRuleError(
+                "La date de début doit précéder la date de fin", code="report_period_invalid"
+            )
+        if (end - start).days + 1 > MAX_REPORT_DAYS:
+            raise BusinessRuleError(
+                "Période trop longue : deux ans au plus",
+                code="report_period_too_long",
+                extra={"max_days": MAX_REPORT_DAYS},
+            )
+        rows, total = profitability_rows(
+            self.db,
+            self.ctx.tenant.id,
+            self.readable_site_ids(site_id),
+            start,
+            end,
+            params,
+            costs_visible=COST_VIEW in self.ctx.capabilities.permissions,
+        )
+        return ProfitabilityPage(
+            date_from=start,
+            date_to=end,
+            items=[ProfitabilityRowOut(**row) for row in rows],
+            total=total,
+            limit=params.limit,
+            offset=params.offset,
+        )
 
     def readable_site_ids(self, site_id: uuid.UUID | None) -> list[uuid.UUID]:
         """Sites où le membre consulte les recettes (module effectif, rôles du site)."""

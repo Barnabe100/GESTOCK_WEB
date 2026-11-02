@@ -9,6 +9,7 @@ import { inventoryCountModule } from '@/modules/inventory_count';
 import { organizationModule } from '@/modules/organization';
 import { posModule } from '@/modules/pos';
 import { receivablesModule } from '@/modules/receivables';
+import { reportsModule } from '@/modules/reports';
 import { restaurantKitchenModule } from '@/modules/restaurant_kitchen';
 import { restaurantMenuModule } from '@/modules/restaurant_menu';
 import { restaurantOrdersModule } from '@/modules/restaurant_orders';
@@ -43,6 +44,7 @@ export const FRONTEND_MODULES: readonly FrontendModule[] = [
   restaurantQrModule,
   restaurantKitchenModule,
   restaurantRecipesModule,
+  reportsModule,
   organizationModule,
   usersModule,
   subscriptionModule,

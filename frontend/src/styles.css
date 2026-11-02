@@ -3584,3 +3584,24 @@ a {
     padding-bottom: var(--sm-space-3);
   }
 }
+
+/* Rapports (palier R10) : barre proportionnelle au chiffre d'affaires d'une période (visuel
+   seulement, la valeur est toujours écrite à côté). */
+.sm-report-bar-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sm-space-2);
+  width: 100%;
+  min-width: 10rem;
+}
+
+.sm-report-bar {
+  display: inline-block;
+  height: 0.5rem;
+  max-width: 6rem;
+  border-radius: 999px;
+  background: var(--sm-primary);
+  opacity: 0.6;
+  flex-shrink: 0;
+}

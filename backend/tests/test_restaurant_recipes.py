@@ -909,3 +909,51 @@ def test_kitchen_board_lines_carry_the_ordered_presentation(
         )
     )
     assert sheet["portions"] == "4.000"
+
+
+# --- Rentabilité (palier R10, ADR-0055) -----------------------------------------------------------
+
+
+def test_profitability_uses_the_real_cost_of_consumed_ingredients(
+    kit: SimpleNamespace, recipe: dict[str, Any]
+) -> None:
+    k = kit
+    for _ in range(2):
+        _, validated = _sell(k, [{"article_id": k.dish, "quantity": "2"}])
+        assert validated.status_code == 200, validated.text
+    # Vente annulée : exclue (ses consommations sont restaurées).
+    cancelled, validated = _sell(k, [{"article_id": k.dish, "quantity": "1"}], pay=False)
+    assert validated.status_code == 200, validated.text
+    cancel = k.owner.post(f"/sales/{cancelled['id']}/cancel", json={"reason": "Erreur"})
+    assert cancel.status_code == 200, cancel.text
+    page = _ok(k.owner.get(f"{BASE}/profitability"))
+    [row] = page["items"]
+    # 4 portions : 1 kg de riz (800), 0,2 l d'huile (240), 4 œufs (400) = 1 440.
+    assert (row["article_id"], row["portions"], row["sales_count"]) == (k.dish, "4.000", 2)
+    assert (row["revenue"], row["ingredient_cost"], row["portion_cost"]) == (
+        "6000.00",
+        "1440.00",
+        "360.00",
+    )
+    assert (row["margin"], row["margin_rate"]) == ("4560.00", "76.00")
+    # Consultant : coûts et marges ABSENTS.
+    viewer = _member(k, "consultant@rcp.example.com", "viewer")
+    [masked] = _ok(viewer.get(f"{BASE}/profitability"))["items"]
+    assert not {"ingredient_cost", "portion_cost", "margin", "margin_rate"} & set(masked)
+    assert masked["revenue"] == "6000.00"
+    assert _code(viewer.get(f"{BASE}/profitability", params={"sort": "-margin"})) == (
+        400,
+        "invalid_sort",
+    )
+    # Période passée : vide ; période invalide : refusée.
+    past = _ok(
+        k.owner.get(
+            f"{BASE}/profitability", params={"date_from": "2020-01-01", "date_to": "2020-01-31"}
+        )
+    )
+    assert past["items"] == []
+    assert _code(
+        k.owner.get(
+            f"{BASE}/profitability", params={"date_from": "2020-02-01", "date_to": "2020-01-01"}
+        )
+    ) == (422, "report_period_invalid")

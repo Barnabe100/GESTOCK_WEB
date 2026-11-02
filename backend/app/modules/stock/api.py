@@ -35,6 +35,7 @@ from app.modules.stock.lot_service import (
     site_lot_balances,
 )
 from app.modules.stock.models import MovementType
+from app.modules.stock.reporting import outflow_costs_query
 from app.modules.stock.schemas import AvailableLotOut, AvailableLotsOut, LevelOut
 from app.modules.stock.sites import (
     ensure_document_site,
@@ -58,6 +59,7 @@ from app.modules.stock.stock_service import (
 from app.platform.context import RequestContext
 
 __all__ = [
+    "outflow_costs_query",
     "LotInput",
     "LotState",
     "check_known_lots",

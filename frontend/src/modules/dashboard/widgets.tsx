@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useCapabilities } from '@/core/capabilities/CapabilitiesContext';
 import { useReceivableSummary } from '@/modules/receivables/api';
+import { REPORT_VIEW, useSalesSummary } from '@/modules/reports/api';
 import { formatMoney } from '@/shared/lib/decimal';
 import { MetricCard } from '@/shared/ui/MetricCard';
 
@@ -100,6 +101,28 @@ function SalesToday() {
   );
 }
 
+/** Palier R10 : chiffre d'affaires du mois en cours (remises déduites, calculé par le serveur). */
+function MonthRevenue() {
+  const { t } = useTranslation();
+  const { capabilities } = useCapabilities();
+  const { currency, locale, timezone } = capabilities.tenant;
+  const today = tenantToday(timezone);
+  const summary = useSalesSummary(
+    { date_from: `${today.slice(0, 8)}01`, date_to: today, site_id: null, channel: null },
+    'month',
+  );
+  const revenue = summary.data?.totals.revenue;
+  return (
+    <MetricCard
+      icon="pi pi-chart-bar"
+      tone="info"
+      value={revenue ? formatMoney(revenue, currency, locale) : '—'}
+      label={t('reports.monthRevenue')}
+      to="/reports"
+    />
+  );
+}
+
 function DraftSales() {
   const { t } = useTranslation();
   const count = useDocumentCount('/sales', 'status=DRAFT', true);
@@ -193,6 +216,12 @@ export const DASHBOARD_WIDGETS: readonly DashboardWidget[] = [
     kind: 'metric',
     permission: 'cash_register.session.view',
     component: OpenCashSessions,
+  },
+  {
+    id: 'reports:month_revenue',
+    kind: 'metric',
+    permission: REPORT_VIEW,
+    component: MonthRevenue,
   },
   { id: 'sales:recent', kind: 'panel', permission: 'sales.sale.view', component: RecentSalesPanel },
 ];

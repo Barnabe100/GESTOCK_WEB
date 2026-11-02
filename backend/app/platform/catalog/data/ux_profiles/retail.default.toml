@@ -53,7 +53,7 @@ modules = ["organization", "users", "subscription", "audit"]
 widgets = [
   "alerts:out_of_stock", "alerts:low_stock", "sales:today", "sales:drafts",
   "stock:draft_transfers", "receivables:outstanding", "cash_register:open_sessions",
-  "sales:recent",
+  "reports:month_revenue", "sales:recent",
 ]
 shortcuts = ["pos:open", "sales:new", "stock:entry", "stock:exit", "stock:transfer"]
 

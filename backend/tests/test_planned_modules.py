@@ -64,9 +64,10 @@ def resto(provision: Any, api_for: Any) -> SimpleNamespace:
 
 
 def test_the_registry_declares_planned_modules() -> None:
-    assert PLANNED_EXAMPLE in PLANNED and "reports" in PLANNED
+    assert PLANNED_EXAMPLE in PLANNED
     assert "pos" not in PLANNED and "alerts" not in PLANNED
-    # Livrés (0048, 0050, 0058, 0060) : plus jamais « Bientôt disponible ».
+    # Livrés (0048, 0050, 0058, 0060, 0062) : plus jamais « Bientôt disponible ».
+    assert "reports" not in PLANNED
     assert "restaurant.orders" not in PLANNED and "restaurant.tables" not in PLANNED
     assert "restaurant.kitchen" not in PLANNED and "restaurant.qr" not in PLANNED
     assert "restaurant.recipes" not in PLANNED
@@ -137,17 +138,18 @@ def test_forged_direct_request_is_refused(
     assert PLANNED_EXAMPLE not in _activation_audits(owner_db, resto.tenant)
 
 
-def test_planned_module_can_still_be_disabled(resto: SimpleNamespace) -> None:
+def test_planned_module_can_still_be_disabled(provision: Any, api_for: Any) -> None:
     # Activations planifiées inertes écrites par l'initialisation (défauts du profil) :
-    # désactivation permise, réactivation refusée.
-    # Rapports : planifié, activé par défaut par le profil de restauration (D11 : les recettes
-    # y sont désormais facultatives).
-    reports = _site_modules(resto.owner, resto.site)["reports"]
-    assert reports["status"] == "planned" and reports["activated_for_site"] is True
-    assert set_site_module(resto.owner, resto.site, "reports", False).status_code == 204
-    reports = _site_modules(resto.owner, resto.site)["reports"]
-    assert reports["activated_for_site"] is False
-    refused = set_site_module(resto.owner, resto.site, "reports", True)
+    # désactivation permise, réactivation refusée. Paiements électroniques : planifié, activé
+    # par défaut par le profil de restauration (les rapports sont livrés depuis 0062).
+    t = provision("resto-e1-off", profile="restaurant.maquis", plan="ENTREPRISE")
+    owner = api_for("owner@resto-e1-off.example.com")
+    planned = _site_modules(owner, t.site_id)[PLANNED_EXAMPLE]
+    assert planned["status"] == "planned" and planned["activated_for_site"] is True
+    assert set_site_module(owner, t.site_id, PLANNED_EXAMPLE, False).status_code == 204
+    planned = _site_modules(owner, t.site_id)[PLANNED_EXAMPLE]
+    assert planned["activated_for_site"] is False
+    refused = set_site_module(owner, t.site_id, PLANNED_EXAMPLE, True)
     assert refused.json()["code"] == "module_not_implemented"
 
 

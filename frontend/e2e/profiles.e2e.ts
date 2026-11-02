@@ -110,6 +110,8 @@ test.describe('Profils d’activité', () => {
       'Caisse',
       'Catalogue',
       'Stock',
+      // Rapports (R10, 0062) : livrés, activés par défaut sur un nouveau site.
+      'Rapports',
       'Administration',
     ]);
     // Point de vente en tête de la rubrique des ventes.
@@ -158,8 +160,9 @@ test.describe('Profils d’activité', () => {
       'restaurant.kitchen',
       'restaurant.menu',
     ]);
-    // Recettes livrées (R8, 0060) : plus jamais « à venir » ; rapports encore planifiés.
-    expect(caps.ux.upcoming).toEqual(expect.arrayContaining(['reports']));
+    // Recettes (R8, 0060) et rapports (R10, 0062) livrés : plus jamais « à venir ».
+    expect(caps.ux.upcoming).toEqual(['payments']);
+    expect(caps.ux.upcoming).not.toContain('reports');
     expect(caps.ux.upcoming).not.toContain('restaurant.recipes');
     expect(caps.ux.upcoming).not.toContain('restaurant.kitchen');
     expect(caps.ux.upcoming).not.toContain('restaurant.tables');
@@ -175,6 +178,7 @@ test.describe('Profils d’activité', () => {
       'Ventes et clients',
       'Caisse',
       'Stock',
+      'Rapports',
       'Administration',
     ]);
     const restaurantLinks = sidebar(page).locator('ul[aria-labelledby="nav-restaurant"] a');
@@ -193,7 +197,8 @@ test.describe('Profils d’activité', () => {
 
     // Annoncées « à venir », sans lien ; les modules livrés n'y figurent plus.
     const upcoming = page.getByRole('list', { name: 'À venir pour votre activité' });
-    await expect(upcoming).toContainText('Rapports');
+    await expect(upcoming).toContainText('Paiements électroniques');
+    await expect(upcoming).not.toContainText('Rapports');
     await expect(upcoming).not.toContainText('Recettes');
     await expect(upcoming).not.toContainText('Cuisine');
     await expect(upcoming).not.toContainText('Tables');
@@ -210,9 +215,9 @@ test.describe('Profils d’activité', () => {
     await expect(
       page.getByRole('main').getByText('Fonction non disponible sur ce site'),
     ).toBeVisible();
-    // Module planifié : aucune route (page introuvable).
+    // Rapports (R10) : livrés, activés par défaut sur ce NOUVEAU site par le profil.
     await page.goto('/reports');
-    await expect(page.getByRole('main').getByText('Page introuvable')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Rapports', exact: true })).toBeVisible();
   });
 
   test('Quincaillerie : catalogue et stock en tête, point de vente disponible', async ({

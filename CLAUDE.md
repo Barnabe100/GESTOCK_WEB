@@ -456,8 +456,16 @@ lignes gérées (FEFO, lots, CMUP inchangé) ; **O10 résolu** : consommations m
 « épuisé ») ; fiche technique en cuisine (`/restaurant/recipes/sheet`) ; permissions
 `restaurant.recipes.recipe.view` / `.manage` (matrice existante). **Navigation responsive** :
 panneau contextuel recalé dans la hauteur visible (`flyoutPosition`), barre et tiroir en
-`100dvh`, zone de menu défilable (DESIGN_SYSTEM §8). **Prochain lot : cadrage R9 rapports**
-(audit et plan à présenter avant toute implémentation, après validation de R8). Ne pas commencer
+`100dvh`, zone de menu défilable (DESIGN_SYSTEM §8). **R9 livré — remises** ([ADR-0054](docs/adr/0054-remises-et-cycle-de-vente.md), migration
+0061) : remise globale par vente (montant ou pourcentage, motif obligatoire), montant et total
+calculés par le serveur, `total = sous-total − remise` garanti en base, permission
+`sales.sale.discount` (Administrateur parmi les rôles de base) ; remboursement après clôture
+(W1), retours partiels, plafond par rôle : propositions à valider. **R10 livré — rapports**
+([ADR-0055](docs/adr/0055-rapports.md), [`REPORTS.md`](docs/architecture/REPORTS.md), migration
+0062) : module `reports` sans table (requêtes `sales.api.report_*`,
+`stock.api.outflow_costs_query`), ventes validées, CA remises déduites, coût réel des sorties,
+marge, répartitions, paiements, rentabilité des recettes (`/restaurant/recipes/profitability`),
+coûts masqués (`REPORT_COST_FIELDS`), exports audités ; activation explicite par site. Ne pas commencer
 un nouveau module métier sans validation. Non implémentés (feuille de route §13) :
 récupération de mot de passe, communications TechNova, MFA, paramètres SaaS en base.
 Phase 3.1 livrée : profils d'activité et
@@ -495,7 +503,7 @@ serveur ; un paiement `CASH` exige une session ouverte du site de la vente et cr
 dans la même transaction ; **la vente ne dépend pas de la caisse** : `cash_register` dépend de
 `sales` et implémente son port `sales/cash_port.py`,
 [`CASH_REGISTER.md`](docs/architecture/CASH_REGISTER.md), ADR-0022).
-Autres modules métier (paiements électroniques, rapports, automobile) :
+Autres modules métier (paiements électroniques, automobile) :
 seulement déclarés `planned`
 (`backend/app/modules/planned.py`). Ne pas les
 commencer sans validation explicite ; s'arrêter à la fin de chaque sous-phase.

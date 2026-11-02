@@ -41,9 +41,20 @@ INVENTORY_COST_FIELDS = frozenset(
 )
 # Recettes (palier R8, ADR-0053, D11) : coût de revient et marge (la marge révèle le coût).
 RECIPE_COST_FIELDS = frozenset(
-    {"unit_cost", "line_cost", "batch_cost", "portion_cost", "margin", "margin_rate"}
+    {
+        "unit_cost",
+        "line_cost",
+        "batch_cost",
+        "portion_cost",
+        "margin",
+        "margin_rate",
+        # Rentabilité (palier R10, ADR-0055) : coût réel des ingrédients consommés.
+        "ingredient_cost",
+    }
 )
 # Journal d'audit : coûts dans les données des évènements (jamais les montants de paiement).
+# Rapports (palier R10, ADR-0055) : coût des sorties, marge et taux de marge.
+REPORT_COST_FIELDS = frozenset({"cost", "margin", "margin_rate"})
 AUDIT_COST_FIELDS = frozenset(
     {
         "purchase_price",

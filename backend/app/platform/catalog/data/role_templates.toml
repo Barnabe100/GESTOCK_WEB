@@ -17,7 +17,7 @@ protected = true
 
 [roles.manager]
 name = "Gestionnaire"
-description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires), alertes et restauration (menu, commandes, zones et tables des sites, réattribution et réglages compris), sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
+description = "Catalogue (consultation des coûts, sans modification des prix), fournisseurs, clients (sans leur limite de crédit), ventes (toutes celles du site, à crédit comprises, sans dépassement de limite, export de l'historique, impression et réimpression des reçus), encaissements et créances (consultation), caisses (sessions, entrées et sorties), point de vente, stock (entrées, sorties, transferts, seuils, emplacements, inventaires), alertes, rapports (consultation et exports) et restauration (menu, commandes, zones et tables des sites, réattribution et réglages compris), sans annulation (sauf des inventaires non validés) ni gestion des motifs de sortie."
 permissions = [
   "catalog.*",
   "suppliers.*",
@@ -37,6 +37,9 @@ permissions = [
   "stock.transfer.validate",
   "alerts.*",
   "inventory_count.*",
+  # Rapports (palier R10, ADR-0055) : consultation et exports ; coûts et marges visibles par
+  # ``catalog.article.cost_view`` (déjà détenue par le Gestionnaire).
+  "reports.*",
   # Restauration (ADR-0049) : toutes les permissions des modules restaurant (menu, commandes,
   # zones et tables) ; celles d'un module planifié restent inertes.
   "restaurant.*",

@@ -4,13 +4,14 @@ Monté avec ``require_module("restaurant.recipes")``. Coûts et marges retirés 
 ``catalog.article.cost_view`` (``RECIPE_COST_FIELDS``, à toute profondeur)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
 from app.modules.restaurant_recipes.permissions import RECIPE_MANAGE, RECIPE_VIEW
 from app.modules.restaurant_recipes.schemas import (
+    ProfitabilityPage,
     RecipeCreate,
     RecipeOut,
     RecipeSummaryOut,
@@ -70,6 +71,20 @@ def recipe_sheet(
 ) -> SheetOut:
     """Fiche technique d'une ligne de commande (écran cuisine, D13)."""
     return _service(db, ctx).sheet(article_id, packaging_id, quantity)
+
+
+@router.get("/profitability", response_model=ProfitabilityPage)
+def recipe_profitability(
+    ctx: RecipeView,
+    db: DbSession,
+    paging: Paging,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    site_id: uuid.UUID | None = None,
+) -> ProfitabilityPage:
+    """Rentabilité des plats vendus sur la période (palier R10) : portions, CA, coût réel des
+    ingrédients consommés, coût par portion, marge (coûts masqués sans ``cost_view``)."""
+    return _service(db, ctx).profitability(paging, date_from, date_to, site_id)
 
 
 @router.get("/{recipe_id}", response_model=RecipeOut)

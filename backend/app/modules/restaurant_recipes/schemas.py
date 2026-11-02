@@ -5,7 +5,7 @@ Champs de coût (``unit_cost``, ``line_cost``, ``portion_cost``, ``batch_cost``,
 (``RECIPE_COST_FIELDS``)."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -206,3 +206,30 @@ class SheetOut(BaseModel):
     portions: Quantity
     instructions: str | None
     lines: list[SheetLineOut]
+
+
+class ProfitabilityRowOut(BaseModel):
+    """Rentabilité d'un plat sur la période (palier R10, ADR-0055) : coûts RÉELS des
+    ingrédients consommés ; ``ingredient_cost``, ``portion_cost``, ``margin`` et
+    ``margin_rate`` masqués sans ``catalog.article.cost_view``."""
+
+    article_id: uuid.UUID
+    reference: str
+    designation: str
+    unit: str
+    sales_count: int
+    portions: Quantity
+    revenue: Money
+    ingredient_cost: Money
+    portion_cost: Money | None
+    margin: SignedAmount
+    margin_rate: SignedAmount | None
+
+
+class ProfitabilityPage(BaseModel):
+    date_from: date
+    date_to: date
+    items: list[ProfitabilityRowOut]
+    total: int
+    limit: int
+    offset: int

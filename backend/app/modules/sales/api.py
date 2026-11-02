@@ -30,6 +30,12 @@ from app.modules.sales.models import (
 )
 from app.modules.sales.origin_port import register_sale_origin
 from app.modules.sales.payment_service import ZERO, PaymentService, paid_amounts, payment_status
+from app.modules.sales.reporting import (
+    SALE_SOURCE_TYPE,
+    report_lines_query,
+    report_payments_query,
+    report_sales_query,
+)
 from app.modules.sales.schemas import (
     CheckoutOut,
     CreditOverride,
@@ -101,6 +107,10 @@ def sale_financial_states(
 
 
 __all__ = [
+    "SALE_SOURCE_TYPE",
+    "report_lines_query",
+    "report_payments_query",
+    "report_sales_query",
     "ORIGIN_RESTAURANT_ORDER",
     "CheckoutOut",
     "CreditOverride",

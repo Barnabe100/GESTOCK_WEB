@@ -318,6 +318,17 @@ def _copy_site_modules_to_tenant(owner_db: Session, tenant: Any, site: str) -> N
     )
 
 
+# Modules livrés après 0040 dont la migration de livraison désactive les activations héritées.
+DELIVERED_AFTER_0040 = (
+    "restaurant.orders",
+    "restaurant.tables",
+    "restaurant.kitchen",
+    "restaurant.qr",
+    "restaurant.recipes",
+    "reports",
+)
+
+
 def test_migration_0040_copies_tenant_activations_to_every_site(
     two_sites: SimpleNamespace, owner_db: Session, owner_engine: Engine, at_head: None
 ) -> None:
@@ -356,7 +367,11 @@ def test_migration_0040_copies_tenant_activations_to_every_site(
                     {"s": site},
                 ).all()
             )
-            assert copied == legacy  # copie exacte : ni module inventé, ni module perdu
+            # Copie exacte (ni module inventé, ni module perdu), puis les livraisons
+            # postérieures remettent à ``false`` les activations INERTES des modules alors
+            # planifiés (0048, 0050, 0058, 0060, 0062) : jamais activés implicitement.
+            expected = legacy | {code: False for code in DELIVERED_AFTER_0040 if code in legacy}
+            assert copied == expected
         assert legacy["alerts"] is False
         rls = conn.execute(
             text(
