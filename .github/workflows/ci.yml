@@ -191,7 +191,9 @@ jobs:
             -e SM_CONSOLE_UPSTREAM=http://127.0.0.1:8001 sm-frontend:ci \
             sh -c '/docker-entrypoint.d/20-envsubst-on-templates.sh && nginx -t'
           # Aucune clé privée dans l'image (ADR-0034) : le code et les données de l'application.
-          docker run --rm --entrypoint sh sm-backend:ci -c '! grep -rIl "PRIVATE KEY-----" /app'
+          # (motif écrit en deux parties : ce fichier est lui-même contrôlé par
+          # tests/test_licensing_crypto.py::test_no_private_key_is_versioned).
+          docker run --rm --entrypoint sh sm-backend:ci -c '! grep -rIlE "PRIVATE KEY-{5}" /app'
 
   backup-drill:
     name: Sauvegarde et restauration (PITR mesuré)
@@ -206,7 +208,13 @@ jobs:
       - name: Installer les dépendances
         working-directory: backend
         run: uv sync --frozen
-      # PostgreSQL 16 est préinstallé sur l'image (arrêté) : cluster TEMPORAIRE propre à l'exercice.
+      # Serveur PostgreSQL 16 (initdb, pg_basebackup…) ; l'exercice monte son PROPRE cluster
+      # temporaire, sans toucher à celui de l'image.
+      - name: Installer PostgreSQL 16 (serveur)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-16
+          test -x /usr/lib/postgresql/16/bin/initdb
       - name: Exercice PITR (RPO / RTO mesurés)
         env:
           SM_PG_BINDIR: /usr/lib/postgresql/16/bin

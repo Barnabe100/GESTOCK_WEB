@@ -101,9 +101,13 @@ test('site existant : le menu reste désactivé jusqu’à son activation explic
   const qr = page.getByRole('row', { name: /^Commandes par QR Code/ });
   await expect(qr.getByRole('switch')).toHaveCount(1);
   await expect(page.getByRole('row', { name: /^Cuisine/ }).getByRole('switch')).toHaveCount(1);
-  // Recettes (R8, 0060) livrées : activables explicitement ; rapports encore à venir.
+  // Recettes (R8, 0060) et rapports (R10, 0062) livrés : activables explicitement ;
+  // paiements électroniques encore à venir.
   await expect(page.getByRole('row', { name: /^Recettes/ }).getByRole('switch')).toHaveCount(1);
-  await expect(page.getByRole('row', { name: /^Rapports/ }).getByRole('switch')).toHaveCount(0);
+  await expect(page.getByRole('row', { name: /^Rapports/ }).getByRole('switch')).toHaveCount(1);
+  await expect(
+    page.getByRole('row', { name: /^Paiements électroniques/ }).getByRole('switch'),
+  ).toHaveCount(0);
   await page.reload();
   await expect(menuLink).toHaveCount(1);
 });
