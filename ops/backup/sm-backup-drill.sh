@@ -31,7 +31,12 @@ ARCHIVE_TIMEOUT="${SM_DRILL_ARCHIVE_TIMEOUT:-60}"
 as_pg() {
   if (( EUID == 0 )); then runuser -u postgres -- env PATH="$PATH" "$@"; else "$@"; fi
 }
-free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
+# Port libre : Python du système, sinon celui de l'environnement du backend (uv).
+free_port() {
+  local code='import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'
+  if command -v python3 >/dev/null; then python3 -c "$code"
+  else (cd "$REPO/backend" && uv run --frozen python -c "$code"); fi
+}
 log() { echo "[exercice] $*"; }
 
 PRIMARY="$WORK/primary" RESTORED="$WORK/restored" BACKUPS="$WORK/backups"

@@ -198,7 +198,13 @@ jobs:
   backup-drill:
     name: Sauvegarde et restauration (PITR mesuré)
     runs-on: ubuntu-latest
+    # Image officielle PostgreSQL 16 (même version majeure que la production) : serveur et
+    # outils (initdb, pg_basebackup, pg_verifybackup) ; l'exercice y monte son PROPRE cluster
+    # temporaire (utilisateur « postgres »), Python fourni par uv.
+    container: postgres:16-bookworm
     steps:
+      - name: Outils (Git, certificats)
+        run: apt-get update -q && apt-get install -y -q git ca-certificates curl
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
@@ -208,22 +214,15 @@ jobs:
       - name: Installer les dépendances
         working-directory: backend
         run: uv sync --frozen
-      # Serveur PostgreSQL 16 (initdb, pg_basebackup…) ; l'exercice monte son PROPRE cluster
-      # temporaire, sans toucher à celui de l'image.
-      - name: Installer PostgreSQL 16 (serveur)
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q postgresql-16
-          test -x /usr/lib/postgresql/16/bin/initdb
       - name: Exercice PITR (RPO / RTO mesurés)
         env:
           SM_PG_BINDIR: /usr/lib/postgresql/16/bin
           SM_DRILL_ARCHIVE_TIMEOUT: "60"
-          SM_DRILL_REPORT: ${{ runner.temp }}/backup-drill-report.json
+          SM_DRILL_REPORT: ${{ github.workspace }}/backup-drill-report.json
         run: ops/backup/sm-backup-drill.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: backup-drill-report
-          path: ${{ runner.temp }}/backup-drill-report.json
+          path: ${{ github.workspace }}/backup-drill-report.json
           if-no-files-found: ignore
