@@ -66,14 +66,13 @@ def base_backups(root: Path | None) -> list[BaseBackup] | None:
 
 
 def backup_status(db: Session, root: Path | None, now: datetime) -> dict[str, Any]:
-    settings = dict(
-        db.execute(
-            text(
-                "SELECT name, setting FROM pg_settings WHERE name IN "
-                "('archive_mode', 'archive_timeout', 'wal_level')"
-            )
-        ).tuples()
-    )
+    rows = db.execute(
+        text(
+            "SELECT name, setting FROM pg_settings WHERE name IN "
+            "('archive_mode', 'archive_timeout', 'wal_level')"
+        )
+    ).tuples()
+    settings = {name: setting for name, setting in rows}
     archiver = db.execute(
         text(
             "SELECT archived_count, last_archived_wal, last_archived_time, failed_count, "

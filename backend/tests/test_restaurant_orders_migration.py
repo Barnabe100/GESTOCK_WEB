@@ -95,9 +95,13 @@ def test_migration_0042_disables_orders_on_existing_sites_only(
     with owner_engine.begin() as conn:
         after = _activations(conn, site)
         assert after[ORDERS] is False
-        # Seul le module livré par la migration change ; rien d'autre.
-        assert {k: v for k, v in after.items() if k != ORDERS} == {
-            k: v for k, v in before.items() if k != ORDERS
+        # Seul le module livré par la migration change ; rien d'autre — hormis les modules
+        # livrés par une migration POSTÉRIEURE, eux aussi remis à ``false`` (rapports : 0062).
+        later = {"reports"}
+        for code in later & before.keys():
+            assert after[code] is False, code
+        assert {k: v for k, v in after.items() if k not in {ORDERS, *later}} == {
+            k: v for k, v in before.items() if k not in {ORDERS, *later}
         }
         triggers = set(
             conn.execute(

@@ -692,9 +692,11 @@ def test_available_dependents_still_block_and_planned_ones_never_do(
     assert _code(busy) == (409, "module_has_dependents")
     dependents = busy.json()["dependents"]
     assert "pos" in dependents and "payments" not in dependents
+    # Rapports (R10) : livrés, activés par défaut sur un nouveau site ; dépendant disponible.
+    assert "reports" in dependents
     # Tous les dépendants disponibles désactivés : le seul dépendant restant, planifié, ne
     # bloque plus la désactivation des ventes.
-    for code in ("pos", "cash_register", "receivables"):
+    for code in ("pos", "cash_register", "receivables", "reports"):
         response = set_site_module(r.owner, r.a, code, False)
         assert response.status_code == 204, (code, response.text)
     assert set_site_module(r.owner, r.a, "sales", False).status_code == 204
