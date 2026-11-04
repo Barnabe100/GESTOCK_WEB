@@ -369,7 +369,7 @@ else
 fi
 
 # --- Épreuves des restaurations demandées dans la console (R11) -------------------------------
-copy_env() { PGHOST="$DIR" PGPORT="$PORT" PGDATABASE="$DBNAME" "$@"; }
+copy_env() { env PGHOST="$DIR" PGPORT="$PORT" PGDATABASE="$DBNAME" "$@"; }
 if [[ -n "$EXPORT_TENANT" ]]; then
   if (( FAILED == 0 )); then
     if out="$(copy_env SM_BACKUP_DIR="$SM_ROOT" "$HERE/sm-tenant-export.sh" --tenant "$EXPORT_TENANT" --run-id "$EXPORT_RUN" \
@@ -411,11 +411,11 @@ if [[ -n "$APPLY_TENANT" ]]; then
       w=0; for x in "${writable[@]}"; do [[ "$x" == "$t" ]] && w=1; done
       (( w )) || kept_bad+="$t "
     done < <(diff <(grep "|$APPLY_TENANT|" "$FP/before") <(grep "|$APPLY_TENANT|" "$FP/after") | sed -n 's/^> //p')
-    check kept_tables_unchanged "$([[ -z "$kept_bad" ]] && echo 0 || echo 1)" \
+    check kept_tables_unchanged "$([[ -z "$kept_bad" && -s "$FP/before" && -s "$FP/after" ]] && echo 0 || echo 1)" \
       "tables conservées de l'entreprise (abonnements, licences, postes, notifications d'échéance…) modifiées : ${kept_bad:-aucune}"
     if [[ -f "$ARTIFACT/manifest.tsv" ]] && sha="$(copy_env SM_BACKUP_DIR="$SM_ROOT" "$HERE/sm-tenant-export.sh" --tenant "$APPLY_TENANT" --sha-only --host "$DIR" --port "$PORT" 2>/dev/null)"; then
       purged="$(grep -o '"purged": "[^"]*"' "$report" 2>/dev/null || true)"
-      diffs="$(diff <(awk '{print $2"\t"$3"\t"$4}' <<<"$sha") <(grep -v '^#' "$ARTIFACT/manifest.tsv" | cut -f1-3) | sed -n 's/^< \([^\t]*\).*/\1/p' | tr '\n' ' ')"
+      diffs="$(diff <(awk '{print $2"\t"$3"\t"$4}' <<<"$sha") <(grep -v '^#' "$ARTIFACT/manifest.tsv" | cut -f1-3) | awk -F'\t' '/^< / {sub(/^< /, "", $1); print $1}' | tr '\n' ' ')"
       # Écarts admis : compteurs (jamais en arrière), effacements à 30 jours réappliqués.
       unexpected=""
       for t in $diffs; do

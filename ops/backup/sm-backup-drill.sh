@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Exercice complet de sauvegarde / restauration (R11-0) — preuve automatisée, base JETABLE.
 #
-#   ops/backup/sm-backup-drill.sh [--mode native|docker] [--keep]
+#   ops/backup/sm-backup-drill.sh [--mode native|docker] [--keep] [--quick]
+#
+# --quick (mise au point seulement, jamais en CI) : étapes 1, 2, une sauvegarde vérifiée, puis
+#          l'étape 13 (console et agent).
 #
 # native : cluster PostgreSQL 16 temporaire (127.0.0.1, port libre), scripts lancés en
 #          utilisateur postgres (CI : image postgres:16-bookworm).
@@ -16,15 +19,20 @@
 # un instant T (données avant présentes, après absentes, isolement des entreprises) ; test de
 # restauration complet ; interruption (signal, arrêt brutal) ; sauvegarde corrompue ; WAL
 # manquant ; WAL corrompu ; échec et retard d'archivage ; base inactive ; rétention (simulation
-# par défaut, dernière vérifiée protégée) ; gardes de suppression ; statut de la console.
+# par défaut, dernière vérifiée protégée) ; gardes de suppression ; statut de la console ;
+# console et agent (R11) : planification exécutée, sauvegarde d'une entreprise, restauration
+# vérifiée sur copie isolée, double approbation, application pendant des écritures d'autres
+# entreprises, retour arrière, archive altérée refusée, PITR d'une entreprise, restauration
+# globale non appliquée par l'agent, échec puis nouvelle tentative.
 # Rapport : ${SM_DRILL_REPORT:-$TMPDIR/sm-backup-drill-report.json} ; code 0 = tout réussi.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MODE=native KEEP=0
+MODE=native KEEP=0 QUICK=0
 while (( $# )); do
   case "$1" in
     --mode) MODE="$2"; shift 2 ;;
+    --quick) QUICK=1; shift ;;
     --keep) KEEP=1; shift ;;
     *) echo "option inconnue : $1" >&2; exit 2 ;;
   esac
@@ -44,7 +52,11 @@ write_report() {
   printf '{\n  "status": "%s",\n  "mode": "%s",\n  "steps": [%s],\n  "metrics": {%s}\n}\n' "$1" "$MODE" "$joined" "$METRICS" >"$REPORT"
 }
 pass() { RESULTS+=("{\"step\": $(jstr "$1"), \"ok\": true, \"detail\": $(jstr "$2")}"); log "RÉUSSI : $1 — $2"; }
-fail() { RESULTS+=("{\"step\": $(jstr "$1"), \"ok\": false, \"detail\": $(jstr "$2")}"); log "ÉCHEC : $1 — $2"; write_report failed; exit 1; }
+fail() {
+  RESULTS+=("{\"step\": $(jstr "$1"), \"ok\": false, \"detail\": $(jstr "$2")}"); log "ÉCHEC : $1 — $2"
+  if [[ -s "$WORK/agent.out" ]]; then tail -n 80 "$WORK/agent.out" | sed 's/^/[agent] /'; fi
+  write_report failed; exit 1
+}
 metric() { METRICS+="${METRICS:+, }\"$1\": ${2:-null}"; }
 free_port() {
   local code='import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'
@@ -199,6 +211,11 @@ expect_code 2 "supervision sans sauvegarde" bk sm-backup-health.sh
 grep -q "CRITIQUE base_backup" <<<"$LAST_OUT" || fail supervision "absence de sauvegarde non signalée"
 grep -q "copie externe NON CONFIGURÉE" <<<"$LAST_OUT" || fail supervision "copie externe non signalée"
 
+if (( QUICK )); then
+  log "mode rapide : étapes 3 à 12 sautées"
+  expect_code 0 "sauvegarde (mode rapide)" bk sm-base-backup.sh
+  expect_code 0 "vérification (mode rapide)" bk sm-backup-verify.sh
+else
 # --- 3. Sauvegarde pendant des écritures concurrentes ------------------------------------------
 log "3. sauvegarde complète pendant des écritures concurrentes"
 scenario write-loop --seconds 25 --tag concurrent >"$WORK/loop1.json" &
@@ -416,6 +433,133 @@ assert s["storage"]["base_backups"] >= 2, s["storage"]
 assert s["supervision"]["level"] == "critical", s["supervision"]
 PY
 pass console "archivage $(py -c 'import json,sys; print(json.load(open(sys.argv[1]))["archiving"]["state"])' "$WORK/console.json"), sauvegarde et test de restauration OK, vérification en alerte (sauvegarde altérée), copie externe non configurée"
+fi
+
+# --- 13. Console et agent (R11) : planification, sauvegarde, restauration d'une entreprise ----
+log "13. console → agent : planification, sauvegardes, restaurations"
+export SM_BACKUP_STATUS_DIR="$ROOT_HOST/status"
+jget() { py -c 'import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1], {"d": d}))' "$1"; }
+con() { scenario console "$@"; }
+agent() { bk sm-backup-agent.sh >>"$WORK/agent.out" 2>&1 || fail agent "agent en échec : $(tail -n 5 "$WORK/agent.out")"; }
+others_fp() { as_pg env "${ENVV[@]}" PGUSER=stockmanager PGDATABASE=stockmanager "$SCRIPTS_IN/sm-fingerprint.sh" 2>/dev/null | grep -v "|$GAMMA|" | grep -E "\|($ALPHA|$BETA)\|"; }
+if [[ "$MODE" == docker ]]; then
+  others_fp() { bk_sh "PGUSER=stockmanager PGDATABASE=stockmanager '$SCRIPTS_IN/sm-fingerprint.sh'" | grep -E "\|($ALPHA|$BETA)\|"; }
+fi
+ALPHA="$(sqlp -c "SELECT id FROM tenants WHERE slug = 'alpha'")"
+BETA="$(sqlp -c "SELECT id FROM tenants WHERE slug = 'beta'")"
+GAMMA="$(sqlp -c "SELECT id FROM tenants WHERE slug = 'gamma'")"
+NTENANTS="$(sqlp -c "SELECT count(*) FROM tenants")"
+scenario console-admins >/dev/null
+# Seule la planification logique quotidienne reste active ; son échéance est atteinte.
+sqlp -c "UPDATE backup_policies SET enabled = false, next_run_at = NULL WHERE NOT (category = 'logical' AND frequency = 'daily')"
+sqlp -c "UPDATE backup_policies SET next_run_at = now() - interval '1 minute' WHERE category = 'logical' AND frequency = 'daily'"
+agent
+sched="$(sqlp -c "SELECT count(*) FROM backup_runs WHERE trigger = 'schedule' AND kind = 'logical' AND status = 'succeeded'")"
+sitems="$(sqlp -c "SELECT count(*) FROM backup_items i JOIN backup_runs r ON r.id = i.run_id WHERE r.trigger = 'schedule' AND i.status = 'succeeded' AND i.verified")"
+next="$(sqlp -c "SELECT next_run_at > now() FROM backup_policies WHERE category = 'logical' AND frequency = 'daily'")"
+# Rétention de la politique planifiée (logique quotidienne : 30 jours) appliquée aux éléments.
+ret="$(sqlp -c "SELECT bool_and(i.expires_at BETWEEN now() + interval '29 days' AND now() + interval '31 days') FROM backup_items i JOIN backup_runs r ON r.id = i.run_id WHERE r.trigger = 'schedule'")"
+[[ "$ret" == t ]] || fail planification "rétention de la politique non appliquée"
+[[ "$sched" == 1 && "$sitems" == "$NTENANTS" && "$next" == t ]] || fail planification "exécution planifiée $sched, entreprises $sitems/$NTENANTS, prochaine échéance future $next"
+pass planification "échéance des paramètres atteinte → 1 sauvegarde logique planifiée exécutée par l'agent ($sitems entreprises, sommes vérifiées), prochaine exécution recalculée"
+
+RUN="$(con --as a --method POST --path /operations/backups/runs --json "{\"kind\": \"logical\", \"scope\": \"tenant\", \"tenant_id\": \"$GAMMA\"}" --expect 201 | jget 'd["id"]')"
+agent
+detail="$(con --as a --path "/operations/backups/runs/$RUN")"
+[[ "$(jget 'd["status"]' <<<"$detail")" == succeeded ]] || fail sauvegarde_entreprise "exécution : $detail"
+ITEM="$(jget 'd["items"][0]["id"]' <<<"$detail")"
+[[ "$(jget 'len(d["items"]) == 1 and d["items"][0]["tenant_id"] == "'"$GAMMA"'" and d["items"][0]["restorable"]' <<<"$detail")" == True ]] || fail sauvegarde_entreprise "élément : $detail"
+pass sauvegarde_entreprise "sauvegarde immédiate de gamma depuis la console : réussie, 1 élément restaurable ($(jget 'd["items"][0]["row_count"]' <<<"$detail") lignes)"
+
+[[ "$(scenario write-one --slug gamma --tag apres-sauvegarde | jget 'd["status"]')" == 201 ]] || fail restauration_entreprise "écriture de gamma"
+OP="$(con --as a --method POST --path /operations/backups/restores --json "{\"tenant_id\": \"$GAMMA\", \"mode\": \"logical\", \"source_item_id\": \"$ITEM\", \"reason\": \"Exercice : retour de gamma\"}" --expect 201 | jget 'd["id"]')"
+agent
+op="$(con --as a --path "/operations/backups/restores/$OP")"
+[[ "$(jget 'd["status"]' <<<"$op")" == verified ]] || fail verification_isolee "statut : $(jget 'd["status"], d["error"], d["verification"]' <<<"$op")"
+for c in other_tenants_unchanged kept_tables_unchanged restored_exact tenant_apply rls_tenant_isolation foreign_keys; do
+  [[ "$(jget '[x["ok"] for x in d["verification"]["copy"]["checks"] if x["name"] == "'"$c"'"]' <<<"$op")" == "[True]" ]] || fail verification_isolee "contrôle $c : $(jget 'd["verification"]["copy"]["checks"]' <<<"$op")"
+done
+[[ "$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'apres-sauvegarde-gamma'")" == 1 ]] || fail verification_isolee "la vérification a modifié la production"
+con --as a --method POST --path "/operations/backups/restores/$OP/approve" --json '{"reason": "Je valide ma propre demande"}' --expect 403 >/dev/null
+con --as b --method POST --path "/operations/backups/restores/$OP/approve" --json '{"reason": "Rapport relu : conforme"}' >/dev/null
+pass verification_isolee "copie isolée : autres entreprises et tables conservées inchangées, restauration exacte, RLS ; production non modifiée ; demandeur refusé (403), second administrateur approuve"
+
+scenario write-loop --seconds 12 --tag pendant >"$WORK/loop2.json" &
+LOOP=$!
+sleep 2
+agent
+wait "$LOOP" || fail application "les autres entreprises ont été bloquées pendant la restauration de gamma"
+op="$(con --as a --path "/operations/backups/restores/$OP")"
+[[ "$(jget 'd["status"]' <<<"$op")" == applied ]] || fail application "statut : $(jget 'd["status"], d["error"]' <<<"$op")"
+[[ "$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'apres-sauvegarde-gamma'")" == 0 ]] || fail application "écriture postérieure à la sauvegarde toujours présente"
+na="$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name LIKE 'pendant-alpha-%'")"
+[[ "$na" == "$(jget 'd["operations"]["alpha"]' <"$WORK/loop2.json")" && "$na" -gt 0 ]] || fail application "écritures concurrentes d'alpha : $na / $(cat "$WORK/loop2.json")"
+[[ -z "$(sqlp -c "SELECT restore_locked_at FROM tenants WHERE id = '$GAMMA'")" ]] || fail application "gamma encore verrouillée"
+[[ "$(sqlp -c "SELECT count(*) FROM audit_logs WHERE tenant_id = '$GAMMA' AND action = 'backup.tenant_restored'")" == 1 ]] || fail application "journal de gamma"
+pass application "gamma revenue à sa sauvegarde (écriture postérieure absente), sauvegarde préalable faite, verrou levé, journal ; alpha et beta ont écrit PENDANT l'application ($(cat "$WORK/loop2.json"))"
+
+FP1="$(others_fp | sha256sum)"
+OP2="$(con --as a --method POST --path "/operations/backups/restores/$OP/rollback" --json '{"reason": "Exercice : retour arrière"}' --expect 201 | jget 'd["id"]')"
+agent
+con --as b --method POST --path "/operations/backups/restores/$OP2/approve" --json '{"reason": "Retour arrière validé"}' >/dev/null
+agent
+[[ "$(con --as a --path "/operations/backups/restores/$OP2" | jget 'd["status"]')" == applied ]] || fail retour_arriere "statut"
+[[ "$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'apres-sauvegarde-gamma'")" == 1 ]] || fail retour_arriere "état antérieur non rétabli"
+FP2="$(others_fp | sha256sum)"
+[[ "$FP1" == "$FP2" ]] || fail retour_arriere "alpha ou beta modifiée par une restauration de gamma"
+pass retour_arriere "retour arrière (même circuit : vérification, second administrateur) : écriture de gamma rétablie ; empreinte d'alpha et beta IDENTIQUE avant / après (${FP1:0:12})"
+
+# Archive altérée : la vérification la refuse, la production n'est pas touchée.
+REF="$(sqlp -c "SELECT storage_ref FROM backup_items WHERE id = '$ITEM'")"
+bk_sh "chmod u+w '$ROOT_IN/$REF' '$ROOT_IN/$REF/catalog_categories.csv.gz' && printf 'X' >> '$ROOT_IN/$REF/catalog_categories.csv.gz'"
+OP3="$(con --as a --method POST --path /operations/backups/restores --json "{\"tenant_id\": \"$GAMMA\", \"mode\": \"logical\", \"source_item_id\": \"$ITEM\", \"reason\": \"Exercice : archive altérée\"}" --expect 201 | jget 'd["id"]')"
+agent
+[[ "$(con --as a --path "/operations/backups/restores/$OP3" | jget 'd["status"]')" == verification_failed ]] || fail archive_alteree "statut"
+[[ "$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'apres-sauvegarde-gamma'")" == 1 ]] || fail archive_alteree "production modifiée"
+pass archive_alteree "archive modifiée après la sauvegarde : vérification en échec (sommes de contrôle), aucune approbation possible, production intacte"
+
+# PITR d'une entreprise : avant T présent, après T absent.
+[[ "$(scenario write-one --slug gamma --tag pitr-avant | jget 'd["status"]')" == 201 ]] || fail pitr_entreprise "écriture avant"
+sleep 2
+T2="$(sqlp -c "SELECT to_char(date_trunc('second', clock_timestamp()) AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS') || 'Z'")"
+sleep 2
+[[ "$(scenario write-one --slug gamma --tag pitr-apres | jget 'd["status"]')" == 201 ]] || fail pitr_entreprise "écriture après"
+switch_and_wait || fail pitr_entreprise "archivage"
+bk sm-backup-health.sh --write >/dev/null 2>&1 || true
+OP4="$(con --as a --method POST --path /operations/backups/restores --json "{\"tenant_id\": \"$GAMMA\", \"mode\": \"pitr\", \"target_time\": \"$T2\", \"reason\": \"Exercice : gamma à T\"}" --expect 201 | jget 'd["id"]')"
+agent
+op="$(con --as b --path "/operations/backups/restores/$OP4")"
+[[ "$(jget 'd["status"]' <<<"$op")" == verified && "$(jget 'd["materialized_item_id"] is not None' <<<"$op")" == True ]] || fail pitr_entreprise "vérification : $(jget 'd["status"], d["error"]' <<<"$op")"
+con --as b --method POST --path "/operations/backups/restores/$OP4/approve" --json '{"reason": "Instant validé"}' >/dev/null
+agent
+[[ "$(con --as a --path "/operations/backups/restores/$OP4" | jget 'd["status"]')" == applied ]] || fail pitr_entreprise "application"
+av="$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'pitr-avant-gamma'")"
+ap="$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'pitr-apres-gamma'")"
+[[ "$av" == 1 && "$ap" == 0 ]] || fail pitr_entreprise "avant $av, après $ap"
+pass pitr_entreprise "gamma restaurée à $T2 (copie à l'instant, export, vérification sur l'état actuel, approbation) : écriture antérieure présente, postérieure absente"
+
+# Restauration globale : vérifiée et approuvée, JAMAIS appliquée par l'agent.
+OP5="$(con --as a --method POST --path /operations/backups/restores --json "{\"scope\": \"platform\", \"mode\": \"pitr\", \"target_time\": \"$T2\", \"reason\": \"Exercice : restauration globale\"}" --expect 201 | jget 'd["id"]')"
+agent
+[[ "$(con --as a --path "/operations/backups/restores/$OP5" | jget 'd["status"]')" == verified ]] || fail restauration_globale "vérification"
+con --as b --method POST --path "/operations/backups/restores/$OP5/approve" --json '{"reason": "Procédure globale"}' >/dev/null
+agent
+[[ "$(con --as a --path "/operations/backups/restores/$OP5" | jget 'd["status"], d["manual_application"]')" == "('approved', True)" ]] || fail restauration_globale "l'agent a agi sur une restauration globale"
+con --as a --method POST --path "/operations/backups/restores/$OP5/cancel" --json '{"reason": "Fin de l exercice"}' >/dev/null
+pass restauration_globale "PITR global vérifié sur copie isolée puis approuvé ; application laissée à la procédure manuelle (agent sans effet)"
+
+# Échec puis nouvelle tentative.
+bk_sh "chmod 0500 '$ROOT_IN/logical/$GAMMA'"
+RUN="$(con --as a --method POST --path /operations/backups/runs --json "{\"kind\": \"logical\", \"scope\": \"tenant\", \"tenant_id\": \"$GAMMA\"}" --expect 201 | jget 'd["id"]')"
+agent
+[[ "$(con --as a --path "/operations/backups/runs/$RUN" | jget 'd["status"]')" == failed ]] || fail nouvelle_tentative "échec attendu"
+retry="$(sqlp -c "SELECT count(*) FROM backup_runs WHERE retry_of = '$RUN' AND status = 'queued' AND attempt = 2 AND not_before > now()")"
+[[ "$retry" == 1 ]] || fail nouvelle_tentative "nouvelle tentative non planifiée"
+bk_sh "chmod 0700 '$ROOT_IN/logical/$GAMMA'"
+sqlp -c "UPDATE backup_runs SET not_before = now() WHERE retry_of = '$RUN'"
+agent
+[[ "$(sqlp -c "SELECT status FROM backup_runs WHERE retry_of = '$RUN'")" == succeeded ]] || fail nouvelle_tentative "nouvelle tentative en échec"
+pass nouvelle_tentative "échec (répertoire non inscriptible) → nouvelle tentative différée (essai 2) → réussie"
 
 write_report ok
 cat "$REPORT"

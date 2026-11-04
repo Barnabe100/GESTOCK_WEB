@@ -168,7 +168,7 @@ run_script() { # run statut_op script args…
 
 process_run() { # ligne réservée par backup_claim
   local row="$1" run policy
-  IFS=$'\t' read -r run RUN_KIND RUN_SCOPE RUN_TENANT policy <<<"$row"
+  IFS='|' read -r run RUN_KIND RUN_SCOPE RUN_TENANT policy <<<"$row"
   sm_log "exécution $run : $RUN_KIND ($RUN_SCOPE${RUN_TENANT:+ $RUN_TENANT})"
   hb_start backup_runs "$run"
   case "$RUN_KIND" in
@@ -209,10 +209,10 @@ verify_copy() { # args de sm-restore-test.sh → 0/1 ; rapport dans status/resto
 
 verify_operation() { # opération
   local op="$1" row scope tenant mode item target art code=0 report mat="" run
-  row="$(q -F $'\t' -c "SELECT scope, coalesce(tenant_id::text, ''), mode, coalesce(source_item_id::text, ''),
+  row="$(q -F '|' -c "SELECT scope, coalesce(tenant_id::text, ''), mode, coalesce(source_item_id::text, ''),
                          coalesce(to_char(target_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z', '')
                     FROM restore_operations WHERE id = '$op'")"
-  IFS=$'\t' read -r scope tenant mode item target <<<"$row"
+  IFS='|' read -r scope tenant mode item target <<<"$row"
   op_set "$op" "status = 'verifying', claimed_by = $(lit "$AGENT"), heartbeat_at = now(), progress_percent = 5, progress_message = 'copie isolée'"
   sm_log "restauration $op : vérification ($scope, $mode)"
   hb_start restore_operations "$op"
@@ -226,7 +226,7 @@ verify_operation() { # opération
     progress restore_operations "$op" 10 "copie à l'instant demandé et export de l'entreprise"
     run="$(op_run "$op" "$tenant" restore_source)"
     if verify_copy --target-time "$target" --tenant-export "$tenant" --export-run-id "${run:0:8}"; then
-      art="$(sed -n 's/^  "artifact": "\(.*\)",\?$/\1/p' "$SM_ROOT/status/restore_verify.json" | head -n 1)"
+      art="$(sed -n 's/^  "artifact": "\(.*\)",*$/\1/p' "$SM_ROOT/status/restore_verify.json" | head -n 1)"
       local f ntables nrows nbytes msha rev created
       IFS='|' read -r f ntables nrows nbytes msha rev created <<<"$art"
       if [[ -d "$f" ]]; then
@@ -328,7 +328,7 @@ apply_operation() { # opération (entreprise, approuvée, non expirée)
 # --- Rétention des sauvegardes logiques -----------------------------------------------------------
 prune_logical() {
   local id ref real n=0
-  while IFS=$'\t' read -r id ref; do
+  while IFS='|' read -r id ref; do
     [[ "$id" =~ $UUID_RE && "$ref" =~ ^logical/([0-9a-f-]{36})/[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]] || continue
     real="$(realpath "$SM_ROOT/$ref" 2>/dev/null || true)"
     if [[ -n "$real" ]]; then
@@ -338,7 +338,7 @@ prune_logical() {
     fi
     q -c "UPDATE backup_items SET status = 'expired' WHERE id = '$id'" >/dev/null
     n=$(( n + 1 ))
-  done < <(q -F $'\t' -c "
+  done < <(q -F '|' -c "
     SELECT i.id, i.storage_ref FROM backup_items i
      WHERE i.status = 'succeeded' AND i.expires_at < now() AND coalesce(i.protected_until, '-infinity') < now()
        AND EXISTS (SELECT 1 FROM backup_items j WHERE j.tenant_id = i.tenant_id AND j.status = 'succeeded'
@@ -358,7 +358,7 @@ stale="$(q -c "SELECT backup_reclaim_stale(make_interval(mins => $STALE))")"
 [[ "$stale" == 0 ]] || sm_log "$stale exécution(s) abandonnée(s) reprise(s)"
 # Restaurations interrompues (agent arrêté) : vérification à refaire / application annulée par
 # PostgreSQL (transaction unique), entreprise déverrouillée.
-while IFS=$'\t' read -r op st tenant; do
+while IFS='|' read -r op st tenant; do
   [[ "$op" =~ $UUID_RE ]] || continue
   if [[ "$st" == applying ]]; then
     unlock_tenant "$tenant" "$op"
@@ -367,7 +367,7 @@ while IFS=$'\t' read -r op st tenant; do
     op_set "$op" "status = 'verification_failed', finished_at = now(), error = 'vérification interrompue (arrêt de l''agent)'"
   fi
   audit restore.interrupted restore_operation "$op" "$tenant" "{\"status\": $(sjs "$st")}"
-done < <(q -F $'\t' -c "SELECT id, status, coalesce(tenant_id::text, '') FROM restore_operations
+done < <(q -F '|' -c "SELECT id, status, coalesce(tenant_id::text, '') FROM restore_operations
                          WHERE status IN ('verifying', 'applying') AND heartbeat_at < now() - make_interval(mins => $STALE)")
 due="$(q -c "SELECT backup_enqueue_due(now())")"
 [[ "$due" == 0 ]] || sm_log "$due exécution(s) planifiée(s) mise(s) en file"
@@ -393,7 +393,10 @@ crashed() { # type identifiant code
 guarded() { # type identifiant fonction arguments…
   local code
   set +e
-  ( set -e; trap hb_stop EXIT; "${@:3}" )
+  ( set -e; set -o errtrace
+    trap 'AGENT_ERR="ligne $LINENO : ${BASH_COMMAND:0:300}"; sm_log "erreur interne $AGENT_ERR"' ERR
+    trap hb_stop EXIT
+    "${@:3}" )
   code=$?
   set -e
   if (( code != 0 )); then crashed "$1" "$2" "$code"; fi
@@ -412,10 +415,10 @@ while :; do
     if [[ -n "$op" ]]; then
       guarded restore "$op" verify_operation "$op"
     else
-      row="$(q -F $'\t' -c "SELECT id, kind, scope, coalesce(tenant_id::text, ''), coalesce(policy_id::text, '')
+      row="$(q -F '|' -c "SELECT id, kind, scope, coalesce(tenant_id::text, ''), coalesce(policy_id::text, '')
                              FROM backup_claim($(lit "$AGENT"), ARRAY['physical', 'logical', 'verification', 'restore_test'])")"
       [[ -n "$row" ]] || break
-      guarded run "${row%%$'\t'*}" process_run "$row"
+      guarded run "${row%%|*}" process_run "$row"
     fi
   fi
   (( ONCE == 0 )) || break

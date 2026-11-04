@@ -126,7 +126,8 @@ la CI. **Aucune clé n'est générée au démarrage** : sans clé montée, le se
   hebdomadaire, vérification quotidienne, test réel de restauration mensuel, rétention 30 jours,
   copie externe Restic préparée — [`exploitation/SAUVEGARDE_RESTAURATION.md`](exploitation/SAUVEGARDE_RESTAURATION.md) ;
   activation pas à pas : [`exploitation/ACTIVATION_SAUVEGARDES.md`](exploitation/ACTIVATION_SAUVEGARDES.md).
-- Tâches : sauvegardes en UTC par `ops/systemd/` (ou `ops/cron/stockmanager-backup.cron`) ;
+- Tâches : agent des sauvegardes chaque minute et supervision par `ops/systemd/` (ou
+  `ops/cron/stockmanager-backup.cron`) ; échéances réglées dans la console (ADR-0058) ;
   rappels d'échéance et purge : `ops/cron/stockmanager.cron`.
 - Supervision : `ops/backup/sm-backup-health.sh` (sauvegardes : base inactive ≠ retard ≠ échec,
   seuils 8 j / 26 h / 35 j / 15 min) et `ops/monitoring/sm-healthcheck.sh` (API prête, Signing

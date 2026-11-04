@@ -62,7 +62,7 @@ ARTIFACT="$(realpath "$ARTIFACT")"
 [[ "$ARTIFACT" =~ ^$SM_ROOT/logical/$TENANT/[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]] \
   || sm_die "archive hors de logical/$TENANT/ ou nom non conforme : $ARTIFACT"
 [[ -f "$ARTIFACT/.complete" ]] || sm_die "archive incomplète (marqueur .complete absent)"
-( cd "$ARTIFACT" && sha256sum -c --quiet SHA256SUMS ) >/dev/null 2>&1 || sm_die "sommes de contrôle de l'archive en échec"
+( cd "$ARTIFACT" && sha256sum -c SHA256SUMS ) >/dev/null 2>&1 || sm_die "sommes de contrôle de l'archive en échec"
 MSHA="$(sha256sum "$ARTIFACT/manifest.tsv" | cut -d' ' -f1)"
 grep -qx "manifest_sha256=$MSHA" "$ARTIFACT/.complete" || sm_die "manifeste différent de celui de la sauvegarde"
 meta() { sed -n "s/^# $1=//p" "$ARTIFACT/manifest.tsv" | head -n 1; }

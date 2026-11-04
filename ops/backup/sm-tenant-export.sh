@@ -15,7 +15,7 @@
 # - UNE transaction REPEATABLE READ READ ONLY : toutes les tables du même instant, même sous
 #   écritures concurrentes ; aucun verrou bloquant pour les autres entreprises.
 # - Format : <table>.csv.gz (CSV avec en-tête, colonnes explicites, ordre de clé primaire,
-#   gzip -n déterministe), manifest.tsv (révision Alembic, entreprise, lignes et SHA-256 du CSV
+#   gzip), manifest.tsv (révision Alembic, entreprise, lignes et SHA-256 du CSV
 #   NON compressé par table), SHA256SUMS (fichiers compressés), marqueur .complete en dernier.
 # - Construit dans <dir>.partial puis renommé : un export interrompu n'est jamais pris pour une
 #   sauvegarde (le partiel est supprimé à la sortie, sous gardes).
@@ -115,7 +115,7 @@ SQL="$WORK/.export.sql"
   done <<<"$TABLES"
   echo "\\o"
   while IFS=$'\t' read -r t cols order; do
-    echo "\\copy (SELECT $cols FROM $t ORDER BY $order) TO PROGRAM 'gzip -n -c > $WORK/$t.csv.gz' WITH (FORMAT csv, HEADER)"
+    echo "\\copy (SELECT $cols FROM $t ORDER BY $order) TO PROGRAM 'gzip -c > $WORK/$t.csv.gz' WITH (FORMAT csv, HEADER)"
   done <<<"$TABLES"
   echo "COMMIT;"
 } >"$SQL"
@@ -149,7 +149,7 @@ while IFS=$'\t' read -r t cols order; do
   total_rows=$(( total_rows + rows )); ntables=$(( ntables + 1 ))
 done <<<"$TABLES"
 rm -f "$WORK/.meta"
-( cd "$WORK" && sha256sum manifest.tsv ./*.csv.gz >SHA256SUMS && sha256sum -c --quiet SHA256SUMS ) \
+( cd "$WORK" && sha256sum manifest.tsv ./*.csv.gz >SHA256SUMS && sha256sum -c SHA256SUMS >/dev/null ) \
   || sm_die "relecture des sommes de contrôle en échec"
 MANIFEST_SHA="$(sha256sum "$WORK/manifest.tsv" | cut -d' ' -f1)"
 chmod 0400 "$WORK"/*

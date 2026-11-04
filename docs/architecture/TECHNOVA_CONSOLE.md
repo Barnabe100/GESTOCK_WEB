@@ -87,12 +87,26 @@ Variables : `SM_PLATFORM_DATABASE_URL`, `SM_DB_PLATFORM_ROLE`, `SM_PLATFORM_API_
 | GET | `/payments` | paiements d'abonnement paginés (tri `created_at` décroissant par défaut, `amount`, `status`, `decided_at`) ; filtres `status`, `tenant_id`, `search` (référence) |
 | GET | `/payments/{id}` | détail : entreprise, plan, montant, devise, période, moyen, référence, statut, décision |
 | POST | `/payments/{id}/confirm` · `/reject` | décision définitive d'un paiement `PENDING` (`reason` ; motif du rejet visible par l'entreprise) |
+| GET | `/operations/backups` | statuts de R11-0 (archivage, opérations, stockage, copie externe, supervision), lecture seule |
+| GET | `/operations/backups/overview` | agent (dernier passage), planification par catégorie (prochaine exécution, dernière réussite, retard), exécutions et restaurations actives, fenêtre PITR (R11, ADR-0058) |
+| GET · PUT | `/operations/backups/policies` · `/policies/{category}/{frequency}` | paramètres de planification ; `reason` obligatoire ; prochaine exécution calculée par la base |
+| POST · GET | `/operations/backups/runs` · `/runs/{id}` · POST `/runs/{id}/cancel` | sauvegarde immédiate (toutes les entreprises ou une), historique filtrable (type, portée, entreprise, statut, déclenchement, période), détail et progression, annulation d'une exécution en attente |
+| GET | `/operations/backups/items` | sauvegardes logiques par entreprise (sélection d'une restauration : entreprise, date, période, type, statut ; restaurable ou non) |
+| POST · GET | `/operations/backups/restores` · `/restores/{id}` | demande (logique ou PITR, entreprise ou globale) et rapport de vérification sur copie isolée |
+| POST | `/operations/backups/restores/{id}/approve` · `/reject` · `/cancel` · `/rollback` | décisions motivées ; l'approbation exige un SECOND administrateur (`403 restore_same_admin`, contrainte en base) ; retour arrière 24 h = nouvelle restauration |
 
 Toute requête modifiante exige l'en-tête `X-TechNova-Console: 1` (`403
 console_header_required` sinon). Aucune route n'existe pour créer ou promouvoir un
 administrateur, ni pour lire une donnée métier d'une entreprise (test automatisé sur le schéma
 OpenAPI). Un compte ou un jeton d'entreprise reçoit `401` ; une entreprise inconnue, `404
 tenant_not_found`.
+
+### Sauvegardes (R11, ADR-0058)
+
+La console **décide** (paramètres, demandes, approbations), l'agent des sauvegardes (conteneur de
+la base) **exécute** ; le rôle `stockmanager_platform` ne lit ni n'écrit aucune donnée
+d'entreprise, et un déclencheur n'admet que ses transitions (annuler, approuver, refuser).
+Procédures : [`SAUVEGARDE_RESTAURATION.md`](../exploitation/SAUVEGARDE_RESTAURATION.md) §5 bis.
 
 ## 4. Offres & tarifs
 

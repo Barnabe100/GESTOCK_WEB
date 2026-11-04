@@ -6,6 +6,9 @@ projet Docker Compose de test), jamais contre une base existante :
     uv run python -m tests.backup_scenario seed          → données multi-entreprises (JSON)
     uv run python -m tests.backup_scenario write-loop --seconds 20 --tag avant
     uv run python -m tests.backup_scenario fingerprint   → empreinte des données métier
+    uv run python -m tests.backup_scenario console-admins → deux administrateurs TechNova (CLI)
+    uv run python -m tests.backup_scenario console --as a --method POST --path /… [--json …]
+    uv run python -m tests.backup_scenario write-one --slug gamma --tag avant
 
 Les données passent par l'API réelle (RLS, StockService, CMUP, ventes) : trois entreprises,
 chacune avec un magasin et un dépôt, un utilisateur membre de deux entreprises, articles,
@@ -301,6 +304,71 @@ def console_status() -> dict[str, Any]:
     return result
 
 
+CONSOLE_ADMINS = {"a": "exercice-a@technova.example", "b": "exercice-b@technova.example"}
+CONSOLE_PASSWORD = "Exercice-Console-2026"
+
+
+def console_admins() -> dict[str, Any]:
+    """Deux administrateurs TechNova DISTINCTS, créés comme le fait la CLI (double approbation)."""
+    from sqlalchemy.orm import Session
+
+    from app.console.admins import create_platform_admin
+    from app.console.audit import CLI_ACTOR
+
+    settings = _settings()
+    engine = create_engine(OWNER_URL)
+    out = {}
+    with Session(engine) as session:
+        for key, email in CONSOLE_ADMINS.items():
+            user = create_platform_admin(
+                session,
+                settings,
+                email=email,
+                full_name=f"Exercice {key.upper()}",
+                password=CONSOLE_PASSWORD,
+                actor=CLI_ACTOR,
+            )
+            out[key] = str(user.id)
+        session.commit()
+    engine.dispose()
+    return out
+
+
+def console_call(who: str, method: str, path: str, body: str | None, expect: int) -> Any:
+    """Appel de l'API RÉELLE de la console (session d'un administrateur, rôle SQL de la console)."""
+    from app.console.main import create_console_app
+
+    settings = _settings()
+    headers = {"X-TechNova-Console": "1"}
+    prefix = settings.platform_api_prefix
+    with TestClient(create_console_app(settings)) as client:
+        _check(
+            client.post(
+                f"{prefix}/auth/login",
+                json={"email": CONSOLE_ADMINS[who], "password": CONSOLE_PASSWORD},
+                headers=headers,
+            ),
+            200,
+        )
+        response = client.request(
+            method, f"{prefix}{path}", headers=headers, json=json.loads(body) if body else None
+        )
+        if response.status_code != expect:
+            raise SystemExit(
+                f"console {method} {path} : {response.status_code} (attendu {expect}) "
+                f"{response.text[:600]}"
+            )
+        return response.json() if response.content else None
+
+
+def write_one(slug: str, tag: str) -> dict[str, Any]:
+    """Une écriture (catégorie) dans UNE entreprise par l'API ; code HTTP renvoyé tel quel."""
+    with TestClient(create_app(_settings())) as client:
+        api = _owner(client, slug)
+        response = api.post("/catalog/categories", json={"name": f"{tag}-{slug}"})
+        return {"status": response.status_code, "code": (response.json() or {}).get("code")}
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="backup_scenario")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -310,6 +378,16 @@ def main(argv: list[str]) -> int:
     loop.add_argument("--tag", default="ecriture")
     sub.add_parser("fingerprint")
     sub.add_parser("console-status")
+    sub.add_parser("console-admins")
+    call = sub.add_parser("console")
+    call.add_argument("--as", dest="who", choices=sorted(CONSOLE_ADMINS), required=True)
+    call.add_argument("--method", default="GET")
+    call.add_argument("--path", required=True)
+    call.add_argument("--json", dest="body")
+    call.add_argument("--expect", type=int, default=200)
+    one = sub.add_parser("write-one")
+    one.add_argument("--slug", required=True)
+    one.add_argument("--tag", required=True)
     args = parser.parse_args(argv)
     if args.command == "seed":
         data = seed()
@@ -317,6 +395,12 @@ def main(argv: list[str]) -> int:
         data = write_loop(args.seconds, args.tag)
     elif args.command == "console-status":
         data = console_status()
+    elif args.command == "console-admins":
+        data = console_admins()
+    elif args.command == "console":
+        data = console_call(args.who, args.method, args.path, args.body, args.expect)
+    elif args.command == "write-one":
+        data = write_one(args.slug, args.tag)
     else:
         data = fingerprint()
     print(json.dumps(data))
