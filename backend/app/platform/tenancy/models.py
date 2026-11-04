@@ -1,8 +1,10 @@
 import uuid
+from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     String,
@@ -58,6 +60,11 @@ class Tenant(IdMixin, TimestampMixin, Base):
     tax_id: Mapped[str | None] = mapped_column(String(50))
     trade_register: Mapped[str | None] = mapped_column(String(50))
     description: Mapped[str | None] = mapped_column(Text)
+    # Restauration en cours (R11, ADR-0058) : posé par l'agent de sauvegarde pendant
+    # l'application d'une restauration ; toute requête de l'entreprise est alors refusée
+    # (503 ``tenant_restore_in_progress``), les autres entreprises ne sont pas concernées.
+    restore_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    restore_operation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     # Référence du logo (URL https) ; stockage de fichiers : phase ultérieure.
     logo_url: Mapped[str | None] = mapped_column(String(500))
 

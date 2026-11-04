@@ -5,6 +5,20 @@
 #       [--keep] [--no-switch] [--port 55432]
 #   SM_BACKUP_DIR=/backups sm-restore-test.sh --cleanup /backups/restore-test/<exécution>
 #
+# Vérifications des restaurations demandées dans la console (R11, ADR-0058), sur la MÊME copie
+# isolée et avec les MÊMES contrôles (statut status/restore_verify.json, --op restore_verify) :
+#   --target-time "AAAA-MM-JJ HH:MM:SSZ"   copie à un instant (PITR) : sauvegarde vérifiée
+#                                         terminée avant, chaîne WAL contrôlée, cible atteinte ;
+#   --tenant-export UUID --export-run-id HEX   puis export LOGIQUE de l'entreprise depuis la copie
+#                                         (sauvegarde « pitr » matérialisée, jamais appliquée
+#                                         sans vérification) ;
+#   --tenant-apply UUID --artifact DIR --operation UUID   épreuve de la restauration d'UNE
+#                                         entreprise sur la copie : empreinte de TOUTES les données
+#                                         avant / après (autres entreprises et plateforme
+#                                         identiques, tables conservées de l'entreprise
+#                                         identiques), contrôles de sm-tenant-apply.sh, relecture
+#                                         exacte de chaque table restaurée.
+#
 # 1. sauvegarde : la plus récente VÉRIFIÉE (ou --backup) ;
 # 2. production, en LECTURE avec le rôle de réplication : révision Alembic, bascule du segment
 #    WAL courant (pg_switch_wal, aucune donnée modifiée ; --no-switch pour s'en passer) et
@@ -30,6 +44,7 @@ HERE="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 . "$HERE/lib.sh"
 
 WAIT=0 BACKUP="" KEEP=0 SWITCH=1 PORT="${SM_RESTORE_TEST_PORT:-55432}" CLEANUP=""
+OPNAME=restore_test TARGET_TIME="" EXPORT_TENANT="" EXPORT_RUN="" APPLY_TENANT="" ARTIFACT="" OPERATION=""
 while (( $# )); do
   case "$1" in
     --wait) WAIT="$2"; shift 2 ;;
@@ -38,12 +53,31 @@ while (( $# )); do
     --no-switch) SWITCH=0; shift ;;
     --port) PORT="$2"; shift 2 ;;
     --cleanup) CLEANUP="$2"; shift 2 ;;
+    --op) OPNAME="$2"; shift 2 ;;
+    --target-time) TARGET_TIME="$2"; shift 2 ;;
+    --tenant-export) EXPORT_TENANT="$2"; shift 2 ;;
+    --export-run-id) EXPORT_RUN="$2"; shift 2 ;;
+    --tenant-apply) APPLY_TENANT="$2"; shift 2 ;;
+    --artifact) ARTIFACT="$2"; shift 2 ;;
+    --operation) OPERATION="$2"; shift 2 ;;
     *) echo "option inconnue : $1" >&2; exit 2 ;;
   esac
 done
 sm_need pg_ctl psql pg_amcheck gzip
 SM_ROOT="$(sm_root)"
-sm_log_init restore_test
+[[ "$OPNAME" =~ ^(restore_test|restore_verify)$ ]] || sm_die "--op : restore_test ou restore_verify"
+sm_log_init "$OPNAME"
+UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+[[ -z "$EXPORT_TENANT" || ( "$EXPORT_TENANT" =~ $UUID_RE && "$EXPORT_RUN" =~ ^[0-9a-f]{8}$ ) ]] || sm_die "--tenant-export / --export-run-id invalides"
+[[ -z "$APPLY_TENANT" || ( "$APPLY_TENANT" =~ $UUID_RE && "$OPERATION" =~ $UUID_RE && -n "$ARTIFACT" ) ]] || sm_die "--tenant-apply / --artifact / --operation invalides"
+[[ -z "$EXPORT_TENANT" || -z "$APPLY_TENANT" ]] || sm_die "--tenant-export et --tenant-apply : une seule épreuve par copie"
+TARGET_EPOCH=""
+if [[ -n "$TARGET_TIME" ]]; then
+  re='^([0-9]{4}-[0-9]{2}-[0-9]{2})[T ]([0-9]{2}:[0-9]{2}:[0-9]{2})( ?(Z|\+00|\+00:00|UTC))$'
+  [[ "$TARGET_TIME" =~ $re ]] || sm_die "--target-time : « AAAA-MM-JJ HH:MM:SSZ » (UTC explicite)"
+  TARGET_EPOCH="$(date -u -d "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" +%s)" || sm_die "--target-time : date invalide"
+  TARGET_TIME="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}+00"
+fi
 TESTROOT="$SM_ROOT/restore-test"
 [[ -d "$TESTROOT" && ! -L "$TESTROOT" ]] || sm_die "répertoire restore-test absent ou lien symbolique"
 TESTROOT="$(realpath "$TESTROOT")"
@@ -99,11 +133,20 @@ fi
 
 # --- Préparation -----------------------------------------------------------------------------
 sm_lock backup "$WAIT"
-sm_op_begin restore_test
+sm_op_begin "$OPNAME"
 sm_pg_env
 [[ "$PORT" =~ ^[0-9]+$ ]] || sm_op_fail "--port invalide"
 (( PORT != PGPORT )) || sm_op_fail "le port de test doit différer de celui de la production"
 
+if [[ -z "$BACKUP" && -n "$TARGET_EPOCH" ]]; then
+  # PITR : la plus récente sauvegarde VÉRIFIÉE terminée avant la cible.
+  for s in $(sm_backups); do
+    sm_backup_verified "$s" || continue
+    (( $(sm_json_get "$SM_ROOT/base/$s/backup_info.json" finished_at_epoch) <= TARGET_EPOCH )) || continue
+    BACKUP="$s"
+  done
+  [[ -n "$BACKUP" ]] || sm_op_fail "aucune sauvegarde vérifiée terminée avant la cible $TARGET_TIME"
+fi
 if [[ -z "$BACKUP" ]]; then BACKUP="$(sm_latest_verified_backup)"; fi
 [[ -n "$BACKUP" ]] || sm_op_fail "aucune sauvegarde vérifiée : test impossible"
 [[ "$BACKUP" =~ $SM_STAMP_RE ]] && sm_backup_verified "$BACKUP" || sm_op_fail "sauvegarde $BACKUP absente ou non vérifiée"
@@ -165,6 +208,10 @@ SM_OP_CLEANUP=cleanup
 T0="$(date -u +%s)"
 R_BACKUP="$BACKUP" R_DATA="$DATA" R_PORT="$PORT" R_SOCKET="$DIR" R_LISTEN="" R_ACTION=promote
 R_TARGET_KIND=end R_TARGET="" R_HBA_LOCAL_ONLY=1
+if [[ -n "$TARGET_TIME" ]]; then
+  (( TARGET_EPOCH <= $(date -u +%s) )) || sm_op_fail "la cible $TARGET_TIME est dans le futur"
+  R_TARGET_KIND=time R_TARGET="$TARGET_TIME"
+fi
 sm_restore_prepare
 {
   echo "shared_buffers = '${SM_RESTORE_TEST_SHARED_BUFFERS:-128MB}'"
@@ -195,7 +242,14 @@ check() { # nom réussi(0/1) détail
 }
 
 REPLAY="$(cq -U "$SUPER" -d postgres -c "SELECT pg_last_wal_replay_lsn()")"
-if [[ -n "$EXPECTED_LSN" ]]; then
+if [[ -n "$TARGET_TIME" ]]; then
+  # PostgreSQL refuse de promouvoir si la cible n'est pas atteinte (FATAL « recovery ended
+  # before configured recovery target was reached ») : la promotion EST la preuve ; le point
+  # d'arrêt exact est relevé dans le journal de la copie.
+  stop="$(grep -m1 -o 'recovery stopping [^"]*' "$DIR/restore.log" 2>/dev/null | head -c 200 || true)"
+  LOST=""
+  check recovery_point_reached "$([[ -n "$stop" ]] && echo 0 || echo 1)" "cible $TARGET_TIME : ${stop:-arrêt de la récupération non relevé dans le journal}"
+elif [[ -n "$EXPECTED_LSN" ]]; then
   LOST="$(cq -U "$SUPER" -d postgres -c "SELECT greatest(0, pg_wal_lsn_diff('$EXPECTED_LSN', '$REPLAY'))::bigint")"
   check recovery_point_reached "$([[ "$LOST" == 0 ]] && echo 0 || echo 1)" "rejoué jusqu'à $REPLAY (attendu $EXPECTED_LSN, octets non restaurés : $LOST)"
 else
@@ -314,6 +368,73 @@ else
   check rls_no_context 1 "aucune table d'entreprise lisible par $APP_ROLE : rôle absent de la copie ?"
 fi
 
+# --- Épreuves des restaurations demandées dans la console (R11) -------------------------------
+copy_env() { PGHOST="$DIR" PGPORT="$PORT" PGDATABASE="$DBNAME" "$@"; }
+if [[ -n "$EXPORT_TENANT" ]]; then
+  if (( FAILED == 0 )); then
+    if out="$(copy_env SM_BACKUP_DIR="$SM_ROOT" "$HERE/sm-tenant-export.sh" --tenant "$EXPORT_TENANT" --run-id "$EXPORT_RUN" \
+          --source pitr --source-point "${TARGET_TIME:-}" --host "$DIR" --port "$PORT" 2>&1)"; then
+      art="$(grep '^ARTIFACT ' <<<"$out" | tail -n 1)"
+      check tenant_export 0 "${art#ARTIFACT }"
+      sm_extra artifact "$(sm_js "${art#ARTIFACT }")"
+    else
+      check tenant_export 1 "$(tail -n 2 <<<"$out" | tr '\n' ' ')"
+    fi
+  else
+    check tenant_export 1 "copie non conforme : aucun export"
+  fi
+fi
+if [[ -n "$APPLY_TENANT" ]]; then
+  if (( FAILED == 0 )); then
+    FP="$DIR/fingerprint"
+    mkdir "$FP"
+    copy_env PGUSER="$SUPER" "$HERE/sm-fingerprint.sh" >"$FP/before" || check fingerprint 1 "empreinte initiale impossible"
+    report="$DIR/apply-report.json"
+    if copy_env SM_BACKUP_DIR="$SM_ROOT" "$HERE/sm-tenant-apply.sh" --tenant "$APPLY_TENANT" --artifact "$ARTIFACT" \
+         --operation "$OPERATION" --host "$DIR" --port "$PORT" --report "$report" >"$FP/apply.out" 2>&1; then
+      check tenant_apply 0 "archive appliquée à la copie (transaction validée)"
+    else
+      check tenant_apply 1 "$(grep -o '"error": "[^"]*"' "$report" 2>/dev/null || tail -n 2 "$FP/apply.out" | tr '\n' ' ')"
+    fi
+    [[ -f "$report" ]] && sm_extra apply_report "$(cat "$report")"
+    copy_env PGUSER="$SUPER" "$HERE/sm-fingerprint.sh" >"$FP/after" || check fingerprint 1 "empreinte finale impossible"
+    # Tables que l'application peut modifier pour CETTE entreprise : remplacées (droit DELETE du
+    # rôle de restauration), compteurs fusionnés, journal (une entrée ajoutée).
+    restorer="${SM_TENANT_RESTORE_PGUSER:-stockmanager_tenant_restore}"
+    mapfile -t writable < <(sq -c "SELECT c.relname FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r'
+       AND (has_table_privilege('$restorer', c.oid, 'DELETE') OR has_table_privilege('$restorer', c.oid, 'UPDATE') OR has_table_privilege('$restorer', c.oid, 'INSERT'))")
+    others="$(diff <(grep -v "|$APPLY_TENANT|" "$FP/before") <(grep -v "|$APPLY_TENANT|" "$FP/after") | grep -c '^[<>]' || true)"
+    check other_tenants_unchanged "$([[ "$others" == 0 && -s "$FP/after" ]] && echo 0 || echo 1)" \
+      "$(grep -vc "|$APPLY_TENANT|" "$FP/after") empreinte(s) (autres entreprises et tables de la plateforme) : $others différence(s)"
+    kept_bad=""
+    while IFS='|' read -r t _ _ _; do
+      w=0; for x in "${writable[@]}"; do [[ "$x" == "$t" ]] && w=1; done
+      (( w )) || kept_bad+="$t "
+    done < <(diff <(grep "|$APPLY_TENANT|" "$FP/before") <(grep "|$APPLY_TENANT|" "$FP/after") | sed -n 's/^> //p')
+    check kept_tables_unchanged "$([[ -z "$kept_bad" ]] && echo 0 || echo 1)" \
+      "tables conservées de l'entreprise (abonnements, licences, postes, notifications d'échéance…) modifiées : ${kept_bad:-aucune}"
+    if [[ -f "$ARTIFACT/manifest.tsv" ]] && sha="$(copy_env SM_BACKUP_DIR="$SM_ROOT" "$HERE/sm-tenant-export.sh" --tenant "$APPLY_TENANT" --sha-only --host "$DIR" --port "$PORT" 2>/dev/null)"; then
+      purged="$(grep -o '"purged": "[^"]*"' "$report" 2>/dev/null || true)"
+      diffs="$(diff <(awk '{print $2"\t"$3"\t"$4}' <<<"$sha") <(grep -v '^#' "$ARTIFACT/manifest.tsv" | cut -f1-3) | sed -n 's/^< \([^\t]*\).*/\1/p' | tr '\n' ' ')"
+      # Écarts admis : compteurs (jamais en arrière), effacements à 30 jours réappliqués.
+      unexpected=""
+      for t in $diffs; do
+        case "$t" in
+          document_sequences) ;;
+          member_notifications|restaurant_orders) [[ "$purged" == *"=0"*"=0"* ]] && unexpected+="$t " ;;
+          *) unexpected+="$t " ;;
+        esac
+      done
+      check restored_exact "$([[ -z "$unexpected" ]] && echo 0 || echo 1)" \
+        "relecture de chaque table restaurée : identique à la sauvegarde, sauf ${diffs:-rien} (admis : compteurs au maximum, effacements à 30 jours) ; écarts inattendus : ${unexpected:-aucun}"
+    else
+      check restored_exact 1 "relecture de l'entreprise restaurée impossible"
+    fi
+  else
+    check tenant_apply 1 "copie non conforme : épreuve non jouée"
+  fi
+fi
+
 T_END="$(date -u +%s)"
 RTO=$(( T_END - T0 ))
 RTO_TARGET="${SM_RTO_TARGET_SECONDS:-14400}"
@@ -333,7 +454,7 @@ sm_extra sites "$(sm_jn "$n_sites")"
 sm_extra database_bytes "$(sm_jn "$db_bytes")"
 sm_extra checks_failed "$FAILED"
 sm_extra checks "[$CHECKS]"
-cp_report() { cp "$SM_ROOT/status/restore_test.json" "$SM_ROOT/logs/restore-test-$SM_RUN_ID.json" 2>/dev/null || true; }
+cp_report() { cp "$SM_ROOT/status/$OPNAME.json" "$SM_ROOT/logs/${OPNAME//_/-}-$SM_RUN_ID.json" 2>/dev/null || true; }
 
 # Arrêt et suppression sous gardes AVANT le statut final (un refus de suppression est un échec).
 pg_ctl -D "$DATA" -m fast -w -t 120 stop >/dev/null || sm_op_fail "arrêt de la copie impossible"
@@ -347,11 +468,11 @@ elif safe_remove "$DIR" "$SM_RUN_ID"; then
 else
   sm_extra cleanup "\"refused\""
   sm_extra cleanup_refusal "$(sm_js "$REFUSAL")"
-  sm_status_write restore_test failed "suppression de l'environnement refusée : $REFUSAL"; SM_OP_DONE=1; cp_report
+  sm_status_write "$OPNAME" failed "suppression de l'environnement refusée : $REFUSAL"; SM_OP_DONE=1; cp_report
   exit 3
 fi
 if (( FAILED > 0 )); then
-  sm_status_write restore_test failed "$FAILED contrôle(s) en échec sur la copie restaurée"; SM_OP_DONE=1; cp_report
+  sm_status_write "$OPNAME" failed "$FAILED contrôle(s) en échec sur la copie restaurée"; SM_OP_DONE=1; cp_report
   sm_log "fin : ÉCHEC — $FAILED contrôle(s)"
   exit 1
 fi

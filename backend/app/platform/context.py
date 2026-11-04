@@ -33,6 +33,7 @@ from app.platform.capabilities.service import (
 from app.platform.identity.models import AuthSession, User
 from app.platform.registry import AccessKind, ModuleRegistry, ModuleStatus, get_registry
 from app.platform.tenancy.models import Site, Tenant, TenantStatus
+from app.platform.tenancy.restore_lock import ensure_not_restoring, load_tenant_for_request
 from app.shared.clock import utcnow
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -239,7 +240,7 @@ def get_tenant_context(
     # À partir d'ici, PostgreSQL ne laisse voir que les lignes de ce tenant.
     set_db_context(db, tenant_id=tenant_id, user_id=auth.user.id)
 
-    tenant = db.get(Tenant, tenant_id)
+    tenant = load_tenant_for_request(db, tenant_id)
     membership = db.scalars(
         select(TenantMembership).where(
             TenantMembership.tenant_id == tenant_id, TenantMembership.user_id == auth.user.id
@@ -249,6 +250,7 @@ def get_tenant_context(
         raise ForbiddenError("Accès à cette entreprise refusé", code="tenant_access_denied")
     if tenant.status != TenantStatus.ACTIVE:
         raise ForbiddenError("Entreprise suspendue", code="tenant_suspended")
+    ensure_not_restoring(tenant)
     site: Site | None = None
     if x_site_id:
         try:

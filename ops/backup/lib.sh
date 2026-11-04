@@ -14,6 +14,8 @@
 #   locks/             verrous (exécutions concurrentes), 0700
 #   logs/              journaux des opérations (un fichier par opération et par mois), 0700
 #   status/            statuts JSON lus par la console et la supervision, 0755 / 0644
+#   logical/<entreprise>/<horodatage>-<exécution>/  sauvegardes LOGIQUES d'une entreprise (R11,
+#                      ADR-0058) : CSV compressés, manifeste, SHA256SUMS, marqueur .complete, 0700
 # Racine : 0711 (traversable pour lire status/, jamais listable par un autre compte).
 
 SM_SCHEMA_VERSION=1
@@ -80,7 +82,7 @@ sm_root() {
   [[ -f "$root/$SM_ROOT_MARKER" ]] || sm_die "marqueur $SM_ROOT_MARKER absent dans $root (lancer sm-backup-init.sh ; montage manquant ?)"
   realpath "$root"
 }
-sm_subdirs() { echo "wal base restore-test state state/backups locks logs status"; }
+sm_subdirs() { echo "wal base restore-test state state/backups locks logs status logical"; }
 
 # Initialise la journalisation d'une opération : logs/<op>-AAAAMM.log.
 sm_log_init() {

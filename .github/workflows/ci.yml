@@ -222,9 +222,9 @@ jobs:
         run: |
           d="$(mktemp -d)"; cp ops/systemd/* "$d/"
           sed -i "s#/opt/stockmanager/ops/backup/sm-backup-host.sh#/bin/true#; s#EnvironmentFile=#EnvironmentFile=-#" "$d/stockmanager-backup@.service"
-          for u in weekly verify restore-test health offsite; do cp "$d/stockmanager-backup@.service" "$d/stockmanager-backup@$u.service"; done
+          for u in agent health offsite; do cp "$d/stockmanager-backup@.service" "$d/stockmanager-backup@$u.service"; done
           # Seuls les messages portant sur NOS unités comptent (le runner a ses propres avertissements).
-          out="$(SYSTEMD_UNIT_PATH="$d:" systemd-analyze verify "$d"/*.timer "$d/stockmanager-backup@weekly.service" 2>&1 | grep -F "$d" || true)"
+          out="$(SYSTEMD_UNIT_PATH="$d:" systemd-analyze verify "$d"/*.timer "$d/stockmanager-backup@agent.service" 2>&1 | grep -F "$d" || true)"
           echo "${out:-unités valides}"
           test -z "$out"
 

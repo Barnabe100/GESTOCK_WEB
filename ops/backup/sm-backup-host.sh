@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Lanceur côté HÔTE des tâches de sauvegarde (unités systemd ou cron) — Docker Compose.
 #
-#   sm-backup-host.sh weekly|verify|restore-test|health|prune-dry-run|offsite
+#   sm-backup-host.sh agent|weekly|verify|restore-test|health|prune-dry-run|offsite
+#
+#   agent : chaque minute (stockmanager-backup-agent.timer) — exécute ce que la console a planifié
+#           ou demandé (R11, ADR-0058) ; les autres tâches restent disponibles à la main.
 #
 # Lit /etc/stockmanager/backup-host.env (SM_HOST_ENV_FILE) :
 #   SM_COMPOSE_DIR=/chemin/du/dépôt          répertoire contenant docker-compose.yml
@@ -11,7 +14,7 @@
 # réplication) : aucun port, aucun mot de passe sur la ligne de commande de l'hôte.
 set -euo pipefail
 OP="${1:-}"
-case "$OP" in weekly|verify|restore-test|health|prune-dry-run|offsite) ;; *) echo "tâche inconnue : $OP" >&2; exit 2 ;; esac
+case "$OP" in agent|weekly|verify|restore-test|health|prune-dry-run|offsite) ;; *) echo "tâche inconnue : $OP" >&2; exit 2 ;; esac
 ENV_FILE="${SM_HOST_ENV_FILE:-/etc/stockmanager/backup-host.env}"
 if [[ -f "$ENV_FILE" ]]; then set -a; . "$ENV_FILE"; set +a; fi
 : "${SM_COMPOSE_DIR:?SM_COMPOSE_DIR non défini ($ENV_FILE)}"

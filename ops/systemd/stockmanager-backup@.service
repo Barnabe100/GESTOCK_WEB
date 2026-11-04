@@ -1,4 +1,6 @@
-# Tâche de sauvegarde StockManager (R11-0) : %i = weekly | verify | restore-test | health | offsite.
+# Tâche de sauvegarde StockManager (R11-0, R11) : %i = agent | health | offsite (tâches planifiées)
+# ou weekly | verify | restore-test (lancement manuel exceptionnel ; la planification est celle
+# de la console, exécutée par l'agent).
 # Installée par docs/exploitation/SAUVEGARDE_RESTAURATION.md §5 (copie dans /etc/systemd/system).
 # Une même tâche ne s'exécute jamais deux fois en parallèle (systemd) ; les opérations lourdes
 # partagent en plus un verrou dans le conteneur (attente, puis échec explicite).

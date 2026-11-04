@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Point d'entrée des tâches planifiées (dans le conteneur db, utilisateur postgres).
 #
-#   sm-backup-run.sh weekly | verify | restore-test | health | prune-dry-run
+#   sm-backup-run.sh agent | weekly | verify | restore-test | health | prune-dry-run
 #
+#   agent         agent des sauvegardes (R11) : planification et demandes de la console
 #   weekly        sauvegarde complète vérifiée PUIS rétention appliquée (--apply) si elle a réussi
 #   verify        vérification quotidienne (complète des WAL le jour SM_BACKUP_VERIFY_FULL_WEEKDAY,
 #                 1 = lundi … 7 = dimanche, défaut 7)
@@ -24,7 +25,8 @@ case "${1:-}" in
     fi
     exec "$HERE/sm-backup-verify.sh" --wait "$WAIT" ;;
   restore-test) exec "$HERE/sm-restore-test.sh" --wait "$WAIT" ;;
+  agent) exec "$HERE/sm-backup-agent.sh" ;;
   health) exec "$HERE/sm-backup-health.sh" --write ;;
   prune-dry-run) exec "$HERE/sm-backup-prune.sh" --wait "$WAIT" ;;
-  *) echo "usage : sm-backup-run.sh weekly|verify|restore-test|health|prune-dry-run" >&2; exit 2 ;;
+  *) echo "usage : sm-backup-run.sh agent|weekly|verify|restore-test|health|prune-dry-run" >&2; exit 2 ;;
 esac

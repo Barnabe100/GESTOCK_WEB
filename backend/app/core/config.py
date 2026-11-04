@@ -87,6 +87,12 @@ class Settings(BaseSettings):
         "postgresql+psycopg://stockmanager_purge:stockmanager_purge@localhost:5432/stockmanager"
     )
     db_purge_role: str = "stockmanager_purge"
+    # Sauvegardes pilotées par la console (R11, ADR-0058) : agent (file d'attente, rôle de
+    # réplication de R11-0), lecture d'UNE entreprise (RLS) et restauration d'UNE entreprise
+    # (RLS, session_replication_role) — aucun n'a BYPASSRLS ni le statut de superutilisateur.
+    db_backup_role: str = "stockmanager_backup"
+    db_tenant_backup_role: str = "stockmanager_tenant_backup"
+    db_tenant_restore_role: str = "stockmanager_tenant_restore"
     db_pool_size: int = 10
     db_max_overflow: int = 10
     db_pool_timeout_seconds: int = 30

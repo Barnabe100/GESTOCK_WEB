@@ -1,5 +1,12 @@
 """Import de tous les modèles : utilisé par Alembic (métadonnées complètes)."""
 
+from app.console.backup_models import (
+    BackupAgentState,
+    BackupItem,
+    BackupPolicy,
+    BackupRun,
+    RestoreOperation,
+)
 from app.console.models import PlatformAuditLog, PlatformSession
 from app.core.db import Base
 from app.modules.catalog.models import Article, Category
@@ -40,6 +47,11 @@ from app.platform.subscriptions.models import Subscription, SubscriptionPayment
 from app.platform.tenancy.models import Site, SiteModule, Tenant, TenantModule
 
 __all__ = [
+    "BackupAgentState",
+    "BackupItem",
+    "BackupPolicy",
+    "BackupRun",
+    "RestoreOperation",
     "DocumentSequence",
     "ExitReason",
     "StockEntry",

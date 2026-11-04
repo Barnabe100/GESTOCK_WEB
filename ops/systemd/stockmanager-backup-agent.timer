@@ -1,0 +1,15 @@
+# Chaque minute : agent des sauvegardes (R11, ADR-0058). Les échéances (sauvegardes physiques et
+# logiques, vérification, test de restauration) ne sont PAS fixées ici : elles viennent des
+# paramètres enregistrés dans la console TechNova (table backup_policies). L'agent exécute aussi
+# les demandes immédiates et les restaurations approuvées. Une minute où l'agent travaille
+# encore est sautée (verrou) : jamais deux agents simultanés.
+[Unit]
+Description=StockManager — agent des sauvegardes (planification de la console)
+
+[Timer]
+OnCalendar=*:*:00
+AccuracySec=5s
+Unit=stockmanager-backup@agent.service
+
+[Install]
+WantedBy=timers.target
