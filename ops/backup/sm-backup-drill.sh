@@ -1,173 +1,419 @@
 #!/usr/bin/env bash
-# Exercice de sauvegarde / restauration (PITR) mesuré — preuve du RPO et du RTO.
+# Exercice complet de sauvegarde / restauration (R11-0) — preuve automatisée, base JETABLE.
 #
-#   ops/backup/sm-backup-drill.sh            (depuis la racine du dépôt ; CI : job « backup-drill »)
+#   ops/backup/sm-backup-drill.sh [--mode native|docker] [--keep]
 #
-# Monte un cluster PostgreSQL 16 TEMPORAIRE (127.0.0.1, port libre, répertoire jetable) : aucune
-# base existante n'est lue ni modifiée. Étapes :
-#   1. cluster avec archivage WAL (scripts de production : sm-wal-archive.sh, archive_timeout) ;
-#   2. schéma RÉEL de l'application (rôles, migrations Alembic jusqu'à head, catalogue) et une
-#      entreprise provisionnée par la CLI ;
-#   3. sauvegarde de base vérifiée (sm-base-backup.sh) ;
-#   4. écritures « avant » l'instant visé, horodatage T, écritures « après » ;
-#   5. restauration PITR à T dans un répertoire NEUF (sm-restore-pitr.sh), sur un autre port ;
-#   6. vérifications : données « avant » présentes, « après » absentes, RLS active et forcée,
-#      rôle applicatif sans accès hors contexte d'entreprise, révision Alembic identique ;
-#   7. rétention (sm-backup-prune.sh) sans perte de la dernière sauvegarde.
-# Rapport JSON : ${SM_DRILL_REPORT:-/tmp/sm-backup-drill-report.json} ; code de sortie 0 = réussite.
+# native : cluster PostgreSQL 16 temporaire (127.0.0.1, port libre), scripts lancés en
+#          utilisateur postgres (CI : image postgres:16-bookworm).
+# docker : projet Docker Compose DE TEST (nom unique, port libre, volume propre) construit avec
+#          docker-compose.yml + docker-compose.backup.yml (image postgres:16-alpine, busybox) :
+#          données créées AVANT l'activation, conteneur recréé avec le complément de sauvegarde,
+#          empreinte des données, volume et port vérifiés inchangés. Ne touche JAMAIS le projet
+#          « stockmanager » ni son volume.
+# Étapes communes : schéma réel (Alembic) et trois entreprises par l'API (magasins, dépôts,
+# utilisateur partagé, stock, ventes) ; racine et rôle de réplication ; sauvegarde complète
+# PENDANT des écritures concurrentes (et refus d'une seconde exécution) ; vérification ; PITR à
+# un instant T (données avant présentes, après absentes, isolement des entreprises) ; test de
+# restauration complet ; interruption (signal, arrêt brutal) ; sauvegarde corrompue ; WAL
+# manquant ; WAL corrompu ; échec et retard d'archivage ; base inactive ; rétention (simulation
+# par défaut, dernière vérifiée protégée) ; gardes de suppression ; statut de la console.
+# Rapport : ${SM_DRILL_REPORT:-$TMPDIR/sm-backup-drill-report.json} ; code 0 = tout réussi.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BIN="${SM_PG_BINDIR:-$(pg_config --bindir 2>/dev/null || echo /usr/lib/postgresql/16/bin)}"
-export PATH="$BIN:$PATH"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/sm-backup-drill.XXXXXX")"
+MODE=native KEEP=0
+while (( $# )); do
+  case "$1" in
+    --mode) MODE="$2"; shift 2 ;;
+    --keep) KEEP=1; shift ;;
+    *) echo "option inconnue : $1" >&2; exit 2 ;;
+  esac
+done
+[[ "$MODE" == native || "$MODE" == docker ]] || { echo "--mode native|docker" >&2; exit 2; }
+TMPROOT="${TMPDIR:-/tmp}"
+WORK="$(mktemp -d "$TMPROOT/sm-backup-drill.XXXXXX")"
 chmod 0755 "$WORK"
-REPORT="${SM_DRILL_REPORT:-${TMPDIR:-/tmp}/sm-backup-drill-report.json}"
-RPO_TARGET=900   # 15 minutes
-RTO_TARGET=14400 # 4 heures
-ARCHIVE_TIMEOUT="${SM_DRILL_ARCHIVE_TIMEOUT:-60}"
-
-# PostgreSQL refuse de tourner en root : serveur et fichiers de données confiés à « postgres ».
-as_pg() {
-  if (( EUID == 0 )); then runuser -u postgres -- env PATH="$PATH" "$@"; else "$@"; fi
+REPORT="${SM_DRILL_REPORT:-$TMPROOT/sm-backup-drill-report.json}"
+RESULTS=()
+METRICS=""
+log() { echo "[exercice:$MODE] $*"; }
+jstr() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/ }"; printf '"%s"' "$s"; }
+write_report() {
+  local joined="" r
+  for r in "${RESULTS[@]}"; do joined+="${joined:+, }$r"; done
+  printf '{\n  "status": "%s",\n  "mode": "%s",\n  "steps": [%s],\n  "metrics": {%s}\n}\n' "$1" "$MODE" "$joined" "$METRICS" >"$REPORT"
 }
-# Port libre : Python du système, sinon celui de l'environnement du backend (uv).
+pass() { RESULTS+=("{\"step\": $(jstr "$1"), \"ok\": true, \"detail\": $(jstr "$2")}"); log "RÉUSSI : $1 — $2"; }
+fail() { RESULTS+=("{\"step\": $(jstr "$1"), \"ok\": false, \"detail\": $(jstr "$2")}"); log "ÉCHEC : $1 — $2"; write_report failed; exit 1; }
+metric() { METRICS+="${METRICS:+, }\"$1\": ${2:-null}"; }
 free_port() {
   local code='import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'
-  if command -v python3 >/dev/null; then python3 -c "$code"
-  else (cd "$REPO/backend" && uv run --frozen python -c "$code"); fi
+  if command -v python3 >/dev/null; then python3 -c "$code"; else (cd "$REPO/backend" && uv run --frozen python -c "$code"); fi
 }
-log() { echo "[exercice] $*"; }
+PORT="$(free_port)"
+XENV=()
 
-PRIMARY="$WORK/primary" RESTORED="$WORK/restored" BACKUPS="$WORK/backups"
-PORT="$(free_port)" RPORT="$(free_port)"
-cleanup() {
-  as_pg pg_ctl -D "$RESTORED" -m immediate stop >/dev/null 2>&1 || true
-  as_pg pg_ctl -D "$PRIMARY" -m immediate stop >/dev/null 2>&1 || true
-  if [[ -z "${SM_DRILL_KEEP:-}" ]]; then rm -rf "$WORK"; else log "conservé : $WORK"; fi
-}
+# --- Environnement selon le mode -------------------------------------------------------------
+if [[ "$MODE" == native ]]; then
+  BIN="${SM_PG_BINDIR:-$(pg_config --bindir 2>/dev/null || echo /usr/lib/postgresql/16/bin)}"
+  export PATH="$BIN:$PATH"
+  PRIMARY="$WORK/primary" BK="$WORK/backups" SCRIPTS="$WORK/bin" SOCK="$WORK"
+  as_pg() { if (( EUID == 0 )); then runuser -u postgres -- env PATH="$PATH" "$@"; else "$@"; fi; }
+  mkdir -p "$SCRIPTS" "$BK"
+  cp "$REPO"/ops/backup/*.sh "$REPO"/ops/backup/*.sql "$SCRIPTS/"
+  if (( EUID == 0 )); then chown -R postgres "$WORK"; fi
+  ENVV=(SM_BACKUP_DIR="$BK" PGHOST="$SOCK" PGPORT="$PORT" PGDATA="$PRIMARY" SM_SUPERUSER=stockmanager SM_BACKUP_RESERVE_MB=16 SM_BACKUP_ARCHIVE_RESERVE_MB=16)
+  bk() { local cmd="$1"; shift; as_pg env "${ENVV[@]}" "${XENV[@]}" "$SCRIPTS/$cmd" "$@"; }
+  bk_sh() { as_pg env "${ENVV[@]}" "${XENV[@]}" bash -c "$1"; }
+  ROOT_IN="$BK" ROOT_HOST="$BK" SCRIPTS_IN="$SCRIPTS"
+  cleanup() {
+    local d
+    for d in "$BK"/pitr/data "$BK"/restore-test/*/data "$PRIMARY"; do as_pg pg_ctl -D "$d" -m immediate stop >/dev/null 2>&1 || true; done
+    if (( KEEP )); then log "conservé : $WORK"; else rm -rf "$WORK"; fi
+  }
+else
+  PROJECT="sm-backup-drill-$(date -u +%s)-$$"
+  BKH="$WORK/backups"
+  mkdir -p "$BKH"
+  export SM_BACKUP_HOST_DIR="$BKH" SM_DRILL_PORT="$PORT"
+  DC=(docker compose -p "$PROJECT" --project-directory "$REPO" -f "$REPO/docker-compose.yml" -f "$REPO/ops/backup/tests/docker-compose.drill.yml")
+  DCB=(docker compose -p "$PROJECT" --project-directory "$REPO" -f "$REPO/docker-compose.yml" -f "$REPO/docker-compose.backup.yml" -f "$REPO/ops/backup/tests/docker-compose.drill.yml")
+  ENVV=(SM_BACKUP_RESERVE_MB=16 SM_BACKUP_ARCHIVE_RESERVE_MB=16)
+  bk() {
+    local cmd="$1"; shift; local e=() v
+    for v in "${ENVV[@]}" "${XENV[@]}"; do e+=(-e "$v"); done
+    "${DCB[@]}" exec -T -u postgres "${e[@]}" db "/opt/stockmanager/backup/$cmd" "$@"
+  }
+  bk_sh() {
+    local e=() v
+    for v in "${ENVV[@]}" "${XENV[@]}"; do e+=(-e "$v"); done
+    "${DCB[@]}" exec -T -u postgres "${e[@]}" db bash -c "$1"
+  }
+  ROOT_IN=/backups ROOT_HOST="$BKH" SOCK=/var/run/postgresql PRIMARY=/var/lib/postgresql/data
+  SCRIPTS_IN=/opt/stockmanager/backup
+  cleanup() {
+    # Projet de TEST uniquement (nom unique) : son volume jetable est supprimé.
+    "${DCB[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+    docker run --rm -v "$WORK:/w" postgres:16-alpine rm -rf /w/backups >/dev/null 2>&1 || true
+    if (( KEEP )); then log "conservé : $WORK"; else rm -rf "$WORK" 2>/dev/null || true; fi
+  }
+fi
 trap cleanup EXIT
+export PGPASSWORD=stockmanager
+sqlp() { psql -X -h 127.0.0.1 -p "$PORT" -U stockmanager -d stockmanager -v ON_ERROR_STOP=1 -Atq "$@"; }
+status_get() { sed -n -e "s/^  \"$2\": \"\(.*\)\",\{0,1\}\$/\1/p" -e t -e "s/^  \"$2\": \([^\",]*\),\{0,1\}\$/\1/p" "$ROOT_HOST/status/$1.json" | head -n 1; }
+# Contrôles DANS la racine (répertoires 0700 de l'uid du serveur : jamais listés depuis l'hôte
+# en mode docker, où un contrôle depuis l'hôte réussirait à vide).
+exists_in() { bk_sh "[[ -e '$ROOT_IN/$1' ]]"; }
+empty_in() { bk_sh "[[ -d '$ROOT_IN/$1' && -z \"\$(ls -A '$ROOT_IN/$1')\" ]]"; }
+partials() { bk_sh "ls -d '$ROOT_IN'/base/.partial-* >/dev/null 2>&1"; }
+mode_in() { bk_sh "stat -c %a '$ROOT_IN/$1'"; }
+LAST_OUT=""
+expect_code() { # code_attendu étape commande…
+  local want="$1" step="$2"; shift 2
+  local got=0 out
+  out="$("$@" 2>&1)" || got=$?
+  [[ "$got" == "$want" ]] || fail "$step" "code $got (attendu $want) : $(echo "$out" | tail -n 4 | tr '\n' ' ')"
+  LAST_OUT="$out"
+}
+switch_and_wait() { # clôt le segment courant et attend son archivage
+  local w; w="$(sqlp -c "SELECT pg_walfile_name(pg_switch_wal())")"
+  for _ in $(seq 1 120); do
+    [[ "$(sqlp -c "SELECT coalesce(last_archived_wal, '') >= '$w' FROM pg_stat_archiver")" == t ]] && return 0
+    sleep 1
+  done
+  return 1
+}
 
-# Scripts de production copiés dans le répertoire jetable (lisibles par le serveur).
-mkdir -p "$WORK/bin" "$BACKUPS"
-cp "$REPO"/ops/backup/sm-*.sh "$WORK/bin/"
-(( EUID == 0 )) && chown -R postgres "$WORK"
+# --- 1. Instance et données ------------------------------------------------------------------
+URL="postgresql+psycopg://%s@127.0.0.1:$PORT/stockmanager"
+export SM_ENVIRONMENT=development SM_JWT_SECRET="exercice-de-restauration-uniquement-0123456789"
+SM_TEST_MIGRATION_DATABASE_URL="$(printf "$URL" stockmanager:stockmanager)"
+SM_TEST_DATABASE_URL="$(printf "$URL" stockmanager_app:stockmanager_app)"
+SM_TEST_PLATFORM_DATABASE_URL="$(printf "$URL" stockmanager_platform:stockmanager_platform)"
+SM_TEST_PURGE_DATABASE_URL="$(printf "$URL" stockmanager_purge:stockmanager_purge)"
+export SM_TEST_MIGRATION_DATABASE_URL SM_TEST_DATABASE_URL SM_TEST_PLATFORM_DATABASE_URL SM_TEST_PURGE_DATABASE_URL
+export SM_MIGRATION_DATABASE_URL="$SM_TEST_MIGRATION_DATABASE_URL" SM_DATABASE_URL="$SM_TEST_DATABASE_URL"
+export SM_PLATFORM_DATABASE_URL="$SM_TEST_PLATFORM_DATABASE_URL" SM_PURGE_DATABASE_URL="$SM_TEST_PURGE_DATABASE_URL"
+scenario() { (cd "$REPO/backend" && uv run --frozen python -m tests.backup_scenario "$@"); }
+migrate() { (cd "$REPO/backend" && uv run --frozen alembic upgrade head >/dev/null 2>&1 && uv run --frozen stockmanager catalog sync >/dev/null); }
+# Python du système, sinon celui du backend (uv) : l'image postgres:16-bookworm n'en a pas.
+py() { if command -v python3 >/dev/null; then python3 "$@"; else (cd "$REPO/backend" && uv run --frozen python "$@"); fi; }
+sha_of() { py -c 'import json,sys; print(json.load(sys.stdin)["sha256"])'; }
 
-log "1. cluster temporaire (port $PORT), archivage WAL toutes les ${ARCHIVE_TIMEOUT} s au plus"
-as_pg initdb -D "$PRIMARY" -U stockmanager --auth=trust --encoding=UTF8 --locale=C.UTF-8 >/dev/null
-as_pg tee -a "$PRIMARY/postgresql.auto.conf" >/dev/null <<CONF
+if [[ "$MODE" == native ]]; then
+  log "1. cluster temporaire (port $PORT)"
+  as_pg initdb -D "$PRIMARY" -U stockmanager --auth=trust --encoding=UTF8 --locale=C.UTF-8 >/dev/null
+  as_pg tee -a "$PRIMARY/postgresql.auto.conf" >/dev/null <<CONF
 port = $PORT
 listen_addresses = '127.0.0.1'
-unix_socket_directories = '$WORK'
+unix_socket_directories = '$SOCK'
 wal_level = replica
 archive_mode = on
-archive_command = 'SM_BACKUP_DIR=$BACKUPS $WORK/bin/sm-wal-archive.sh %p %f'
-archive_timeout = $ARCHIVE_TIMEOUT
+archive_command = 'SM_BACKUP_DIR=$BK $SCRIPTS/sm-wal-archive.sh %p %f'
+archive_timeout = 300
 CONF
-as_pg pg_ctl -D "$PRIMARY" -l "$WORK/primary.log" -w start >/dev/null
-
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=stockmanager
-psql_q() { psql -v ON_ERROR_STOP=1 -Atq "$@"; }
-psql_q -d postgres -c "CREATE DATABASE stockmanager"
-for role in stockmanager_app stockmanager_platform stockmanager_purge; do
-  psql_q -d stockmanager -c "CREATE ROLE $role LOGIN PASSWORD '$role' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
-done
-
-log "2. schéma réel (migrations Alembic) et entreprise de démonstration"
-URL="postgresql+psycopg://%s@127.0.0.1:$PORT/stockmanager"
-export SM_ENVIRONMENT=development
-export SM_MIGRATION_DATABASE_URL="$(printf "$URL" stockmanager)"
-export SM_DATABASE_URL="$(printf "$URL" stockmanager_app:stockmanager_app)"
-export SM_PLATFORM_DATABASE_URL="$(printf "$URL" stockmanager_platform:stockmanager_platform)"
-export SM_PURGE_DATABASE_URL="$(printf "$URL" stockmanager_purge:stockmanager_purge)"
-export SM_JWT_SECRET="exercice-de-restauration-uniquement-0123456789"
-cd "$REPO/backend"
-uv run --frozen alembic upgrade head >/dev/null 2>&1
-uv run --frozen stockmanager catalog sync >/dev/null
-echo "Exercice-Restauration-2026" | uv run --frozen stockmanager create-tenant --name "Exercice" \
-  --slug exercice --business-profile retail.quincaillerie --country BF --plan ENTREPRISE \
-  --owner-email exercice@example.com --owner-name "Exercice" --owner-password-stdin >/dev/null
-TENANT="$(psql_q -d stockmanager -c "SELECT id FROM tenants WHERE slug = 'exercice'")"
-REVISION="$(psql_q -d stockmanager -c "SELECT version_num FROM alembic_version")"
-cd "$REPO"
-
-log "3. sauvegarde de base vérifiée"
-BASE="$(SM_BACKUP_DIR="$BACKUPS" as_pg env PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=stockmanager \
-  "$WORK/bin/sm-base-backup.sh")"
-log "   $BASE"
-
-log "4. écritures avant / après l'instant visé"
-insert() {
-  psql_q -d stockmanager -c "INSERT INTO catalog_categories (id, tenant_id, name, is_active) VALUES (gen_random_uuid(), '$TENANT', '$1', true)"
-}
-for i in 1 2 3; do insert "avant-$i"; done
-sleep 1
-TARGET="$(psql_q -d stockmanager -c "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'")"
-sleep 1
-insert "apres-1"
-LAST_COMMIT_EPOCH="$(date -u +%s)"
-# Attente du VRAI archivage (archive_timeout), sans pg_switch_wal : mesure du RPO effectif.
-until psql_q -d stockmanager -c "SELECT extract(epoch FROM last_archived_time) >= $LAST_COMMIT_EPOCH FROM pg_stat_archiver" | grep -q t; do
-  sleep 1
-  (( $(date -u +%s) - LAST_COMMIT_EPOCH > RPO_TARGET )) && { log "ÉCHEC : WAL non archivé sous le RPO"; exit 1; }
-done
-RPO_MEASURED=$(( $(date -u +%s) - LAST_COMMIT_EPOCH ))
-FAILED_ARCHIVES="$(psql_q -d stockmanager -c "SELECT failed_count FROM pg_stat_archiver")"
-log "   dernière écriture archivée en ${RPO_MEASURED} s (échecs d'archivage : $FAILED_ARCHIVES)"
-
-log "5. restauration à $TARGET dans un répertoire neuf (port $RPORT)"
-# Garde : jamais de restauration sur un répertoire de données existant (ici, le primaire).
-if SM_BACKUP_DIR="$BACKUPS" as_pg "$WORK/bin/sm-restore-pitr.sh" --target-time "$TARGET" \
-  --data-dir "$PRIMARY" >/dev/null 2>&1; then
-  log "ÉCHEC : restauration acceptée sur un répertoire non vide"; exit 1
+  as_pg pg_ctl -D "$PRIMARY" -l "$WORK/primary.log" -w start >/dev/null
+  psql -X -h 127.0.0.1 -p "$PORT" -U stockmanager -d postgres -Atqc "CREATE DATABASE stockmanager"
+  for role in stockmanager_app stockmanager_platform stockmanager_purge; do
+    sqlp -c "CREATE ROLE $role LOGIN PASSWORD '$role' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
+  done
+  migrate
+  scenario seed >"$WORK/seed.json"
+  pass instance "cluster temporaire, schéma $(sqlp -c 'SELECT version_num FROM alembic_version'), $(sqlp -c 'SELECT count(*) FROM tenants') entreprises, $(sqlp -c 'SELECT count(*) FROM sites') sites"
+else
+  log "1. projet Compose de test $PROJECT (port $PORT) SANS le complément de sauvegarde"
+  "${DC[@]}" up -d --wait db >/dev/null
+  VOLUME="$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")"
+  migrate
+  scenario seed >"$WORK/seed.json"
+  FP_BEFORE="$(scenario fingerprint | sha_of)"
+  CID_BEFORE="$("${DC[@]}" ps -q db)"
+  log "   activation de docker-compose.backup.yml (conteneur recréé, volume conservé)"
+  docker run --rm -v "$BKH:/backups" postgres:16-alpine sh -c 'chown 70:70 /backups && chmod 0700 /backups'
+  "${DCB[@]}" up -d --wait db >/dev/null
+  CID_AFTER="$("${DCB[@]}" ps -q db)"
+  [[ "$CID_AFTER" != "$CID_BEFORE" ]] || fail activation "le conteneur n'a pas été recréé"
+  [[ "$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")" == "$VOLUME" ]] || fail activation "volume changé"
+  [[ "$("${DCB[@]}" port db 5432)" == "127.0.0.1:$PORT" ]] || fail activation "port publié changé : $("${DCB[@]}" port db 5432)"
+  FP_AFTER="$(scenario fingerprint | sha_of)"
+  [[ "$FP_AFTER" == "$FP_BEFORE" ]] || fail activation "données modifiées par l'activation"
+  [[ "$(sqlp -c "SHOW archive_mode")" == on ]] || fail activation "archive_mode inactif"
+  pass activation "conteneur recréé, volume $VOLUME conservé, port 127.0.0.1:$PORT conservé, empreinte ${FP_AFTER:0:12} identique, archivage actif"
 fi
-RESTORE_START="$(date -u +%s)"
-SM_BACKUP_DIR="$BACKUPS" as_pg "$WORK/bin/sm-restore-pitr.sh" --target-time "$TARGET" \
-  --data-dir "$RESTORED" --port "$RPORT" >/dev/null
-as_pg tee -a "$RESTORED/postgresql.auto.conf" >/dev/null <<CONF
-unix_socket_directories = '$WORK'
-CONF
-as_pg pg_ctl -D "$RESTORED" -l "$WORK/restored.log" -w -t 3600 start >/dev/null
-until [[ "$(psql_q -p "$RPORT" -d postgres -c 'SELECT pg_is_in_recovery()')" == "f" ]]; do sleep 1; done
-RTO_MEASURED=$(( $(date -u +%s) - RESTORE_START ))
 
-log "6. vérifications"
-rq() { psql_q -p "$RPORT" -d stockmanager -c "$1"; }
-fail() { log "ÉCHEC : $*"; exit 1; }
-[[ "$(rq "SELECT count(*) FROM catalog_categories WHERE name LIKE 'avant-%'")" == 3 ]] || fail "données « avant » absentes"
-[[ "$(rq "SELECT count(*) FROM catalog_categories WHERE name LIKE 'apres-%'")" == 0 ]] || fail "données « après » présentes"
-[[ "$(rq "SELECT count(*) FROM tenants WHERE id = '$TENANT'")" == 1 ]] || fail "entreprise absente"
-[[ "$(rq "SELECT version_num FROM alembic_version")" == "$REVISION" ]] || fail "révision Alembic différente"
-[[ "$(rq "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = 'catalog_categories'")" == t ]] || fail "RLS désactivée"
-UNSAFE="$(rq "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT (c.relrowsecurity AND c.relforcerowsecurity) AND has_table_privilege('stockmanager_app', c.oid, 'SELECT')")"
-# Toute table portant tenant_id : RLS forcée, ou inaccessible au rôle applicatif (journal de la
-# console TechNova, ADR-0031).
-[[ "$UNSAFE" == 0 ]] || fail "$UNSAFE table(s) d'entreprise lisibles sans RLS forcée"
-APP_ROWS="$(PGUSER=stockmanager_app PGPASSWORD=stockmanager_app psql_q -p "$RPORT" -d stockmanager -c "SELECT count(*) FROM catalog_categories")"
-[[ "$APP_ROWS" == 0 ]] || fail "rôle applicatif : $APP_ROWS ligne(s) visibles hors contexte d'entreprise"
-[[ "$(rq "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'stockmanager_app'")" == f ]] || fail "BYPASSRLS"
+# --- 2. Racine et rôle de réplication ---------------------------------------------------------
+expect_code 1 "archivage sans racine initialisée refusé" bk sm-wal-archive.sh /etc/hostname 000000010000000000000099
+bk sm-backup-init.sh >/dev/null
+[[ "$(mode_in status)" == 755 && "$(mode_in wal)" == 700 && "$(mode_in .)" == 711 ]] || fail init "droits de l'arborescence"
+bk sm-backup-role.sh >/dev/null
+bk sm-backup-role.sh >/dev/null   # idempotent
+attrs="$(sqlp -c "SELECT rolreplication::text || rolsuper::text || rolbypassrls::text FROM pg_roles WHERE rolname = 'stockmanager_backup'")"
+[[ "$attrs" == truefalsefalse ]] || fail role "attributs du rôle : $attrs"
+rows="$(bk_sh "psql -X -w -U stockmanager_backup -d stockmanager -Atqc 'SELECT count(*) FROM catalog_categories'" 2>&1 || true)"
+[[ "$rows" == 0 || "$rows" == *"permission denied"* ]] || fail role "le rôle de réplication lit des données d'entreprise : $rows"
+switch_and_wait || fail archivage "premier segment non archivé"
+pass role_et_racine "racine initialisée (0711, sous-répertoires 0700, status 0755), rôle REPLICATION sans superutilisateur ni BYPASSRLS ($rows), archivage compressé actif"
 
-log "7. rétention"
-SM_BACKUP_DIR="$BACKUPS" as_pg "$WORK/bin/sm-backup-prune.sh" >/dev/null
-[[ -d "$BASE" ]] || fail "la dernière sauvegarde a été supprimée"
+expect_code 2 "supervision sans sauvegarde" bk sm-backup-health.sh
+grep -q "CRITIQUE base_backup" <<<"$LAST_OUT" || fail supervision "absence de sauvegarde non signalée"
+grep -q "copie externe NON CONFIGURÉE" <<<"$LAST_OUT" || fail supervision "copie externe non signalée"
 
-STATUS=ok
-(( RPO_MEASURED <= RPO_TARGET )) || STATUS=rpo_exceeded
-(( RTO_MEASURED <= RTO_TARGET )) || STATUS=rto_exceeded
-cat > "$REPORT" <<JSON
-{
-  "status": "$STATUS",
-  "postgresql": "$(postgres --version | awk '{print $3}')",
-  "alembic_revision": "$REVISION",
-  "archive_timeout_seconds": $ARCHIVE_TIMEOUT,
-  "rpo_target_seconds": $RPO_TARGET,
-  "rpo_measured_seconds": $RPO_MEASURED,
-  "rto_target_seconds": $RTO_TARGET,
-  "rto_measured_seconds": $RTO_MEASURED,
-  "target_time": "$TARGET",
-  "failed_archives": $FAILED_ARCHIVES,
-  "checks": ["refus d'un répertoire non vide", "avant présentes", "après absentes", "révision identique", "RLS forcée sur toute table d'entreprise lisible par le rôle applicatif", "rôle applicatif sans accès hors contexte", "rétention"]
-}
-JSON
+# --- 3. Sauvegarde pendant des écritures concurrentes ------------------------------------------
+log "3. sauvegarde complète pendant des écritures concurrentes"
+scenario write-loop --seconds 25 --tag concurrent >"$WORK/loop1.json" &
+LOOP=$!
+sleep 3
+bk sm-base-backup.sh --max-rate 2M >"$WORK/b1.out" 2>&1 &
+B1=$!
+sleep 4
+expect_code 75 "seconde sauvegarde concurrente refusée" bk sm-base-backup.sh
+expect_code 75 "vérification concurrente refusée" bk sm-backup-verify.sh
+wait "$B1" || fail sauvegarde "première sauvegarde : $(tail -n 5 "$WORK/b1.out")"
+wait "$LOOP" || fail sauvegarde "écritures concurrentes en échec"
+B1_STAMP="$(status_get base_backup label)"
+[[ "$(status_get base_backup status)" == success ]] || fail sauvegarde "statut $(status_get base_backup status)"
+pass sauvegarde_concurrente "sauvegarde $B1_STAMP vérifiée pendant les écritures $(cat "$WORK/loop1.json") ; seconde sauvegarde et vérification concurrentes refusées (code 75)"
+metric backup_duration_seconds "$(status_get base_backup duration_seconds)"
+expect_code 0 "vérification" bk sm-backup-verify.sh
+pass verification "$(status_get verify message)"
+
+# --- 4. PITR à un instant T ------------------------------------------------------------------
+log "4. PITR"
+scenario write-loop --seconds 4 --tag avant >/dev/null
+sleep 1
+T="$(sqlp -c "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || 'Z'")"
+sleep 1
+scenario write-loop --seconds 4 --tag apres >/dev/null
+switch_and_wait || fail pitr "archivage après les écritures"
+N_AVANT="$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name LIKE 'avant-%'")"
+PP="$ROOT_IN/pitr"
+bk_sh "mkdir -p '$PP/occupe' && touch '$PP/occupe/x'"
+expect_code 1 "PITR dans un répertoire non vide refusé" bk sm-restore-pitr.sh --target-time "$T" --data-dir "$PP/occupe"
+grep -q "n'est pas vide" <<<"$LAST_OUT" || fail pitr "motif du refus : $LAST_OUT"
+expect_code 1 "PITR sur le répertoire de production refusé" bk sm-restore-pitr.sh --data-dir "$PRIMARY/sous"
+expect_code 1 "PITR sur un répertoire interne refusé" bk sm-restore-pitr.sh --data-dir "$ROOT_IN/base/x"
+expect_code 1 "PITR après le dernier WAL refusé" bk sm-restore-pitr.sh --target-time "2099-01-01 00:00:00Z" --data-dir "$PP/futur"
+expect_code 1 "PITR en heure locale implicite refusé" bk sm-restore-pitr.sh --target-time "2026-01-01 00:00:00" --data-dir "$PP/local"
+P0="$(date -u +%s)"
+expect_code 0 "PITR à T" bk sm-restore-pitr.sh --target-time "$T" --data-dir "$PP/data" --port 5544 --start
+P1="$(date -u +%s)"
+cq() { bk_sh "psql -X -w -h '$PP' -p 5544 -U $1 -d stockmanager -Atq -c \"$2\" ${3:+-c \"$3\"}"; }
+got_avant="$(cq stockmanager "SELECT count(*) FROM catalog_categories WHERE name LIKE 'avant-%'")"
+got_apres="$(cq stockmanager "SELECT count(*) FROM catalog_categories WHERE name LIKE 'apres-%'")"
+[[ "$got_avant" == "$N_AVANT" && "$got_apres" == 0 && "$N_AVANT" -gt 0 ]] || fail pitr "avant $got_avant/$N_AVANT, après $got_apres"
+[[ "$(cq stockmanager "SHOW archive_mode")" == off ]] || fail pitr "archivage actif sur la copie"
+alpha="$(cq stockmanager "SELECT id FROM tenants WHERE slug = 'alpha'")"
+leak="$(cq stockmanager_app "SET app.tenant_id = '$alpha'" "SELECT count(*) FROM catalog_categories WHERE tenant_id <> '$alpha'")"
+mine="$(cq stockmanager_app "SET app.tenant_id = '$alpha'" "SELECT count(*) FROM catalog_categories")"
+none="$(cq stockmanager_app "SELECT count(*) FROM catalog_categories")"
+[[ "$leak" == 0 && "$none" == 0 && "$mine" -gt 0 ]] || fail pitr "isolement sur la copie : autre entreprise $leak, sans contexte $none, alpha $mine"
+bk_sh "pg_ctl -D '$PP/data' -m fast -w stop" >/dev/null
+pass pitr "copie à $T : $got_avant ligne(s) « avant », 0 « après », archivage coupé, RLS effective (alpha : $mine, autre : 0, sans contexte : 0) ; refus : non vide, production, interne, futur, heure locale"
+metric pitr_seconds "$(( P1 - P0 ))"
+
+# --- 5. Test réel de restauration --------------------------------------------------------------
+log "5. test de restauration"
+expect_code 0 "test de restauration" bk sm-restore-test.sh
+[[ "$(status_get restore_test checks_failed)" == 0 && "$(status_get restore_test cleanup)" == removed ]] || fail restauration "statut"
+empty_in restore-test || fail restauration "environnement non supprimé"
+checks="$(grep -o '"name": "[a-z_]*", "ok": true' "$ROOT_HOST/status/restore_test.json" | sed 's/"name": "\([a-z_]*\)".*/\1/' | tr '\n' ' ')"
+for c in recovery_point_reached alembic_revision copy_isolated pg_amcheck foreign_keys check_constraints unique_constraints constraints_validated business_invariants rls_forced app_role_no_bypass rls_no_context rls_tenant_isolation rls_cross_tenant_write rto; do
+  [[ " $checks" == *" $c "* ]] || fail restauration "contrôle absent ou en échec : $c ($(cat "$ROOT_HOST/status/restore_test.json"))"
+done
+pass restauration "RTO $(status_get restore_test rto_seconds) s, octets non restaurés $(status_get restore_test wal_bytes_not_recovered) ; contrôles réussis : $checks; environnement supprimé sous gardes"
+metric rto_seconds "$(status_get restore_test rto_seconds)"
+metric wal_bytes_not_recovered "$(status_get restore_test wal_bytes_not_recovered)"
+
+# --- 6. Interruptions ------------------------------------------------------------------------
+log "6. interruption d'une sauvegarde"
+bk sm-base-backup.sh --max-rate 64k >/dev/null 2>&1 &
+BG=$!
+sleep 6
+bk_sh 'kill -TERM $(pgrep -f "^bash .*[s]m-base-backup.sh" | head -n 1)'
+wait "$BG" 2>/dev/null || true
+no_basebackup() { bk_sh 'for i in $(seq 1 30); do pgrep -f "[p]g_basebackup" >/dev/null || exit 0; sleep 1; done; exit 1'; }
+no_basebackup || fail interruption "pg_basebackup encore actif après l'interruption"
+for _ in $(seq 1 30); do [[ "$(status_get base_backup status)" == running ]] || break; sleep 1; done
+[[ "$(status_get base_backup status)" == interrupted ]] || fail interruption "statut $(status_get base_backup status)"
+partials && fail interruption "répertoire partiel laissé"
+bk sm-base-backup.sh --max-rate 64k >/dev/null 2>&1 &
+BG=$!
+sleep 6
+bk_sh 'kill -KILL $(pgrep -f "^bash .*[s]m-base-backup.sh") $(pgrep -f "[p]g_basebackup") 2>/dev/null; true'
+wait "$BG" 2>/dev/null || true
+no_basebackup || fail interruption "pg_basebackup encore actif après l'arrêt brutal"
+partials || fail interruption "arrêt brutal : répertoire partiel attendu"
+expect_code 0 "sauvegarde après arrêt brutal" bk sm-base-backup.sh
+B2_STAMP="$(status_get base_backup label)"
+partials && fail interruption "partiel orphelin non nettoyé"
+pass interruption "signal TERM : statut « interrupted », partiel supprimé ; arrêt brutal (KILL) : partiel orphelin supprimé sous verrou à l'exécution suivante ($B2_STAMP)"
+
+# --- 7. Sauvegarde corrompue ------------------------------------------------------------------
+log "7. sauvegarde corrompue"
+bk_sh "f=\$(find '$ROOT_IN/base/$B2_STAMP/base' -type f -size +16k | head -n 1); chmod u+w \"\$f\" \"\$(dirname \"\$f\")\"; printf 'X' | dd of=\"\$f\" bs=1 seek=4096 conv=notrunc 2>/dev/null"
+expect_code 1 "vérification d'une sauvegarde altérée" bk sm-backup-verify.sh
+grep -q "$B2_STAMP : pg_verifybackup en ÉCHEC" "$ROOT_HOST/status/verify.json" || fail corruption "anomalie non rapportée"
+expect_code 2 "supervision après vérification en échec" bk sm-backup-health.sh
+grep -q "CRITIQUE verify" <<<"$LAST_OUT" || fail corruption "supervision : $LAST_OUT"
+expect_code 1 "PITR depuis la sauvegarde altérée refusé" bk sm-restore-pitr.sh --backup "$B2_STAMP" --data-dir "$PP/altere"
+expect_code 0 "nouvelle sauvegarde" bk sm-base-backup.sh
+B3_STAMP="$(status_get base_backup label)"
+pass corruption "octet modifié dans $B2_STAMP : pg_verifybackup en échec, sauvegarde exclue (PITR refusé), supervision CRITIQUE"
+
+# --- 8. WAL manquant et WAL corrompu ---------------------------------------------------------
+log "8. WAL manquant / corrompu"
+# Trois segments terminés APRÈS le début de la dernière sauvegarde : celui du milieu est retiré
+# (un trou dans la chaîne de cette sauvegarde, pas seulement avant elle).
+sqlp -c "CREATE TABLE drill_wal (x int)"
+for i in 1 2 3; do sqlp -c "INSERT INTO drill_wal VALUES ($i)"; switch_and_wait || fail wal "archivage"; done
+sqlp -c "DROP TABLE drill_wal"
+B3_START="$(bk_sh "sed -n 's/^  \"start_wal\": \"\\([0-9A-F]*\\)\",\$/\\1/p' '$ROOT_IN/base/$B3_STAMP/backup_info.json'")"
+SEG="$(bk_sh "ls '$ROOT_IN/wal' | grep -E '^[0-9A-F]{24}\.gz\$' | sort | awk '\$0 > \"$B3_START\"' | sed -n 2p")"
+[[ -n "$B3_START" && -n "$SEG" ]] || fail wal "segment à retirer introuvable (début $B3_START)"
+bk_sh "mv '$ROOT_IN/wal/$SEG' '$ROOT_IN/state/$SEG.aside'"
+expect_code 1 "vérification avec un WAL manquant" bk sm-backup-verify.sh
+grep -q "manquant" "$ROOT_HOST/status/verify.json" || fail wal "trou non détecté"
+expect_code 1 "PITR avec un WAL manquant refusé" bk sm-restore-pitr.sh --backup "$B3_STAMP" --data-dir "$PP/trou"
+bk_sh "cp '$ROOT_IN/state/$SEG.aside' '$ROOT_IN/wal/$SEG' && chmod u+w '$ROOT_IN/wal/$SEG' && printf 'XXXX' | dd of='$ROOT_IN/wal/$SEG' bs=1 seek=200 conv=notrunc 2>/dev/null"
+expect_code 1 "vérification avec un WAL corrompu" bk sm-backup-verify.sh --full
+grep -q "${SEG%.gz}" "$ROOT_HOST/status/verify.json" || fail wal "corruption non détectée"
+expect_code 126 "restitution d'un WAL corrompu (arrêt de la restauration)" bk_sh "SM_BACKUP_DIR='$ROOT_IN' '$SCRIPTS_IN/sm-wal-restore.sh' '${SEG%.gz}' /tmp/sm-drill-seg"
+expect_code 1 "restitution d'un WAL absent (fin normale)" bk_sh "SM_BACKUP_DIR='$ROOT_IN' '$SCRIPTS_IN/sm-wal-restore.sh' 00000001000000FF000000FF /tmp/sm-drill-seg"
+bk_sh "mv -f '$ROOT_IN/state/$SEG.aside' '$ROOT_IN/wal/$SEG'"
+pass wal "segment $SEG retiré : trou détecté, PITR refusé ; altéré : CRC détecté, restitution arrêtée (126) ; absent : fin normale (1)"
+
+# --- 9. Échec et retard d'archivage, base inactive --------------------------------------------
+log "9. échec d'archivage"
+bk_sh "chmod 0500 '$ROOT_IN/wal'"
+sqlp -c "CREATE TABLE drill_probe (x int); INSERT INTO drill_probe VALUES (1)"
+sqlp -c "SELECT pg_switch_wal()" >/dev/null
+for _ in $(seq 1 60); do (( $(sqlp -c "SELECT failed_count FROM pg_stat_archiver") > 0 )) && break; sleep 1; done
+expect_code 2 "supervision : échec d'archivage" bk sm-backup-health.sh
+grep -q "CRITIQUE archivage : échec NON RÉSOLU" <<<"$LAST_OUT" || fail archivage "échec non signalé : $LAST_OUT"
+sqlp -c "INSERT INTO drill_probe VALUES (2)"; sqlp -c "SELECT pg_switch_wal()" >/dev/null
+XENV=(SM_BACKUP_NOW_EPOCH=$(( $(date -u +%s) + 3600 )))
+expect_code 2 "supervision : retard d'archivage" bk sm-backup-health.sh
+grep -q "CRITIQUE archivage : RETARD" <<<"$LAST_OUT" || fail archivage "retard non signalé : $LAST_OUT"
+XENV=()
+bk_sh "chmod 0700 '$ROOT_IN/wal'"
+switch_and_wait || fail archivage "reprise après l'échec"
+bk sm-backup-health.sh >"$WORK/after.out" 2>&1 || true
+grep -q "INFO archivage : dernier échec résolu" "$WORK/after.out" || fail archivage "reprise non constatée : $(cat "$WORK/after.out")"
+if grep -q "CRITIQUE archivage" "$WORK/after.out"; then fail archivage "alerte maintenue après reprise : $(cat "$WORK/after.out")"; fi
+sqlp -c "DROP TABLE drill_probe"; switch_and_wait || true
+XENV=(SM_BACKUP_NOW_EPOCH=$(( $(date -u +%s) + 7200 )))
+bk sm-backup-health.sh >"$WORK/idle.out" 2>&1 || true
+XENV=()
+grep -q "OK archivage : à jour — base inactive" "$WORK/idle.out" || fail inactivite "fausse alerte sur base inactive : $(cat "$WORK/idle.out")"
+pass archivage_supervision "échec non résolu → CRITIQUE ; segments en attente au-delà du seuil → CRITIQUE (retard) ; reprise → INFO ; base inactive depuis 2 h → OK (aucune fausse alerte)"
+
+# --- 10. Rétention ---------------------------------------------------------------------------
+log "10. rétention"
+FUT=$(( $(date -u +%s) + 40 * 86400 ))
+XENV=("SM_BACKUP_NOW_EPOCH=$FUT")
+expect_code 0 "rétention : simulation par défaut" bk sm-backup-prune.sh
+exists_in "base/$B1_STAMP" && [[ "$(status_get prune mode)" == dry-run ]] || fail retention "la simulation a supprimé"
+grep -q "\"$B1_STAMP\"" "$ROOT_HOST/status/prune.json" || fail retention "simulation : $B1_STAMP non proposée"
+# Dernière vérifiée protégée : B3 marquée en échec → la dernière vérifiée devient B1.
+bk_sh "cp '$ROOT_IN/state/backups/$B3_STAMP.verify' '$ROOT_IN/state/b3.keep' && echo 'failed 0 test' > '$ROOT_IN/state/backups/$B3_STAMP.verify'"
+XENV=("SM_BACKUP_NOW_EPOCH=$FUT" SM_BACKUP_KEEP_MIN=1)
+expect_code 0 "rétention : dernière vérifiée protégée" bk sm-backup-prune.sh --apply
+exists_in "base/$B1_STAMP" || fail retention "la dernière sauvegarde vérifiée a été supprimée"
+bk_sh "mv -f '$ROOT_IN/state/b3.keep' '$ROOT_IN/state/backups/$B3_STAMP.verify'"
+XENV=("SM_BACKUP_NOW_EPOCH=$FUT")
+wal_before="$(bk_sh "ls '$ROOT_IN/wal' | wc -l" | tr -d ' ')"
+expect_code 0 "rétention appliquée" bk sm-backup-prune.sh --apply
+! exists_in "base/$B1_STAMP" && exists_in "base/$B3_STAMP" && exists_in "base/$B2_STAMP" || fail retention "sélection : $(bk_sh "ls '$ROOT_IN/base'")"
+wal_after="$(bk_sh "ls '$ROOT_IN/wal' | wc -l" | tr -d ' ')"
+(( wal_after < wal_before )) || fail retention "aucun WAL ancien supprimé ($wal_before → $wal_after)"
+XENV=()
+expect_code 0 "test de restauration après rétention" bk sm-restore-test.sh
+pass retention "simulation par défaut sans suppression ; dernière vérifiée jamais supprimée ; application : $B1_STAMP supprimée, $B2_STAMP et $B3_STAMP conservées (minimum 2), WAL $wal_before → $wal_after ; restauration toujours possible"
+
+# --- 11. Gardes de suppression ----------------------------------------------------------------
+log "11. gardes de suppression"
+RT="$ROOT_IN/restore-test"
+FAKE="20260101T000000Z-0123456789abcdef"
+LINKED="20260101T000000Z-fedcba9876543210"
+bk_sh "mkdir -p '$RT/$FAKE/data' && touch '$RT/$FAKE/data/PG_VERSION'"
+expect_code 3 "suppression sans marqueur refusée" bk sm-restore-test.sh --cleanup "$RT/$FAKE"
+bk_sh "printf 'run_id=$FAKE\npath=/autre/chemin\n' > '$RT/$FAKE/.sm-restore-test'"
+expect_code 3 "suppression avec un marqueur non conforme refusée" bk sm-restore-test.sh --cleanup "$RT/$FAKE"
+bk_sh "mkdir -p '$ROOT_IN/victime' && touch '$ROOT_IN/victime/precieux' && ln -s '$ROOT_IN/victime' '$RT/$LINKED'"
+expect_code 3 "suppression via un lien symbolique refusée" bk sm-restore-test.sh --cleanup "$RT/$LINKED"
+expect_code 3 "suppression hors de restore-test refusée" bk sm-restore-test.sh --cleanup "$ROOT_IN/base/$B3_STAMP"
+expect_code 3 "suppression d'un nom non conforme refusée" bk sm-restore-test.sh --cleanup "$RT/../victime"
+exists_in victime/precieux && exists_in "base/$B3_STAMP" && exists_in "restore-test/$FAKE" || fail gardes "un élément protégé a été supprimé"
+bk_sh "printf 'run_id=$FAKE\npath=%s\n' \"\$(realpath '$RT/$FAKE')\" > '$RT/$FAKE/.sm-restore-test'"
+expect_code 0 "suppression conforme acceptée" bk sm-restore-test.sh --cleanup "$RT/$FAKE"
+exists_in "restore-test/$FAKE" && fail gardes "suppression conforme non faite"
+bk_sh "rm -f '$RT/$LINKED' && rm -rf '$ROOT_IN/victime'"
+expect_code 0 "test de restauration conservé (--keep)" bk sm-restore-test.sh --keep
+KEPT="$(status_get restore_test run_dir)"
+[[ "$(status_get restore_test cleanup)" == kept ]] && exists_in "restore-test/${KEPT##*/}/data/PG_VERSION" || fail gardes "--keep non respecté"
+expect_code 0 "suppression d'un environnement conservé" bk sm-restore-test.sh --cleanup "$KEPT"
+pass gardes_suppression "refus (code 3, rien supprimé) : sans marqueur, marqueur non conforme, lien symbolique, hors restore-test, nom non conforme ; acceptés : marqueur conforme, environnement --keep"
+
+# --- 12. Statut de la console -----------------------------------------------------------------
+log "12. statut de la console (lecture de status/ uniquement)"
+bk sm-backup-health.sh --write >/dev/null 2>&1 || true
+(cd "$REPO/backend" && SM_BACKUP_STATUS_DIR="$ROOT_HOST/status" uv run --frozen python -m tests.backup_scenario console-status) >"$WORK/console.json" \
+  || fail console "lecture du statut : $(cat "$WORK/console.json")"
+py - "$WORK/console.json" <<'PY' || fail console "$(cat "$WORK/console.json")"
+import json, sys
+s = json.load(open(sys.argv[1]))
+ops = s["operations"]
+assert s["archiving"]["state"] in {"up_to_date", "idle", "archiving"}, s["archiving"]
+assert s["archiving"]["level"] == "ok", s["archiving"]
+assert ops["base_backup"]["level"] == "ok", ops["base_backup"]
+assert ops["restore_test"]["level"] == "ok", ops["restore_test"]
+assert ops["verify"]["level"] == "critical", ops["verify"]   # sauvegarde altérée toujours signalée
+assert s["offsite"]["configured"] is False and s["offsite"]["level"] == "warning", s["offsite"]
+assert s["storage"]["base_backups"] >= 2, s["storage"]
+assert s["supervision"]["level"] == "critical", s["supervision"]
+PY
+pass console "archivage $(py -c 'import json,sys; print(json.load(open(sys.argv[1]))["archiving"]["state"])' "$WORK/console.json"), sauvegarde et test de restauration OK, vérification en alerte (sauvegarde altérée), copie externe non configurée"
+
+write_report ok
 cat "$REPORT"
-[[ "$STATUS" == ok ]]

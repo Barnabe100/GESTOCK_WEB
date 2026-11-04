@@ -157,6 +157,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
+      - name: Complément de sauvegarde (port et volume inchangés)
+        env:
+          SM_BACKUP_HOST_DIR: /tmp/backups
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.backup.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.backup.yml config --format json > merged.json
+          python3 -c "import json; c=json.load(open('merged.json')); db=c['services']['db']; assert [p['published'] for p in db['ports']] == ['5432'], db['ports']; assert c['volumes']['db-data']['name'] == 'stockmanager_db-data'; assert 'archive_mode=on' in db['command']"
       # Exemple de production : configuration valide avec des valeurs factices (aucun secret).
       - name: Compose de production (configuration)
         env:
@@ -195,16 +202,39 @@ jobs:
           # tests/test_licensing_crypto.py::test_no_private_key_is_versioned).
           docker run --rm --entrypoint sh sm-backend:ci -c '! grep -rIlE "PRIVATE KEY-{5}" /app'
 
+  backup-unit:
+    name: Sauvegardes — tests unitaires (Alpine, busybox) et shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          sudo apt-get install -y -q shellcheck >/dev/null
+          shellcheck -S warning -s bash ops/backup/*.sh ops/backup/tests/*.sh ops/monitoring/*.sh
+          shellcheck -S warning -s sh ops/backup/sm-offsite-sync.sh ops/backup/tests/sm-offsite-test.sh
+      # Même image que la production Docker : bash + outils busybox, utilisateur postgres.
+      - name: Tests unitaires dans postgres:16-alpine
+        run: docker run --rm -u postgres -v "$PWD:/repo:ro" postgres:16-alpine bash /repo/ops/backup/tests/sm-backup-unit-test.sh
+      # Copie externe : dépôt Restic LOCAL et clé éphémère (aucun fournisseur, aucun secret).
+      - name: Copie externe dans restic/restic
+        run: docker run --rm --entrypoint sh -v "$PWD:/repo:ro" restic/restic:0.17.3 /repo/ops/backup/tests/sm-offsite-test.sh
+      - name: Unités systemd
+        run: |
+          d="$(mktemp -d)"; cp ops/systemd/* "$d/"
+          sed -i "s#/opt/stockmanager/ops/backup/sm-backup-host.sh#/bin/true#; s#EnvironmentFile=#EnvironmentFile=-#" "$d/stockmanager-backup@.service"
+          for u in weekly verify restore-test health offsite; do cp "$d/stockmanager-backup@.service" "$d/stockmanager-backup@$u.service"; done
+          out="$(SYSTEMD_UNIT_PATH="$d:" systemd-analyze verify "$d"/*.timer "$d/stockmanager-backup@weekly.service" 2>&1)"; echo "$out"
+          test -z "$out"
+
   backup-drill:
-    name: Sauvegarde et restauration (PITR mesuré)
+    name: Sauvegarde et restauration — exercice complet (natif)
     runs-on: ubuntu-latest
     # Image officielle PostgreSQL 16 (même version majeure que la production) : serveur et
-    # outils (initdb, pg_basebackup, pg_verifybackup) ; l'exercice y monte son PROPRE cluster
-    # temporaire (utilisateur « postgres »), Python fourni par uv.
+    # outils ; l'exercice y monte son PROPRE cluster temporaire (utilisateur « postgres »).
     container: postgres:16-bookworm
     steps:
-      - name: Outils (Git, certificats)
-        run: apt-get update -q && apt-get install -y -q git ca-certificates curl
+      - name: Outils (Git, certificats, procps)
+        run: apt-get update -q && apt-get install -y -q git ca-certificates curl procps
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
@@ -214,15 +244,42 @@ jobs:
       - name: Installer les dépendances
         working-directory: backend
         run: uv sync --frozen
-      - name: Exercice PITR (RPO / RTO mesurés)
+      - name: Exercice complet (PITR, test de restauration, cas négatifs)
         env:
           SM_PG_BINDIR: /usr/lib/postgresql/16/bin
-          SM_DRILL_ARCHIVE_TIMEOUT: "60"
           SM_DRILL_REPORT: ${{ github.workspace }}/backup-drill-report.json
-        run: ops/backup/sm-backup-drill.sh
+        run: ops/backup/sm-backup-drill.sh --mode native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: backup-drill-report
           path: ${{ github.workspace }}/backup-drill-report.json
+          if-no-files-found: ignore
+
+  backup-docker:
+    name: Sauvegarde et restauration — Docker Compose (postgres:16-alpine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Installer les dépendances
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Client PostgreSQL
+        run: command -v psql || (sudo apt-get update -q && sudo apt-get install -y -q postgresql-client)
+      # Projet Compose de TEST à nom unique : docker-compose.yml + docker-compose.backup.yml,
+      # données créées AVANT l'activation (empreinte, volume et port vérifiés inchangés).
+      - name: Exercice complet en conteneurs
+        env:
+          SM_DRILL_REPORT: ${{ github.workspace }}/backup-docker-report.json
+        run: ops/backup/sm-backup-drill.sh --mode docker
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backup-docker-report
+          path: ${{ github.workspace }}/backup-docker-report.json
           if-no-files-found: ignore

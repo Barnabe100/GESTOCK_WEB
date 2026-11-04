@@ -1,0 +1,7 @@
+# Complément RÉSERVÉ à l'exercice ops/backup/sm-backup-drill.sh --mode docker (projet Compose de
+# test à nom unique) : port publié remplacé par un port libre de la boucle locale, pour ne
+# jamais entrer en conflit avec une instance existante. Jamais utilisé hors de l'exercice.
+services:
+  db:
+    ports: !override
+      - "127.0.0.1:${SM_DRILL_PORT:?port de l'exercice}:5432"
