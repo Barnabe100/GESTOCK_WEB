@@ -42,6 +42,10 @@ services:
       - archive_command=/opt/stockmanager/backup/sm-wal-archive.sh %p %f
       - -c
       - archive_timeout=300
+      - -c
+      - max_wal_senders=5
+    # Arrêt propre (point de contrôle) ; tâches de sauvegarde : ops/systemd (R11-0, ADR-0057).
+    stop_grace_period: 120s
     volumes:
       - db-data:/var/lib/postgresql/data
       - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes (autre disque)}:/backups
@@ -73,6 +77,12 @@ services:
   console:
     <<: *backend
     command: ["uvicorn", "app.console.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers", "--no-server-header"]
+    environment:
+      SM_ENVIRONMENT: production
+      # Statuts des sauvegardes SEULEMENT (lecture seule) : jamais les WAL ni les sauvegardes.
+      SM_BACKUP_STATUS_DIR: /backups-status
+    volumes:
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes (autre disque)}/status:/backups-status:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

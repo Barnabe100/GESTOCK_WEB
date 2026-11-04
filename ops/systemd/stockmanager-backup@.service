@@ -1,0 +1,17 @@
+# Tâche de sauvegarde StockManager (R11-0) : %i = weekly | verify | restore-test | health | offsite.
+# Installée par docs/exploitation/SAUVEGARDE_RESTAURATION.md §5 (copie dans /etc/systemd/system).
+# Une même tâche ne s'exécute jamais deux fois en parallèle (systemd) ; les opérations lourdes
+# partagent en plus un verrou dans le conteneur (attente, puis échec explicite).
+[Unit]
+Description=StockManager — sauvegarde : %i
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/stockmanager/backup-host.env
+ExecStart=/opt/stockmanager/ops/backup/sm-backup-host.sh %i
+# Journal : journalctl -u stockmanager-backup@%i
+TimeoutStartSec=12h
+Nice=10
+IOSchedulingClass=idle

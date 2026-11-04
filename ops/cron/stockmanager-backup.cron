@@ -1,0 +1,21 @@
+# Sauvegardes StockManager (R11-0) — ALTERNATIVE aux unités systemd (ops/systemd/, recommandées :
+# heures UTC explicites, rattrapage des exécutions manquées, journal).
+# Installation : copie dans /etc/cron.d/stockmanager-backup (root:root, 0644).
+# ATTENTION : cron utilise le fuseau de l'hôte. Ce fichier exige un hôte en UTC
+# (timedatectl → « Time zone: Etc/UTC ») ; sinon, utiliser les unités systemd.
+# Les tâches ne se chevauchent pas dangereusement : flock -n empêche deux exécutions de la même
+# tâche, et les opérations lourdes partagent un verrou dans le conteneur (attente puis échec).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=root
+
+# Dimanche 01:15 : sauvegarde complète vérifiée, puis rétention (30 jours).
+15 1 * * 0  root  flock -n /run/lock/sm-backup-weekly.lock /opt/stockmanager/ops/backup/sm-backup-host.sh weekly >/dev/null
+# Chaque jour 02:15 : vérification d'intégrité.
+15 2 * * *  root  flock -n /run/lock/sm-backup-verify.lock /opt/stockmanager/ops/backup/sm-backup-host.sh verify >/dev/null
+# Le 1er du mois 03:30 : test réel de restauration.
+30 3 1 * *  root  flock -n /run/lock/sm-backup-restore.lock /opt/stockmanager/ops/backup/sm-backup-host.sh restore-test >/dev/null
+# Toutes les 5 minutes : supervision (sortie seulement en anomalie).
+*/5 * * * * root  flock -n /run/lock/sm-backup-health.lock /opt/stockmanager/ops/backup/sm-backup-host.sh health >/dev/null || echo "StockManager : supervision des sauvegardes en anomalie"
+# Chaque jour 04:15 : copie externe (enregistre « non configurée » tant que TechNova ne l'a pas configurée).
+15 4 * * *  root  flock -n /run/lock/sm-backup-offsite.lock /opt/stockmanager/ops/backup/sm-backup-host.sh offsite >/dev/null

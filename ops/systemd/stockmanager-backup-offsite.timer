@@ -1,0 +1,12 @@
+# Chaque jour à 04:15 UTC : copie externe chiffrée (Restic). Sans configuration de TechNova, la
+# tâche enregistre « non configurée » et ne copie rien. Activation facultative.
+[Unit]
+Description=StockManager — copie externe des sauvegardes
+
+[Timer]
+OnCalendar=*-*-* 04:15:00 UTC
+Persistent=true
+Unit=stockmanager-backup@offsite.service
+
+[Install]
+WantedBy=timers.target

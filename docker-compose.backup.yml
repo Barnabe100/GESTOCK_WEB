@@ -1,0 +1,65 @@
+# Complément de docker-compose.yml : archivage continu des WAL et sauvegardes (R11-0, ADR-0057).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d db
+#   (ou, dans le fichier .env LOCAL non versionné :
+#    COMPOSE_FILE=docker-compose.yml:docker-compose.backup.yml)
+#
+# Ne remplace AUCUN réglage existant : ni le port publié (5433:5432 en local reste celui de
+# docker-compose.yml), ni le volume db-data (conservé tel quel), ni les autres services. Le
+# conteneur db est RECRÉÉ (nouvelle commande) : sauvegarde logique préalable obligatoire
+# (docs/exploitation/SAUVEGARDE_RESTAURATION.md §4, procédure d'activation).
+#
+# SM_BACKUP_HOST_DIR : répertoire de l'hôte, de préférence sur un AUTRE disque physique que les
+# données, appartenant à l'uid 70 (utilisateur postgres de l'image Alpine), droits 0711 ;
+# initialisé par sm-backup-init.sh. Aucun secret ici.
+services:
+  db:
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/opt/stockmanager/backup/sm-wal-archive.sh %p %f
+      - -c
+      - archive_timeout=300
+      - -c
+      - max_wal_senders=5
+    environment:
+      SM_BACKUP_DIR: /backups
+    volumes:
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes sur l'hôte (autre disque de préférence)}:/backups
+      - ./ops/backup:/opt/stockmanager/backup:ro
+    # Arrêt propre (point de contrôle) plutôt qu'un arrêt brutal après 10 s.
+    stop_grace_period: 120s
+
+  # Console TechNova : SEULEMENT les statuts (status/), en lecture seule — jamais les WAL ni
+  # les sauvegardes.
+  console:
+    environment:
+      SM_BACKUP_STATUS_DIR: /backups-status
+    volumes:
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes sur l'hôte}/status:/backups-status:ro
+
+  # Copie externe chiffrée (Restic, S3-compatible) : profil « offsite », lancée par la tâche
+  # planifiée (sm-backup-host.sh offsite). NON OPÉRATIONNELLE sans configuration de TechNova
+  # (ops/backup/offsite.env.example) : elle enregistre alors « non configurée ».
+  offsite:
+    image: restic/restic:0.17.3
+    profiles: ["offsite"]
+    user: "70:70"
+    entrypoint: ["/bin/sh", "/opt/stockmanager/backup/sm-offsite-sync.sh"]
+    env_file:
+      - path: ${SM_OFFSITE_ENV_FILE:-/etc/stockmanager/offsite.env}
+        required: false
+    environment:
+      SM_BACKUP_DIR: /backups
+      RESTIC_CACHE_DIR: /tmp/restic-cache
+    volumes:
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes sur l'hôte}:/backups:ro
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes sur l'hôte}/status:/backups/status
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes sur l'hôte}/locks:/backups/locks
+      - ${SM_BACKUP_HOST_DIR:?répertoire des sauvegardes sur l'hôte}/logs:/backups/logs
+      - ./ops/backup:/opt/stockmanager/backup:ro
+      - ${SM_OFFSITE_KEY_FILE:-/dev/null}:/run/secrets/restic-password:ro

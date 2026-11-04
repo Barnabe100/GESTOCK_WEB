@@ -1,0 +1,11 @@
+# Toutes les cinq minutes : supervision (status/health.json, code de sortie, alerte facultative).
+[Unit]
+Description=StockManager — supervision des sauvegardes
+
+[Timer]
+OnCalendar=*:0/5
+AccuracySec=30s
+Unit=stockmanager-backup@health.service
+
+[Install]
+WantedBy=timers.target

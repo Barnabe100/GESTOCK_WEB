@@ -1,0 +1,11 @@
+# Chaque dimanche à 01:15 UTC : sauvegarde complète vérifiée puis rétention (30 jours).
+[Unit]
+Description=StockManager — sauvegarde complète hebdomadaire
+
+[Timer]
+OnCalendar=Sun *-*-* 01:15:00 UTC
+Persistent=true
+Unit=stockmanager-backup@weekly.service
+
+[Install]
+WantedBy=timers.target

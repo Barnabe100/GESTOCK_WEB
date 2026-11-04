@@ -1,0 +1,11 @@
+# Le 1er de chaque mois à 03:30 UTC : test réel de restauration (copie isolée temporaire).
+[Unit]
+Description=StockManager — test mensuel de restauration
+
+[Timer]
+OnCalendar=*-*-01 03:30:00 UTC
+Persistent=true
+Unit=stockmanager-backup@restore-test.service
+
+[Install]
+WantedBy=timers.target

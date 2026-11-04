@@ -122,19 +122,24 @@ la CI. **Aucune clé n'est générée au démarrage** : sans clé montée, le se
 
 ## 5. Sauvegardes, tâches planifiées, supervision
 
-- Sauvegarde continue (WAL, RPO ≤ 5 min configuré, cible 15 min) et de base quotidienne,
-  rétention 30 jours, exercice de restauration : [`exploitation/SAUVEGARDE_RESTAURATION.md`](exploitation/SAUVEGARDE_RESTAURATION.md).
-- Tâches : `ops/cron/stockmanager.cron` (sauvegardes, rappels d'échéance, purge des données à
-  durée limitée, supervision).
-- Supervision : `ops/monitoring/sm-healthcheck.sh` (API prête, archivage WAL récent, sauvegarde
-  vérifiée de moins de 26 h, disque, Signing Service) ; codes 0 / 1 / 2.
+- Sauvegardes (R11-0, ADR-0057) : archivage WAL continu vérifié, sauvegarde complète
+  hebdomadaire, vérification quotidienne, test réel de restauration mensuel, rétention 30 jours,
+  copie externe Restic préparée — [`exploitation/SAUVEGARDE_RESTAURATION.md`](exploitation/SAUVEGARDE_RESTAURATION.md) ;
+  activation pas à pas : [`exploitation/ACTIVATION_SAUVEGARDES.md`](exploitation/ACTIVATION_SAUVEGARDES.md).
+- Tâches : sauvegardes en UTC par `ops/systemd/` (ou `ops/cron/stockmanager-backup.cron`) ;
+  rappels d'échéance et purge : `ops/cron/stockmanager.cron`.
+- Supervision : `ops/backup/sm-backup-health.sh` (sauvegardes : base inactive ≠ retard ≠ échec,
+  seuils 8 j / 26 h / 35 j / 15 min) et `ops/monitoring/sm-healthcheck.sh` (API prête, Signing
+  Service, sauvegardes via `SM_BACKUP_HEALTH_CMD`) ; codes 0 / 1 / 2 ; page « Sauvegardes » de
+  la console.
 - Journaux : sortie standard des conteneurs (aucun secret journalisé) ; rotation par le moteur
   de conteneurs ; conservation selon la politique de TechNova (décision d'exploitation).
 
 ## 6. Mise à jour d'une version
 
 1. Lire les notes de version (migrations, variables nouvelles, guide `MISE_A_JOUR_*.md`).
-2. Sauvegarde de base immédiate (`sm-base-backup.sh`) et vérification de l'archivage.
+2. Sauvegarde complète immédiate (`sm-base-backup.sh`), vérification (`sm-backup-verify.sh`) et
+   archivage sans échec (`sm-backup-health.sh`).
 3. Déployer la nouvelle étiquette d'image : `migrate` s'exécute d'abord (une migration échouée
    arrête le déploiement : l'API n'est pas redémarrée), puis l'API, la console, le frontal.
 4. Contrôles : `/api/v1/health/ready`, `stockmanager signing check`, parcours de recette rapide.
