@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import '@/core/i18n';
 import { jsonResponse } from '@/shared/testing';
 
 import { BackupsPage } from './pages/BackupsPage';
-import type { BackupOperation, BackupStatus } from './types';
+import type { BackupOperation, BackupOverview, BackupStatus } from './types';
 
 const op = (operation: string, extra: Partial<BackupOperation> = {}): BackupOperation => ({
   operation,
@@ -108,7 +109,30 @@ const STATUS: BackupStatus = {
   },
 };
 
+const OVERVIEW: BackupOverview = {
+  checked_at: '2026-11-02T10:00:00Z',
+  level: 'ok',
+  schema_revision: '0063',
+  agent: {
+    last_seen_at: '2026-11-02T09:59:30Z',
+    age_seconds: 30,
+    agent: 'agent@db',
+    last_error: null,
+    level: 'ok',
+    problem: null,
+  },
+  schedules: [],
+  active_runs: [],
+  active_restores: [],
+  window: { known: false, restorable_from: null, restorable_to: null },
+};
+
 const fetchMock = vi.fn<typeof fetch>();
+/** Statuts de R11-0 (`/operations/backups`) et vue d'ensemble de l'agent (R11). */
+const serve = (status: unknown) =>
+  fetchMock.mockImplementation(async (input) =>
+    jsonResponse(String(input).includes('/overview') ? OVERVIEW : status),
+  );
 beforeEach(() => vi.stubGlobal('fetch', fetchMock));
 afterEach(() => {
   cleanup();
@@ -121,13 +145,15 @@ const renderPage = () =>
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <BackupsPage />
+      <MemoryRouter>
+        <BackupsPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 
 describe('console — sauvegardes (lecture seule, niveaux du serveur)', () => {
-  it('base inactive sans alerte, opérations, copie externe non configurée, aucune action', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(STATUS));
+  it('base inactive sans alerte, opérations, copie externe non configurée, trois actions', async () => {
+    serve(STATUS);
     renderPage();
     const state = await screen.findByTestId('backups-archiving-state');
     expect(state.textContent).toContain('base inactive');
@@ -140,36 +166,39 @@ describe('console — sauvegardes (lecture seule, niveaux du serveur)', () => {
     expect(screen.getByText(/Copie externe NON CONFIGURÉE/)).toBeTruthy();
     expect(screen.getByText(/même système de fichiers/)).toBeTruthy();
     expect(screen.getByTestId('backups-storage').textContent).toContain('2 dont 2 vérifiée(s)');
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/operations/backups');
+    // Trois actions : Sauvegarder, Restaurer, Paramètres des sauvegardes.
+    expect(screen.getByTestId('action-backup').textContent).toContain('Sauvegarder');
+    expect(screen.getByTestId('action-restore').textContent).toContain('Restaurer');
+    expect(screen.getByTestId('action-settings').textContent).toContain('Paramètres');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/operations/backups'))).toBe(
+      true,
+    );
   });
 
   it('échec non résolu, retard, opération en échec et supervision arrêtée', async () => {
-    fetchMock.mockImplementation(async () =>
-      jsonResponse({
-        ...STATUS,
+    serve({
+      ...STATUS,
+      level: 'critical',
+      archiving: {
+        ...STATUS.archiving,
+        state: 'failing',
         level: 'critical',
-        archiving: {
-          ...STATUS.archiving,
-          state: 'failing',
+        failure_unresolved: true,
+        failed_count: 3,
+        last_failed_at: '2026-11-02T09:59:00Z',
+      },
+      operations: {
+        ...STATUS.operations,
+        verify: op('verify', {
           level: 'critical',
-          failure_unresolved: true,
-          failed_count: 3,
-          last_failed_at: '2026-11-02T09:59:00Z',
-        },
-        operations: {
-          ...STATUS.operations,
-          verify: op('verify', {
-            level: 'critical',
-            problem: 'last_run_failed',
-            last_status: 'failed',
-            last_message: '1 anomalie',
-            errors: ['1 segment(s) WAL manquant(s)'],
-          }),
-        },
-        supervision: { ...STATUS.supervision, stale: true, level: 'critical' },
-      }),
-    );
+          problem: 'last_run_failed',
+          last_status: 'failed',
+          last_message: '1 anomalie',
+          errors: ['1 segment(s) WAL manquant(s)'],
+        }),
+      },
+      supervision: { ...STATUS.supervision, stale: true, level: 'critical' },
+    });
     renderPage();
     expect((await screen.findByTestId('backups-archiving-state')).textContent).toContain(
       'NON RÉSOLU',
@@ -183,18 +212,16 @@ describe('console — sauvegardes (lecture seule, niveaux du serveur)', () => {
   });
 
   it('statuts non montés et retard signalés', async () => {
-    fetchMock.mockImplementation(async () =>
-      jsonResponse({
-        ...STATUS,
-        status_configured: false,
-        archiving: {
-          ...STATUS.archiving,
-          state: 'lagging',
-          level: 'critical',
-          pending_segments: 4,
-        },
-      }),
-    );
+    serve({
+      ...STATUS,
+      status_configured: false,
+      archiving: {
+        ...STATUS.archiving,
+        state: 'lagging',
+        level: 'critical',
+        pending_segments: 4,
+      },
+    });
     renderPage();
     expect((await screen.findByTestId('backups-archiving-state')).textContent).toContain(
       'RETARD : 4 segments',

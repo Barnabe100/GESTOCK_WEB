@@ -4,6 +4,15 @@ import { parseError } from '@/core/api/client';
 
 import { CONSOLE_API_BASE, consoleRequest } from './api';
 import type {
+  BackupCategory,
+  BackupFrequency,
+  BackupItem,
+  BackupOverview,
+  BackupPolicy,
+  BackupPolicyUpdate,
+  BackupRequest,
+  BackupRun,
+  BackupRunDetail,
   BackupStatus,
   Catalog,
   ConsoleActivation,
@@ -18,6 +27,10 @@ import type {
   PaymentDecision,
   PlanDetail,
   PlatformAuditEntry,
+  RestoreDecision,
+  RestoreDetail,
+  RestoreOperation,
+  RestoreRequest,
   TenantAction,
   TenantDetail,
   TenantListItem,
@@ -274,5 +287,147 @@ export function useReleaseActivation(id: string) {
       refresh();
       void queryClient.invalidateQueries({ queryKey: ['console', 'activations'] });
     },
+  });
+}
+
+// --- Sauvegarder, Restaurer, Paramètres (R11, ADR-0058) -----------------------------------------
+// L'agent exécute en arrière-plan : listes et opérations actives relues régulièrement.
+
+const BACKUPS = '/operations/backups';
+
+function invalidateBackups(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ['console', 'backup'] });
+  void queryClient.invalidateQueries({ queryKey: ['console', 'audit'] });
+}
+
+export const useBackupOverview = () =>
+  useQuery({
+    queryKey: ['console', 'backup', 'overview'],
+    queryFn: () => consoleRequest<BackupOverview>(`${BACKUPS}/overview`),
+    refetchInterval: 10_000,
+  });
+
+export const useBackupPolicies = () =>
+  useQuery({
+    queryKey: ['console', 'backup', 'policies'],
+    queryFn: () => consoleRequest<BackupPolicy[]>(`${BACKUPS}/policies`),
+  });
+
+export function useUpdateBackupPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      category,
+      frequency,
+      body,
+    }: {
+      category: BackupCategory;
+      frequency: BackupFrequency;
+      body: BackupPolicyUpdate;
+    }) =>
+      consoleRequest<BackupPolicy>(`${BACKUPS}/policies/${category}/${frequency}`, {
+        method: 'PUT',
+        body,
+      }),
+    onSuccess: () => invalidateBackups(queryClient),
+  });
+}
+
+export function useBackupRuns(query: string) {
+  return useQuery({
+    queryKey: ['console', 'backup', 'runs', query],
+    queryFn: () => consoleRequest<Page<BackupRun>>(`${BACKUPS}/runs?${query}`),
+    placeholderData: (previous) => previous,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useBackupRun(id: string | null) {
+  return useQuery({
+    queryKey: ['console', 'backup', 'run', id],
+    queryFn: () => consoleRequest<BackupRunDetail>(`${BACKUPS}/runs/${id ?? ''}`),
+    enabled: id !== null,
+    // Suivi de la progression tant que l'exécution n'est pas terminée.
+    refetchInterval: (query) =>
+      query.state.data && ['queued', 'running'].includes(query.state.data.status) ? 3_000 : false,
+  });
+}
+
+export function useRequestBackup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BackupRequest) =>
+      consoleRequest<BackupRun>(`${BACKUPS}/runs`, { method: 'POST', body }),
+    onSuccess: () => invalidateBackups(queryClient),
+  });
+}
+
+export function useCancelBackupRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      consoleRequest<BackupRun>(`${BACKUPS}/runs/${id}/cancel`, {
+        method: 'POST',
+        body: { reason },
+      }),
+    onSuccess: () => invalidateBackups(queryClient),
+  });
+}
+
+export function useBackupItems(query: string) {
+  return useQuery({
+    queryKey: ['console', 'backup', 'items', query],
+    queryFn: () => consoleRequest<Page<BackupItem>>(`${BACKUPS}/items?${query}`),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useRestores(query: string) {
+  return useQuery({
+    queryKey: ['console', 'backup', 'restores', query],
+    queryFn: () => consoleRequest<Page<RestoreOperation>>(`${BACKUPS}/restores?${query}`),
+    placeholderData: (previous) => previous,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useRestore(id: string | null) {
+  return useQuery({
+    queryKey: ['console', 'backup', 'restore', id],
+    queryFn: () => consoleRequest<RestoreDetail>(`${BACKUPS}/restores/${id ?? ''}`),
+    enabled: id !== null,
+    refetchInterval: (query) =>
+      query.state.data && ['requested', 'verifying', 'applying'].includes(query.state.data.status)
+        ? 5_000
+        : false,
+  });
+}
+
+export function useRequestRestore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RestoreRequest) =>
+      consoleRequest<RestoreDetail>(`${BACKUPS}/restores`, { method: 'POST', body }),
+    onSuccess: () => invalidateBackups(queryClient),
+  });
+}
+
+export function useRestoreDecision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      decision,
+      reason,
+    }: {
+      id: string;
+      decision: RestoreDecision;
+      reason: string;
+    }) =>
+      consoleRequest<RestoreDetail>(`${BACKUPS}/restores/${id}/${decision}`, {
+        method: 'POST',
+        body: { reason },
+      }),
+    onSuccess: () => invalidateBackups(queryClient),
   });
 }

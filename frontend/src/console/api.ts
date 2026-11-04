@@ -18,7 +18,7 @@ export function setConsoleUnauthenticatedHandler(handler: (() => void) | null) {
 
 export async function consoleRequest<T>(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PATCH'; body?: unknown; silent401?: boolean } = {},
+  options: { method?: 'GET' | 'POST' | 'PATCH' | 'PUT'; body?: unknown; silent401?: boolean } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',

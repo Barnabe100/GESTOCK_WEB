@@ -457,3 +457,209 @@ export interface BackupStatus {
     level: BackupLevel;
   };
 }
+
+// --- Sauvegarder, Restaurer, Paramètres (R11, ADR-0058) -----------------------------------------
+
+export type BackupCategory = 'physical' | 'logical' | 'verification' | 'restore_test';
+export type BackupFrequency = 'daily' | 'weekly' | 'monthly' | 'automatic' | 'manual';
+export type BackupRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type BackupTrigger = 'schedule' | 'manual' | 'retry' | 'pre_restore' | 'restore_source';
+export type RestoreStatus =
+  | 'requested'
+  | 'verifying'
+  | 'verified'
+  | 'verification_failed'
+  | 'approved'
+  | 'applying'
+  | 'applied'
+  | 'apply_failed'
+  | 'rejected'
+  | 'cancelled'
+  | 'expired';
+
+export interface BackupPolicy {
+  id: string;
+  category: BackupCategory;
+  frequency: BackupFrequency;
+  enabled: boolean;
+  run_time: string | null;
+  weekday: number | null;
+  month_day: number | null;
+  interval_hours: number | null;
+  start_date: string;
+  timezone: string;
+  retention_days: number;
+  next_run_at: string | null;
+  last_enqueued_at: string | null;
+  updated_at: string;
+  fields: string[];
+  schedulable: boolean;
+}
+
+export interface BackupPolicyUpdate {
+  enabled: boolean;
+  run_time: string | null;
+  weekday: number | null;
+  month_day: number | null;
+  interval_hours: number | null;
+  start_date: string;
+  timezone: string;
+  retention_days: number;
+  reason: string;
+}
+
+export interface BackupItem {
+  id: string;
+  tenant_id: string;
+  tenant_name: string | null;
+  status: 'running' | 'succeeded' | 'failed' | 'expired';
+  source: 'live' | 'pitr';
+  source_point: string | null;
+  table_count: number | null;
+  row_count: number | null;
+  size_bytes: number | null;
+  manifest_sha256: string | null;
+  alembic_revision: string | null;
+  verified: boolean;
+  verified_at: string | null;
+  expires_at: string | null;
+  protected_until: string | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+  run_id: string;
+  run_trigger: BackupTrigger;
+  run_frequency: BackupFrequency | null;
+  restorable: boolean;
+  restorable_reason: string | null;
+}
+
+export interface BackupRun {
+  id: string;
+  kind: BackupCategory;
+  scope: 'platform' | 'tenant';
+  tenant_id: string | null;
+  tenant_name: string | null;
+  trigger: BackupTrigger;
+  frequency: BackupFrequency | null;
+  status: BackupRunStatus;
+  attempt: number;
+  max_attempts: number;
+  retry_of: string | null;
+  scheduled_for: string | null;
+  not_before: string;
+  requested_label: string;
+  requested_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  heartbeat_at: string | null;
+  progress_percent: number;
+  progress_message: string | null;
+  error: string | null;
+  restore_operation_id: string | null;
+  items_total: number;
+  items_succeeded: number;
+  items_failed: number;
+  can_cancel: boolean;
+}
+
+export interface BackupRunDetail extends BackupRun {
+  result: Record<string, unknown>;
+  items: BackupItem[];
+}
+
+export interface BackupRequest {
+  kind: BackupCategory;
+  scope: 'platform' | 'tenant';
+  tenant_id?: string | null;
+  reason?: string | null;
+}
+
+export interface RestoreActions {
+  approve: boolean;
+  reject: boolean;
+  cancel: boolean;
+  rollback: boolean;
+  approve_blocked: string | null;
+}
+
+export interface RestoreOperation {
+  id: string;
+  scope: 'tenant' | 'platform';
+  tenant_id: string | null;
+  tenant_name: string | null;
+  mode: 'logical' | 'pitr';
+  source_item_id: string | null;
+  target_time: string | null;
+  rollback_of: string | null;
+  status: RestoreStatus;
+  reason: string;
+  requested_label: string;
+  requested_at: string;
+  verified_at: string | null;
+  approved_label: string | null;
+  approved_at: string | null;
+  approval_reason: string | null;
+  decision_expires_at: string | null;
+  applied_at: string | null;
+  rollback_deadline: string | null;
+  pre_restore_item_id: string | null;
+  materialized_item_id: string | null;
+  progress_percent: number;
+  progress_message: string | null;
+  finished_at: string | null;
+  error: string | null;
+  manual_application: boolean;
+  actions: RestoreActions;
+}
+
+export interface RestoreCheck {
+  name: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface RestoreDetail extends RestoreOperation {
+  verification: Record<string, unknown>;
+  source_item: BackupItem | null;
+}
+
+export interface RestoreRequest {
+  scope: 'tenant' | 'platform';
+  tenant_id?: string | null;
+  mode: 'logical' | 'pitr';
+  source_item_id?: string | null;
+  target_time?: string | null;
+  reason: string;
+}
+
+export type RestoreDecision = 'approve' | 'reject' | 'cancel' | 'rollback';
+
+export interface BackupSchedule {
+  category: BackupCategory;
+  enabled_frequencies: BackupFrequency[];
+  next_run_at: string | null;
+  last_success_at: string | null;
+  last_status: BackupRunStatus | null;
+  max_age_seconds: number | null;
+  problem: 'not_scheduled' | 'never_succeeded' | 'too_old' | 'last_run_failed' | null;
+  level: BackupLevel;
+}
+
+export interface BackupOverview {
+  checked_at: string;
+  level: BackupLevel;
+  schema_revision: string | null;
+  agent: {
+    last_seen_at: string | null;
+    age_seconds: number | null;
+    agent: string | null;
+    last_error: string | null;
+    level: BackupLevel;
+    problem: 'never_seen' | 'stale' | null;
+  };
+  schedules: BackupSchedule[];
+  active_runs: BackupRun[];
+  active_restores: RestoreOperation[];
+  window: { known: boolean; restorable_from: string | null; restorable_to: string | null };
+}

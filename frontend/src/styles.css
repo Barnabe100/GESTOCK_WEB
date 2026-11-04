@@ -3605,3 +3605,89 @@ a {
   opacity: 0.6;
   flex-shrink: 0;
 }
+
+/* --- Console : Sauvegarder, Restaurer, Paramètres (R11, ADR-0058) ------------------------- */
+.sm-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sm-space-2);
+  margin-block: var(--sm-space-2);
+}
+.sm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sm-space-2);
+}
+.sm-ok {
+  color: var(--sm-success-fg);
+}
+.sm-danger {
+  color: var(--sm-danger-fg);
+}
+.sm-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--sm-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  font: inherit;
+}
+.sm-checks {
+  list-style: none;
+  padding: 0;
+  margin: var(--sm-space-2) 0;
+  display: grid;
+  gap: var(--sm-space-1);
+  font-size: var(--sm-text-sm);
+}
+.sm-simple-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--sm-text-sm);
+  margin-block: var(--sm-space-3);
+}
+.sm-simple-table th,
+.sm-simple-table td {
+  text-align: left;
+  padding: var(--sm-space-1) var(--sm-space-2);
+  border-bottom: 1px solid var(--sm-border);
+}
+.sm-policy-list {
+  display: grid;
+  gap: var(--sm-space-3);
+}
+.sm-policy {
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius, 6px);
+  padding: var(--sm-space-3);
+  background: var(--sm-surface-subtle);
+}
+.sm-policy-head,
+.sm-policy-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sm-space-2);
+}
+.sm-policy-head h4 {
+  margin: 0;
+}
+.sm-policy-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--sm-space-3);
+  margin-block: var(--sm-space-3);
+}
+.sm-policy-fields label {
+  display: grid;
+  gap: var(--sm-space-1);
+  font-size: var(--sm-text-sm);
+}
+.sm-policy-foot {
+  font-size: var(--sm-text-sm);
+  color: var(--sm-text-muted);
+}

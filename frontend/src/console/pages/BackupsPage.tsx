@@ -1,7 +1,10 @@
+import { Button } from 'primereact/button';
 import { Card } from 'primereact/card';
 import { Message } from 'primereact/message';
-import type { ReactNode } from 'react';
+import { TabPanel, TabView } from 'primereact/tabview';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import { formatDateTime } from '@/shared/lib/format';
 import { ErrorMessage } from '@/shared/ui/ErrorMessage';
@@ -9,6 +12,12 @@ import { LoadingState } from '@/shared/ui/LoadingState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 
+import { BackupNowDialog } from '../backups/BackupNowDialog';
+import { OverviewPanel } from '../backups/OverviewPanel';
+import { PoliciesPanel } from '../backups/PoliciesPanel';
+import { RestoreDetailDialog } from '../backups/RestoreDetailDialog';
+import { RestorePanel } from '../backups/RestorePanel';
+import { RunsPanel } from '../backups/RunsPanel';
 import { useBackupStatus } from '../queries';
 import type { BackupLevel, BackupOperation, BackupStatus } from '../types';
 
@@ -20,13 +29,74 @@ const ICONS = {
 } as const;
 const OPERATIONS = ['base_backup', 'verify', 'restore_test', 'prune'] as const;
 
+type Tab = 'overview' | 'history' | 'restore' | 'settings';
+const TABS: Tab[] = ['overview', 'history', 'restore', 'settings'];
+
 /**
- * Sauvegardes (lecture seule, R11-0) : niveaux CALCULÉS PAR LE SERVEUR à partir de l'archivage
- * lu en direct et des statuts écrits par les scripts d'exploitation (aucun contenu de
- * sauvegarde). Aucune action : sauvegarder et restaurer restent des opérations d'exploitation
- * documentées et tracées.
+ * Sauvegardes (R11-0, R11) : trois actions — Sauvegarder, Restaurer, Paramètres des
+ * sauvegardes. La console décide (demandes, approbations, planification) ; l'agent des
+ * sauvegardes exécute et rend compte. Les niveaux de supervision sont CALCULÉS PAR LE SERVEUR.
  */
 export function BackupsPage() {
+  const { t } = useTranslation();
+  const [params, setParams] = useSearchParams();
+  const tab = (TABS.find((x) => x === params.get('tab')) ?? 'overview') as Tab;
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoreId, setRestoreId] = useState<string | null>(null);
+  const go = (next: Tab) => setParams(next === 'overview' ? {} : { tab: next });
+  return (
+    <>
+      <PageHeader
+        title={t('console:backups.title')}
+        description={t('console:bk.subtitle')}
+        actions={
+          <>
+            <Button
+              icon="pi pi-cloud-upload"
+              label={t('console:bk.actions.backup')}
+              onClick={() => setBackingUp(true)}
+              data-testid="action-backup"
+            />
+            <Button
+              icon="pi pi-replay"
+              label={t('console:bk.actions.restore')}
+              outlined
+              onClick={() => go('restore')}
+              data-testid="action-restore"
+            />
+            <Button
+              icon="pi pi-cog"
+              label={t('console:bk.actions.settings')}
+              outlined
+              onClick={() => go('settings')}
+              data-testid="action-settings"
+            />
+          </>
+        }
+      />
+      <TabView activeIndex={TABS.indexOf(tab)} onTabChange={(e) => go(TABS[e.index] ?? 'overview')}>
+        <TabPanel header={t('console:bk.tabs.overview')}>
+          <OverviewPanel onOpenRestore={setRestoreId} />
+          <BackupStatusSection />
+        </TabPanel>
+        <TabPanel header={t('console:bk.tabs.history')}>
+          {tab === 'history' && <RunsPanel />}
+        </TabPanel>
+        <TabPanel header={t('console:bk.tabs.restore')}>
+          {tab === 'restore' && <RestorePanel />}
+        </TabPanel>
+        <TabPanel header={t('console:bk.tabs.settings')}>
+          {tab === 'settings' && <PoliciesPanel />}
+        </TabPanel>
+      </TabView>
+      {backingUp && <BackupNowDialog onClose={() => setBackingUp(false)} />}
+      {restoreId && <RestoreDetailDialog id={restoreId} onClose={() => setRestoreId(null)} />}
+    </>
+  );
+}
+
+/** État de l'archivage continu et des opérations (statuts de R11-0, lecture seule). */
+function BackupStatusSection() {
   const { t } = useTranslation();
   const status = useBackupStatus();
   if (status.isLoading) return <LoadingState />;
@@ -36,7 +106,7 @@ export function BackupsPage() {
   const data = status.data;
   return (
     <>
-      <PageHeader title={t('console:backups.title')} description={t('console:backups.subtitle')} />
+      <h3>{t('console:bk.statusTitle')}</h3>
       <p data-testid="backups-overall">
         <LevelBadge level={data.level} /> {t(`console:backups.overall.${data.level}`)}
       </p>
