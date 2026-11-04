@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -523,10 +523,14 @@ DashboardOut.model_rebuild()
 # --- Sauvegardes (lecture seule, docs/exploitation/SAUVEGARDE_RESTAURATION.md) -----------------
 
 
+Level = Literal["ok", "warning", "critical"]
+
+
 class ArchivingStatusOut(BaseModel):
     archive_mode: str | None
     archive_timeout_seconds: int
     wal_level: str | None
+    data_checksums: bool
     archived_count: int
     last_archived_wal: str | None
     last_archived_at: datetime | None
@@ -534,22 +538,99 @@ class ArchivingStatusOut(BaseModel):
     failed_count: int
     last_failed_wal: str | None
     last_failed_at: datetime | None
+    failure_unresolved: bool
+    pending_segments: int | None
+    # not_configured | failing | lagging | archiving | up_to_date | idle | never
+    state: str
+    level: Level
+    messages: list[str]
     ok: bool
 
 
-class BaseBackupsStatusOut(BaseModel):
-    configured: bool  # répertoire des sauvegardes monté dans la console
-    count: int
-    latest_label: str | None
-    latest_finished_at: datetime | None
-    latest_age_hours: int | None
-    unverified_count: int
+class RestoreCheckOut(BaseModel):
+    name: str
     ok: bool
-    max_age_hours: int
+
+
+class OperationStatusOut(BaseModel):
+    operation: str
+    last_status: str | None  # running | success | failed | interrupted | refused
+    last_started_at: datetime | None
+    last_finished_at: datetime | None
+    last_message: str | None
+    last_success_at: datetime | None
+    last_success_age_seconds: int | None
+    max_age_seconds: int
+    problem: str | None  # never_succeeded | too_old | last_run_failed | stuck
+    level: Level
+    details: dict[str, str | int | bool | None]
+    errors: list[str]
+    checks: list[RestoreCheckOut]
+
+
+class OperationsStatusOut(BaseModel):
+    base_backup: OperationStatusOut
+    verify: OperationStatusOut
+    restore_test: OperationStatusOut
+    prune: OperationStatusOut
+
+
+class StorageStatusOut(BaseModel):
+    configured: bool
+    generated_at: datetime | None
+    base_backups: int
+    base_backups_verified: int
+    base_backups_bytes: int
+    latest_verified_backup: str | None
+    restorable_from: datetime | None
+    wal_files: int
+    wal_bytes: int
+    retention_days: int | None
+    disk_free_bytes: int | None
+    disk_free_percent: int | None
+    same_filesystem_as_data: bool
+    restore_test_dirs: int
+    level: Level
+    messages: list[str]
+
+
+class OffsiteStatusOut(BaseModel):
+    configured: bool
+    repository: str | None
+    last_status: str | None
+    last_success_at: datetime | None
+    last_success_age_seconds: int | None
+    level: Level
+    problem: str | None
+    details: dict[str, str | int | bool | None]
+
+
+class SupervisionStatusOut(BaseModel):
+    last_check_at: datetime | None
+    age_seconds: int | None
+    reported_level: Level | None
+    stale: bool
+    level: Level
+
+
+class BackupThresholdsOut(BaseModel):
+    wal_max_lag_seconds: int
+    base_max_age_hours: int
+    verify_max_age_hours: int
+    restore_test_max_age_days: int
+    offsite_max_age_hours: int
+    disk_warn_free_percent: int
+    disk_critical_free_percent: int
 
 
 class BackupStatusOut(BaseModel):
     checked_at: datetime
+    level: Level
+    status_configured: bool  # répertoire status/ monté dans la console
     rpo_seconds: int
+    thresholds: BackupThresholdsOut
     archiving: ArchivingStatusOut
-    base_backups: BaseBackupsStatusOut
+    operations: OperationsStatusOut
+    storage: StorageStatusOut
+    offsite: OffsiteStatusOut
+    supervision: SupervisionStatusOut

@@ -8,9 +8,9 @@
 # 1 avertissement, 2 critique (convention des outils de supervision). Aucun secret affiché.
 # Contrôle non configuré : « IGNORÉ », compté comme un avertissement (jamais comme OK).
 #
-# Variables : SM_API_URL ; SM_BACKUP_DIR ; SM_BACKUP_MAX_AGE_HOURS (26) ;
-# SM_WAL_MAX_AGE_SECONDS (900 = RPO) ; SM_DISK_MIN_FREE_PERCENT (15) ;
-# SM_CHECK_SIGNING=1 (stockmanager signing check, depuis le répertoire backend/ ou l'image).
+# Variables : SM_API_URL ; SM_BACKUP_HEALTH_CMD ou SM_BACKUP_DIR (sauvegardes : seuils
+# SM_BACKUP_* de ops/backup/sm-backup-health.sh) ; SM_CHECK_SIGNING=1 (stockmanager signing
+# check, depuis le répertoire backend/ ou l'image).
 set -uo pipefail
 
 STATUS=0
@@ -30,45 +30,30 @@ else
   report IGNORÉ "api : SM_API_URL non défini"
 fi
 
-# 2. Base et archivage WAL (RPO)
-if command -v psql >/dev/null && [[ -n "${PGHOST:-}" ]]; then
-  row="$(PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-5}" timeout 20 psql -w -Atqc "SELECT failed_count, coalesce(extract(epoch FROM now() - last_archived_time)::int, -1), coalesce(extract(epoch FROM now() - last_failed_time)::int, -1) FROM pg_stat_archiver" 2>/dev/null)"
-  if [[ -z "$row" ]]; then
-    report CRITIQUE "base : injoignable"
+# 2. Sauvegardes : archivage WAL (inactif ≠ retard ≠ échec), sauvegarde complète, vérification,
+#    test de restauration, stockage, copie externe — ops/backup/sm-backup-health.sh, exécuté là
+#    où se trouvent la base et l'archive (Docker : SM_BACKUP_HEALTH_CMD, voir l'exemple).
+#    SM_BACKUP_HEALTH_CMD="docker compose -f … -f docker-compose.backup.yml exec -T -u postgres db
+#                          /opt/stockmanager/backup/sm-backup-health.sh"
+backup_health() {
+  local out code=0
+  if [[ -n "${SM_BACKUP_HEALTH_CMD:-}" ]]; then
+    read -r -a cmd <<<"$SM_BACKUP_HEALTH_CMD"
+    out="$(timeout 120 "${cmd[@]}" 2>&1)" || code=$?
+  elif [[ -n "${SM_BACKUP_DIR:-}" ]]; then
+    out="$(timeout 120 "$(dirname "$(realpath "$0")")/../backup/sm-backup-health.sh" 2>&1)" || code=$?
   else
-    IFS='|' read -r failed age last_failed <<<"$row"
-    max="${SM_WAL_MAX_AGE_SECONDS:-900}"
-    if (( age < 0 )); then report CRITIQUE "archivage : aucun WAL archivé"
-    elif (( age > max )); then report CRITIQUE "archivage : dernier WAL il y a ${age} s (> ${max} s, RPO)"
-    else report OK "archivage : dernier WAL il y a ${age} s"; fi
-    if (( last_failed >= 0 && last_failed < 3600 )); then
-      report AVERTISSEMENT "archivage : échec il y a ${last_failed} s (total ${failed})"
-    fi
+    report IGNORÉ "sauvegardes : SM_BACKUP_HEALTH_CMD et SM_BACKUP_DIR non définis"
+    return
   fi
-else
-  report IGNORÉ "base : PGHOST non défini ou psql absent"
-fi
-
-# 3. Fraîcheur et vérification de la dernière sauvegarde de base
-if [[ -n "${SM_BACKUP_DIR:-}" ]]; then
-  last="$(find "$SM_BACKUP_DIR/base" -mindepth 1 -maxdepth 1 -type d -name '20*' -printf '%f\n' 2>/dev/null | sort | tail -n 1)"
-  if [[ -z "$last" ]]; then
-    report CRITIQUE "sauvegarde : aucune sauvegarde de base"
-  else
-    hours=$(( ( $(date -u +%s) - $(date -u -d "$(echo "$last" | sed -E 's/(....)(..)(..)T(..)(..)(..)Z/\1-\2-\3 \4:\5:\6/')" +%s) ) / 3600 ))
-    if ! grep -q '"verified": true' "$SM_BACKUP_DIR/base/$last/backup_info.json" 2>/dev/null; then
-      report CRITIQUE "sauvegarde : $last non vérifiée"
-    elif (( hours > ${SM_BACKUP_MAX_AGE_HOURS:-26} )); then
-      report CRITIQUE "sauvegarde : dernière il y a ${hours} h ($last)"
-    else
-      report OK "sauvegarde : $last (${hours} h)"
-    fi
-  fi
-  free="$(df -P "$SM_BACKUP_DIR" | awk 'NR==2 {print 100 - $5}')"
-  (( free < ${SM_DISK_MIN_FREE_PERCENT:-15} )) && report AVERTISSEMENT "disque des sauvegardes : ${free} % libre" || report OK "disque des sauvegardes : ${free} % libre"
-else
-  report IGNORÉ "sauvegarde : SM_BACKUP_DIR non défini"
-fi
+  while IFS= read -r line; do [[ -n "$line" ]] && echo "  $line"; done <<<"$out"
+  case "$code" in
+    0) report OK "sauvegardes : conformes" ;;
+    1) report AVERTISSEMENT "sauvegardes : point(s) à surveiller (détail ci-dessus)" ;;
+    *) report CRITIQUE "sauvegardes : alerte (code $code, détail ci-dessus)" ;;
+  esac
+}
+backup_health
 
 # 4. Signing Service (signature réelle d'une sonde, ADR-0034)
 if [[ "${SM_CHECK_SIGNING:-0}" == 1 ]]; then

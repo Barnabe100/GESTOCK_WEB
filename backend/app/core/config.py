@@ -128,9 +128,21 @@ class Settings(BaseSettings):
     signing_timeout_seconds: float = 10.0
     # Trousseau des clés PUBLIQUES (vérification) ; défaut : fichier versionné du backend.
     license_public_keys_file: Path | None = None
-    # Répertoire des sauvegardes monté en LECTURE SEULE dans la console (état des sauvegardes de
-    # base, docs/exploitation/SAUVEGARDE_RESTAURATION.md) ; facultatif.
+    # Sauvegardes (R11-0, ADR-0057) : la console lit SEULEMENT les statuts JSON écrits par
+    # ops/backup dans status/ (monté en lecture seule) ; jamais le contenu des sauvegardes.
+    # SM_BACKUP_STATUS_DIR ; à défaut SM_BACKUP_DIR/status (compatibilité).
+    backup_status_dir: Path | None = None
     backup_dir: Path | None = None
+    # Seuils de supervision (mêmes variables que ops/backup/sm-backup-health.sh).
+    backup_wal_max_lag_seconds: int = 900
+    backup_base_max_age_hours: int = 192
+    backup_verify_max_age_hours: int = 26
+    backup_restore_test_max_age_days: int = 35
+    backup_offsite_max_age_hours: int = 48
+    backup_disk_warn_free_percent: int = 15
+    backup_disk_critical_free_percent: int = 5
+    backup_run_max_hours: int = 24
+    backup_health_max_age_seconds: int = 900
     # Postes (3.3-B3) : durée pendant laquelle une installation peut fonctionner sans contacter
     # le serveur (renvoyée au client lors du contrôle ; au-delà, poste signalé « non vu »).
     activation_offline_grace_days: int = 7

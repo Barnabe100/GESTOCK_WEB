@@ -362,14 +362,45 @@ export interface ConsoleActivation {
   release_reason: string | null;
 }
 
-/** État des sauvegardes (lecture seule, docs/exploitation/SAUVEGARDE_RESTAURATION.md). */
+/** Niveau d'un contrôle de sauvegarde, calculé par le serveur. */
+export type BackupLevel = 'ok' | 'warning' | 'critical';
+
+export interface BackupOperation {
+  operation: string;
+  last_status: string | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_message: string | null;
+  last_success_at: string | null;
+  last_success_age_seconds: number | null;
+  max_age_seconds: number;
+  problem: 'never_succeeded' | 'too_old' | 'last_run_failed' | 'stuck' | null;
+  level: BackupLevel;
+  details: Record<string, string | number | boolean | null>;
+  errors: string[];
+  checks: { name: string; ok: boolean }[];
+}
+
+/** État des sauvegardes (lecture seule, R11-0, ADR-0057) : statuts seulement, aucun contenu. */
 export interface BackupStatus {
   checked_at: string;
+  level: BackupLevel;
+  status_configured: boolean;
   rpo_seconds: number;
+  thresholds: {
+    wal_max_lag_seconds: number;
+    base_max_age_hours: number;
+    verify_max_age_hours: number;
+    restore_test_max_age_days: number;
+    offsite_max_age_hours: number;
+    disk_warn_free_percent: number;
+    disk_critical_free_percent: number;
+  };
   archiving: {
     archive_mode: string | null;
     archive_timeout_seconds: number;
     wal_level: string | null;
+    data_checksums: boolean;
     archived_count: number;
     last_archived_wal: string | null;
     last_archived_at: string | null;
@@ -377,16 +408,52 @@ export interface BackupStatus {
     failed_count: number;
     last_failed_wal: string | null;
     last_failed_at: string | null;
+    failure_unresolved: boolean;
+    pending_segments: number | null;
+    state: 'not_configured' | 'failing' | 'lagging' | 'archiving' | 'up_to_date' | 'idle' | 'never';
+    level: BackupLevel;
+    messages: string[];
     ok: boolean;
   };
-  base_backups: {
+  operations: {
+    base_backup: BackupOperation;
+    verify: BackupOperation;
+    restore_test: BackupOperation;
+    prune: BackupOperation;
+  };
+  storage: {
     configured: boolean;
-    count: number;
-    latest_label: string | null;
-    latest_finished_at: string | null;
-    latest_age_hours: number | null;
-    unverified_count: number;
-    ok: boolean;
-    max_age_hours: number;
+    generated_at: string | null;
+    base_backups: number;
+    base_backups_verified: number;
+    base_backups_bytes: number;
+    latest_verified_backup: string | null;
+    restorable_from: string | null;
+    wal_files: number;
+    wal_bytes: number;
+    retention_days: number | null;
+    disk_free_bytes: number | null;
+    disk_free_percent: number | null;
+    same_filesystem_as_data: boolean;
+    restore_test_dirs: number;
+    level: BackupLevel;
+    messages: string[];
+  };
+  offsite: {
+    configured: boolean;
+    repository: string | null;
+    last_status: string | null;
+    last_success_at: string | null;
+    last_success_age_seconds: number | null;
+    level: BackupLevel;
+    problem: string | null;
+    details: Record<string, string | number | boolean | null>;
+  };
+  supervision: {
+    last_check_at: string | null;
+    age_seconds: number | null;
+    reported_level: BackupLevel | null;
+    stale: boolean;
+    level: BackupLevel;
   };
 }

@@ -21,7 +21,7 @@ from app.console.auth import (
     PlatformAdmin,
     require_console_header,
 )
-from app.console.backups import backup_status
+from app.console.backups import backup_status, backup_thresholds, status_directory
 from app.console.catalog import active_countries, build_catalog
 from app.console.licenses import LicenseAdminService, LicenseFilters
 from app.console.models import PlatformAuditLog
@@ -180,8 +180,16 @@ def dashboard(ctx: PlatformAdmin, db: ConsoleDb, registry: Registry, now: NowDep
 def backups_status(
     ctx: PlatformAdmin, db: ConsoleDb, settings: ConsoleSettings, now: NowDep
 ) -> BackupStatusOut:
-    """Archivage des WAL (RPO) et dernière sauvegarde de base vérifiée ; aucune action."""
-    return BackupStatusOut.model_validate(backup_status(db, settings.backup_dir, now))
+    """Archivage des WAL (RPO), opérations planifiées, stockage, copie externe et supervision,
+    lus dans les statuts (status/) ; aucune action."""
+    return BackupStatusOut.model_validate(
+        backup_status(
+            db,
+            status_directory(settings.backup_status_dir, settings.backup_dir),
+            now,
+            backup_thresholds(settings),
+        )
+    )
 
 
 # --- Offres & tarifs ----------------------------------------------------------------------------
