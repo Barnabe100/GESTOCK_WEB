@@ -6,7 +6,7 @@
 #
 # Sur la PRODUCTION, n'est lancé par l'agent qu'APRÈS : vérification sur une copie isolée,
 # approbation par un second administrateur, sauvegarde préalable de l'entreprise, verrou de
-# l'entreprise (--require-lock : relu dans la transaction). Sur une COPIE (--host) : épreuve de
+# l'entreprise (--require-lock : verrou consultatif exclusif contrôlé dans la transaction). Sur une COPIE (--host) : épreuve de
 # la vérification.
 #
 # Garanties :
@@ -140,7 +140,12 @@ SQL="$WORK/apply.sql"
   echo "SET LOCAL lock_timeout = '${SM_RESTORE_LOCK_TIMEOUT:-60s}';"
   echo "SELECT set_config('app.tenant_id', '$TENANT', true) \\g /dev/null"
   if (( REQUIRE_LOCK )); then
-    echo "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM tenants WHERE id = '$TENANT' AND restore_locked_at IS NOT NULL AND restore_operation_id = '$OPERATION') THEN RAISE EXCEPTION 'sm-check|tenant_locked|false|entreprise non verrouillée pour cette opération'; END IF; END \$\$;"
+    # Verrou EXCLUSIF de l'entreprise tenu par l'agent : le verrou partagé doit être refusé.
+    echo "SELECT NOT pg_try_advisory_xact_lock_shared(hashtextextended('sm.tenant_restore:$TENANT', 0)) AS sm_locked \\gset"
+    echo "\\if :sm_locked"
+    echo "\\else"
+    echo "DO \$\$ BEGIN RAISE EXCEPTION 'sm-check|tenant_locked|false|entreprise non verrouillée par l''agent'; END \$\$;"
+    echo "\\endif"
   fi
   echo "\\o $WORK/before.tsv"
   for t in "${ORDERED[@]}"; do echo "SELECT '$t', count(*) FROM $t;"; done
@@ -225,7 +230,7 @@ T1="$(date -u +%s)"
 # Rapport : contrôles (NOTICE / EXCEPTION « sm-check|nom|ok|détail »), lignes avant / après.
 checks=""
 add_check() { checks+="${checks:+, }{\"name\": $(sm_js "$1"), \"ok\": $2, \"detail\": $(sm_js "$3")}"; }
-if (( REQUIRE_LOCK )) && (( code == 0 )); then add_check tenant_locked true "entreprise verrouillée pour l'opération $OPERATION (relu dans la transaction)"; fi
+if (( REQUIRE_LOCK )) && (( code == 0 )); then add_check tenant_locked true "entreprise verrouillée par l'agent pendant l'opération $OPERATION (contrôlé dans la transaction)"; fi
 while IFS='|' read -r _ name ok detail; do
   [[ -n "$name" ]] && add_check "$name" "$ok" "$detail"
 done < <(grep -o 'sm-check|[^|]*|[a-z]*|.*' "$WORK/err.txt" || true)

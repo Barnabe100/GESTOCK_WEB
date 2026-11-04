@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.restaurant_orders.contact_purge import CONTACT_RETENTION_DAYS
 from app.platform.member_notifications.purge import RETENTION_DAYS
+from app.platform.tenancy.restore_lock import restore_lock_key, tenant_available
 from tests.conftest import (
     CONSOLE_HEADERS,
     CONSOLE_PREFIX,
@@ -879,28 +880,39 @@ def test_locked_company_gets_503_and_other_companies_continue(
     a = api_for("owner@alpha.example.com", alpha.tenant_id)
     b = api_for("owner@beta.example.com", beta.tenant_id)
     assert a.get("/tenant").status_code == 200
-    op = uuid.uuid4()
-    with owner_engine.begin() as conn:
-        conn.execute(text("SET LOCAL ROLE stockmanager_backup"))
-        conn.execute(
-            text(
-                "UPDATE tenants SET restore_locked_at = now(), restore_operation_id = :op WHERE "
-                "id = :t"
-            ),
-            {"op": op, "t": alpha.tenant_id},
-        )
-    locked = a.get("/tenant")
-    assert locked.status_code == 503 and locked.json()["code"] == "tenant_restore_in_progress"
-    assert b.get("/tenant").status_code == 200
-    with owner_engine.begin() as conn:
-        conn.execute(
-            text(
-                "UPDATE tenants SET restore_locked_at = NULL, restore_operation_id = NULL WHERE "
-                "id = :t"
-            ),
-            {"t": alpha.tenant_id},
-        )
+    key = restore_lock_key(alpha.tenant_id)
+    # Le verrou exclusif de l'agent (session) : alpha refusée, beta jamais concernée.
+    with owner_engine.connect() as agent:
+        agent.execute(text("SELECT pg_advisory_lock(hashtextextended(:k, 0))"), {"k": key})
+        agent.commit()
+        locked = a.get("/tenant")
+        assert locked.status_code == 503 and locked.json()["code"] == "tenant_restore_in_progress"
+        assert b.get("/tenant").status_code == 200
+        agent.execute(text("SELECT pg_advisory_unlock(hashtextextended(:k, 0))"), {"k": key})
+        agent.commit()
     assert a.get("/tenant").status_code == 200
+
+
+def test_a_request_in_progress_holds_back_the_restore_lock(
+    db: Session, provision: Any, owner_engine: Engine
+) -> None:
+    """Une requête en cours tient le verrou partagé jusqu'à la fin de sa transaction : l'agent
+    ATTEND (ici : délai dépassé) avant d'appliquer ; la requête terminée, il l'obtient."""
+    alpha = provision("alpha").tenant_id
+    assert tenant_available(db, alpha)  # transaction de la « requête » ouverte
+    key = restore_lock_key(alpha)
+    with owner_engine.connect() as agent:
+        agent.execute(text("SET lock_timeout = '300ms'"))
+        with pytest.raises(DBAPIError, match="lock timeout"):
+            agent.execute(text("SELECT pg_advisory_lock(hashtextextended(:k, 0))"), {"k": key})
+        agent.rollback()
+        db.commit()  # fin de la requête
+        agent.execute(text("SET lock_timeout = '300ms'"))
+        agent.execute(text("SELECT pg_advisory_lock(hashtextextended(:k, 0))"), {"k": key})
+        assert not tenant_available(db, alpha)
+        db.rollback()
+        agent.execute(text("SELECT pg_advisory_unlock(hashtextextended(:k, 0))"), {"k": key})
+        agent.commit()
 
 
 # --- Rôles de sauvegarde / restauration -----------------------------------------------------------

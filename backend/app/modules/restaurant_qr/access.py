@@ -37,8 +37,8 @@ from app.platform.audit.service import RequestMeta
 from app.platform.capabilities.service import CapabilityService
 from app.platform.context import PublicScope
 from app.platform.registry import ModuleRegistry
-from app.platform.tenancy.models import Site, TenantStatus
-from app.platform.tenancy.restore_lock import load_tenant_for_request
+from app.platform.tenancy.models import Site, Tenant, TenantStatus
+from app.platform.tenancy.restore_lock import tenant_available
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +90,11 @@ def resolve_access(
         raise _refuse("jeton inconnu ou régénéré")
     # L'entreprise vient du POINT ; l'empreinte n'est plus nécessaire.
     set_db_context(db, tenant_id=point.tenant_id, qr_token_hash=None)
-    tenant = load_tenant_for_request(db, point.tenant_id)
+    tenant = db.get(Tenant, point.tenant_id)
     site = db.get(Site, point.site_id)
     if tenant is None or tenant.status is not TenantStatus.ACTIVE:
         raise _refuse("entreprise inactive", point.id)
-    if tenant.restore_locked_at is not None:
+    if not tenant_available(db, point.tenant_id):
         raise _refuse("restauration de l'entreprise en cours", point.id)
     if site is None or not site.is_active:
         raise _refuse("site inactif", point.id)
@@ -157,13 +157,13 @@ def resolve_tracking(
         logger.info("Suivi QR refusé : secret inconnu ou renouvelé")
         raise TrackingUnavailableError()
     set_db_context(db, tenant_id=link.tenant_id, qr_tracking_hash=None)
-    tenant = load_tenant_for_request(db, link.tenant_id)
+    tenant = db.get(Tenant, link.tenant_id)
     site = db.get(Site, link.site_id)
     modules = (
         CapabilityService(db, registry).public_site_modules(tenant, link.site_id, now)
         if tenant is not None
         and tenant.status is TenantStatus.ACTIVE
-        and tenant.restore_locked_at is None
+        and tenant_available(db, link.tenant_id)
         else None
     )
     if site is None or not site.is_active or modules is None or QR_MODULE not in modules:

@@ -271,8 +271,30 @@ verify_operation() { # opération
   fi
 }
 
-unlock_tenant() { # entreprise opération
-  q -c "UPDATE tenants SET restore_locked_at = NULL, restore_operation_id = NULL WHERE id = '$1' AND restore_operation_id = '$2'" >/dev/null || true
+# Verrou de l'entreprise (app/platform/tenancy/restore_lock.py) : verrou consultatif EXCLUSIF de
+# session, tenu par un psql en coprocessus. Son obtention ATTEND la fin des requêtes en cours de
+# cette entreprise (chacune tient le verrou partagé de sa transaction) ; ensuite, toute requête
+# de l'entreprise est refusée (503). Libéré à la fin, ou automatiquement si l'agent s'arrête
+# (fin de la session). Les autres entreprises ont d'autres clés.
+LOCK_PID=""
+lock_tenant() { # entreprise
+  local line
+  coproc LOCKER { exec psql -X -w -Atq -v ON_ERROR_STOP=1 2>&1 8>&-; }
+  LOCK_PID="$LOCKER_PID"
+  printf "SET lock_timeout = '%s';\nSELECT pg_advisory_lock(hashtextextended('sm.tenant_restore:%s', 0));\nSELECT 'sm-locked';\n" \
+    "${SM_RESTORE_LOCK_WAIT:-120s}" "$1" >&"${LOCKER[1]}"
+  while IFS= read -r -t 300 line <&"${LOCKER[0]}"; do
+    [[ "$line" == sm-locked ]] && return 0
+  done
+  unlock_tenant
+  return 1
+}
+unlock_tenant() {
+  if [[ -n "$LOCK_PID" ]]; then
+    kill "$LOCK_PID" 2>/dev/null || true
+    wait "$LOCK_PID" 2>/dev/null || true
+    LOCK_PID=""
+  fi
 }
 apply_operation() { # opération (entreprise, approuvée, non expirée)
   local op="$1" tenant item art pre run report code=0 out
@@ -283,21 +305,13 @@ apply_operation() { # opération (entreprise, approuvée, non expirée)
   hb_start restore_operations "$op"
   fail_apply() {
     hb_stop
-    unlock_tenant "$tenant" "$op"
+    unlock_tenant
     op_set "$op" "status = 'apply_failed', finished_at = now(), error = $(lit "${1:0:2000}"), progress_message = 'échec : rien n''a été modifié'"
     audit restore.apply_failed restore_operation "$op" "$tenant" "{\"error\": $(sjs "${1:0:500}")}"
     sm_log "restauration $op : ÉCHEC — $1"
   }
   art="$(item_path "$item")" || { fail_apply "sauvegarde source absente ou incomplète"; return; }
-  # Verrou : FOR UPDATE attend la fin des requêtes en cours de l'entreprise (FOR KEY SHARE) ;
-  # les suivantes lisent le verrou et sont refusées (503). Les autres entreprises continuent.
-  if ! q -c "BEGIN; SET LOCAL lock_timeout = '${SM_RESTORE_LOCK_WAIT:-120s}';
-             SELECT 1 FROM tenants WHERE id = '$tenant' FOR UPDATE;
-             UPDATE tenants SET restore_locked_at = now(), restore_operation_id = '$op' WHERE id = '$tenant' AND restore_locked_at IS NULL;
-             COMMIT;" >/dev/null 2>&1; then
-    fail_apply "verrou de l'entreprise impossible (requêtes en cours trop longues) : réessayer"; return
-  fi
-  [[ "$(q -c "SELECT restore_operation_id FROM tenants WHERE id = '$tenant'")" == "$op" ]] || { fail_apply "entreprise déjà verrouillée par une autre opération"; return; }
+  lock_tenant "$tenant" || { fail_apply "verrou de l'entreprise impossible (requêtes en cours trop longues) : réessayer"; return; }
   sleep "$DRAIN"
   progress restore_operations "$op" 20 "sauvegarde préalable de l'état actuel"
   run="$(op_run "$op" "$tenant" pre_restore)"
@@ -317,7 +331,7 @@ apply_operation() { # opération (entreprise, approuvée, non expirée)
     fail_apply "application refusée (ROLLBACK) : $(sed -n 's/^  "error": "\(.*\)",$/\1/p' "$report" 2>/dev/null | head -c 1500)"; return
   fi
   hb_stop
-  unlock_tenant "$tenant" "$op"
+  unlock_tenant
   op_set "$op" "status = 'applied', applied_at = now(), finished_at = now(), progress_percent = 100, progress_message = 'appliquée',
           rollback_deadline = now() + make_interval(hours => $ROLLBACK_HOURS),
           verification = verification || jsonb_build_object('application', $(lit "$rep")::jsonb)"
@@ -361,7 +375,6 @@ stale="$(q -c "SELECT backup_reclaim_stale(make_interval(mins => $STALE))")"
 while IFS='|' read -r op st tenant; do
   [[ "$op" =~ $UUID_RE ]] || continue
   if [[ "$st" == applying ]]; then
-    unlock_tenant "$tenant" "$op"
     op_set "$op" "status = 'apply_failed', finished_at = now(), error = 'interrompue (arrêt de l''agent) : aucune modification validée'"
   else
     op_set "$op" "status = 'verification_failed', finished_at = now(), error = 'vérification interrompue (arrêt de l''agent)'"
@@ -379,9 +392,6 @@ crashed() { # type identifiant code
   sm_log "erreur interne de l'agent ($1 $2, code $3)"
   agent_error "erreur interne de l'agent ($1 $2, code $3)"
   if [[ "$1" == restore ]]; then
-    local tenant
-    tenant="$(q -c "SELECT coalesce(tenant_id::text, '') FROM restore_operations WHERE id = '$2'")" || true
-    [[ -z "$tenant" ]] || unlock_tenant "$tenant" "$2"
     q -c "UPDATE restore_operations SET finished_at = now(), error = 'erreur interne de l''agent (code $3) : aucune modification validée',
             status = CASE status WHEN 'verifying' THEN 'verification_failed' ELSE 'apply_failed' END
           WHERE id = '$2' AND status IN ('verifying', 'applying')" >/dev/null || true
@@ -395,7 +405,7 @@ guarded() { # type identifiant fonction arguments…
   set +e
   ( set -e; set -o errtrace
     trap 'AGENT_ERR="ligne $LINENO : ${BASH_COMMAND:0:300}"; sm_log "erreur interne $AGENT_ERR"' ERR
-    trap hb_stop EXIT
+    trap 'hb_stop; unlock_tenant' EXIT
     "${@:3}" )
   code=$?
   set -e

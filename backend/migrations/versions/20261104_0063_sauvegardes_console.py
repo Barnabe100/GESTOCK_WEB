@@ -13,7 +13,8 @@ Tables de la PLATEFORME (aucune donnée d'entreprise) :
   rôle autorisé pour chacune), deux administrateurs distincts (contrainte), une opération active
   par entreprise ;
 - ``backup_agent_state`` : dernier passage de l'agent ;
-- ``tenants.restore_locked_at`` / ``restore_operation_id`` : verrou pendant l'application.
+- verrou d'une entreprise pendant l'application : verrou CONSULTATIF PostgreSQL
+  (``app/platform/tenancy/restore_lock.py``), aucune colonne.
 
 Rôles (créés par ``ops/backup/sm-backup-role.sh``, ou ici, sans mot de passe, si la migration
 est jouée par un superutilisateur), tous sans BYPASSRLS ni superutilisateur :
@@ -131,9 +132,6 @@ def upgrade() -> None:
     _ensure_roles(s.db_backup_role, s.db_tenant_backup_role, s.db_tenant_restore_role)
     platform, agent = _quote(s.db_platform_role), _quote(s.db_backup_role)
     reader, restorer = _quote(s.db_tenant_backup_role), _quote(s.db_tenant_restore_role)
-
-    op.add_column("tenants", sa.Column("restore_locked_at", sa.DateTime(timezone=True)))
-    op.add_column("tenants", sa.Column("restore_operation_id", sa.Uuid()))
 
     op.create_table(
         "backup_policies",
@@ -663,16 +661,9 @@ INSERT INTO backup_policies (id, category, frequency, enabled, run_time, weekday
     )
     op.execute(f"GRANT SELECT, INSERT, UPDATE ON backup_agent_state TO {agent}")
     op.execute(f"GRANT INSERT ON platform_audit_logs TO {agent}")
-    op.execute(
-        f"GRANT SELECT (id, status, restore_locked_at, restore_operation_id) ON tenants TO {agent}"
-    )
-    op.execute(f"GRANT UPDATE (restore_locked_at, restore_operation_id) ON tenants TO {agent}")
+    op.execute(f"GRANT SELECT (id, status) ON tenants TO {agent}")
     op.execute(
         f"CREATE POLICY backup_agent_tenants_read ON tenants FOR SELECT TO {agent} USING (true)"
-    )
-    op.execute(
-        f"CREATE POLICY backup_agent_tenants_lock ON tenants FOR UPDATE TO {agent} "
-        "USING (true) WITH CHECK (true)"
     )
     for fn in (
         "backup_enqueue_due(timestamptz)",
@@ -700,8 +691,6 @@ INSERT INTO backup_policies (id, category, frequency, enabled, run_time, weekday
     # Effacement des téléphones des commandes finies depuis plus de 30 jours (R7) : réappliqué
     # après une restauration (une sauvegarde ancienne ne les ressuscite jamais).
     op.execute(f"GRANT UPDATE (contact_phone) ON restaurant_orders TO {restorer}")
-    # Verrou de l'entreprise relu DANS la transaction d'application (opération attendue).
-    op.execute(f"GRANT SELECT (restore_locked_at, restore_operation_id) ON tenants TO {restorer}")
     # Politiques propres (certaines tables n'ont de politique que pour le rôle applicatif) :
     # MÊME prédicat que l'isolation des entreprises, contexte app.tenant_id obligatoire.
     for t in restored + list(MERGED):
@@ -777,7 +766,6 @@ def downgrade() -> None:
         _quote(s.db_tenant_backup_role),
         _quote(s.db_tenant_restore_role),
     )
-    op.execute("DROP POLICY IF EXISTS backup_agent_tenants_lock ON tenants")
     op.execute("DROP POLICY IF EXISTS backup_agent_tenants_read ON tenants")
     for (table,) in bind.execute(
         sa.text(
@@ -805,5 +793,3 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS backup_history_no_delete()")
     op.execute("DROP FUNCTION IF EXISTS backup_policy_next_run(backup_policies, timestamptz)")
     op.drop_table("backup_policies")
-    op.drop_column("tenants", "restore_operation_id")
-    op.drop_column("tenants", "restore_locked_at")

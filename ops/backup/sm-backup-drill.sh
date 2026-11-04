@@ -494,7 +494,7 @@ op="$(con --as a --path "/operations/backups/restores/$OP")"
 [[ "$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name = 'apres-sauvegarde-gamma'")" == 0 ]] || fail application "écriture postérieure à la sauvegarde toujours présente"
 na="$(sqlp -c "SELECT count(*) FROM catalog_categories WHERE name LIKE 'pendant-alpha-%'")"
 [[ "$na" == "$(jget 'd["operations"]["alpha"]' <"$WORK/loop2.json")" && "$na" -gt 0 ]] || fail application "écritures concurrentes d'alpha : $na / $(cat "$WORK/loop2.json")"
-[[ -z "$(sqlp -c "SELECT restore_locked_at FROM tenants WHERE id = '$GAMMA'")" ]] || fail application "gamma encore verrouillée"
+[[ "$(sqlp -c "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ExclusiveLock'")" == 0 ]] || fail application "gamma encore verrouillée"
 [[ "$(sqlp -c "SELECT count(*) FROM audit_logs WHERE tenant_id = '$GAMMA' AND action = 'backup.tenant_restored'")" == 1 ]] || fail application "journal de gamma"
 pass application "gamma revenue à sa sauvegarde (écriture postérieure absente), sauvegarde préalable faite, verrou levé, journal ; alpha et beta ont écrit PENDANT l'application ($(cat "$WORK/loop2.json"))"
 

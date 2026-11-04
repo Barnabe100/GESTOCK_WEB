@@ -104,10 +104,15 @@ double validation, aucune copie isolée, aucune notion d'entreprise.
       rapport conservé dans l'opération ;
    3. **approbation par un administrateur B ≠ A** (contrainte en base
       `approved_by <> requested_by`, `403 restore_same_admin`), dans les 24 h (sinon expirée) ;
-   4. application par l'agent : **verrou de l'entreprise** (`SELECT … FOR UPDATE` qui attend la
-      fin de ses requêtes en cours, chacune tenant `FOR KEY SHARE` ; les suivantes reçoivent
-      `503 tenant_restore_in_progress`, le public un refus générique ; **les autres entreprises
-      ne sont jamais concernées**), **sauvegarde préalable** de l'état actuel (protégée 24 h),
+   4. application par l'agent : **verrou de l'entreprise** — verrou CONSULTATIF PostgreSQL de
+      clé `hashtextextended('sm.tenant_restore:<entreprise>', 0)` : chaque requête de
+      l'entreprise (API, accès public par QR) tient ce verrou en mode partagé le temps de sa
+      transaction ; l'agent le prend en mode exclusif de session et ATTEND donc la fin des
+      requêtes en cours ; les suivantes reçoivent `503 tenant_restore_in_progress` (le public un
+      refus générique) ; une session de l'agent interrompue libère le verrou ; **les autres
+      entreprises ne sont jamais concernées** (autres clés) ; aucune colonne : le verrou
+      fonctionne à toute révision du schéma ; la transaction d'application revérifie que le
+      verrou exclusif est tenu, **sauvegarde préalable** de l'état actuel (protégée 24 h),
       application en UNE transaction (`COMMIT` seulement si tout est conforme, sinon
       `ROLLBACK`), déverrouillage, journal de l'entreprise (`backup.tenant_restored`) et de la
       plateforme ;
@@ -165,9 +170,8 @@ double validation, aucune copie isolée, aucune notion d'entreprise.
 - Nouvelles tables de la plateforme (aucune donnée d'entreprise), deux rôles SQL
   (`stockmanager_tenant_backup`, `stockmanager_tenant_restore`, créés par
   `sm-backup-role.sh` ou par la migration jouée en superutilisateur, sans mot de passe :
-  socket locale du conteneur seulement), une colonne de verrou sur `tenants`, un verrou
-  `FOR KEY SHARE` par requête d'entreprise (n'entre en conflit qu'avec le verrou de
-  restauration).
+  socket locale du conteneur seulement), un verrou consultatif partagé par requête
+  d'entreprise (n'entre en conflit qu'avec le verrou exclusif d'une restauration).
 - La copie isolée double le coût d'une restauration (deux copies pour un PITR d'entreprise) : le
   prix de la preuve. L'espace requis est contrôlé avant chaque copie (réserve de R11-0).
 - Limites V1 : remplacement COMPLET d'une entreprise (D1) ; restauration d'une entreprise
