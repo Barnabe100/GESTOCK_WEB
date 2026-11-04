@@ -95,9 +95,14 @@ sm_lock() { # nom attente_secondes
   local name="$1" wait="${2:-0}" file="$SM_ROOT/locks/$1.lock"
   if command -v flock >/dev/null 2>&1; then
     exec 9>>"$file"
-    if ! flock -x -w "$wait" 9; then
-      SM_DIE_CODE=75 sm_die "verrou « $name » détenu par une autre opération (attente ${wait} s dépassée)"
-    fi
+    # flock -n en boucle : le flock de busybox (Alpine) n'a pas d'option -w.
+    local until_ts=$(( $(date -u +%s) + wait ))
+    until flock -x -n 9; do
+      if (( $(date -u +%s) >= until_ts )); then
+        SM_DIE_CODE=75 sm_die "verrou « $name » détenu par une autre opération (attente ${wait} s dépassée)"
+      fi
+      sleep 2
+    done
     return 0
   fi
   local dir="$file.d" deadline=$(( $(date -u +%s) + wait )) pid

@@ -57,7 +57,12 @@ case "$perm" in 400|600) ;; *) fail "clé du dépôt lisible par d'autres compte
 command -v restic >/dev/null 2>&1 || fail "restic absent"
 command -v flock >/dev/null 2>&1 || fail "flock absent : copie refusée sans verrou"
 exec 9>>"$ROOT/locks/backup.lock"
-flock -x -w "${SM_BACKUP_LOCK_WAIT_SECONDS:-21600}" 9 || fail "verrou des sauvegardes non obtenu"
+# flock -n en boucle : le flock de busybox n'a pas d'option -w.
+deadline=$(( $(date -u +%s) + ${SM_BACKUP_LOCK_WAIT_SECONDS:-21600} ))
+until flock -x -n 9; do
+  [ "$(date -u +%s)" -lt "$deadline" ] || fail "verrou des sauvegardes non obtenu"
+  sleep 2
+done
 
 restic cat config >/dev/null 2>>"$LOG" || fail "dépôt inaccessible ou non initialisé (restic init : décision de l'exploitant)"
 log "copie de base/ wal/ state/ vers le dépôt externe"
