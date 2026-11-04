@@ -586,7 +586,13 @@ def test_app_role_privileges_on_qr_tables(owner_db: Session, settings: Settings)
             text("SELECT policyname, cmd FROM pg_policies WHERE tablename = 'restaurant_qr_orders'")
         ).all()
     )
-    assert policies == {"tenant_isolation": "ALL", "qr_tracking_lookup": "SELECT"}
+    # Sauvegardes (R11, ADR-0058) : lecture et restauration d'UNE entreprise, même prédicat.
+    assert policies == {
+        "tenant_isolation": "ALL",
+        "qr_tracking_lookup": "SELECT",
+        "backup_tenant_read": "SELECT",
+        "backup_tenant_restore": "ALL",
+    }
 
 
 def test_migration_0057_downgrade_refuses_to_lose_qr_orders(

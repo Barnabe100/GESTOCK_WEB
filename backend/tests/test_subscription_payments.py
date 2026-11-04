@@ -930,6 +930,9 @@ def test_table_security_and_indexes(owner_db: Session) -> None:
         "tenant_isolation": ("ALL", ["stockmanager_app"]),
         "platform_read": ("SELECT", ["stockmanager_platform"]),
         "platform_decide": ("UPDATE", ["stockmanager_platform"]),
+        # Restauration d'une entreprise (R11, ADR-0058) : LECTURE seule (contrôle des
+        # références), jamais remplacée (exclue de la restauration).
+        "backup_tenant_restore": ("SELECT", ["stockmanager_tenant_restore"]),
     }
     indexes = set(
         owner_db.scalars(

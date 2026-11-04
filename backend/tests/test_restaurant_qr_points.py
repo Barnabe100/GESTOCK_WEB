@@ -409,7 +409,13 @@ def test_app_role_privileges_and_forced_rls(owner_db: Session, settings: Setting
             text("SELECT policyname, cmd FROM pg_policies WHERE tablename = 'restaurant_qr_points'")
         ).all()
     )
-    assert policies == {"tenant_isolation": "ALL", "qr_token_lookup": "SELECT"}
+    # Sauvegardes (R11, ADR-0058) : lecture et restauration d'UNE entreprise, même prédicat.
+    assert policies == {
+        "tenant_isolation": "ALL",
+        "qr_token_lookup": "SELECT",
+        "backup_tenant_read": "SELECT",
+        "backup_tenant_restore": "ALL",
+    }
     for other in ("stockmanager_platform", "stockmanager_purge"):
         assert (
             owner_db.execute(
