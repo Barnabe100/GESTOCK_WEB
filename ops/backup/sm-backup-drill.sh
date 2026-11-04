@@ -272,7 +272,9 @@ BG=$!
 sleep 6
 bk_sh 'kill -TERM $(pgrep -f "^bash .*[s]m-base-backup.sh" | head -n 1)'
 wait "$BG" 2>/dev/null || true
-no_basebackup() { bk_sh 'for i in $(seq 1 30); do pgrep -f "[p]g_basebackup" >/dev/null || exit 0; sleep 1; done; exit 1'; }
+# Processus VIVANTS seulement : un zombie (état Z) est déjà terminé ; il subsiste quand le PID 1
+# du conteneur ne récupère pas les orphelins (conteneur de job de la CI : « tail -f /dev/null »).
+no_basebackup() { bk_sh 'for i in $(seq 1 30); do live=0; for p in $(pgrep -f "[p]g_basebackup"); do st=$(cut -d")" -f2 /proc/$p/stat 2>/dev/null | cut -d" " -f2); [ -n "$st" ] && [ "$st" != Z ] && live=1; done; [ $live = 0 ] && exit 0; sleep 1; done; exit 1'; }
 no_basebackup || fail interruption "pg_basebackup encore actif après l'interruption"
 for _ in $(seq 1 30); do [[ "$(status_get base_backup status)" == running ]] || break; sleep 1; done
 [[ "$(status_get base_backup status)" == interrupted ]] || fail interruption "statut $(status_get base_backup status)"
