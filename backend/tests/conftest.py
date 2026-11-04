@@ -58,6 +58,10 @@ PURGE_URL = os.environ.get(
 PASSWORD = "Motdepasse-123"
 
 DATA_TABLES = (
+    "backup_agent_state",
+    "backup_items",
+    "restore_operations",
+    "backup_runs",
     "platform_audit_logs",
     "subscription_payments",
     "platform_sessions",

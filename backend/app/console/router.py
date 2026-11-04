@@ -21,6 +21,7 @@ from app.console.auth import (
     PlatformAdmin,
     require_console_header,
 )
+from app.console.backup_routes import router as backup_router
 from app.console.backups import backup_status, backup_thresholds, status_directory
 from app.console.catalog import active_countries, build_catalog
 from app.console.licenses import LicenseAdminService, LicenseFilters
@@ -895,3 +896,7 @@ def release_activation(
     service.release(activation_id, body.reason, ctx.actor, ctx.meta)
     db.commit()
     return _activation_out(service.row(activation_id))
+
+
+# Sauvegarder, Restaurer, Paramètres des sauvegardes (R11, ADR-0058).
+router.include_router(backup_router)

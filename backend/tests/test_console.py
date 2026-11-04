@@ -243,12 +243,22 @@ def test_the_console_exposes_no_route_to_grant_platform_admin(console_app: Any) 
         if method not in ("get", "head", "options")
     )
     tenant = f"{CONSOLE_PREFIX}/tenants/{{tenant_id}}"
+    backups = f"{CONSOLE_PREFIX}/operations/backups"
     assert writes == [
         (f"{CONSOLE_PREFIX}/activations/{{activation_id}}/release", "POST"),
         (f"{CONSOLE_PREFIX}/auth/login", "POST"),
         (f"{CONSOLE_PREFIX}/auth/logout", "POST"),
         (f"{CONSOLE_PREFIX}/licenses/{{license_id}}/reissue", "POST"),
         (f"{CONSOLE_PREFIX}/licenses/{{license_id}}/revoke", "POST"),
+        # Sauvegardes (R11, ADR-0058) : paramètres, demandes, décisions — l'agent exécute.
+        (f"{backups}/policies/{{category}}/{{frequency}}", "PUT"),
+        (f"{backups}/restores", "POST"),
+        (f"{backups}/restores/{{op_id}}/approve", "POST"),
+        (f"{backups}/restores/{{op_id}}/cancel", "POST"),
+        (f"{backups}/restores/{{op_id}}/reject", "POST"),
+        (f"{backups}/restores/{{op_id}}/rollback", "POST"),
+        (f"{backups}/runs", "POST"),
+        (f"{backups}/runs/{{run_id}}/cancel", "POST"),
         (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/confirm", "POST"),
         (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/license", "POST"),
         (f"{CONSOLE_PREFIX}/payments/{{payment_id}}/reject", "POST"),

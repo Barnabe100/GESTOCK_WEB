@@ -684,8 +684,9 @@ INSERT INTO backup_policies (id, category, frequency, enabled, run_time, weekday
         op.execute(f"GRANT EXECUTE ON FUNCTION {fn} TO {agent}")
     # Lecture / restauration d'UNE entreprise : sous RLS, périmètre fixé ici (D2).
     op.execute(f"GRANT EXECUTE ON FUNCTION app_current_tenant_id() TO {reader}, {restorer}")
-    # Révision du schéma : une sauvegarde ne se restaure que dans le MÊME schéma.
-    op.execute(f"GRANT SELECT ON alembic_version TO {agent}, {reader}, {restorer}")
+    # Révision du schéma : une sauvegarde ne se restaure que dans le MÊME schéma (la console
+    # refuse une demande sur une sauvegarde d'une autre révision).
+    op.execute(f"GRANT SELECT ON alembic_version TO {platform}, {agent}, {reader}, {restorer}")
     tables = _tenant_tables()
     restored = [t for t in tables if t not in EXCLUDED and t not in MERGED]
     kept = [t for t in tables if t in EXCLUDED]
